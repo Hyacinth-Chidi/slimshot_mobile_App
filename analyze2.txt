@@ -1,0 +1,20 @@
+﻿Analyzing slimshotai...                                         
+
+warning - Unused import: 'dart:io' - lib\features\compression\services\image_compression_service.dart:1:8 - unused_import
+   info - Don't invoke 'print' in production code - lib\features\compression\services\image_compression_service.dart:31:7 - avoid_print
+   info - Use 'const' with the constructor to improve performance - lib\features\onboarding\onboarding_screen.dart:98:19 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - lib\features\onboarding\onboarding_screen.dart:99:28 - prefer_const_constructors
+   info - Use 'const' literals as arguments to constructors of '@immutable' classes - lib\features\onboarding\onboarding_screen.dart:100:33 - prefer_const_literals_to_create_immutables
+   info - Use 'const' with the constructor to improve performance - lib\screens\compress_image_screen.dart:132:29 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - lib\screens\compress_image_screen.dart:133:38 - prefer_const_constructors
+   info - Use 'const' literals as arguments to constructors of '@immutable' classes - lib\screens\compress_image_screen.dart:134:43 - prefer_const_literals_to_create_immutables
+   info - The import of 'package:image_picker/image_picker.dart' is unnecessary because all of the used elements are also provided by the import of 'package:share_plus/share_plus.dart' - lib\screens\result_screen.dart:8:8 - unnecessary_import
+
+flutter : 9 issues found. (ran in 2.4s)
+At line:1 char:1
++ flutter analyze 2>&1 | Out-File -FilePath C:\Users\HP\Desktop\dev\sli ...
++ ~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (9 issues found. (ran in 2.4s):String) [], Re 
+   moteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
