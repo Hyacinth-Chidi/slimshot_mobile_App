@@ -7,18 +7,21 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../core/services/media_picker_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/widgets/gradient_button.dart';
 import '../core/widgets/compression_loader.dart';
+import '../core/widgets/permission_dialog.dart';
 import '../core/widgets/responsive_layout.dart';
 import '../features/compression/providers/compression_provider.dart';
 import '../features/compression/logic/compression_presets.dart';
 import '../core/utils/file_utils.dart';
 import '../core/utils/toast_utils.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class CompressImageScreen extends ConsumerStatefulWidget {
-  const CompressImageScreen({super.key});
+  final List<XFile>? initialImages;
+
+  const CompressImageScreen({super.key, this.initialImages});
 
   @override
   ConsumerState<CompressImageScreen> createState() =>
@@ -26,88 +29,23 @@ class CompressImageScreen extends ConsumerStatefulWidget {
 }
 
 class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
-  final ImagePicker _picker = ImagePicker();
+  final MediaPickerService _picker = MediaPickerService();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(compressionProvider.notifier).reset();
-      _pickImage();
-    });
-  }
-
-  Future<void> _pickImage() async {
-    try {
-      final List<XFile> images = await _picker.pickMultiImage();
-      if (images.isNotEmpty) {
-        ref
-            .read(compressionProvider.notifier)
-            .setInputFiles(
-              images,
+      final initialImages = widget.initialImages;
+      if (initialImages != null && initialImages.isNotEmpty) {
+        ref.read(compressionProvider.notifier).setInputFiles(
+              initialImages,
               defaultPreset: CompressionPresets.imagePresets[1],
             );
       } else {
         if (mounted) context.pop();
       }
-    } catch (e) {
-      if (mounted) {
-        final errorStr = e.toString().toLowerCase();
-        final isPermission =
-            errorStr.contains('photo_access_denied') ||
-            errorStr.contains('permission_denied') ||
-            errorStr.contains('access_denied');
-
-        if (isPermission) {
-          _showPermissionDialog();
-        } else {
-          ToastUtils.show(context, 'Error picking image: $e', isError: true);
-        }
-      }
-    }
-  }
-
-  void _showPermissionDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text(
-          'Permission Required',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        content: const Text(
-          'SlimShotAI needs access to your gallery to select photos for compression. Please allow access in settings.',
-          style: TextStyle(color: Color(0xFFCBD5E1)),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              if (mounted) context.pop();
-            },
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Color(0xFF94A3B8)),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              openAppSettings();
-            },
-            child: const Text(
-              'Open Settings',
-              style: TextStyle(
-                color: AppColors.primaryStart,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    });
   }
 
   void _handleCompress() async {
@@ -123,6 +61,311 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
     } else if (state.error != null) {
       ToastUtils.show(context, state.error!, isError: true);
     }
+  }
+
+  String _formatTargetSize(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      final mb = bytes / (1024 * 1024);
+      return mb == mb.roundToDouble()
+          ? '${mb.toInt()} MB'
+          : '${mb.toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024).round()} KB';
+  }
+
+  void _showCustomTargetSizeDialog(CompressionNotifier notifier) {
+    final controller = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Custom Target Size',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: const InputDecoration(
+            labelText: 'Size in MB',
+            labelStyle: TextStyle(color: AppColors.textSecondary),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.border),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.primaryStart),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              final value = double.tryParse(controller.text.trim());
+              if (value == null || value <= 0) return;
+              final bytes = (value * 1024 * 1024).round();
+              notifier.setTargetImageSize(bytes);
+              Navigator.pop(context);
+            },
+            child: const Text(
+              'Use Size',
+              style: TextStyle(
+                color: AppColors.primaryStart,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTargetSizeSelector(
+    CompressionState state,
+    CompressionNotifier notifier,
+  ) {
+    final isTargetMode = state.compressionMode == CompressionMode.targetSize;
+    const targetSizes = CompressionPresets.targetImageSizes;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isTargetMode ? AppColors.primaryStart : AppColors.border,
+          width: isTargetMode ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryStart.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  LucideIcons.gauge,
+                  color: AppColors.primaryStart,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Target Size',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      'Compress under a specific limit',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: isTargetMode,
+                onChanged: (value) {
+                  HapticFeedback.selectionClick();
+                  if (value) {
+                    notifier.setTargetImageSize(
+                      state.targetImageSizeBytes ?? targetSizes[1],
+                    );
+                  } else {
+                    notifier.usePresetCompression();
+                  }
+                },
+                activeTrackColor: AppColors.primaryStart,
+                inactiveTrackColor: const Color(0xFF334155),
+              ),
+            ],
+          ),
+          if (isTargetMode) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ...targetSizes.map((size) {
+                  final selected = state.targetImageSizeBytes == size;
+                  return ChoiceChip(
+                    label: Text(_formatTargetSize(size)),
+                    selected: selected,
+                    onSelected: (_) {
+                      HapticFeedback.selectionClick();
+                      notifier.setTargetImageSize(size);
+                    },
+                    selectedColor:
+                        AppColors.primaryStart.withValues(alpha: 0.25),
+                    backgroundColor: AppColors.surfaceLight,
+                    labelStyle: TextStyle(
+                      color: selected
+                          ? AppColors.textPrimary
+                          : AppColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    side: BorderSide(
+                      color:
+                          selected ? AppColors.primaryStart : AppColors.border,
+                    ),
+                  );
+                }),
+                ActionChip(
+                  label: Text(
+                    state.targetImageSizeBytes != null &&
+                            !targetSizes.contains(state.targetImageSizeBytes)
+                        ? 'Custom: ${_formatTargetSize(state.targetImageSizeBytes!)}'
+                        : 'Custom',
+                  ),
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    _showCustomTargetSizeDialog(notifier);
+                  },
+                  backgroundColor: AppColors.surfaceLight,
+                  labelStyle: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  side: const BorderSide(color: AppColors.border),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Very small targets may reduce quality or fail for large photos.',
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    ).animate().fadeIn(delay: 260.ms);
+  }
+
+  Widget _buildQuickPresetSelector(
+    CompressionState state,
+    CompressionNotifier notifier,
+  ) {
+    final suggestion = state.originalSize > 2 * 1024 * 1024
+        ? 'Suggested: Form Upload for strict size limits.'
+        : 'Suggested: Privacy Share for everyday sharing.';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Quick Presets',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ).animate().fadeIn(delay: 80.ms),
+        const SizedBox(height: 8),
+        Text(
+          suggestion,
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ).animate().fadeIn(delay: 100.ms),
+        const SizedBox(height: 14),
+        ...CompressionPresets.imageOutputPresets.map((preset) {
+          final isSelected = state.selectedOutputPresetId == preset.id;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                notifier.applyOutputPreset(preset);
+              },
+              child: AnimatedContainer(
+                duration: 180.ms,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.primaryStart.withValues(alpha: 0.15)
+                      : AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isSelected
+                        ? AppColors.primaryStart
+                        : AppColors.border,
+                    width: isSelected ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(9),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primaryStart
+                            : AppColors.surfaceLight,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        preset.icon,
+                        color: isSelected
+                            ? Colors.white
+                            : AppColors.textSecondary,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            preset.name,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            preset.description,
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isSelected)
+                      const Icon(
+                        LucideIcons.checkCircle2,
+                        color: AppColors.primaryStart,
+                        size: 20,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    ).animate().fadeIn(delay: 120.ms);
   }
 
   @override
@@ -304,6 +547,8 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
                                 ),
                               ),
                             ] else ...[
+                              _buildQuickPresetSelector(state, notifier),
+                              const SizedBox(height: 22),
                               const Text(
                                     'Compression Mode',
                                     style: TextStyle(
@@ -472,6 +717,9 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
                                     curve: Curves.easeOutQuad,
                                   ),
                               
+                              const SizedBox(height: 8),
+                              _buildTargetSizeSelector(state, notifier),
+
                               const SizedBox(height: 24),
                               const Text(
                                 'Output Settings',
@@ -581,7 +829,10 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
                         child: GradientButton(
                           title: "Compress Photo",
                           icon: LucideIcons.zap,
-                          onPress: state.selectedPreset != null
+                          onPress: state.selectedPreset != null &&
+                                  (state.compressionMode !=
+                                          CompressionMode.targetSize ||
+                                      state.targetImageSizeBytes != null)
                               ? _handleCompress
                               : null,
                           isLoading: state.isProcessing,

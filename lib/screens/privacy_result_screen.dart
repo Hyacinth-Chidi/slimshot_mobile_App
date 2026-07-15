@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gal/gal.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:share_plus/share_plus.dart';
 
+import 'package:slimshotai/core/models/history_item.dart';
+import 'package:slimshotai/core/services/history_service.dart';
+import 'package:slimshotai/core/services/media_save_service.dart';
 import 'package:slimshotai/core/utils/file_utils.dart';
 import 'package:slimshotai/core/utils/toast_utils.dart';
 import 'package:slimshotai/features/privacy/providers/privacy_provider.dart';
@@ -25,11 +26,39 @@ class PrivacyResultScreen extends ConsumerStatefulWidget {
 
 class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
   int _selectedIndex = 0;
+  bool _historySaved = false;
 
   @override
   void initState() {
     super.initState();
     AdService.loadInterstitialAd();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _saveHistory();
+    });
+  }
+
+  Future<void> _saveHistory() async {
+    if (_historySaved) return;
+    _historySaved = true;
+
+    final state = ref.read(privacyProvider);
+    if (state.outputPaths.isEmpty) return;
+
+    await HistoryService.addItem(
+      HistoryItem(
+        id: state.outputPaths.join('|'),
+        title: state.outputPaths.length == 1
+            ? 'Privacy-clean photo'
+            : 'Privacy-cleaned ${state.outputPaths.length} photos',
+        operation: 'Privacy Strip',
+        mediaType: 'image',
+        outputPaths: state.outputPaths,
+        originalSize: state.originalSize,
+        outputSize: state.strippedSize,
+        detail: 'Metadata removed',
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   @override
@@ -344,9 +373,9 @@ class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
                     HapticFeedback.mediumImpact();
                     try {
                       if (state.outputPaths.length > 1) {
-                        for (final path in state.outputPaths) {
-                          await Gal.putImage(path);
-                        }
+                        await MediaSaveService.saveImagesToGallery(
+                          state.outputPaths,
+                        );
                         if (mounted) {
                           ToastUtils.show(
                             context,
@@ -354,7 +383,9 @@ class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
                           );
                         }
                       } else {
-                        await Gal.putImage(selectedPath);
+                        await MediaSaveService.saveImagesToGallery([
+                          selectedPath,
+                        ]);
                         if (mounted) ToastUtils.show(context, 'Saved to gallery!');
                       }
                     } catch (e) {
@@ -386,10 +417,7 @@ class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
             child: ElevatedButton.icon(
               onPressed: () async {
                 HapticFeedback.selectionClick();
-                final xFiles = state.outputPaths
-                    .map((p) => XFile(p))
-                    .toList();
-                await Share.shareXFiles(xFiles);
+                await MediaSaveService.shareFiles(state.outputPaths);
               },
               icon: const Icon(LucideIcons.share2, size: 18),
               label: Text(

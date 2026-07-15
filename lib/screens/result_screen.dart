@@ -6,10 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:gal/gal.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
+import '../core/models/history_item.dart';
+import '../core/services/history_service.dart';
+import '../core/services/media_save_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/utils/file_utils.dart';
 import '../core/utils/toast_utils.dart';
@@ -17,6 +18,7 @@ import '../core/services/ad_service.dart';
 import '../core/widgets/before_after_slider.dart';
 import '../core/widgets/gradient_button.dart';
 import '../core/widgets/responsive_layout.dart';
+import '../features/compression/logic/compression_presets.dart';
 import '../features/compression/providers/compression_provider.dart';
 
 class ResultScreen extends ConsumerStatefulWidget {
@@ -33,6 +35,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   Duration _totalDuration = Duration.zero;
   int _selectedPreviewIndex = 0;
   bool _showCheckmark = true;
+  bool _historySaved = false;
 
   @override
   void initState() {
@@ -40,6 +43,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     AdService.loadInterstitialAd();
     HapticFeedback.mediumImpact();
     _initVideoPlayer();
+    _saveHistory();
 
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
@@ -53,7 +57,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   void _initVideoPlayer() {
     final state = ref.read(compressionProvider);
     if (state.outputPaths.isNotEmpty &&
-        state.outputPaths.first.endsWith('.mp4')) {
+        MediaSaveService.isVideoPath(state.outputPaths.first)) {
       _videoController =
           VideoPlayerController.file(File(state.outputPaths.first))
             ..initialize().then((_) {
@@ -76,6 +80,37 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
               });
             });
     }
+  }
+
+  Future<void> _saveHistory() async {
+    if (_historySaved) return;
+    _historySaved = true;
+
+    final state = ref.read(compressionProvider);
+    if (state.outputPaths.isEmpty) return;
+
+    final isVideo = MediaSaveService.isVideoPath(state.outputPaths.first);
+    final detail = state.selectedOutputPresetId != null
+        ? 'Quick preset: ${state.selectedOutputPresetId}'
+        : state.compressionMode == CompressionMode.targetSize
+            ? 'Target size mode'
+            : state.selectedPreset?.name ?? 'Compression';
+
+    await HistoryService.addItem(
+      HistoryItem(
+        id: state.outputPaths.join('|'),
+        title: state.outputPaths.length == 1
+            ? (isVideo ? 'Compressed video' : 'Compressed photo')
+            : 'Compressed ${state.outputPaths.length} ${isVideo ? 'videos' : 'photos'}',
+        operation: 'Compression',
+        mediaType: isVideo ? 'video' : 'image',
+        outputPaths: state.outputPaths,
+        originalSize: state.originalSize,
+        outputSize: state.compressedSize,
+        detail: detail,
+        createdAt: DateTime.now(),
+      ),
+    );
   }
 
   @override
@@ -139,7 +174,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       state.originalSize,
       state.compressedSize,
     );
-    final isVideo = state.outputPaths.first.endsWith('.mp4');
+    final isVideo = MediaSaveService.isVideoPath(state.outputPaths.first);
 
     return Scaffold(
       body: Stack(
@@ -377,39 +412,10 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                               context,
                               onAdDismissed: () async {
                                 try {
-                                  for (
-                                    int i = 0;
-                                    i < state.outputPaths.length;
-                                    i++
-                                  ) {
-                                    final path = state.outputPaths[i];
-                                    final now = DateTime.now();
-                                    final timestamp =
-                                        "${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}_$i";
-                                    final isVideo = path.endsWith('.mp4');
-                                    final ext = isVideo ? 'mp4' : 'jpg';
-                                    final prettyName =
-                                        "SlimShot_${isVideo ? 'Video' : 'Image'}_$timestamp.$ext";
-
-                                    final parentDir = File(path).parent.path;
-                                    final prettyPath = "$parentDir/$prettyName";
-
-                                    await File(path).copy(prettyPath);
-
-                                    if (isVideo) {
-                                      await Gal.putVideo(
-                                        prettyPath,
-                                        album: 'SlimShotAI',
-                                      );
-                                    } else {
-                                      await Gal.putImage(
-                                        prettyPath,
-                                        album: 'SlimShotAI',
-                                      );
-                                    }
-
-                                    await FileUtils.deleteFile(prettyPath);
-                                  }
+                                  await MediaSaveService
+                                      .saveOptimizedMediaToGallery(
+                                    state.outputPaths,
+                                  );
 
                                   HapticFeedback.mediumImpact();
                                   if (context.mounted) {
@@ -439,10 +445,8 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                                 icon: LucideIcons.share2,
                                 onTap: () {
                                   if (state.outputPaths.isNotEmpty) {
-                                    Share.shareXFiles(
-                                      state.outputPaths
-                                          .map((p) => XFile(p))
-                                          .toList(),
+                                    MediaSaveService.shareFiles(
+                                      state.outputPaths,
                                     );
                                   }
                                 },

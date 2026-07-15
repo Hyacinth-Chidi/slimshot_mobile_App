@@ -3,11 +3,16 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  ffmpeg_kit_flutter_new
   file_selector_windows
   gal
+  media_kit_libs_windows_video
+  media_kit_video
   permission_handler_windows
+  pro_video_editor
   share_plus
   url_launcher_windows
+  volume_controller
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

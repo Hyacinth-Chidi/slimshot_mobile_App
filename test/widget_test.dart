@@ -6,10 +6,12 @@ import 'package:slimshotai/main.dart';
 
 void main() {
   testWidgets('App starts without crashing', (WidgetTester tester) async {
+    initializeAppRouter('/onboarding');
+
     await tester.pumpWidget(
-      const ProviderScope(child: SlimShotApp()),
+      const ProviderScope(child: SlimShotApp(enableShareIntents: false)),
     );
-    // Verify the app starts and renders something
+
     expect(find.byType(SlimShotApp), findsOneWidget);
   });
 }

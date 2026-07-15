@@ -157,13 +157,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         description: 'Remove hidden GPS & device metadata',
                         delay: 400,
                       ),
-                      _FeatureItem(
-                        icon: LucideIcons.fileArchive,
-                        iconColor: Color(0xFF3B82F6), // Blue-500
-                        title: 'Format Converter',
-                        description: 'Instantly transform image types',
-                        delay: 500,
-                      ),
                     ],
                   ),
 

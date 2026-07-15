@@ -8,35 +8,43 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:permission_handler/permission_handler.dart';
 
+import 'package:slimshotai/core/services/media_picker_service.dart';
 import 'package:slimshotai/core/utils/file_utils.dart';
 import 'package:slimshotai/core/utils/toast_utils.dart';
 import 'package:slimshotai/core/widgets/compression_loader.dart';
+import 'package:slimshotai/core/widgets/permission_dialog.dart';
 import 'package:slimshotai/features/privacy/providers/privacy_provider.dart';
 
 class PrivacyScreen extends ConsumerStatefulWidget {
-  const PrivacyScreen({super.key});
+  final List<XFile>? initialImages;
+
+  const PrivacyScreen({super.key, this.initialImages});
 
   @override
   ConsumerState<PrivacyScreen> createState() => _PrivacyScreenState();
 }
 
 class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
-  final ImagePicker _picker = ImagePicker();
+  final MediaPickerService _picker = MediaPickerService();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(privacyProvider.notifier).reset();
-      _pickImages();
+      final initialImages = widget.initialImages;
+      if (initialImages != null && initialImages.isNotEmpty) {
+        ref.read(privacyProvider.notifier).setInputFiles(initialImages);
+      } else {
+        if (mounted) context.pop();
+      }
     });
   }
 
   Future<void> _pickImages() async {
     try {
-      final List<XFile> images = await _picker.pickMultiImage();
+      final images = await _picker.pickImages();
       if (images.isNotEmpty) {
         await ref.read(privacyProvider.notifier).setInputFiles(images);
       } else {
@@ -44,12 +52,7 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
       }
     } catch (e) {
       if (mounted) {
-        final errorStr = e.toString().toLowerCase();
-        final isPermission =
-            errorStr.contains('photo_access_denied') ||
-            errorStr.contains('permission_denied') ||
-            errorStr.contains('access_denied');
-        if (isPermission) {
+        if (MediaPickerService.isPermissionError(e)) {
           _showPermissionDialog();
         } else {
           ToastUtils.show(context, 'Error picking image: $e', isError: true);
@@ -59,45 +62,12 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
   }
 
   void _showPermissionDialog() {
-    showDialog(
+    PermissionDialog.showGalleryAccessRequired(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1E293B),
-            title: const Text(
-              'Permission Required',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-            content: const Text(
-              'SlimShotAI needs access to your gallery to select photos.',
-              style: TextStyle(color: Color(0xFFCBD5E1)),
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  if (mounted) context.pop();
-                },
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: Color(0xFF94A3B8)),
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  openAppSettings();
-                },
-                child: const Text(
-                  'Open Settings',
-                  style: TextStyle(color: Color(0xFF6366F1)),
-                ),
-              ),
-            ],
-          ),
+      message: 'SlimShotAI needs access to your gallery to select photos.',
+      onCancel: () {
+        if (mounted) context.pop();
+      },
     );
   }
 

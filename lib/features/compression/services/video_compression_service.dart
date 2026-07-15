@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:ffmpeg_kit_flutter_new_min_gpl/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_min_gpl/ffmpeg_session.dart';
-import 'package:ffmpeg_kit_flutter_new_min_gpl/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_min_gpl/return_code.dart';
-import 'package:ffmpeg_kit_flutter_new_min_gpl/statistics.dart';
-import 'package:ffmpeg_kit_flutter_new_min_gpl/log.dart';
-import 'package:ffmpeg_kit_flutter_new_min_gpl/stream_information.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_session.dart';
+import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new/statistics.dart';
+import 'package:ffmpeg_kit_flutter_new/log.dart';
+import 'package:ffmpeg_kit_flutter_new/stream_information.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../logic/compression_presets.dart';
@@ -155,6 +155,68 @@ class VideoCompressionService {
     return cmd.toString();
   }
 
+  String? _buildTargetSizeCommand({
+    required String inputPath,
+    required String outputPath,
+    required VideoMetadata metadata,
+    required bool whatsAppOptimize,
+    required bool removeMetadata,
+    required String targetFormat,
+    required int targetSizeBytes,
+  }) {
+    if (metadata.durationSecs <= 0) return null;
+
+    const audioKbps = 96;
+    final totalKbps =
+        ((targetSizeBytes * 8 * 0.92) / metadata.durationSecs / 1000).floor();
+    final videoKbps = totalKbps - audioKbps;
+
+    if (videoKbps < 150) return null;
+
+    final StringBuffer cmd = StringBuffer('-y -i "$inputPath" ');
+
+    if (removeMetadata) {
+      cmd.write('-map_metadata -1 ');
+    }
+
+    if (targetFormat == 'webm') {
+      cmd.write(
+        '-c:v libvpx-vp9 -b:v ${videoKbps}k '
+        '-maxrate ${videoKbps}k -bufsize ${videoKbps * 2}k '
+        '-cpu-used 6 ',
+      );
+    } else {
+      cmd.write(
+        '-c:v libx264 -preset superfast -b:v ${videoKbps}k '
+        '-maxrate ${videoKbps}k -bufsize ${videoKbps * 2}k ',
+      );
+    }
+
+    if (whatsAppOptimize) {
+      final scaleFilter = _shouldDownscaleForWhatsapp(metadata)
+          ? '-vf "scale=\'min(1280,iw)\':-2" '
+          : '';
+
+      cmd.write(
+        '$scaleFilter-pix_fmt yuv420p -profile:v baseline -level 3.1 -r 30 ',
+      );
+    }
+
+    if (targetFormat == 'webm') {
+      cmd.write('-c:a libopus -b:a ${audioKbps}k ');
+    } else {
+      cmd.write('-c:a aac -b:a ${audioKbps}k ');
+    }
+
+    if (targetFormat == 'mp4') {
+      cmd.write('-movflags +faststart ');
+    }
+
+    cmd.write('"$outputPath"');
+
+    return cmd.toString();
+  }
+
   bool _shouldDownscaleForWhatsapp(VideoMetadata metadata) {
     final maxDim = metadata.width > metadata.height
         ? metadata.width
@@ -201,10 +263,19 @@ class VideoCompressionService {
     bool whatsAppOptimize = false,
     bool removeMetadata = true,
     String targetFormat = 'mp4',
+    int? targetSizeBytes,
     Function(double progress)? onProgress,
   }) async {
     try {
-      if (preset.id == 'best_quality' &&
+      final inputFile = File(inputPath);
+      if (targetSizeBytes != null &&
+          await inputFile.length() <= targetSizeBytes) {
+        debugPrint('Video already under target size - skipping compression');
+        return inputPath;
+      }
+
+      if (targetSizeBytes == null &&
+          preset.id == 'best_quality' &&
           metadata != null &&
           metadata.isAlreadyOptimized) {
         debugPrint('⏭ Video already optimized — skipping compression');
@@ -226,15 +297,30 @@ class VideoCompressionService {
             durationSecs: 0,
           );
 
-      final String command = _buildCommand(
-        inputPath: inputPath,
-        outputPath: outputPath,
-        preset: preset,
-        metadata: effectiveMetadata,
-        whatsAppOptimize: whatsAppOptimize,
-        removeMetadata: removeMetadata,
-        targetFormat: targetFormat,
-      );
+      final String? command = targetSizeBytes != null
+          ? _buildTargetSizeCommand(
+              inputPath: inputPath,
+              outputPath: outputPath,
+              metadata: effectiveMetadata,
+              whatsAppOptimize: whatsAppOptimize,
+              removeMetadata: removeMetadata,
+              targetFormat: targetFormat,
+              targetSizeBytes: targetSizeBytes,
+            )
+          : _buildCommand(
+              inputPath: inputPath,
+              outputPath: outputPath,
+              preset: preset,
+              metadata: effectiveMetadata,
+              whatsAppOptimize: whatsAppOptimize,
+              removeMetadata: removeMetadata,
+              targetFormat: targetFormat,
+            );
+
+      if (command == null) {
+        debugPrint('Target video size is too small for this duration');
+        return null;
+      }
 
       debugPrint('🎬 FFmpeg command: ffmpeg $command');
 
@@ -247,8 +333,15 @@ class VideoCompressionService {
           if (ReturnCode.isSuccess(returnCode)) {
             debugPrint('✅ FFmpeg compression succeeded');
 
-            final inputFile = File(inputPath);
             final outputFile = File(outputPath);
+            if (targetSizeBytes != null &&
+                await outputFile.length() > targetSizeBytes) {
+              debugPrint('Output did not reach target size');
+              await outputFile.delete();
+              completer.complete(null);
+              return;
+            }
+
             if (await outputFile.length() >= await inputFile.length()) {
               debugPrint('⚠️ Output larger than input — returning original');
               await outputFile.delete();
