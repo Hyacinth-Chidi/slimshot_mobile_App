@@ -8,7 +8,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../utils/font_utils.dart';
 
 class TextOverlayLayer extends ConsumerStatefulWidget {
   final Size videoCanvasSize;
@@ -106,7 +106,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
 
       Widget textFill = Text(
         overlay.text,
-        style: GoogleFonts.getFont(
+        style: getFontStyle(
           overlay.fontFamily,
           fontSize: 32 * renderScale,
           color: overlay.color,
@@ -122,7 +122,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
       if (overlay.strokeColor != Colors.transparent && overlay.strokeWidth > 0) {
         Widget textStroke = Text(
           overlay.text,
-          style: GoogleFonts.getFont(
+          style: getFontStyle(
             overlay.fontFamily,
             fontSize: 32 * renderScale,
             height: 1.15,
@@ -303,7 +303,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
     final textPainter = TextPainter(
       text: TextSpan(
         text: overlay.text,
-        style: GoogleFonts.getFont(
+        style: getFontStyle(
           overlay.fontFamily,
           color: overlay.color,
           fontSize: 32 * renderScale,

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../providers/video_editor_notifier.dart';
 import '../../models/overlay_animation.dart';
 import '../../../../core/theme/app_colors.dart';
-import 'package:lucide_icons/lucide_icons.dart';
 
 class AnimationDrawer extends ConsumerStatefulWidget {
   const AnimationDrawer({super.key});
@@ -51,7 +51,7 @@ class _AnimationDrawerState extends ConsumerState<AnimationDrawer> {
       height: MediaQuery.of(context).size.height * 0.55,
       child: Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF0E121A),
+          color: AppColors.background,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(

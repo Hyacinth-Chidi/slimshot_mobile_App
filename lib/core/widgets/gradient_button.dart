@@ -81,16 +81,6 @@ class _GradientButtonState extends State<GradientButton> {
                     colors: [AppColors.surfaceLight, AppColors.surfaceLight],
                   ),
             borderRadius: BorderRadius.circular(widget.borderRadius),
-            boxShadow: widget.onPress != null && !_isPressed
-                ? [
-                    BoxShadow(
-                      color: AppColors.primaryStart.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : [],
           ),
           child: Center(
             child: widget.isLoading

@@ -25,7 +25,7 @@ class _ExportOptionsDialogState extends State<ExportOptionsDialog> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: const BoxDecoration(
-        color: Color(0xFF0E121A),
+        color: AppColors.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(

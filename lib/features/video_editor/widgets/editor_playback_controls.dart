@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../../core/theme/app_colors.dart';
 
 class EditorPlaybackControls extends StatelessWidget {
   const EditorPlaybackControls({
@@ -34,14 +35,14 @@ class EditorPlaybackControls extends StatelessWidget {
             onTap: onTogglePreview,
             child: Icon(
               isPlaying ? LucideIcons.pause : LucideIcons.play,
-              color: Colors.white,
+              color: AppColors.textPrimary,
               size: 24,
             ),
           ),
           Text(
             timelineLabel,
             style: const TextStyle(
-              color: Colors.white,
+              color: AppColors.textPrimary,
               fontSize: 14,
               fontWeight: FontWeight.bold,
             ),
@@ -51,8 +52,8 @@ class EditorPlaybackControls extends StatelessWidget {
               GestureDetector(
                 onTap: onExpandPreview,
                 child: const Icon(
-                  LucideIcons.maximize2,
-                  color: Colors.white70,
+                  LucideIcons.maximize,
+                  color: AppColors.textSecondary,
                   size: 20,
                 ),
               ),
@@ -61,7 +62,7 @@ class EditorPlaybackControls extends StatelessWidget {
                 onTap: canUndo ? onUndo : null,
                 child: Icon(
                   LucideIcons.undo2,
-                  color: canUndo ? Colors.white70 : Colors.white24,
+                  color: canUndo ? AppColors.textSecondary : AppColors.textTertiary.withValues(alpha: 0.3),
                   size: 20,
                 ),
               ),
@@ -70,7 +71,7 @@ class EditorPlaybackControls extends StatelessWidget {
                 onTap: canRedo ? onRedo : null,
                 child: Icon(
                   LucideIcons.redo2,
-                  color: canRedo ? Colors.white70 : Colors.white24,
+                  color: canRedo ? AppColors.textSecondary : AppColors.textTertiary.withValues(alpha: 0.3),
                   size: 20,
                 ),
               ),

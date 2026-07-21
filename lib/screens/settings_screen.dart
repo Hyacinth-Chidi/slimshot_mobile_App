@@ -48,25 +48,7 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        GestureDetector(
-                          onTap: () => context.pop(),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: AppColors.border.withValues(alpha: 0.5),
-                              ),
-                            ),
-                            child: const Icon(
-                              LucideIcons.arrowLeft,
-                              color: AppColors.textPrimary,
-                              size: 20,
-                            ),
-                          ),
-                        ),
+                        const SizedBox(width: 44),
                         const Expanded(
                           child: Text(
                             'Settings',
@@ -243,7 +225,7 @@ class SettingsScreen extends StatelessWidget {
                             .animate()
                             .fadeIn(delay: 600.ms)
                             .slideY(begin: 0.2, end: 0),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 100), // Padding for global nav bar
                       ],
                     ),
                   ),

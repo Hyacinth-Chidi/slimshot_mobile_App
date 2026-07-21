@@ -21,7 +21,7 @@ class VolumePanel extends StatelessWidget {
       return Center(
         child: Text(
           emptyMessage!,
-          style: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: AppColors.textPrimary),
         ),
       );
     }
@@ -33,7 +33,7 @@ class VolumePanel extends StatelessWidget {
           children: [
             Icon(
               displayVolume == 0 ? LucideIcons.volumeX : LucideIcons.volume2,
-              color: Colors.white54,
+              color: AppColors.textSecondary,
               size: 20,
             ),
             const SizedBox(width: 16),
@@ -42,7 +42,7 @@ class VolumePanel extends StatelessWidget {
                 data: const SliderThemeData(
                   activeTrackColor: AppColors.primaryStart,
                   inactiveTrackColor: Colors.white12,
-                  thumbColor: Colors.white,
+                  thumbColor: AppColors.textPrimary,
                   trackHeight: 4,
                 ),
                 child: Slider(
@@ -59,7 +59,7 @@ class VolumePanel extends StatelessWidget {
               child: Text(
                 '${(displayVolume * 10).round()}',
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),

@@ -8,6 +8,7 @@ import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../image_overlay/image_overlay_layer.dart';
 import '../video_overlay/video_overlay_layer.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../text_overlay/text_overlay_layer.dart';
 
 enum CropDragMode { none, top, bottom, left, right, topLeft, topRight, bottomLeft, bottomRight, center }
@@ -67,7 +68,7 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
       child: Container(
         width: double.infinity,
         height: double.infinity,
-        color: const Color(0xFF0E121A),
+        color: AppColors.background,
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(4.0),

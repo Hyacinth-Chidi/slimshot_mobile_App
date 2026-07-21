@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../logic/filter_presets.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../providers/video_editor_notifier.dart';
 
 class FiltersDrawer extends ConsumerStatefulWidget {
@@ -27,7 +28,7 @@ class _FiltersDrawerState extends ConsumerState<FiltersDrawer> {
       height: MediaQuery.of(context).size.height * 0.55,
       child: Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF0E121A), // Dark background matching the theme
+          color: AppColors.background, // Dark background matching the theme
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(

@@ -691,7 +691,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 color: Colors.transparent,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(
-                  color: isSelected ? Colors.amber : Colors.white.withValues(alpha: 0.18),
+                  color: isSelected ? AppColors.primaryStart : Colors.white.withValues(alpha: 0.18),
                   width: isSelected ? 2.5 : 1,
                 ),
               ),
@@ -778,7 +778,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
 
     return Container(
       height: containerHeight, // padding handled by containerHeight
-      color: const Color(0xFF0E121A), // match dark theme
+      color: AppColors.background, // match dark theme
       child: Stack(
         children: [
           // ── Scrollable content ──
@@ -842,11 +842,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                           child: IgnorePointer(
                             child: Container(
                               decoration: BoxDecoration(
-                                color: Colors.amberAccent,
+                                color: AppColors.primaryStart,
                                 borderRadius: BorderRadius.circular(2),
                                 boxShadow: const [
                                   BoxShadow(
-                                    color: Colors.amberAccent,
+                                    color: AppColors.primaryStart,
                                     blurRadius: 8,
                                     spreadRadius: 1,
                                   ),
@@ -868,8 +868,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                             child: Container(
                               decoration: const BoxDecoration(
                                 border: Border(
-                                  top: BorderSide(color: Colors.amber, width: 2.5),
-                                  bottom: BorderSide(color: Colors.amber, width: 2.5),
+                                  top: BorderSide(color: AppColors.primaryStart, width: 2.5),
+                                  bottom: BorderSide(color: AppColors.primaryStart, width: 2.5),
                                 ),
                               ),
                             ),
@@ -898,7 +898,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                                 child: Container(
                                   width: _handleWidth,
                                   decoration: const BoxDecoration(
-                                    color: Colors.amber,
+                                    color: AppColors.primaryStart,
                                     borderRadius: BorderRadius.only(
                                       topLeft: Radius.circular(6),
                                       bottomLeft: Radius.circular(6),
@@ -942,7 +942,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                                 child: Container(
                                   width: _handleWidth,
                                   decoration: const BoxDecoration(
-                                    color: Colors.amber,
+                                    color: AppColors.primaryStart,
                                     borderRadius: BorderRadius.only(
                                       topRight: Radius.circular(6),
                                       bottomRight: Radius.circular(6),
@@ -1028,7 +1028,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   color: isBeingDragged 
                       ? Colors.white 
                       : isSelected 
-                          ? Colors.amber 
+                          ? AppColors.primaryStart 
                           : Colors.transparent,
                   width: isBeingDragged ? 2 : (isSelected ? 2.0 : 1.5),
                 ),
@@ -1082,7 +1082,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
               onHorizontalDragCancel: _endAudioTrim,
               child: Container(
                 decoration: const BoxDecoration(
-                  color: Colors.amber,
+                  color: AppColors.primaryStart,
                   borderRadius: BorderRadius.only(topLeft: Radius.circular(8), bottomLeft: Radius.circular(8)),
                 ),
                 child: Center(
@@ -1115,7 +1115,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
               onHorizontalDragCancel: _endAudioTrim,
               child: Container(
                 decoration: const BoxDecoration(
-                  color: Colors.amber,
+                  color: AppColors.primaryStart,
                   borderRadius: BorderRadius.only(topRight: Radius.circular(8), bottomRight: Radius.circular(8)),
                 ),
                 child: const Center(
@@ -1251,7 +1251,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 child: Container(
                   width: 8,
                   decoration: const BoxDecoration(
-                    color: Colors.amber, // Yellow handle
+                    color: AppColors.primaryStart, // Yellow handle
                     borderRadius: BorderRadius.only(topLeft: Radius.circular(4), bottomLeft: Radius.circular(4)),
                   ),
                 ),
@@ -1306,7 +1306,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 child: Container(
                   width: 8,
                   decoration: const BoxDecoration(
-                    color: Colors.amber, // Yellow handle
+                    color: AppColors.primaryStart, // Yellow handle
                     borderRadius: BorderRadius.only(topRight: Radius.circular(4), bottomRight: Radius.circular(4)),
                   ),
                 ),
@@ -1498,7 +1498,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 child: Container(
                   width: 8,
                   decoration: const BoxDecoration(
-                    color: Colors.amber,
+                    color: AppColors.primaryStart,
                     borderRadius: BorderRadius.only(topLeft: Radius.circular(4), bottomLeft: Radius.circular(4)),
                   ),
                 ),
@@ -1554,7 +1554,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 child: Container(
                   width: 8,
                   decoration: const BoxDecoration(
-                    color: Colors.amber,
+                    color: AppColors.primaryStart,
                     borderRadius: BorderRadius.only(topRight: Radius.circular(4), bottomRight: Radius.circular(4)),
                   ),
                 ),
@@ -1746,7 +1746,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 child: Container(
                   width: 8,
                   decoration: const BoxDecoration(
-                    color: Colors.amber,
+                    color: AppColors.primaryStart,
                     borderRadius: BorderRadius.only(topLeft: Radius.circular(4), bottomLeft: Radius.circular(4)),
                   ),
                 ),
@@ -1802,7 +1802,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 child: Container(
                   width: 8,
                   decoration: const BoxDecoration(
-                    color: Colors.amber,
+                    color: AppColors.primaryStart,
                     borderRadius: BorderRadius.only(topRight: Radius.circular(4), bottomRight: Radius.circular(4)),
                   ),
                 ),

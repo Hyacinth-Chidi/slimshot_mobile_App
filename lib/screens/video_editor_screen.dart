@@ -667,8 +667,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                   width: 160,
                   padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0E121A).withValues(alpha: 0.92),
-                    borderRadius: BorderRadius.circular(20),
+                    color: AppColors.surface.withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
                     boxShadow: [
                       BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 12, offset: const Offset(0, 4)),
                     ],
@@ -679,7 +680,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                     children: [
                       const Padding(
                         padding: EdgeInsets.only(bottom: 16, left: 4),
-                        child: Text('Add from', style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500)),
+                        child: Text('Add from', style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500)),
                       ),
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
@@ -691,15 +692,15 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                           children: [
                             Container(
                               padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                              child: const Icon(LucideIcons.film, color: Colors.black, size: 20),
+                              decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(10)),
+                              child: const Icon(LucideIcons.film, color: AppColors.textPrimary, size: 20),
                             ),
                             const SizedBox(width: 12),
-                            const Text('Video', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500)),
+                            const Text('Video', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () {
@@ -710,11 +711,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                           children: [
                             Container(
                               padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                              child: const Icon(LucideIcons.camera, color: Colors.black, size: 20),
+                              decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(10)),
+                              child: const Icon(LucideIcons.camera, color: AppColors.textPrimary, size: 20),
                             ),
                             const SizedBox(width: 12),
-                            const Text('Photos', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500)),
+                            const Text('Photos', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
@@ -860,7 +861,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                       return Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1E293B).withValues(alpha: 0.3),
+                          color: AppColors.surfaceLight.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(
@@ -881,13 +882,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                                   padding: const EdgeInsets.symmetric(vertical: 8),
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
-                                    color: isSelected ? Colors.white : Colors.transparent,
+                                    color: isSelected ? AppColors.primaryStart : Colors.transparent,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
                                     labelBuilder(val),
                                     style: TextStyle(
-                                      color: isSelected ? Colors.black : const Color(0xFF64748B),
+                                      color: isSelected ? Colors.white : AppColors.textSecondary,
                                       fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                                       fontSize: 13,
                                     ),
@@ -919,17 +920,17 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                             width: 250,
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0F172A).withValues(alpha: 0.65),
+                              color: AppColors.surface.withValues(alpha: 0.85),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                              border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(
+                                const Text(
                                   'Resolution (limited to HD)',
-                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12, fontWeight: FontWeight.w500),
+                                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
                                 ),
                                 const SizedBox(height: 10),
                                 buildToggles(
@@ -939,9 +940,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                                   (val) => _exportHeight = val,
                                 ),
                                 const SizedBox(height: 20),
-                                Text(
+                                const Text(
                                   'Frame rate (limited to 30)',
-                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12, fontWeight: FontWeight.w500),
+                                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
                                 ),
                                 const SizedBox(height: 10),
                                 buildToggles(
@@ -1838,7 +1839,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF0E121A), // match dark theme
+        backgroundColor: AppColors.background, // match dark theme
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -1898,7 +1899,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
-                            LucideIcons.minimize2,
+                            LucideIcons.minimize,
                             color: Colors.white,
                             size: 20,
                           ),
@@ -1934,7 +1935,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                       ),
                       Container(
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0E121A), // match dark theme
+                          color: AppColors.background, // match dark theme
                           borderRadius: editorState.activeToolId != null
                               ? const BorderRadius.only(
                                   topLeft: Radius.circular(24),

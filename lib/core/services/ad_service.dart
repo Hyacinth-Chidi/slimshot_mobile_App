@@ -5,6 +5,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 class AdService {
   static InterstitialAd? _interstitialAd;
   static bool _isAdReady = false;
+  static bool _isLoading = false;
 
   // Live Ad Unit IDs provided by TechFamz
   static String get _interstitialAdUnitId {
@@ -19,6 +20,9 @@ class AdService {
 
   /// Preloads an interstitial ad in the background. Call this when entering the result screen.
   static void loadInterstitialAd() {
+    if (_isAdReady || _isLoading) return;
+    _isLoading = true;
+
     InterstitialAd.load(
       adUnitId: _interstitialAdUnitId,
       request: const AdRequest(),
@@ -27,18 +31,21 @@ class AdService {
           debugPrint('Ad loaded successfully');
           _interstitialAd = ad;
           _isAdReady = true;
+          _isLoading = false;
 
           _interstitialAd?.fullScreenContentCallback = FullScreenContentCallback(
             onAdDismissedFullScreenContent: (ad) {
               ad.dispose();
               _isAdReady = false;
               _interstitialAd = null;
+              loadInterstitialAd(); // Preload next ad immediately
             },
             onAdFailedToShowFullScreenContent: (ad, error) {
               debugPrint('Ad failed to show: $error');
               ad.dispose();
               _isAdReady = false;
               _interstitialAd = null;
+              loadInterstitialAd(); // Retry loading
             },
           );
         },
@@ -46,6 +53,10 @@ class AdService {
           debugPrint('Ad failed to load: ${err.message}');
           _isAdReady = false;
           _interstitialAd = null;
+          _isLoading = false;
+          
+          // Retry after delay
+          Future.delayed(const Duration(seconds: 10), loadInterstitialAd);
         },
       ),
     );
@@ -66,6 +77,7 @@ class AdService {
           _isAdReady = false;
           _interstitialAd = null;
           onAdDismissed(); // Trigger the save action when ad closes
+          loadInterstitialAd(); // Preload next ad in background
         },
         onAdFailedToShowFullScreenContent: (ad, error) {
           debugPrint('Ad failed to show: $error');
@@ -73,6 +85,7 @@ class AdService {
           _isAdReady = false;
           _interstitialAd = null;
           onAdDismissed(); // Fallback if ad fails to show
+          loadInterstitialAd(); // Preload next ad in background
         },
       );
       _interstitialAd!.show();

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../models/text_overlay_model.dart';
+import '../../utils/font_utils.dart';
 
 class TextStylePanel extends StatefulWidget {
   final TextOverlayModel? textModel;
@@ -230,7 +231,7 @@ class TextFontPanel extends StatelessWidget {
     required this.onFontChanged,
   });
 
-  static const _fonts = ['Roboto', 'Arial', 'Courier New', 'Times New Roman', 'Georgia', 'Impact', 'Comic Sans MS'];
+  static const _fonts = allFonts;
 
   @override
   Widget build(BuildContext context) {
@@ -257,9 +258,9 @@ class TextFontPanel extends StatelessWidget {
             ),
             child: Text(
               font,
-              style: TextStyle(
+              style: getFontStyle(
+                font,
                 color: Colors.white,
-                fontFamily: font,
                 fontSize: 18,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),

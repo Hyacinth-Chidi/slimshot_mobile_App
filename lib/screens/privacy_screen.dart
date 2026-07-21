@@ -14,6 +14,8 @@ import 'package:slimshotai/core/utils/file_utils.dart';
 import 'package:slimshotai/core/utils/toast_utils.dart';
 import 'package:slimshotai/core/widgets/compression_loader.dart';
 import 'package:slimshotai/core/widgets/permission_dialog.dart';
+import 'package:slimshotai/core/theme/app_colors.dart';
+import 'package:slimshotai/core/widgets/gradient_button.dart';
 import 'package:slimshotai/features/privacy/providers/privacy_provider.dart';
 
 class PrivacyScreen extends ConsumerStatefulWidget {
@@ -88,25 +90,32 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
+      backgroundColor: AppColors.background,
       body: Stack(
         children: [
           Positioned(
             top: -80,
             left: -60,
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-            ).animate(onPlay: (c) => c.repeat(reverse: true)).move(
-              begin: const Offset(0, 0),
-              end: const Offset(30, 30),
-              duration: 4500.ms,
-              curve: Curves.easeInOutSine,
-            ).blur(begin: const Offset(60, 60), end: const Offset(60, 60)),
+            child:
+                Container(
+                      width: 250,
+                      height: 250,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryStart.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                    )
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .move(
+                      begin: const Offset(0, 0),
+                      end: const Offset(30, 30),
+                      duration: 4500.ms,
+                      curve: Curves.easeInOutSine,
+                    )
+                    .blur(
+                      begin: const Offset(60, 60),
+                      end: const Offset(60, 60),
+                    ),
           ),
           SafeArea(
             child: Column(
@@ -121,13 +130,13 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1E293B),
+                            color: AppColors.surfaceLight,
                             shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFF334155)),
+                            border: Border.all(color: AppColors.border),
                           ),
                           child: const Icon(
                             LucideIcons.arrowLeft,
-                            color: Color(0xFF94A3B8),
+                            color: AppColors.textSecondary,
                             size: 20,
                           ),
                         ),
@@ -138,7 +147,7 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFFF8FAFC),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                     ],
@@ -181,7 +190,6 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
     );
   }
 
-
   Widget _buildPreviewGrid(PrivacyState state) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,7 +202,7 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: const Color(0xFF94A3B8),
+                color: AppColors.textSecondary,
               ),
             ),
             GestureDetector(
@@ -204,7 +212,7 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: const Color(0xFF6366F1),
+                  color: AppColors.primaryStart,
                 ),
               ),
             ),
@@ -225,11 +233,11 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
                   right: index == state.inputFiles.length - 1 ? 0 : 12,
                 ),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF334155)),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(24),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -287,9 +295,9 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
       child: Container(
         width: double.infinity,
         height: MediaQuery.of(context).size.height * 0.35,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(24),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -328,7 +336,7 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
           style: GoogleFonts.plusJakartaSans(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: const Color(0xFF64748B),
+            color: AppColors.textTertiary,
           ),
         ),
         const SizedBox(height: 10),
@@ -343,27 +351,23 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+                    color: AppColors.surfaceLight.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: const Color(0xFF334155).withValues(alpha: 0.6),
+                      color: AppColors.border.withValues(alpha: 0.6),
                     ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        item.$1,
-                        color: const Color(0xFF6366F1),
-                        size: 14,
-                      ),
+                      Icon(item.$1, color: AppColors.primaryStart, size: 14),
                       const SizedBox(width: 6),
                       Text(
                         item.$2,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: const Color(0xFFCBD5E1),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ],
@@ -377,17 +381,18 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
   }
 
   Widget _buildStatsRow(PrivacyState state) {
-    final label =
-        state.inputFiles.length > 1 ? 'Total Batch Size' : 'Original Size';
+    final label = state.inputFiles.length > 1
+        ? 'Total Batch Size'
+        : 'Original Size';
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: Color(0xFF94A3B8))),
+        Text(label, style: const TextStyle(color: AppColors.textSecondary)),
         Text(
           FileUtils.formatFileSize(state.originalSize),
           style: const TextStyle(
             fontWeight: FontWeight.bold,
-            color: Color(0xFFF8FAFC),
+            color: AppColors.textPrimary,
           ),
         ),
       ],
@@ -401,27 +406,14 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
         children: [
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
+            child: GradientButton(
+              onPress: () {
                 HapticFeedback.mediumImpact();
                 ref.read(privacyProvider.notifier).stripMetadata();
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6366F1),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: 0,
-              ),
-              child: Text(
-                'Strip Metadata from ${state.inputFiles.length} Photo${state.inputFiles.length > 1 ? 's' : ''}',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              title:
+                  'Strip Metadata from ${state.inputFiles.length} Photo${state.inputFiles.length > 1 ? 's' : ''}',
+              borderRadius: 16,
             ),
           ),
           const SizedBox(height: 12),
@@ -430,11 +422,11 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
             child: TextButton(
               onPressed: () => context.pop(),
               style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF94A3B8),
+                foregroundColor: AppColors.textSecondary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: const BorderSide(color: Color(0xFF334155)),
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: AppColors.border),
                 ),
               ),
               child: const Text('Cancel'),

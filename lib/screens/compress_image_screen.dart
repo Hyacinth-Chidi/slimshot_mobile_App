@@ -73,300 +73,6 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
     return '${(bytes / 1024).round()} KB';
   }
 
-  void _showCustomTargetSizeDialog(CompressionNotifier notifier) {
-    final controller = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Custom Target Size',
-          style: TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: const TextStyle(color: AppColors.textPrimary),
-          decoration: const InputDecoration(
-            labelText: 'Size in MB',
-            labelStyle: TextStyle(color: AppColors.textSecondary),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: AppColors.border),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: AppColors.primaryStart),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              final value = double.tryParse(controller.text.trim());
-              if (value == null || value <= 0) return;
-              final bytes = (value * 1024 * 1024).round();
-              notifier.setTargetImageSize(bytes);
-              Navigator.pop(context);
-            },
-            child: const Text(
-              'Use Size',
-              style: TextStyle(
-                color: AppColors.primaryStart,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTargetSizeSelector(
-    CompressionState state,
-    CompressionNotifier notifier,
-  ) {
-    final isTargetMode = state.compressionMode == CompressionMode.targetSize;
-    const targetSizes = CompressionPresets.targetImageSizes;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isTargetMode ? AppColors.primaryStart : AppColors.border,
-          width: isTargetMode ? 1.5 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryStart.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  LucideIcons.gauge,
-                  color: AppColors.primaryStart,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Target Size',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Text(
-                      'Compress under a specific limit',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch(
-                value: isTargetMode,
-                onChanged: (value) {
-                  HapticFeedback.selectionClick();
-                  if (value) {
-                    notifier.setTargetImageSize(
-                      state.targetImageSizeBytes ?? targetSizes[1],
-                    );
-                  } else {
-                    notifier.usePresetCompression();
-                  }
-                },
-                activeTrackColor: AppColors.primaryStart,
-                inactiveTrackColor: const Color(0xFF334155),
-              ),
-            ],
-          ),
-          if (isTargetMode) ...[
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ...targetSizes.map((size) {
-                  final selected = state.targetImageSizeBytes == size;
-                  return ChoiceChip(
-                    label: Text(_formatTargetSize(size)),
-                    selected: selected,
-                    onSelected: (_) {
-                      HapticFeedback.selectionClick();
-                      notifier.setTargetImageSize(size);
-                    },
-                    selectedColor:
-                        AppColors.primaryStart.withValues(alpha: 0.25),
-                    backgroundColor: AppColors.surfaceLight,
-                    labelStyle: TextStyle(
-                      color: selected
-                          ? AppColors.textPrimary
-                          : AppColors.textSecondary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    side: BorderSide(
-                      color:
-                          selected ? AppColors.primaryStart : AppColors.border,
-                    ),
-                  );
-                }),
-                ActionChip(
-                  label: Text(
-                    state.targetImageSizeBytes != null &&
-                            !targetSizes.contains(state.targetImageSizeBytes)
-                        ? 'Custom: ${_formatTargetSize(state.targetImageSizeBytes!)}'
-                        : 'Custom',
-                  ),
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
-                    _showCustomTargetSizeDialog(notifier);
-                  },
-                  backgroundColor: AppColors.surfaceLight,
-                  labelStyle: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  side: const BorderSide(color: AppColors.border),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Very small targets may reduce quality or fail for large photos.',
-              style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
-            ),
-          ],
-        ],
-      ),
-    ).animate().fadeIn(delay: 260.ms);
-  }
-
-  Widget _buildQuickPresetSelector(
-    CompressionState state,
-    CompressionNotifier notifier,
-  ) {
-    final suggestion = state.originalSize > 2 * 1024 * 1024
-        ? 'Suggested: Form Upload for strict size limits.'
-        : 'Suggested: Privacy Share for everyday sharing.';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Quick Presets',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ).animate().fadeIn(delay: 80.ms),
-        const SizedBox(height: 8),
-        Text(
-          suggestion,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-        ).animate().fadeIn(delay: 100.ms),
-        const SizedBox(height: 14),
-        ...CompressionPresets.imageOutputPresets.map((preset) {
-          final isSelected = state.selectedOutputPresetId == preset.id;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                notifier.applyOutputPreset(preset);
-              },
-              child: AnimatedContainer(
-                duration: 180.ms,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.primaryStart.withValues(alpha: 0.15)
-                      : AppColors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isSelected
-                        ? AppColors.primaryStart
-                        : AppColors.border,
-                    width: isSelected ? 1.5 : 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(9),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primaryStart
-                            : AppColors.surfaceLight,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        preset.icon,
-                        color: isSelected
-                            ? Colors.white
-                            : AppColors.textSecondary,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            preset.name,
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            preset.description,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (isSelected)
-                      const Icon(
-                        LucideIcons.checkCircle2,
-                        color: AppColors.primaryStart,
-                        size: 20,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }),
-      ],
-    ).animate().fadeIn(delay: 120.ms);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -547,8 +253,6 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
                                 ),
                               ),
                             ] else ...[
-                              _buildQuickPresetSelector(state, notifier),
-                              const SizedBox(height: 22),
                               const Text(
                                     'Compression Mode',
                                     style: TextStyle(
@@ -564,13 +268,16 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
                                     curve: Curves.easeOutQuad,
                                   ),
                               const SizedBox(height: 16),
-                              ...CompressionPresets.imagePresets
-                                  .map((preset) {
-                                    final isSelected =
-                                        state.selectedPreset?.id == preset.id;
-                                    return Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: 16,
+                              Row(
+                                children: CompressionPresets.imagePresets.asMap().entries.map((entry) {
+                                  final index = entry.key;
+                                  final preset = entry.value;
+                                  final isSelected = state.selectedPreset?.id == preset.id;
+                                  
+                                  return Expanded(
+                                    child: Padding(
+                                      padding: EdgeInsets.only(
+                                        right: index < CompressionPresets.imagePresets.length - 1 ? 12.0 : 0,
                                       ),
                                       child: GestureDetector(
                                         onTap: () {
@@ -579,146 +286,83 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
                                         },
                                         child: AnimatedContainer(
                                           duration: 200.ms,
-                                          padding: const EdgeInsets.all(20),
+                                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
                                           decoration: BoxDecoration(
                                             color: isSelected
-                                                ? AppColors.primaryStart
-                                                      .withValues(alpha: 0.15)
+                                                ? AppColors.primaryStart.withValues(alpha: 0.15)
                                                 : AppColors.surface,
-                                            borderRadius: BorderRadius.circular(
-                                              24,
-                                            ),
+                                            borderRadius: BorderRadius.circular(16),
                                             border: Border.all(
-                                              color: isSelected
-                                                  ? AppColors.primaryStart
-                                                  : AppColors.border,
+                                              color: isSelected ? AppColors.primaryStart : AppColors.border,
                                               width: isSelected ? 2 : 1,
                                             ),
                                           ),
-                                          child: Row(
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
                                             children: [
                                               Container(
-                                                padding: const EdgeInsets.all(
-                                                  12,
-                                                ),
+                                                padding: const EdgeInsets.all(10),
                                                 decoration: BoxDecoration(
-                                                  color: isSelected
-                                                      ? AppColors.primaryStart
-                                                      : AppColors.surfaceLight,
+                                                  gradient: isSelected
+                                                      ? const LinearGradient(
+                                                          colors: [AppColors.primaryStart, AppColors.primaryEnd],
+                                                          begin: Alignment.topLeft,
+                                                          end: Alignment.bottomRight,
+                                                        )
+                                                      : null,
+                                                  color: isSelected ? null : AppColors.surfaceLight,
                                                   shape: BoxShape.circle,
                                                 ),
                                                 child: Icon(
                                                   preset.icon,
-                                                  color: isSelected
-                                                      ? Colors.white
-                                                      : AppColors.textSecondary,
+                                                  color: isSelected ? Colors.white : AppColors.textSecondary,
                                                   size: 24,
                                                 ),
                                               ),
-                                              const SizedBox(width: 16),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Row(
-                                                      children: [
-                                                        Flexible(
-                                                          child: Text(
-                                                            preset.name,
-                                                            style: TextStyle(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold,
-                                                              fontSize: 16,
-                                                              color: isSelected
-                                                                  ? Colors.white
-                                                                  : AppColors
-                                                                        .textPrimary,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        if (preset.id ==
-                                                            'smart') ...[
-                                                          const SizedBox(
-                                                            width: 8,
-                                                          ),
-                                                          Container(
-                                                            padding:
-                                                                const EdgeInsets.symmetric(
-                                                                  horizontal: 6,
-                                                                  vertical: 2,
-                                                                ),
-                                                            decoration: BoxDecoration(
-                                                              color: AppColors
-                                                                  .primaryStart
-                                                                  .withValues(
-                                                                    alpha: 0.2,
-                                                                  ),
-                                                              borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    6,
-                                                                  ),
-                                                            ),
-                                                            child: const Text(
-                                                              'Recommended',
-                                                              style: TextStyle(
-                                                                color: AppColors
-                                                                    .primaryStart,
-                                                                fontSize: 9,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w700,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ],
-                                                    ),
-                                                    Text(
-                                                      preset.description,
-                                                      style: const TextStyle(
-                                                        color: AppColors
-                                                            .textSecondary,
-                                                        fontSize: 12,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      '~${preset.expectedCompression} smaller',
-                                                      style: const TextStyle(
-                                                        color: AppColors
-                                                            .primaryStart,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 12,
-                                                      ),
-                                                    ),
-                                                  ],
+                                              const SizedBox(height: 12),
+                                              Text(
+                                                preset.name.replaceAll(' ', '\n'),
+                                                textAlign: TextAlign.center,
+                                                maxLines: 2,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13,
+                                                  height: 1.1,
+                                                  color: isSelected ? Colors.white : AppColors.textPrimary,
                                                 ),
                                               ),
-                                              if (isSelected)
-                                                const Icon(
-                                                  LucideIcons.checkCircle2,
-                                                  color: AppColors.primaryStart,
+                                              const SizedBox(height: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: isSelected ? AppColors.primaryStart.withValues(alpha: 0.2) : AppColors.surfaceLight,
+                                                  borderRadius: BorderRadius.circular(6),
                                                 ),
+                                                child: Text(
+                                                  '-${preset.expectedCompression.replaceAll('~', '').replaceAll('smaller', '').trim()}',
+                                                  textAlign: TextAlign.center,
+                                                  style: TextStyle(
+                                                    color: isSelected ? AppColors.primaryStart : AppColors.textSecondary,
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 10,
+                                                  ),
+                                                ),
+                                              ),
                                             ],
                                           ),
                                         ),
                                       ),
-                                    );
-                                  })
-                                  .toList()
-                                  .animate(interval: 50.ms)
-                                  .fadeIn(duration: 400.ms, delay: 200.ms)
-                                  .slideY(
-                                    begin: 0.1,
-                                    end: 0,
-                                    curve: Curves.easeOutQuad,
-                                  ),
-                              
-                              const SizedBox(height: 8),
-                              _buildTargetSizeSelector(state, notifier),
+                                    ),
+                                  );
+                                }).toList(),
+                              )
+                              .animate()
+                              .fadeIn(duration: 400.ms, delay: 200.ms)
+                              .slideY(
+                                begin: 0.1,
+                                end: 0,
+                                curve: Curves.easeOutQuad,
+                              ),
 
                               const SizedBox(height: 24),
                               const Text(

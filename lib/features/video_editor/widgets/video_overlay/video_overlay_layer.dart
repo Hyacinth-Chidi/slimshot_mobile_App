@@ -29,6 +29,7 @@ class VideoOverlayLayer extends ConsumerStatefulWidget {
 class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
   final Map<String, Player> _players = {};
   final Map<String, VideoController> _videoControllers = {};
+  final Map<String, bool> _isSeeking = {};
   
   Offset _basePan = Offset.zero;
   Offset _baseFocalPoint = Offset.zero;
@@ -105,21 +106,22 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
         }
 
         if (isPlaying) {
-          // Only snap if we drift significantly (e.g., due to main video seek)
-          // A tight threshold like 300ms causes constant micro-stutters.
-          if ((player.state.position - targetPosition).abs() > const Duration(milliseconds: 1000)) {
-            player.seek(targetPosition);
+          // Tighten the threshold to 250ms to prevent noticeable echo, but only seek if we aren't already seeking
+          final drift = (player.state.position - targetPosition).abs();
+          if (drift > const Duration(milliseconds: 250) && _isSeeking[overlay.id] != true) {
+            _performSeek(overlay.id, player, targetPosition);
           }
-          if (!player.state.playing) {
+          if (!player.state.playing && _isSeeking[overlay.id] != true) {
             player.play();
           }
         } else {
           if (player.state.playing) {
             player.pause();
           }
-          // Only seek if we're off by a reasonable amount to avoid stutter during scrub
-          if ((player.state.position - targetPosition).abs() > const Duration(milliseconds: 150)) {
-            player.seek(targetPosition);
+          // Scrubbing
+          final drift = (player.state.position - targetPosition).abs();
+          if (drift > const Duration(milliseconds: 150) && _isSeeking[overlay.id] != true) {
+             _performSeek(overlay.id, player, targetPosition);
           }
         }
       } else {
@@ -127,6 +129,19 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
         if (player.state.playing) {
           player.pause();
         }
+      }
+    }
+  }
+
+  Future<void> _performSeek(String id, Player player, Duration position) async {
+    _isSeeking[id] = true;
+    try {
+      await player.seek(position);
+    } catch (_) {
+      // Ignore seek errors
+    } finally {
+      if (mounted) {
+        _isSeeking[id] = false;
       }
     }
   }
@@ -210,24 +225,40 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
 
       if (overlay.animationIn != null && timeInOverlaySec < overlay.animationInDuration) {
         final progress = (timeInOverlaySec / overlay.animationInDuration).clamp(0.0, 1.0);
-        if (overlay.animationIn == 'fade_in') animOpacity *= progress;
-        else if (overlay.animationIn == 'zoom_in') animScale *= progress;
-        else if (overlay.animationIn == 'zoom_out') animScale *= (2.0 - progress);
-        else if (overlay.animationIn == 'slide_up') animOffset = Offset(0, 200 * (1 - progress));
-        else if (overlay.animationIn == 'slide_down') animOffset = Offset(0, -200 * (1 - progress));
-        else if (overlay.animationIn == 'slide_left') animOffset = Offset(200 * (1 - progress), 0);
-        else if (overlay.animationIn == 'slide_right') animOffset = Offset(-200 * (1 - progress), 0);
+        if (overlay.animationIn == 'fade_in') {
+          animOpacity *= progress;
+        } else if (overlay.animationIn == 'zoom_in') {
+          animScale *= progress;
+        } else if (overlay.animationIn == 'zoom_out') {
+          animScale *= (2.0 - progress);
+        } else if (overlay.animationIn == 'slide_up') {
+          animOffset = Offset(0, 200 * (1 - progress));
+        } else if (overlay.animationIn == 'slide_down') {
+          animOffset = Offset(0, -200 * (1 - progress));
+        } else if (overlay.animationIn == 'slide_left') {
+          animOffset = Offset(200 * (1 - progress), 0);
+        } else if (overlay.animationIn == 'slide_right') {
+          animOffset = Offset(-200 * (1 - progress), 0);
+        }
       }
 
       if (overlay.animationOut != null && timeRemainingSec < overlay.animationOutDuration) {
         final progress = (1.0 - (timeRemainingSec / overlay.animationOutDuration)).clamp(0.0, 1.0);
-        if (overlay.animationOut == 'fade_out') animOpacity *= (1 - progress);
-        else if (overlay.animationOut == 'zoom_in_out') animScale *= (1 + progress);
-        else if (overlay.animationOut == 'zoom_out_out') animScale *= (1 - progress);
-        else if (overlay.animationOut == 'slide_up_out') animOffset += Offset(0, -200 * progress);
-        else if (overlay.animationOut == 'slide_down_out') animOffset += Offset(0, 200 * progress);
-        else if (overlay.animationOut == 'slide_left_out') animOffset += Offset(-200 * progress, 0);
-        else if (overlay.animationOut == 'slide_right_out') animOffset += Offset(200 * progress, 0);
+        if (overlay.animationOut == 'fade_out') {
+          animOpacity *= (1 - progress);
+        } else if (overlay.animationOut == 'zoom_in_out') {
+          animScale *= (1 + progress);
+        } else if (overlay.animationOut == 'zoom_out_out') {
+          animScale *= (1 - progress);
+        } else if (overlay.animationOut == 'slide_up_out') {
+          animOffset += Offset(0, -200 * progress);
+        } else if (overlay.animationOut == 'slide_down_out') {
+          animOffset += Offset(0, 200 * progress);
+        } else if (overlay.animationOut == 'slide_left_out') {
+          animOffset += Offset(-200 * progress, 0);
+        } else if (overlay.animationOut == 'slide_right_out') {
+          animOffset += Offset(200 * progress, 0);
+        }
       }
 
       final videoRatio = (player.state.width ?? 16) / (player.state.height ?? 9);

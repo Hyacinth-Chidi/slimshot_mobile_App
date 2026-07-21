@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -8,6 +9,8 @@ import 'package:timeago/timeago.dart' as timeago;
 
 import '../core/models/draft_project.dart';
 import '../core/services/draft_service.dart';
+import '../core/services/draft_refresh_notifier.dart';
+import '../core/theme/app_colors.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/responsive_layout.dart';
 
@@ -26,6 +29,13 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   void initState() {
     super.initState();
     _loadDrafts();
+    DraftRefreshNotifier.instance.addListener(_loadDrafts);
+  }
+
+  @override
+  void dispose() {
+    DraftRefreshNotifier.instance.removeListener(_loadDrafts);
+    super.dispose();
   }
 
   Future<void> _loadDrafts() async {
@@ -51,7 +61,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       context: context,
       barrierColor: Colors.black54,
       builder: (context) => Dialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         insetPadding: const EdgeInsets.symmetric(horizontal: 60),
         child: Padding(
@@ -62,16 +72,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.redAccent.withValues(alpha: 0.15),
+                  color: AppColors.error.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(LucideIcons.trash2, color: Colors.redAccent, size: 24),
+                child: const Icon(LucideIcons.trash2, color: AppColors.error, size: 24),
               ),
               const SizedBox(height: 16),
               Text(
                 'Delete Draft?',
                 style: GoogleFonts.plusJakartaSans(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontWeight: FontWeight.bold,
                   fontSize: 17,
                 ),
@@ -81,7 +91,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                 'This action cannot be undone.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
-                  color: Colors.white60,
+                  color: AppColors.textSecondary,
                   fontSize: 13,
                 ),
               ),
@@ -92,11 +102,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(false),
                       style: TextButton.styleFrom(
-                        backgroundColor: Colors.white.withValues(alpha: 0.08),
+                        backgroundColor: AppColors.surfaceLight.withValues(alpha: 0.5),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      child: Text('Cancel', style: GoogleFonts.plusJakartaSans(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 14)),
+                      child: Text('Cancel', style: GoogleFonts.plusJakartaSans(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -104,11 +114,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(true),
                       style: TextButton.styleFrom(
-                        backgroundColor: Colors.redAccent.withValues(alpha: 0.2),
+                        backgroundColor: AppColors.error.withValues(alpha: 0.2),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      child: Text('Delete', style: GoogleFonts.plusJakartaSans(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                      child: Text('Delete', style: GoogleFonts.plusJakartaSans(color: AppColors.error, fontWeight: FontWeight.bold, fontSize: 14)),
                     ),
                   ),
                 ],
@@ -132,40 +142,84 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(LucideIcons.chevronLeft, color: Colors.white),
-          onPressed: () => context.pop(),
-        ),
-        title: Text(
-          'Workspace',
-          style: GoogleFonts.plusJakartaSans(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
+      body: Stack(
+        children: [
+          // Subtle purple radial gradient orb (matches home & settings)
+          Positioned(
+            top: -80,
+            right: -60,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.primaryStart.withValues(alpha: 0.15),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.history, color: Colors.white70),
-            tooltip: 'History',
-            onPressed: () {
-              context.push('/history');
-            },
+
+          SafeArea(
+            child: ResponsiveCenter(
+              child: Column(
+                children: [
+                  // Custom AppBar
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 44),
+                        Expanded(
+                          child: Text(
+                            'Workspace',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => context.push('/history'),
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: AppColors.border.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            child: const Icon(
+                              LucideIcons.history,
+                              color: AppColors.textSecondary,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ).animate().fadeIn().slideY(begin: -0.2, end: 0),
+
+                  // Body
+                  Expanded(
+                    child: _isLoading
+                        ? const Center(child: CircularProgressIndicator(color: AppColors.primaryStart))
+                        : _drafts.isEmpty
+                            ? _buildEmptyState()
+                            : _buildDraftsList(),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
         ],
-      ),
-      body: ResponsiveCenter(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
-            : _drafts.isEmpty
-                ? _buildEmptyState()
-                : _buildDraftsList(),
       ),
     );
   }
@@ -178,16 +232,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0xFF1E293B).withValues(alpha: 0.3),
+              color: AppColors.surfaceLight.withValues(alpha: 0.3),
               shape: BoxShape.circle,
               border: Border.all(
-                color: const Color(0xFF334155).withValues(alpha: 0.3),
+                color: AppColors.border.withValues(alpha: 0.3),
                 style: BorderStyle.solid,
               ),
             ),
             child: const Icon(
               LucideIcons.folderOpen,
-              color: Color(0xFF475569),
+              color: AppColors.textTertiary,
               size: 48,
             ),
           ),
@@ -197,7 +251,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             style: GoogleFonts.plusJakartaSans(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: const Color(0xFFF8FAFC),
+              color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 8),
@@ -205,32 +259,32 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             'Saved video drafts will appear here',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 14,
-              color: const Color(0xFF64748B),
+              color: AppColors.textSecondary,
             ),
           ),
         ],
       ),
-    );
+    ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.1, end: 0);
   }
 
   Widget _buildDraftsList() {
     return GridView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), // Padding for global nav bar
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 0.85,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
+        crossAxisCount: 3,
+        childAspectRatio: 0.75,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
       ),
       itemCount: _drafts.length,
       itemBuilder: (context, index) {
         final draft = _drafts[index];
-        return _buildDraftCard(draft);
+        return _buildDraftCard(draft, index);
       },
     );
   }
 
-  Widget _buildDraftCard(DraftProject draft) {
+  Widget _buildDraftCard(DraftProject draft, int index) {
     return GestureDetector(
       onTap: () async {
         HapticFeedback.selectionClick();
@@ -239,11 +293,13 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       },
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B).withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(16),
+          color: AppColors.surfaceLight.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: const Color(0xFF334155).withValues(alpha: 0.5),
-            style: BorderStyle.solid,
+            color: AppColors.border.withValues(alpha: 0.4),
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -259,39 +315,23 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                           fit: BoxFit.cover,
                         )
                       : Container(
-                          color: const Color(0xFF0F172A),
+                          color: AppColors.background,
                           child: const Center(
-                            child: Icon(LucideIcons.film, color: Color(0xFF475569), size: 32),
+                            child: Icon(LucideIcons.film, color: AppColors.textTertiary, size: 32),
                           ),
                         ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  color: const Color(0xFF0F172A).withValues(alpha: 0.8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Video Draft',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFFF8FAFC),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        timeago.format(draft.updatedAt),
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 11,
-                          color: const Color(0xFF94A3B8),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  color: AppColors.surface.withValues(alpha: 0.9),
+                  child: Text(
+                    timeago.format(draft.updatedAt),
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -314,6 +354,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           ],
         ),
       ),
-    );
+    ).animate().fadeIn(delay: (100 + index * 50).ms).slideY(begin: 0.1, end: 0);
   }
 }

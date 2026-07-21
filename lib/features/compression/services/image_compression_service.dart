@@ -1,11 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../logic/compression_presets.dart';
+
+enum CompressFormat { jpeg, webp, png }
 
 class ImageCompressionService {
   Future<String?> compressImage({
@@ -84,16 +88,39 @@ class ImageCompressionService {
     required int maxDimension,
     required bool keepExif,
     required CompressFormat compressFormat,
-  }) {
-    return FlutterImageCompress.compressAndGetFile(
-      inputPath,
-      outputPath,
-      quality: quality,
-      minWidth: maxDimension,
-      minHeight: maxDimension,
-      keepExif: keepExif,
-      format: compressFormat,
-    );
+  }) async {
+    String qParam = '';
+    String pixFmtParam = '-pix_fmt yuvj444p'; // Use 4:4:4 chroma to prevent color lines/banding
+    
+    if (compressFormat == CompressFormat.jpeg) {
+      // Map quality (0-100) to ffmpeg qscale (31-2)
+      int qv = 31 - ((quality / 100.0) * 29).round();
+      qv = qv.clamp(2, 31);
+      qParam = '-q:v $qv';
+    } else if (compressFormat == CompressFormat.webp) {
+      qParam = '-c:v libwebp -q:v $quality';
+      pixFmtParam = '-pix_fmt yuv420p'; // WebP lossy usually prefers yuv420p
+    } else if (compressFormat == CompressFormat.png) {
+      qParam = '-compression_level 9';
+      pixFmtParam = '-pix_fmt rgb24';
+    }
+
+    String metadataParam = keepExif ? '-map_metadata 0' : '-map_metadata -1';
+    String scaleParam = "-vf \"scale='min($maxDimension,iw)':'min($maxDimension,ih)':force_original_aspect_ratio=decrease\"";
+    
+    String command = "-y -i \"$inputPath\" $metadataParam $scaleParam $qParam $pixFmtParam \"$outputPath\"";
+    
+    debugPrint('📸 FFmpeg Image command: ffmpeg $command');
+    final session = await FFmpegKit.execute(command);
+    final returnCode = await session.getReturnCode();
+    
+    if (ReturnCode.isSuccess(returnCode)) {
+      return XFile(outputPath);
+    } else {
+      final logs = await session.getLogsAsString();
+      debugPrint("❌ FFmpeg image compression failed: $logs");
+      return null;
+    }
   }
 
   Future<String?> _compressToTargetSize({

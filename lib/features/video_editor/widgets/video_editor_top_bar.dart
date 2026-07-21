@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../../core/theme/app_colors.dart';
 
 class VideoEditorTopBar extends StatelessWidget {
   const VideoEditorTopBar({
@@ -39,16 +40,17 @@ class VideoEditorTopBar extends StatelessWidget {
                 GestureDetector(
                   onTap: onBack,
                   child: Container(
-                    width: 32,
-                    height: 32,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
                     ),
                     child: const Icon(
                       LucideIcons.arrowLeft,
-                      color: Colors.white,
-                      size: 18,
+                      color: AppColors.textPrimary,
+                      size: 20,
                     ),
                   ),
                 ),
@@ -59,7 +61,7 @@ class VideoEditorTopBar extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
@@ -68,8 +70,8 @@ class VideoEditorTopBar extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '| $durationLabel',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
                     fontSize: 13,
                   ),
                 ),
@@ -92,13 +94,13 @@ class VideoEditorTopBar extends StatelessWidget {
                           Text(
                             currentResolutionLabel,
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                               fontWeight: FontWeight.w700,
                               fontSize: 16,
                             ),
                           ),
                           const SizedBox(width: 4),
-                          const Icon(LucideIcons.chevronDown, color: Colors.white70, size: 18),
+                          const Icon(LucideIcons.chevronDown, color: AppColors.textSecondary, size: 18),
                         ],
                       ),
                     ),
@@ -113,7 +115,7 @@ class VideoEditorTopBar extends StatelessWidget {
                           padding: EdgeInsets.all(4),
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: AppColors.primaryStart,
                           ),
                         ),
                       )
@@ -121,12 +123,16 @@ class VideoEditorTopBar extends StatelessWidget {
                         onTap: onExport,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
+                            horizontal: 16,
+                            vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
+                            gradient: const LinearGradient(
+                              colors: [AppColors.primaryStart, AppColors.primaryEnd],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -134,13 +140,13 @@ class VideoEditorTopBar extends StatelessWidget {
                               const Text(
                                 'Export',
                                 style: TextStyle(
-                                  color: Colors.black,
+                                  color: Colors.white,
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 13,
+                                  fontSize: 14,
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              const Icon(LucideIcons.chevronRight, color: Colors.black, size: 16),
+                              const Icon(LucideIcons.chevronRight, color: Colors.white, size: 18),
                             ],
                           ),
                         ),

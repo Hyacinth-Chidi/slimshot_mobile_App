@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/draft_project.dart';
+import 'draft_refresh_notifier.dart';
 
 class DraftService {
   static const _storageKey = 'video_drafts';
@@ -85,6 +86,7 @@ class DraftService {
     }
 
     await _saveAll(deduped, prefs);
+    DraftRefreshNotifier.instance.refresh();
   }
 
   static Future<void> deleteDraft(String id) async {
@@ -96,6 +98,7 @@ class DraftService {
 
     items.removeWhere((item) => item.id == id);
     await _saveAll(items, prefs);
+    DraftRefreshNotifier.instance.refresh();
   }
 
   static Future<void> clearAll() async {
@@ -105,6 +108,7 @@ class DraftService {
        _deleteThumbnail(item.thumbnailPath);
     }
     await prefs.remove(_storageKey);
+    DraftRefreshNotifier.instance.refresh();
   }
 
   static Future<void> _saveAll(List<DraftProject> items, SharedPreferences prefs) async {

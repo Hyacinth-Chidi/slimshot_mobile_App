@@ -90,24 +90,40 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
 
       if (overlay.animationIn != null && timeInOverlaySec < overlay.animationInDuration) {
         final progress = (timeInOverlaySec / overlay.animationInDuration).clamp(0.0, 1.0);
-        if (overlay.animationIn == 'fade_in') animOpacity *= progress;
-        else if (overlay.animationIn == 'zoom_in') animScale *= progress;
-        else if (overlay.animationIn == 'zoom_out') animScale *= (2.0 - progress);
-        else if (overlay.animationIn == 'slide_up') animOffset = Offset(0, 200 * (1 - progress));
-        else if (overlay.animationIn == 'slide_down') animOffset = Offset(0, -200 * (1 - progress));
-        else if (overlay.animationIn == 'slide_left') animOffset = Offset(200 * (1 - progress), 0);
-        else if (overlay.animationIn == 'slide_right') animOffset = Offset(-200 * (1 - progress), 0);
+        if (overlay.animationIn == 'fade_in') {
+          animOpacity *= progress;
+        } else if (overlay.animationIn == 'zoom_in') {
+          animScale *= progress;
+        } else if (overlay.animationIn == 'zoom_out') {
+          animScale *= (2.0 - progress);
+        } else if (overlay.animationIn == 'slide_up') {
+          animOffset = Offset(0, 200 * (1 - progress));
+        } else if (overlay.animationIn == 'slide_down') {
+          animOffset = Offset(0, -200 * (1 - progress));
+        } else if (overlay.animationIn == 'slide_left') {
+          animOffset = Offset(200 * (1 - progress), 0);
+        } else if (overlay.animationIn == 'slide_right') {
+          animOffset = Offset(-200 * (1 - progress), 0);
+        }
       }
 
       if (overlay.animationOut != null && timeRemainingSec < overlay.animationOutDuration) {
         final progress = (1.0 - (timeRemainingSec / overlay.animationOutDuration)).clamp(0.0, 1.0);
-        if (overlay.animationOut == 'fade_out') animOpacity *= (1 - progress);
-        else if (overlay.animationOut == 'zoom_in_out') animScale *= (1 + progress);
-        else if (overlay.animationOut == 'zoom_out_out') animScale *= (1 - progress);
-        else if (overlay.animationOut == 'slide_up_out') animOffset += Offset(0, -200 * progress);
-        else if (overlay.animationOut == 'slide_down_out') animOffset += Offset(0, 200 * progress);
-        else if (overlay.animationOut == 'slide_left_out') animOffset += Offset(-200 * progress, 0);
-        else if (overlay.animationOut == 'slide_right_out') animOffset += Offset(200 * progress, 0);
+        if (overlay.animationOut == 'fade_out') {
+          animOpacity *= (1 - progress);
+        } else if (overlay.animationOut == 'zoom_in_out') {
+          animScale *= (1 + progress);
+        } else if (overlay.animationOut == 'zoom_out_out') {
+          animScale *= (1 - progress);
+        } else if (overlay.animationOut == 'slide_up_out') {
+          animOffset += Offset(0, -200 * progress);
+        } else if (overlay.animationOut == 'slide_down_out') {
+          animOffset += Offset(0, 200 * progress);
+        } else if (overlay.animationOut == 'slide_left_out') {
+          animOffset += Offset(-200 * progress, 0);
+        } else if (overlay.animationOut == 'slide_right_out') {
+          animOffset += Offset(200 * progress, 0);
+        }
       }
 
       Widget imageWidget = ConstrainedBox(

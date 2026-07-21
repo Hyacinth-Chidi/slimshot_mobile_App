@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../../models/audio_track_model.dart';
 
@@ -71,7 +72,7 @@ class _AudioDrawerState extends ConsumerState<AudioDrawer> {
       height: MediaQuery.of(context).size.height * 0.7,
       child: Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF0E121A), // Dark background matching the theme
+          color: AppColors.background, // Dark background matching the theme
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
       child: SafeArea(

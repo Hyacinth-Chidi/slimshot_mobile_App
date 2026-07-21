@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../core/models/update_info.dart';
 import '../core/theme/app_colors.dart';
 import '../core/widgets/gradient_button.dart';
@@ -101,8 +102,8 @@ class UpdateScreen extends StatelessWidget {
                           child: ClipOval(
                             child: Padding(
                               padding: const EdgeInsets.all(2.0),
-                              child: Image.asset(
-                                'assets/logo.png',
+                              child: SvgPicture.asset(
+                                'assets/logo.svg',
                                 fit: BoxFit.cover,
                               ),
                             ),

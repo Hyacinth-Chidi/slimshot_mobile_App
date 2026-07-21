@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../utils/font_utils.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
@@ -28,6 +28,7 @@ class FFmpegOverlayBuilder {
     final tempDir = await getTemporaryDirectory();
     final finalOutputPath = '${tempDir.path}/${FileUtils.filePrefix}editor_visuals_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
+    final List<String> tempFilesToClean = [];
     final List<String> overlayFilters = [];
     final List<String> inputs = ['-i', inputVideoPath];
     int inputIndex = 1;
@@ -56,6 +57,7 @@ class FFmpegOverlayBuilder {
         if (overlay.startTime >= overlay.endTime) continue;
         final pngData = await _createTextPngForFFmpeg(overlay, videoSize, previewSize);
         if (pngData == null) continue;
+        tempFilesToClean.add(pngData.imagePath);
 
         final duration = (overlay.endTime.inMilliseconds - overlay.startTime.inMilliseconds) / 1000.0;
         final start = (overlay.startTime.inMilliseconds / 1000.0);
@@ -67,16 +69,39 @@ class FFmpegOverlayBuilder {
 
         final prepStream = '[prep$inputIndex]';
         String prepFilter = '[$inputIndex:v]format=rgba';
-        // (Text animations can be added here if implemented later)
+        
+        // Fades
+        if (overlay.inAnimation == 'fade_in' || overlay.inAnimation == 'fade') {
+          prepFilter += ",fade=t=in:st=0:d=${overlay.animationInDuration}:alpha=1";
+        }
+        if (overlay.outAnimation == 'fade_out' || overlay.outAnimation == 'fade') {
+          prepFilter += ",fade=t=out:st=${math.max(0, duration - overlay.animationOutDuration)}:d=${overlay.animationOutDuration}:alpha=1";
+        }
+        
         // Sync PTS to absolute start time so the overlay frame timelines perfectly match the main video
         prepFilter += ',setpts=PTS+${start}/TB';
-        prepFilter += prepStream;
+        
+        final cx = pngData.dx + pngData.width / 2;
+        final cy = pngData.dy + pngData.height / 2;
+        final anims = _buildAnimationExpressions(
+          start: start,
+          end: end,
+          inAnimation: overlay.inAnimation,
+          outAnimation: overlay.outAnimation,
+          inDuration: overlay.animationInDuration,
+          outDuration: overlay.animationOutDuration,
+          cx: cx,
+          cy: cy,
+          videoSize: videoSize,
+        );
 
+        if (anims.scaleExpr != '1') {
+          prepFilter += ",scale=w='iw*max(0.01,${anims.scaleExpr})':h='ih*max(0.01,${anims.scaleExpr})':eval=frame";
+        }
+        prepFilter += prepStream;
         overlayFilters.add(prepFilter);
         
-        final xInt = pngData.dx.round();
-        final yInt = pngData.dy.round();
-        overlayFilters.add("$inStream$prepStream" "overlay=x=$xInt:y=$yInt:format=auto:enable='between(t,${start.toStringAsFixed(3)},${end.toStringAsFixed(3)})'$outStream");
+        overlayFilters.add("$inStream$prepStream" "overlay=x='${anims.xExpr}':y='${anims.yExpr}':format=auto:enable='between(t,${start.toStringAsFixed(3)},${end.toStringAsFixed(3)})'$outStream");
         
         inputIndex++;
       } 
@@ -84,6 +109,7 @@ class FFmpegOverlayBuilder {
         if (overlay.startTime >= overlay.endTime) continue;
         final pngData = await _createImagePngForFFmpeg(overlay, videoSize, previewSize);
         if (pngData == null) continue;
+        tempFilesToClean.add(pngData.imagePath);
 
         final duration = (overlay.endTime.inMilliseconds - overlay.startTime.inMilliseconds) / 1000.0;
         final start = (overlay.startTime.inMilliseconds / 1000.0);
@@ -107,24 +133,27 @@ class FFmpegOverlayBuilder {
         // Sync PTS to absolute start time so the overlay frame timelines perfectly match the main video
         prepFilter += ",setpts=PTS+${start}/TB";
         
+        final cx = pngData.dx + pngData.width / 2;
+        final cy = pngData.dy + pngData.height / 2;
+        final anims = _buildAnimationExpressions(
+          start: start,
+          end: end,
+          inAnimation: overlay.animationIn,
+          outAnimation: overlay.animationOut,
+          inDuration: overlay.animationInDuration,
+          outDuration: overlay.animationOutDuration,
+          cx: cx,
+          cy: cy,
+          videoSize: videoSize,
+        );
+
+        if (anims.scaleExpr != '1') {
+          prepFilter += ",scale=w='iw*max(0.01,${anims.scaleExpr})':h='ih*max(0.01,${anims.scaleExpr})':eval=frame";
+        }
         prepFilter += prepStream;
         overlayFilters.add(prepFilter);
-
-        // Slides
-        String xExpr = '${pngData.dx.round()}';
-        String yExpr = '${pngData.dy.round()}';
         
-        if (overlay.animationIn == 'slide_up') {
-          yExpr = "if(lt(t,${start + overlay.animationInDuration}), ${pngData.dy.round()} + ${videoSize.height}*(1-(t-$start)/${overlay.animationInDuration}), $yExpr)";
-        } else if (overlay.animationIn == 'slide_down') {
-          yExpr = "if(lt(t,${start + overlay.animationInDuration}), ${pngData.dy.round()} - ${videoSize.height}*(1-(t-$start)/${overlay.animationInDuration}), $yExpr)";
-        } else if (overlay.animationIn == 'slide_left') {
-          xExpr = "if(lt(t,${start + overlay.animationInDuration}), ${pngData.dx.round()} + ${videoSize.width}*(1-(t-$start)/${overlay.animationInDuration}), $xExpr)";
-        } else if (overlay.animationIn == 'slide_right') {
-          xExpr = "if(lt(t,${start + overlay.animationInDuration}), ${pngData.dx.round()} - ${videoSize.width}*(1-(t-$start)/${overlay.animationInDuration}), $xExpr)";
-        }
-        
-        overlayFilters.add("$inStream$prepStream" "overlay=x='$xExpr':y='$yExpr':format=auto:enable='between(t,${start.toStringAsFixed(3)},${end.toStringAsFixed(3)})'$outStream");
+        overlayFilters.add("$inStream$prepStream" "overlay=x='${anims.xExpr}':y='${anims.yExpr}':format=auto:enable='between(t,${start.toStringAsFixed(3)},${end.toStringAsFixed(3)})'$outStream");
         
         inputIndex++;
       }
@@ -172,30 +201,27 @@ class FFmpegOverlayBuilder {
         // Sync PTS to absolute start time so the overlay frame timelines perfectly match the main video
         prepFilter += ",setpts=PTS+${start}/TB";
 
+        final cx = videoSize.width / 2 + overlay.position.dx * scaleX;
+        final cy = videoSize.height / 2 + overlay.position.dy * scaleY;
+        final anims = _buildAnimationExpressions(
+          start: start,
+          end: end,
+          inAnimation: overlay.animationIn,
+          outAnimation: overlay.animationOut,
+          inDuration: overlay.animationInDuration,
+          outDuration: overlay.animationOutDuration,
+          cx: cx,
+          cy: cy,
+          videoSize: videoSize,
+        );
+
+        if (anims.scaleExpr != '1') {
+          prepFilter += ",scale=w='iw*max(0.01,${anims.scaleExpr})':h='ih*max(0.01,${anims.scaleExpr})':eval=frame";
+        }
         prepFilter += prepStream;
         overlayFilters.add(prepFilter);
         
-        // Center position dynamically 
-        // dx = videoSize.width / 2 + position.dx * scaleX - (scaled/rotated width) / 2
-        // Since FFmpeg knows the overlay stream width as 'w' and height as 'h':
-        final cx = videoSize.width / 2 + overlay.position.dx * scaleX;
-        final cy = videoSize.height / 2 + overlay.position.dy * scaleY;
-        
-        String xExpr = '${cx.toStringAsFixed(3)} - w/2';
-        String yExpr = '${cy.toStringAsFixed(3)} - h/2';
-        
-        // Slides
-        if (overlay.animationIn == 'slide_up') {
-          yExpr = "if(lt(t,${start + overlay.animationInDuration}), ($yExpr) + ${videoSize.height}*(1-(t-$start)/${overlay.animationInDuration}), $yExpr)";
-        } else if (overlay.animationIn == 'slide_down') {
-          yExpr = "if(lt(t,${start + overlay.animationInDuration}), ($yExpr) - ${videoSize.height}*(1-(t-$start)/${overlay.animationInDuration}), $yExpr)";
-        } else if (overlay.animationIn == 'slide_left') {
-          xExpr = "if(lt(t,${start + overlay.animationInDuration}), ($xExpr) + ${videoSize.width}*(1-(t-$start)/${overlay.animationInDuration}), $xExpr)";
-        } else if (overlay.animationIn == 'slide_right') {
-          xExpr = "if(lt(t,${start + overlay.animationInDuration}), ($xExpr) - ${videoSize.width}*(1-(t-$start)/${overlay.animationInDuration}), $xExpr)";
-        }
-
-        overlayFilters.add("$inStream$prepStream" "overlay=x='$xExpr':y='$yExpr':format=auto:enable='between(t,${start.toStringAsFixed(3)},${end.toStringAsFixed(3)})'$outStream");
+        overlayFilters.add("$inStream$prepStream" "overlay=x='${anims.xExpr}':y='${anims.yExpr}':format=auto:enable='between(t,${start.toStringAsFixed(3)},${end.toStringAsFixed(3)})'$outStream");
         
         inputIndex++;
       }
@@ -249,7 +275,21 @@ class FFmpegOverlayBuilder {
       },
     );
 
-    final returnCode = await completer.future;
+    ReturnCode? returnCode;
+    try {
+      returnCode = await completer.future;
+    } finally {
+      for (final path in tempFilesToClean) {
+        try {
+          final file = File(path);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (e) {
+          debugPrint('[FFmpegOverlayBuilder] Error deleting temp file $path: $e');
+        }
+      }
+    }
 
     if (ReturnCode.isSuccess(returnCode)) {
       debugPrint('[FFmpeg] Unified visual overlay successful');
@@ -261,7 +301,7 @@ class FFmpegOverlayBuilder {
     }
   }
 
-  static Future<({String imagePath, double dx, double dy})?> _createImagePngForFFmpeg(
+  static Future<({String imagePath, double dx, double dy, double width, double height})?> _createImagePngForFFmpeg(
     ImageOverlayModel overlay,
     Size videoSize,
     Size previewCanvasSize,
@@ -331,10 +371,10 @@ class FFmpegOverlayBuilder {
     final dx = cx - pngW / 2;
     final dy = cy - pngH / 2;
 
-    return (imagePath: tempFile.path, dx: dx, dy: dy);
+    return (imagePath: tempFile.path, dx: dx, dy: dy, width: pngW, height: pngH);
   }
 
-  static Future<({String imagePath, double dx, double dy})?> _createTextPngForFFmpeg(
+  static Future<({String imagePath, double dx, double dy, double width, double height})?> _createTextPngForFFmpeg(
     TextOverlayModel overlay,
     Size videoSize,
     Size previewCanvasSize,
@@ -371,7 +411,7 @@ class FFmpegOverlayBuilder {
     final fillPainter = TextPainter(
       text: TextSpan(
         text: overlay.text,
-        style: GoogleFonts.getFont(
+        style: getFontStyle(
           overlay.fontFamily,
           color: overlay.color,
           fontSize: fontSize,
@@ -389,7 +429,7 @@ class FFmpegOverlayBuilder {
       strokePainter = TextPainter(
         text: TextSpan(
           text: overlay.text,
-          style: GoogleFonts.getFont(
+          style: getFontStyle(
             overlay.fontFamily,
             fontSize: fontSize,
             height: 1.15,
@@ -461,6 +501,64 @@ class FFmpegOverlayBuilder {
       imagePath: tempFile.path,
       dx: dx,
       dy: dy,
+      width: pngW,
+      height: pngH,
     );
+  }
+
+  static ({String scaleExpr, String xExpr, String yExpr}) _buildAnimationExpressions({
+    required double start,
+    required double end,
+    required String? inAnimation,
+    required String? outAnimation,
+    required double inDuration,
+    required double outDuration,
+    required double cx,
+    required double cy,
+    required Size videoSize,
+  }) {
+    String scaleExpr = '1';
+    
+    // Zoom IN
+    if (inAnimation == 'zoom_in') {
+      scaleExpr = "if(lt(t,${start + inDuration}), max(0.001, (t-$start)/$inDuration), $scaleExpr)";
+    } else if (inAnimation == 'zoom_out') {
+      scaleExpr = "if(lt(t,${start + inDuration}), 2.0 - (t-$start)/$inDuration, $scaleExpr)";
+    }
+    
+    // Zoom OUT
+    if (outAnimation == 'zoom_in_out' || outAnimation == 'zoom_in') {
+      scaleExpr = "if(gt(t,${end - outDuration}), max(0.001, 1.0 - (t-(${end - outDuration}))/$outDuration), $scaleExpr)";
+    } else if (outAnimation == 'zoom_out_out' || outAnimation == 'zoom_out') {
+      scaleExpr = "if(gt(t,${end - outDuration}), 1.0 + (t-(${end - outDuration}))/$outDuration, $scaleExpr)";
+    }
+    
+    // Centered overlay position based on dynamic scale width(w) and height(h)
+    String xExpr = '${cx.toStringAsFixed(3)} - w/2';
+    String yExpr = '${cy.toStringAsFixed(3)} - h/2';
+    
+    // Slide IN
+    if (inAnimation == 'slide_up') {
+      yExpr = "if(lt(t,${start + inDuration}), ($yExpr) + ${videoSize.height}*(1-(t-$start)/$inDuration), $yExpr)";
+    } else if (inAnimation == 'slide_down') {
+      yExpr = "if(lt(t,${start + inDuration}), ($yExpr) - ${videoSize.height}*(1-(t-$start)/$inDuration), $yExpr)";
+    } else if (inAnimation == 'slide_left') {
+      xExpr = "if(lt(t,${start + inDuration}), ($xExpr) + ${videoSize.width}*(1-(t-$start)/$inDuration), $xExpr)";
+    } else if (inAnimation == 'slide_right') {
+      xExpr = "if(lt(t,${start + inDuration}), ($xExpr) - ${videoSize.width}*(1-(t-$start)/$inDuration), $xExpr)";
+    }
+
+    // Slide OUT
+    if (outAnimation == 'slide_up_out' || outAnimation == 'slide_up') {
+      yExpr = "if(gt(t,${end - outDuration}), ($yExpr) - ${videoSize.height}*((t-(${end - outDuration}))/$outDuration), $yExpr)";
+    } else if (outAnimation == 'slide_down_out' || outAnimation == 'slide_down') {
+      yExpr = "if(gt(t,${end - outDuration}), ($yExpr) + ${videoSize.height}*((t-(${end - outDuration}))/$outDuration), $yExpr)";
+    } else if (outAnimation == 'slide_left_out' || outAnimation == 'slide_left') {
+      xExpr = "if(gt(t,${end - outDuration}), ($xExpr) - ${videoSize.width}*((t-(${end - outDuration}))/$outDuration), $xExpr)";
+    } else if (outAnimation == 'slide_right_out' || outAnimation == 'slide_right') {
+      xExpr = "if(gt(t,${end - outDuration}), ($xExpr) + ${videoSize.width}*((t-(${end - outDuration}))/$outDuration), $xExpr)";
+    }
+    
+    return (scaleExpr: scaleExpr, xExpr: xExpr, yExpr: yExpr);
   }
 }

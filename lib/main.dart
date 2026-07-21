@@ -3,13 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:animations/animations.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/file_utils.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'core/services/ad_service.dart';
 import 'core/models/update_info.dart';
 import 'core/models/draft_project.dart';
 import 'screens/onboarding_screen.dart';
@@ -24,28 +26,27 @@ import 'screens/privacy_result_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/video_editor_screen.dart';
 import 'screens/workspace_screen.dart';
+import 'screens/main_shell_screen.dart';
 
 import 'features/sharing/share_intent_service.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   MediaKit.ensureInitialized();
   MobileAds.instance.initialize();
+  AdService.loadInterstitialAd(); // Start background preload immediately
   GoogleFonts.config.allowRuntimeFetching = true;
 
-  String initialRoute = '/onboarding';
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
-    initialRoute = hasSeenOnboarding ? '/home' : '/onboarding';
-  } catch (e) {
-    debugPrint('⚠️ SharedPreferences failed: $e');
-  }
+  final prefs = await SharedPreferences.getInstance();
+  final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
+  final String initialRoute = hasSeenOnboarding ? '/home' : '/onboarding';
 
   initializeAppRouter(initialRoute);
 
   runApp(const ProviderScope(child: SlimShotApp()));
 
+  FlutterNativeSplash.remove();
   FileUtils.cleanupStartup();
 }
 
@@ -82,18 +83,52 @@ GoRouter createAppRouter(String initialRoute) {
     initialLocation: initialRoute,
     routes: [
       GoRoute(
+        path: '/',
+        redirect: (context, state) => initialRoute,
+      ),
+      GoRoute(
         path: '/onboarding',
         pageBuilder: (context, state) => _buildTransitionPage(
           state: state,
           child: const OnboardingScreen(),
         ),
       ),
-      GoRoute(
-        path: '/home',
-        pageBuilder: (context, state) => _buildTransitionPage(
-          state: state,
-          child: const HomeScreen(),
-        ),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) {
+          return MainShellScreen(navigationShell: navigationShell);
+        },
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/home',
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: HomeScreen(),
+                ),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/workspace',
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: WorkspaceScreen(),
+                ),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/settings',
+                pageBuilder: (context, state) => const NoTransitionPage(
+                  child: SettingsScreen(),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       GoRoute(
         path: '/compress/video',
@@ -137,13 +172,7 @@ GoRouter createAppRouter(String initialRoute) {
           child: const ResultScreen(),
         ),
       ),
-      GoRoute(
-        path: '/settings',
-        pageBuilder: (context, state) => _buildTransitionPage(
-          state: state,
-          child: const SettingsScreen(),
-        ),
-      ),
+
       GoRoute(
         path: '/privacy',
         pageBuilder: (context, state) {
@@ -168,13 +197,7 @@ GoRouter createAppRouter(String initialRoute) {
           child: const HistoryScreen(),
         ),
       ),
-      GoRoute(
-        path: '/workspace',
-        pageBuilder: (context, state) => _buildTransitionPage(
-          state: state,
-          child: const WorkspaceScreen(),
-        ),
-      ),
+
       GoRoute(
         path: '/update',
         pageBuilder: (context, state) {

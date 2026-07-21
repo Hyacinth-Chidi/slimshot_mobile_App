@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
+import '../../utils/font_utils.dart';
 
 void showTextEditor({
   required BuildContext context,
@@ -60,17 +60,10 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
   int _animationTabIndex = 0;
   late String _inAnimation;
   late String _outAnimation;
+  late double _inAnimationDuration;
+  late double _outAnimationDuration;
 
-  final List<String> _fonts = [
-    'Roboto',
-    'Montserrat',
-    'Lato',
-    'Oswald',
-    'Bebas Neue',
-    'Playfair Display',
-    'Pacifico',
-    'Dancing Script',
-  ];
+  final List<String> _fonts = allFonts;
 
   final List<Color> _colors = [
     Colors.white,
@@ -111,6 +104,8 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     _backgroundPadding = widget.overlay.backgroundPadding;
     _inAnimation = widget.overlay.inAnimation;
     _outAnimation = widget.overlay.outAnimation;
+    _inAnimationDuration = widget.overlay.animationInDuration;
+    _outAnimationDuration = widget.overlay.animationOutDuration;
     
     if (_activeTool == TextEditorTool.keyboard) {
       _focusNode.requestFocus();
@@ -134,6 +129,8 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
         backgroundPadding: _backgroundPadding,
         inAnimation: _inAnimation,
         outAnimation: _outAnimation,
+        animationInDuration: _inAnimationDuration,
+        animationOutDuration: _outAnimationDuration,
       ),
     );
   }
@@ -281,7 +278,7 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
       child: TextField(
         controller: _textController,
         focusNode: _focusNode,
-        style: GoogleFonts.getFont(_fontFamily, color: _textColor, fontSize: 24),
+        style: getFontStyle(_fontFamily, color: _textColor, fontSize: 24),
         minLines: 1,
         maxLines: 4,
         decoration: InputDecoration(
@@ -327,7 +324,7 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
               ),
               child: Text(
                 font,
-                style: GoogleFonts.getFont(font, color: Colors.white, fontSize: 16),
+                style: getFontStyle(font, color: Colors.white, fontSize: 16),
               ),
             ),
           );
@@ -465,6 +462,52 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
             ),
           ),
           const SizedBox(height: 12),
+          // Duration Slider
+          if ((_animationTabIndex == 0 && _inAnimation != 'none') ||
+              (_animationTabIndex == 1 && _outAnimation != 'none'))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Icon(Icons.timer, color: Colors.white54, size: 16),
+                  Expanded(
+                    child: SliderTheme(
+                      data: const SliderThemeData(
+                        activeTrackColor: AppColors.primaryStart,
+                        inactiveTrackColor: Colors.white12,
+                        thumbColor: Colors.white,
+                        trackHeight: 2,
+                        overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
+                      ),
+                      child: Slider(
+                        value: _animationTabIndex == 0 ? _inAnimationDuration : _outAnimationDuration,
+                        min: 0.1,
+                        max: 2.0,
+                        onChanged: (val) {
+                          setState(() {
+                            if (_animationTabIndex == 0) {
+                              _inAnimationDuration = val;
+                            } else {
+                              _outAnimationDuration = val;
+                            }
+                          });
+                          _updateOverlay();
+                        },
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 40,
+                    child: Text(
+                      '${(_animationTabIndex == 0 ? _inAnimationDuration : _outAnimationDuration).toStringAsFixed(1)}s',
+                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
           Expanded(
             child: GridView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -570,7 +613,7 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
               ),
               child: Text(
                 font,
-                style: GoogleFonts.getFont(font, color: isSelected ? Colors.black : Colors.white, fontSize: 14),
+                style: getFontStyle(font, color: isSelected ? Colors.black : Colors.white, fontSize: 14),
               ),
             ),
           );

@@ -32,6 +32,8 @@ class TextOverlayModel {
   // Animation: 'none', 'fade', 'slide_left', 'slide_right', 'slide_up', 'slide_down', 'scale'
   String inAnimation;
   String outAnimation;
+  double animationInDuration;
+  double animationOutDuration;
   
   // To lock coordinate proportions regardless of flutter layout resizing
   Size? referenceCanvasSize;
@@ -57,6 +59,8 @@ class TextOverlayModel {
     this.endTime = const Duration(seconds: 5), // default 5 seconds
     this.inAnimation = 'none',
     this.outAnimation = 'none',
+    this.animationInDuration = 0.5,
+    this.animationOutDuration = 0.5,
     this.laneIndex = 0,
     this.referenceCanvasSize,
   });
@@ -82,6 +86,8 @@ class TextOverlayModel {
     Duration? endTime,
     String? inAnimation,
     String? outAnimation,
+    double? animationInDuration,
+    double? animationOutDuration,
     int? laneIndex,
     Size? referenceCanvasSize,
   }) {
@@ -106,6 +112,8 @@ class TextOverlayModel {
       endTime: endTime ?? this.endTime,
       inAnimation: inAnimation ?? this.inAnimation,
       outAnimation: outAnimation ?? this.outAnimation,
+      animationInDuration: animationInDuration ?? this.animationInDuration,
+      animationOutDuration: animationOutDuration ?? this.animationOutDuration,
       laneIndex: laneIndex ?? this.laneIndex,
       referenceCanvasSize: referenceCanvasSize ?? this.referenceCanvasSize,
     );
@@ -134,6 +142,8 @@ class TextOverlayModel {
       'endTimeMs': endTime.inMilliseconds,
       'inAnimation': inAnimation,
       'outAnimation': outAnimation,
+      'animationInDuration': animationInDuration,
+      'animationOutDuration': animationOutDuration,
       'laneIndex': laneIndex,
       'refWidth': referenceCanvasSize?.width,
       'refHeight': referenceCanvasSize?.height,
@@ -170,6 +180,8 @@ class TextOverlayModel {
       endTime: Duration(milliseconds: json['endTimeMs'] as int? ?? 5000),
       inAnimation: json['inAnimation'] as String? ?? 'none',
       outAnimation: json['outAnimation'] as String? ?? 'none',
+      animationInDuration: (json['animationInDuration'] as num?)?.toDouble() ?? 0.5,
+      animationOutDuration: (json['animationOutDuration'] as num?)?.toDouble() ?? 0.5,
       laneIndex: json['laneIndex'] as int? ?? 0,
       referenceCanvasSize: refSize,
     );

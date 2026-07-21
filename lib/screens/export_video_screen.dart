@@ -200,7 +200,7 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(LucideIcons.x, color: Colors.white, size: 28),
+                    icon: const Icon(LucideIcons.x, color: AppColors.textPrimary, size: 28),
                     onPressed: () {
                       if (_isExporting) {
                         _cancelExport();
@@ -220,7 +220,7 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
               Text(
                 '${(animatedProgress * 100).toStringAsFixed(1)}%',
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
                 ),
@@ -232,7 +232,7 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
                   "Please don't close the app or lock your screen.\nYou can choose where to share your video next.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: AppColors.textSecondary,
                     fontSize: 14,
                     height: 1.4,
                   ),
@@ -242,7 +242,7 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
               const Text(
                 'Export Complete!',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
                 ),
@@ -267,7 +267,7 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
                       margin: EdgeInsets.all(_isExporting ? 4.0 : 0.0), // Space for border
                       decoration: BoxDecoration(
                         color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(24),
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: _isExporting 
@@ -295,7 +295,7 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
                           backgroundColor: AppColors.surfaceLight,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         icon: const Icon(LucideIcons.download),
                         label: const Text('Save', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -306,10 +306,10 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
                     Expanded(
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepOrange, // Matches the orange gradient in screenshot
+                          backgroundColor: AppColors.primaryStart,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         icon: const Icon(LucideIcons.share),
                         label: const Text('Share', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -338,25 +338,25 @@ class _ProgressBorderPainter extends CustomPainter {
     if (progress <= 0) return;
 
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(20));
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(28));
 
     // Draw background track
     final trackPaint = Paint()
       ..color = AppColors.surfaceLight
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.0;
+      ..strokeWidth = 6.0;
     canvas.drawRRect(rrect, trackPaint);
 
     // Draw progress track using a path
     final progressPaint = Paint()
       ..shader = const LinearGradient(
-        colors: [Colors.deepOrange, Colors.orangeAccent],
+        colors: [AppColors.primaryStart, AppColors.primaryEnd],
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
       ).createShader(rect)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = 4.0;
+      ..strokeWidth = 6.0;
 
     Path path = Path();
     path.addRRect(rrect);

@@ -186,7 +186,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Color(0xFF0F172A), // slate-900
+                    AppColors.surfaceLight,
                     AppColors.background,
                     AppColors.background,
                   ],
@@ -208,7 +208,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                      AppColors.primaryStart.withValues(alpha: 0.15),
                       AppColors.success.withValues(alpha: 0.08),
                       Colors.transparent,
                     ],
@@ -239,15 +239,13 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                                       shape: BoxShape.circle,
                                       gradient: const LinearGradient(
                                         colors: [
-                                          Color(0xFF8B5CF6),
-                                          Color(0xFF7C3AED),
+                                          AppColors.primaryStart,
+                                          AppColors.primaryEnd,
                                         ],
                                       ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: const Color(
-                                            0xFF8B5CF6,
-                                          ).withValues(alpha: 0.4),
+                                          color: AppColors.primaryStart.withValues(alpha: 0.4),
                                           blurRadius: 28,
                                           spreadRadius: 2,
                                         ),
@@ -280,7 +278,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 17,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFFF8FAFC),
+                      color: AppColors.textPrimary,
                     ),
                   ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.3, end: 0),
 
@@ -296,7 +294,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                               : '${state.outputPaths.length} photos have been optimized'),
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 14,
-                      color: const Color(0xFF94A3B8),
+                      color: AppColors.textSecondary,
                     ),
                   ).animate().fadeIn(delay: 300.ms),
 
@@ -338,9 +336,9 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                         vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B).withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFF334155)),
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.border),
                       ),
                       child: Row(
                         children: [
@@ -357,13 +355,13 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                                       ).lengthSync()
                                     : state.originalSize,
                               ),
-                              color: const Color(0xFF94A3B8),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                           Container(
                             width: 1,
                             height: 36,
-                            color: const Color(0xFF334155),
+                            color: AppColors.border,
                           ),
                           Expanded(
                             child: _StatItem(
@@ -377,20 +375,20 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                                       ).lengthSync()
                                     : state.compressedSize,
                               ),
-                              color: const Color(0xFF8B5CF6),
+                              color: AppColors.primaryStart,
                             ),
                           ),
                           Container(
                             width: 1,
                             height: 36,
-                            color: const Color(0xFF334155),
+                            color: AppColors.border,
                           ),
                           Expanded(
                             child: _StatItem(
                               icon: LucideIcons.trendingDown,
                               label: 'Saved',
                               value: '${ratio.toStringAsFixed(0)}%',
-                              color: const Color(0xFF22C55E),
+                              color: AppColors.success,
                             ),
                           ),
                         ],
@@ -478,13 +476,13 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     if (_videoController == null || !_videoController!.value.isInitialized) {
       return Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFF334155)),
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.border),
         ),
         child: const Center(
           child: CircularProgressIndicator(
-            color: Color(0xFF8B5CF6),
+            color: AppColors.primaryStart,
             strokeWidth: 2,
           ),
         ),
@@ -493,11 +491,11 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
 
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF334155)),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+            color: AppColors.primaryStart.withValues(alpha: 0.15),
             blurRadius: 24,
             spreadRadius: -4,
             offset: const Offset(0, 8),
@@ -505,11 +503,11 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(19),
+        borderRadius: BorderRadius.circular(23),
         child: GestureDetector(
           onTap: _togglePlayPause,
           child: Container(
-            color: const Color(0xFF0F172A),
+            color: AppColors.surface,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -599,8 +597,8 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                                 overlayRadius: 10,
                               ),
                               trackHeight: 2.5,
-                              thumbColor: const Color(0xFF8B5CF6),
-                              activeTrackColor: const Color(0xFF8B5CF6),
+                              thumbColor: AppColors.primaryStart,
+                              activeTrackColor: AppColors.primaryStart,
                               inactiveTrackColor: Colors.white.withValues(
                                 alpha: 0.2,
                               ),
@@ -668,11 +666,11 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   Widget _buildImagePreview(String beforePath, String afterPath) {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF334155)),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+            color: AppColors.primaryStart.withValues(alpha: 0.12),
             blurRadius: 24,
             spreadRadius: -4,
             offset: const Offset(0, 8),
@@ -680,7 +678,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(23),
         child: Stack(
           children: [
             LayoutBuilder(
@@ -786,7 +784,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                 border: Border.all(
                   color: isSelected
                       ? AppColors.primaryStart
-                      : const Color(0xFF334155),
+                      : AppColors.border,
                   width: isSelected ? 2 : 1,
                 ),
                 boxShadow: isSelected

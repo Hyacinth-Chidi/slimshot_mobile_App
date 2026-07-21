@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/theme/app_colors.dart';
 
 class StickersDrawer extends StatefulWidget {
   const StickersDrawer({super.key});
@@ -22,7 +23,7 @@ class _StickersDrawerState extends State<StickersDrawer> {
       height: MediaQuery.of(context).size.height * 0.7,
       child: Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF0E121A), // Dark background matching the theme
+          color: AppColors.background, // Dark background matching the theme
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(

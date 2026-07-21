@@ -1280,6 +1280,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         (overlay) => overlay.copyWith(
           inAnimation: animationIn ?? overlay.inAnimation,
           outAnimation: animationOut ?? overlay.outAnimation,
+          animationInDuration: animationInDuration ?? overlay.animationInDuration,
+          animationOutDuration: animationOutDuration ?? overlay.animationOutDuration,
         ),
       );
     } else if (state.selectedImageId != null) {
