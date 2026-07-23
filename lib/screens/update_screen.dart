@@ -22,40 +22,13 @@ class UpdateScreen extends StatelessWidget {
         if (didPop) return;
       },
       child: Scaffold(
+        backgroundColor: AppColors.background,
         body: Stack(
           children: [
-            Positioned.fill(
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [AppColors.surface, AppColors.background],
-                  ),
-                ),
-              ),
-            ),
-
+            // Subtle purple radial gradient orb (matches settings screen)
             Positioned(
-              top: -100,
-              left: -80,
-              child: Container(
-                width: 250,
-                height: 250,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    colors: [
-                      AppColors.primaryStart.withValues(alpha: 0.2),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: -60,
-              right: -40,
+              top: -80,
+              right: -60,
               child: Container(
                 width: 200,
                 height: 200,
@@ -63,13 +36,15 @@ class UpdateScreen extends StatelessWidget {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      AppColors.primaryEnd.withValues(alpha: 0.15),
+                      AppColors.primaryStart.withValues(alpha: 0.15),
                       Colors.transparent,
                     ],
                   ),
                 ),
               ),
             ),
+
+
 
             SafeArea(
               child: Padding(
@@ -79,36 +54,26 @@ class UpdateScreen extends StatelessWidget {
                     const Spacer(flex: 2),
 
                     Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              colors: [
-                                AppColors.primaryStart,
-                                AppColors.primaryEnd,
-                              ],
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primaryStart.withValues(
+                              alpha: 0.3,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primaryStart.withValues(
-                                  alpha: 0.4,
-                                ),
-                                blurRadius: 30,
-                                spreadRadius: 5,
-                              ),
-                            ],
+                            blurRadius: 30,
+                            spreadRadius: 2,
                           ),
-                          child: ClipOval(
-                            child: Padding(
-                              padding: const EdgeInsets.all(2.0),
-                              child: SvgPicture.asset(
-                                'assets/logo.svg',
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
-                        )
+                        ],
+                      ),
+                      child: SvgPicture.asset(
+                        'assets/logo.svg',
+                        width: 100,
+                        height: 100,
+                      ),
+                    )
                         .animate(onPlay: (c) => c.repeat(reverse: true))
                         .scaleXY(begin: 1.0, end: 1.08, duration: 2000.ms)
                         .then()

@@ -80,7 +80,7 @@ class SettingsScreen extends StatelessWidget {
                               _SettingsItem(
                                 icon: LucideIcons.info,
                                 title: 'App Version',
-                                subtitle: 'v1.0.0 (1)',
+                                subtitle: 'v2.0.0 (2)',
                                 showChevron: false,
                                 onTap: () {},
                               ),

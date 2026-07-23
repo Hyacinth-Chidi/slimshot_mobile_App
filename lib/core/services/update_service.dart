@@ -13,8 +13,8 @@ class UpdateService {
 
   static const int _checkIntervalDays = 7;
 
-  static const String _currentVersion = '1.0.0';
-  static const int _currentBuildNumber = 1;
+  static const String _currentVersion = '2.0.0';
+  static const int _currentBuildNumber = 2;
 
   /// Check for updates. Returns [UpdateInfo] if an update is available,
   /// or `null` if the app is up to date or check failed.

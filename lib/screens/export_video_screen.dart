@@ -7,6 +7,7 @@ import 'package:pro_video_editor/pro_video_editor.dart';
 import 'package:video_player/video_player.dart';
 
 import '../core/services/media_save_service.dart';
+import '../core/services/ad_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/utils/toast_utils.dart';
 import '../features/video_editor/models/text_overlay_model.dart';
@@ -147,15 +148,22 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
 
   Future<void> _saveVideo() async {
     if (_exportedVideoPath == null) return;
-    try {
-      await MediaSaveService.saveOptimizedMediaToGallery(
-        [_exportedVideoPath!],
-        album: 'SlimShotAI',
-      );
-      if (mounted) ToastUtils.show(context, 'Saved to gallery!');
-    } catch (e) {
-      if (mounted) ToastUtils.show(context, 'Failed to save: $e', isError: true);
-    }
+    
+    AdService.showInterstitialAd(
+      context,
+      onAdDismissed: () async {
+        if (!mounted) return;
+        try {
+          await MediaSaveService.saveOptimizedMediaToGallery(
+            [_exportedVideoPath!],
+            album: 'SlimShotAI',
+          );
+          if (mounted) ToastUtils.show(context, 'Saved to gallery!');
+        } catch (e) {
+          if (mounted) ToastUtils.show(context, 'Failed to save: $e', isError: true);
+        }
+      },
+    );
   }
 
   void _shareVideo() {

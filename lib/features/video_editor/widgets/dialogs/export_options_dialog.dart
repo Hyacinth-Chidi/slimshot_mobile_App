@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/services/ad_service.dart';
+import '../../../../core/utils/toast_utils.dart';
 
 class ExportOptionsDialog extends StatefulWidget {
   const ExportOptionsDialog({super.key});
@@ -74,12 +77,45 @@ class _ExportOptionsDialogState extends State<ExportOptionsDialog> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     alignment: Alignment.center,
-                    child: Text(
-                      entry.value,
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.white70,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          entry.value,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.white70,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        if (entry.key == 2160) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF8B5CF6), Color(0xFFD946EF)],
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'PRO',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                SizedBox(width: 2),
+                                Icon(LucideIcons.play, color: Colors.white, size: 8),
+                              ],
+                            ),
+                          ),
+                        ]
+                      ],
                     ),
                   ),
                 ),
@@ -144,10 +180,34 @@ class _ExportOptionsDialogState extends State<ExportOptionsDialog> {
               Expanded(
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.pop(context, {
-                      'height': _selectedHeight,
-                      'fps': _selectedFps,
-                    });
+                    if (_selectedHeight == 2160) {
+                      AdService.showRewardedAd(
+                        context,
+                        onRewardEarned: () {
+                          if (context.mounted) {
+                            Navigator.pop(context, {
+                              'height': _selectedHeight,
+                              'fps': _selectedFps,
+                            });
+                          }
+                        },
+                        onFailed: () {
+                          if (context.mounted) {
+                            ToastUtils.show(
+                            context,
+                            'Please check your internet connection to unlock 4K Export.',
+                            isWarning: true,
+                            title: 'No Internet Connection',
+                          );
+                          }
+                        },
+                      );
+                    } else {
+                      Navigator.pop(context, {
+                        'height': _selectedHeight,
+                        'fps': _selectedFps,
+                      });
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryStart,

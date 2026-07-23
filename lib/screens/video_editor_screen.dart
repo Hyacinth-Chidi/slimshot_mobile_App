@@ -15,6 +15,7 @@ import '../core/services/media_picker_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/permission_dialog.dart';
+import '../core/services/ad_service.dart';
 import 'export_video_screen.dart';
 import '../features/video_editor/widgets/panels/transitions_drawer.dart';
 import '../features/video_editor/models/text_overlay_model.dart';
@@ -56,7 +57,12 @@ class EditorTool {
   final IconData icon;
   final bool hasSubMenu;
 
-  const EditorTool({required this.id, required this.label, required this.icon, this.hasSubMenu = false});
+  const EditorTool({
+    required this.id,
+    required this.label,
+    required this.icon,
+    this.hasSubMenu = false,
+  });
 }
 
 class EditorMenu {
@@ -65,57 +71,114 @@ class EditorMenu {
   const EditorMenu({required this.id, required this.tools});
 }
 
-const EditorMenu _rootMenu = EditorMenu(id: 'root', tools: [
-  EditorTool(id: 'edit', label: 'Edit', icon: LucideIcons.scissors, hasSubMenu: true),
-  EditorTool(id: 'audio', label: 'Audio', icon: LucideIcons.music, hasSubMenu: true),
-  EditorTool(id: 'text', label: 'Text', icon: LucideIcons.type, hasSubMenu: true),
-  EditorTool(id: 'overlay', label: 'Overlay', icon: LucideIcons.layers),
-  EditorTool(id: 'transform', label: 'Transform', icon: LucideIcons.move, hasSubMenu: true),
-  EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
-  EditorTool(id: 'animate', label: 'Animate', icon: LucideIcons.clapperboard),
-  EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
-  EditorTool(id: 'stickers', label: 'Stickers', icon: LucideIcons.smile),
-]);
+const EditorMenu _rootMenu = EditorMenu(
+  id: 'root',
+  tools: [
+    EditorTool(
+      id: 'edit',
+      label: 'Edit',
+      icon: LucideIcons.scissors,
+      hasSubMenu: true,
+    ),
+    EditorTool(
+      id: 'audio',
+      label: 'Audio',
+      icon: LucideIcons.music,
+      hasSubMenu: true,
+    ),
+    EditorTool(
+      id: 'text',
+      label: 'Text',
+      icon: LucideIcons.type,
+      hasSubMenu: true,
+    ),
+    EditorTool(id: 'overlay', label: 'Overlay', icon: LucideIcons.layers),
+    EditorTool(
+      id: 'transform',
+      label: 'Transform',
+      icon: LucideIcons.move,
+      hasSubMenu: true,
+    ),
+    EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
+    EditorTool(id: 'animate', label: 'Animate', icon: LucideIcons.clapperboard),
+    EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
+    EditorTool(id: 'stickers', label: 'Stickers', icon: LucideIcons.smile),
+  ],
+);
 
-const EditorMenu _editMenu = EditorMenu(id: 'edit', tools: [
-  EditorTool(id: 'split', label: 'Split', icon: LucideIcons.splitSquareHorizontal),
-  EditorTool(id: 'speed', label: 'Speed', icon: LucideIcons.gauge),
-  EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
-  EditorTool(id: 'transition', label: 'Transition', icon: LucideIcons.arrowLeftRight),
-  EditorTool(id: 'reverse', label: 'Reverse', icon: LucideIcons.rewind),
-  EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
-]);
+const EditorMenu _editMenu = EditorMenu(
+  id: 'edit',
+  tools: [
+    EditorTool(
+      id: 'split',
+      label: 'Split',
+      icon: LucideIcons.splitSquareHorizontal,
+    ),
+    EditorTool(id: 'speed', label: 'Speed', icon: LucideIcons.gauge),
+    EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
+    EditorTool(
+      id: 'transition',
+      label: 'Transition',
+      icon: LucideIcons.arrowLeftRight,
+    ),
+    EditorTool(id: 'reverse', label: 'Reverse', icon: LucideIcons.rewind),
+    EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
+  ],
+);
 
+const EditorMenu _audioMenu = EditorMenu(
+  id: 'audio',
+  tools: [
+    EditorTool(id: 'sounds', label: 'Sounds', icon: LucideIcons.music),
+    EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
+    EditorTool(id: 'extract', label: 'Extract', icon: LucideIcons.folderOpen),
+    EditorTool(id: 'record', label: 'Record', icon: LucideIcons.mic),
+  ],
+);
 
-const EditorMenu _audioMenu = EditorMenu(id: 'audio', tools: [
-  EditorTool(id: 'sounds', label: 'Sounds', icon: LucideIcons.music),
-  EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
-  EditorTool(id: 'extract', label: 'Extract', icon: LucideIcons.folderOpen),
-  EditorTool(id: 'record', label: 'Record', icon: LucideIcons.mic),
-]);
+const EditorMenu _transformMenu = EditorMenu(
+  id: 'transform',
+  tools: [
+    EditorTool(id: 'crop', label: 'Crop', icon: LucideIcons.crop),
+    EditorTool(id: 'zoom', label: 'Zoom', icon: LucideIcons.zoomIn),
+    EditorTool(id: 'rotate', label: 'Rotate', icon: LucideIcons.rotateCcw),
+    EditorTool(id: 'background', label: 'Background', icon: LucideIcons.image),
+  ],
+);
 
-const EditorMenu _transformMenu = EditorMenu(id: 'transform', tools: [
-  EditorTool(id: 'crop', label: 'Crop', icon: LucideIcons.crop),
-  EditorTool(id: 'zoom', label: 'Zoom', icon: LucideIcons.zoomIn),
-  EditorTool(id: 'rotate', label: 'Rotate', icon: LucideIcons.rotateCcw),
-  EditorTool(id: 'background', label: 'Background', icon: LucideIcons.image),
-]);
+const EditorMenu _imageOverlayMenu = EditorMenu(
+  id: 'image_overlay',
+  tools: [
+    EditorTool(
+      id: 'animation',
+      label: 'Animation',
+      icon: LucideIcons.playCircle,
+    ),
+    EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
+    EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
+    EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
+  ],
+);
 
-const EditorMenu _imageOverlayMenu = EditorMenu(id: 'image_overlay', tools: [
-  EditorTool(id: 'animation', label: 'Animation', icon: LucideIcons.playCircle),
-  EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
-  EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
-  EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
-]);
-
-const EditorMenu _videoOverlayMenu = EditorMenu(id: 'video_overlay', tools: [
-  EditorTool(id: 'split', label: 'Split', icon: LucideIcons.splitSquareHorizontal),
-  EditorTool(id: 'animation', label: 'Animation', icon: LucideIcons.playCircle),
-  EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
-  EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
-  EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
-  EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
-]);
+const EditorMenu _videoOverlayMenu = EditorMenu(
+  id: 'video_overlay',
+  tools: [
+    EditorTool(
+      id: 'split',
+      label: 'Split',
+      icon: LucideIcons.splitSquareHorizontal,
+    ),
+    EditorTool(
+      id: 'animation',
+      label: 'Animation',
+      icon: LucideIcons.playCircle,
+    ),
+    EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
+    EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
+    EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
+    EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
+  ],
+);
 
 final Map<String, EditorMenu> _menus = {
   'root': _rootMenu,
@@ -125,7 +188,10 @@ final Map<String, EditorMenu> _menus = {
   'transform': _transformMenu,
   'image_overlay': _imageOverlayMenu,
   'video_overlay': _videoOverlayMenu,
-  'transition': const EditorMenu(id: 'transition', tools: []), // Transitions drawer replaces the tools list
+  'transition': const EditorMenu(
+    id: 'transition',
+    tools: [],
+  ), // Transitions drawer replaces the tools list
 };
 
 class VideoEditorScreen extends ConsumerStatefulWidget {
@@ -138,11 +204,10 @@ class VideoEditorScreen extends ConsumerStatefulWidget {
   ConsumerState<VideoEditorScreen> createState() => _VideoEditorScreenState();
 }
 
-
-
-class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with SingleTickerProviderStateMixin {
+class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
+    with SingleTickerProviderStateMixin {
   final AudioPlayerManager _audioPlayerManager = AudioPlayerManager();
-  
+
   late final Ticker _ticker;
   DateTime? _lastTick;
 
@@ -166,13 +231,17 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     return segments.fold(0.0, (sum, segment) => sum + segment.duration);
   }
 
-  double _timelineTimeToSourceTime(double timelineTime, List<VideoSegment> segments) {
+  double _timelineTimeToSourceTime(
+    double timelineTime,
+    List<VideoSegment> segments,
+  ) {
     if (segments.isEmpty) return timelineTime;
     double accumulated = 0.0;
     for (final segment in segments) {
       if (timelineTime >= accumulated &&
           timelineTime <= accumulated + segment.duration) {
-        return segment.sourceStart + ((timelineTime - accumulated) * segment.speed);
+        return segment.sourceStart +
+            ((timelineTime - accumulated) * segment.speed);
       }
       accumulated += segment.duration;
     }
@@ -202,9 +271,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     );
     final currentSource = player.state.position.inMilliseconds / 1000.0;
     if ((currentSource - sourceTarget).abs() > seekThresholdSeconds) {
-      await player.seek(
-        Duration(milliseconds: (sourceTarget * 1000).round()),
-      );
+      await player.seek(Duration(milliseconds: (sourceTarget * 1000).round()));
     }
 
     if (shouldPlay && !player.state.playing) {
@@ -214,7 +281,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     }
   }
 
-  
   String _getToolLabel(String id) {
     for (final menu in _menus.values) {
       for (final tool in menu.tools) {
@@ -229,10 +295,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(videoEditorProvider.notifier).reset();
-      
+
       final draft = widget.draft;
       final initialVideo = widget.initialVideo;
-      
+
       if (draft != null) {
         _loadDraft(draft);
       } else if (initialVideo != null) {
@@ -248,7 +314,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
 
   void _onTick(Duration elapsed) {
     final now = DateTime.now();
-    final delta = _lastTick != null ? now.difference(_lastTick!).inMilliseconds / 1000.0 : 0.0;
+    final delta = _lastTick != null
+        ? now.difference(_lastTick!).inMilliseconds / 1000.0
+        : 0.0;
     _lastTick = now;
 
     final editorState = ref.read(videoEditorProvider);
@@ -294,7 +362,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(videoEditorProvider.notifier).saveDraft();
     });
-    
+
     _ticker.dispose();
     _audioPlayerManager.dispose();
     _player?.dispose();
@@ -307,7 +375,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
       final oldPlayer = _player;
       final player = Player();
       final controller = VideoController(player);
-      
+
       await player.open(Media(draft.sourceVideoPath), play: false);
       await oldPlayer?.dispose();
 
@@ -335,7 +403,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
       final oldPlayer = _player;
       final player = Player();
       final controller = VideoController(player);
-      
+
       await player.open(Media(video.path), play: false);
       await oldPlayer?.dispose();
 
@@ -346,11 +414,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
 
       var durationMs = player.state.duration.inMilliseconds;
       if (durationMs == 0) {
-        final durationObj = await player.stream.duration.firstWhere((d) => d != Duration.zero, orElse: () => const Duration(seconds: 1));
+        final durationObj = await player.stream.duration.firstWhere(
+          (d) => d != Duration.zero,
+          orElse: () => const Duration(seconds: 1),
+        );
         durationMs = durationObj.inMilliseconds;
       }
       final duration = durationMs / 1000.0;
-      
+
       setState(() {
         _player = player;
         _videoController = controller;
@@ -372,10 +443,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
       ref.read(videoEditorProvider.notifier).togglePreview();
     }
   }
-
-
-
-
 
   void _handlePlayerUpdate() {
     final player = _player;
@@ -410,7 +477,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
           }
         }
 
-        final targetPlayerVolume = expectedVolume * expectedVolume * 100; // media_kit volume is 0-100
+        final targetPlayerVolume =
+            expectedVolume * expectedVolume * 100; // media_kit volume is 0-100
         if ((state.volume - targetPlayerVolume).abs() > 1.0) {
           player.setVolume(targetPlayerVolume);
         }
@@ -434,7 +502,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
           player.setRate(expectedSpeed);
         }
 
-        if (positionSeconds >= editorState.segments[currentIndex].sourceEnd - 0.05) {
+        if (positionSeconds >=
+            editorState.segments[currentIndex].sourceEnd - 0.05) {
           if (currentIndex < editorState.segments.length - 1) {
             final nextSegment = editorState.segments[currentIndex + 1];
             if ((nextSegment.sourceStart -
@@ -442,7 +511,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                     .abs() >
                 0.05) {
               player.seek(
-                Duration(milliseconds: (nextSegment.sourceStart * 1000).round()),
+                Duration(
+                  milliseconds: (nextSegment.sourceStart * 1000).round(),
+                ),
               );
             }
           } else if (editorState.segments.isNotEmpty) {
@@ -460,8 +531,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
               notifier.setPlaying(false);
               player.seek(
                 Duration(
-                  milliseconds:
-                      (editorState.segments.first.sourceStart * 1000).round(),
+                  milliseconds: (editorState.segments.first.sourceStart * 1000)
+                      .round(),
                 ),
               );
             }
@@ -476,7 +547,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
           }
         }
         if (nextSegment != null) {
-          _player!.seek(Duration(milliseconds: (nextSegment.sourceStart * 1000).round()));
+          _player!.seek(
+            Duration(milliseconds: (nextSegment.sourceStart * 1000).round()),
+          );
         } else if (editorState.segments.isNotEmpty) {
           final totalDuration = ref.read(totalEditedDurationProvider);
           final videoDuration = _videoTimelineDuration(editorState.segments);
@@ -489,8 +562,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
             notifier.setPlaying(false);
             _player!.seek(
               Duration(
-                milliseconds:
-                    (editorState.segments.first.sourceStart * 1000).round(),
+                milliseconds: (editorState.segments.first.sourceStart * 1000)
+                    .round(),
               ),
             );
           }
@@ -502,7 +575,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
       return;
     }
 
-    // Only sync video controller's play state to global state if we're not in 
+    // Only sync video controller's play state to global state if we're not in
     // an audio-only phase (where video is paused but audio continues playing)
     if (editorState.isPlaying != _player!.state.playing) {
       if (_player!.state.playing) {
@@ -530,8 +603,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
       },
     );
   }
-
-
 
   void _setTrimRange(RangeValues value) {
     final notifier = ref.read(videoEditorProvider.notifier);
@@ -577,9 +648,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
       final editorState = ref.read(videoEditorProvider);
       final notifier = ref.read(videoEditorProvider.notifier);
 
-      var proposedStart = Duration(milliseconds: (editorState.currentPlaybackPosition * 1000).toInt());
+      var proposedStart = Duration(
+        milliseconds: (editorState.currentPlaybackPosition * 1000).toInt(),
+      );
       var proposedEnd = proposedStart + const Duration(seconds: 5);
-      final totalDuration = Duration(milliseconds: (editorState.durationSeconds * 1000).toInt());
+      final totalDuration = Duration(
+        milliseconds: (editorState.durationSeconds * 1000).toInt(),
+      );
 
       if (proposedEnd > totalDuration) {
         proposedEnd = totalDuration;
@@ -624,9 +699,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
       }
       await tempPlayer.dispose();
 
-      var proposedStart = Duration(milliseconds: (editorState.currentPlaybackPosition * 1000).toInt());
+      var proposedStart = Duration(
+        milliseconds: (editorState.currentPlaybackPosition * 1000).toInt(),
+      );
       var proposedEnd = proposedStart + videoDuration;
-      final totalDuration = Duration(milliseconds: (editorState.durationSeconds * 1000).toInt());
+      final totalDuration = Duration(
+        milliseconds: (editorState.durationSeconds * 1000).toInt(),
+      );
 
       if (proposedEnd > totalDuration) {
         proposedEnd = totalDuration;
@@ -659,19 +738,32 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
         return Stack(
           children: [
             Positioned(
-              left: (buttonPosition.dx - 20).clamp(8.0, MediaQuery.of(context).size.width - 170),
-              bottom: MediaQuery.of(context).size.height - buttonPosition.dy + 10,
+              left: (buttonPosition.dx - 20).clamp(
+                8.0,
+                MediaQuery.of(context).size.width - 170,
+              ),
+              bottom:
+                  MediaQuery.of(context).size.height - buttonPosition.dy + 10,
               child: Material(
                 color: Colors.transparent,
                 child: Container(
                   width: 160,
-                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 16,
+                    horizontal: 16,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.surface.withValues(alpha: 0.95),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+                    border: Border.all(
+                      color: AppColors.border.withValues(alpha: 0.5),
+                    ),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 12, offset: const Offset(0, 4)),
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
                     ],
                   ),
                   child: Column(
@@ -680,7 +772,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                     children: [
                       const Padding(
                         padding: EdgeInsets.only(bottom: 16, left: 4),
-                        child: Text('Add from', style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w500)),
+                        child: Text(
+                          'Add from',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ),
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
@@ -692,11 +791,25 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                           children: [
                             Container(
                               padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(10)),
-                              child: const Icon(LucideIcons.film, color: AppColors.textPrimary, size: 20),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceLight,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                LucideIcons.film,
+                                color: AppColors.textPrimary,
+                                size: 20,
+                              ),
                             ),
                             const SizedBox(width: 12),
-                            const Text('Video', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w500)),
+                            const Text(
+                              'Video',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -711,11 +824,25 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                           children: [
                             Container(
                               padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(10)),
-                              child: const Icon(LucideIcons.camera, color: AppColors.textPrimary, size: 20),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceLight,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                LucideIcons.camera,
+                                color: AppColors.textPrimary,
+                                size: 20,
+                              ),
                             ),
                             const SizedBox(width: 12),
-                            const Text('Photos', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w500)),
+                            const Text(
+                              'Photos',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -745,7 +872,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     final exportParams = ref.read(exportPayloadProvider);
 
     if (exportParams == null) {
-      ToastUtils.show(context, "Cannot export video. Missing parameters.", isError: true);
+      ToastUtils.show(
+        context,
+        "Cannot export video. Missing parameters.",
+        isError: true,
+      );
       return;
     }
 
@@ -754,35 +885,49 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
 
     try {
       notifier.setExporting(true);
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ExportVideoScreen(
-            sourceVideo: exportParams['sourceVideo'],
-            segments: exportParams['segments'],
-            muteAudio: exportParams['muteAudio'],
-            targetAspectRatio: exportParams['targetAspectRatio'],
-            customCropRect: exportParams['customCropRect'],
-            originalVideoSize: exportParams['originalVideoSize'],
-            previewCanvasSize: exportParams['previewCanvasSize'],
-            renderId: exportParams['renderId'],
-            colorFilterMatrix: exportParams['colorFilterMatrix'],
-            textOverlays: exportParams['textOverlays'],
-            imageOverlays: exportParams['imageOverlays'],
-            videoOverlays: exportParams['videoOverlays'],
-            audioTracks: exportParams['audioTracks'],
-            backgroundType: exportParams['backgroundType'].toString().split('.').last,
-            backgroundColor: exportParams['backgroundColor'],
-            backgroundBlurIntensity: exportParams['backgroundBlurIntensity'],
-            targetHeight: targetHeight,
-            targetFps: targetFps,
+
+      void navigateToExport() {
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ExportVideoScreen(
+              sourceVideo: exportParams['sourceVideo'],
+              segments: exportParams['segments'],
+              muteAudio: exportParams['muteAudio'],
+              targetAspectRatio: exportParams['targetAspectRatio'],
+              customCropRect: exportParams['customCropRect'],
+              originalVideoSize: exportParams['originalVideoSize'],
+              previewCanvasSize: exportParams['previewCanvasSize'],
+              renderId: exportParams['renderId'],
+              colorFilterMatrix: exportParams['colorFilterMatrix'],
+              textOverlays: exportParams['textOverlays'],
+              imageOverlays: exportParams['imageOverlays'],
+              videoOverlays: exportParams['videoOverlays'],
+              audioTracks: exportParams['audioTracks'],
+              backgroundType: exportParams['backgroundType']
+                  .toString()
+                  .split('.')
+                  .last,
+              backgroundColor: exportParams['backgroundColor'],
+              backgroundBlurIntensity: exportParams['backgroundBlurIntensity'],
+              targetHeight: targetHeight,
+              targetFps: targetFps,
+            ),
           ),
-        ),
-      ).then((_) {
-        if (mounted) {
-          notifier.setExporting(false);
-        }
-      });
+        ).then((_) {
+          if (mounted) {
+            notifier.setExporting(false);
+          }
+        });
+      }
+
+      // If they unlocked 4K, they already watched a Rewarded Ad. Skip Interstitial.
+      if (targetHeight == 2160) {
+        navigateToExport();
+      } else {
+        AdService.showInterstitialAd(context, onAdDismissed: navigateToExport);
+      }
     } catch (e) {
       if (mounted) {
         ToastUtils.show(context, e.toString(), isError: true);
@@ -790,8 +935,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
       }
     }
   }
-
-
 
   String _formatDuration(double seconds) {
     final duration = Duration(milliseconds: (seconds * 1000).round());
@@ -819,28 +962,26 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
 
     final totalEditedDuration = ref.watch(totalEditedDurationProvider);
     return VideoEditorTopBar(
-          title: title,
-          durationLabel: _formatDuration(totalEditedDuration),
-          isExporting: editorState.isExporting,
-          hasSourceVideo: video != null,
-          onExport: _exportVideo,
-          currentResolutionLabel: _resolutionLabel,
-          onResolutionTap: _showExportOptionsPopup,
-          resolutionButtonKey: _resolutionButtonKey,
-          onBack: () async {
-            await ref.read(videoEditorProvider.notifier).saveDraft();
-            if (context.mounted) {
-              context.pop();
-            }
-          },
-        )
-        .animate()
-        .fadeIn()
-        .slideX(begin: 0.2);
+      title: title,
+      durationLabel: _formatDuration(totalEditedDuration),
+      isExporting: editorState.isExporting,
+      hasSourceVideo: video != null,
+      onExport: _exportVideo,
+      currentResolutionLabel: _resolutionLabel,
+      onResolutionTap: _showExportOptionsPopup,
+      resolutionButtonKey: _resolutionButtonKey,
+      onBack: () async {
+        await ref.read(videoEditorProvider.notifier).saveDraft();
+        if (context.mounted) {
+          context.pop();
+        }
+      },
+    ).animate().fadeIn().slideX(begin: 0.2);
   }
 
   void _showExportOptionsPopup() {
-    final RenderBox renderBox = _resolutionButtonKey.currentContext!.findRenderObject() as RenderBox;
+    final RenderBox renderBox =
+        _resolutionButtonKey.currentContext!.findRenderObject() as RenderBox;
     final position = renderBox.localToGlobal(Offset.zero);
     final size = renderBox.size;
 
@@ -857,7 +998,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                 color: Colors.transparent,
                 child: StatefulBuilder(
                   builder: (context, setPopupState) {
-                    Widget buildToggles(List<int> values, int currentValue, String Function(int) labelBuilder, void Function(int) onChanged) {
+                    Widget buildToggles(
+                      List<int> values,
+                      int currentValue,
+                      String Function(int) labelBuilder,
+                      void Function(int) onChanged, {
+                      bool Function(int)? isProBuilder,
+                    }) {
                       return Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
@@ -873,25 +1020,109 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                                 behavior: HitTestBehavior.opaque,
                                 onTap: () {
                                   HapticFeedback.selectionClick();
-                                  onChanged(val);
-                                  setPopupState(() {});
-                                  setState(() {});
+                                  if (isProBuilder != null &&
+                                      isProBuilder(val) &&
+                                      !isSelected) {
+                                    AdService.showRewardedAd(
+                                      context,
+                                      onRewardEarned: () {
+                                        if (context.mounted) {
+                                          onChanged(val);
+                                          setPopupState(() {});
+                                          setState(() {});
+                                          ToastUtils.show(
+                                            context,
+                                            '${labelBuilder(val)} Unlocked!',
+                                            isError: false,
+                                          );
+                                        }
+                                      },
+                                      onFailed: () {
+                                        if (context.mounted) {
+                                          ToastUtils.show(
+                                            context,
+                                            'Please check your internet connection to unlock Pro features.',
+                                            isWarning: true,
+                                            title: 'No Internet Connection',
+                                          );
+                                        }
+                                      },
+                                    );
+                                  } else {
+                                    onChanged(val);
+                                    setPopupState(() {});
+                                    setState(() {});
+                                  }
                                 },
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
-                                    color: isSelected ? AppColors.primaryStart : Colors.transparent,
+                                    color: isSelected
+                                        ? AppColors.primaryStart
+                                        : Colors.transparent,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
-                                  child: Text(
-                                    labelBuilder(val),
-                                    style: TextStyle(
-                                      color: isSelected ? Colors.white : AppColors.textSecondary,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        labelBuilder(val),
+                                        style: TextStyle(
+                                          color: isSelected
+                                              ? Colors.white
+                                              : AppColors.textSecondary,
+                                          fontWeight: isSelected
+                                              ? FontWeight.bold
+                                              : FontWeight.w600,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      if (isProBuilder != null &&
+                                          isProBuilder(val)) ...[
+                                        const SizedBox(width: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 4,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            gradient: const LinearGradient(
+                                              colors: [
+                                                Color(0xFF8B5CF6),
+                                                Color(0xFFD946EF),
+                                              ],
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                'PRO',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 8,
+                                                  fontWeight: FontWeight.w900,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                              SizedBox(width: 2),
+                                              Icon(
+                                                LucideIcons.play,
+                                                color: Colors.white,
+                                                size: 8,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ),
                               ),
@@ -902,62 +1133,87 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                     }
 
                     return Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                          child: Container(
-                            width: 250,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface.withValues(alpha: 0.85),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text(
-                                  'Resolution (limited to HD)',
-                                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                              child: Container(
+                                width: 250,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surface.withValues(
+                                    alpha: 0.85,
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: AppColors.border.withValues(
+                                      alpha: 0.5,
+                                    ),
+                                  ),
                                 ),
-                                const SizedBox(height: 10),
-                                buildToggles(
-                                  [720, 1080, 2160],
-                                  _exportHeight,
-                                  (val) => val == 720 ? 'SD' : val == 1080 ? 'HD' : '4K',
-                                  (val) => _exportHeight = val,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                      'Resolution (limited to HD)',
+                                      style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    buildToggles(
+                                      [720, 1080, 2160],
+                                      _exportHeight,
+                                      (val) => val == 720
+                                          ? 'SD'
+                                          : val == 1080
+                                          ? 'HD'
+                                          : '4K',
+                                      (val) => _exportHeight = val,
+                                      isProBuilder: (val) => val == 2160,
+                                    ),
+                                    const SizedBox(height: 20),
+                                    const Text(
+                                      'Frame rate (limited to 30)',
+                                      style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    buildToggles(
+                                      [24, 30, 60],
+                                      _exportFps,
+                                      (val) => val.toString(),
+                                      (val) => _exportFps = val,
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 20),
-                                const Text(
-                                  'Frame rate (limited to 30)',
-                                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
-                                ),
-                                const SizedBox(height: 10),
-                                buildToggles(
-                                  [24, 30, 60],
-                                  _exportFps,
-                                  (val) => val.toString(),
-                                  (val) => _exportFps = val,
-                                ),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                    ).animate().fadeIn(duration: 200.ms).scale(begin: const Offset(0.95, 0.95), curve: Curves.easeOutBack);
-                  }
+                        )
+                        .animate()
+                        .fadeIn(duration: 200.ms)
+                        .scale(
+                          begin: const Offset(0.95, 0.95),
+                          curve: Curves.easeOutBack,
+                        );
+                  },
                 ),
               ),
             ),
@@ -967,20 +1223,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     );
   }
 
-
-
-
-
-
-
   // --- Playback Controls ---
   Widget _buildPlaybackControls() {
     final editorState = ref.watch(videoEditorProvider);
     final totalEditedDuration = ref.watch(totalEditedDurationProvider);
-    final timelinePosition = editorState.currentPlaybackPosition.clamp(
-      0.0,
-      totalEditedDuration,
-    ).toDouble();
+    final timelinePosition = editorState.currentPlaybackPosition
+        .clamp(0.0, totalEditedDuration)
+        .toDouble();
     return EditorPlaybackControls(
       isPlaying: editorState.isPlaying,
       timelineLabel:
@@ -1008,9 +1257,17 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
 
     final tools = [
       const EditorTool(id: 'split', label: 'Split', icon: LucideIcons.scissors),
-      const EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
+      const EditorTool(
+        id: 'volume',
+        label: 'Volume',
+        icon: LucideIcons.volume2,
+      ),
       const EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
-      const EditorTool(id: 'duplicate', label: 'Duplicate', icon: LucideIcons.copy),
+      const EditorTool(
+        id: 'duplicate',
+        label: 'Duplicate',
+        icon: LucideIcons.copy,
+      ),
     ];
 
     return SizedBox(
@@ -1031,16 +1288,26 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                 width: 56,
                 margin: const EdgeInsets.only(right: 8),
                 decoration: const BoxDecoration(
-                  border: Border(right: BorderSide(color: Colors.white24, width: 1)),
+                  border: Border(
+                    right: BorderSide(color: Colors.white24, width: 1),
+                  ),
                 ),
                 child: const Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(LucideIcons.chevronLeft, color: Colors.white70, size: 20),
+                    Icon(
+                      LucideIcons.chevronLeft,
+                      color: Colors.white70,
+                      size: 20,
+                    ),
                     SizedBox(height: 4),
                     Text(
                       'Back',
-                      style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
@@ -1069,7 +1336,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                 }
               } else if (tool.id == 'duplicate') {
                 if (editorState.selectedAudioId != null) {
-                  final audioTrack = editorState.audioTracks.firstWhere((a) => a.id == editorState.selectedAudioId);
+                  final audioTrack = editorState.audioTracks.firstWhere(
+                    (a) => a.id == editorState.selectedAudioId,
+                  );
                   final duplicate = audioTrack.copyWith(
                     id: DateTime.now().millisecondsSinceEpoch.toString(),
                     timelineStart: audioTrack.timelineEnd,
@@ -1089,7 +1358,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                   const SizedBox(height: 4),
                   Text(
                     tool.label,
-                    style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1157,16 +1430,26 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                 width: 56,
                 margin: const EdgeInsets.only(right: 8),
                 decoration: const BoxDecoration(
-                  border: Border(right: BorderSide(color: Colors.white24, width: 1)),
+                  border: Border(
+                    right: BorderSide(color: Colors.white24, width: 1),
+                  ),
                 ),
                 child: const Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(LucideIcons.chevronLeft, color: Colors.white70, size: 20),
+                    Icon(
+                      LucideIcons.chevronLeft,
+                      color: Colors.white70,
+                      size: 20,
+                    ),
                     SizedBox(height: 4),
                     Text(
                       'Back',
-                      style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
@@ -1174,9 +1457,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
             );
           }
 
-          final toolIndex = editorState.currentMenuId == 'root' ? index : index - 1;
+          final toolIndex = editorState.currentMenuId == 'root'
+              ? index
+              : index - 1;
           final tool = visibleTools[toolIndex];
-          
+
           return Builder(
             builder: (buttonContext) {
               return GestureDetector(
@@ -1184,163 +1469,212 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                 onTap: () {
                   HapticFeedback.selectionClick();
                   if (tool.id == 'audio') {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => const AudioDrawer(),
-                );
-              } else if (tool.id == 'filters') {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => const FiltersDrawer(),
-                );
-              } else if (tool.id == 'stickers') {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => const StickersDrawer(),
-                );
-              } else if (tool.id == 'text' && editorState.currentMenuId == 'root') {
-                // From root menu, directly add a new text overlay
-                var proposedStartTime = Duration(milliseconds: (editorState.currentPlaybackPosition * 1000).toInt());
-                var proposedEndTime = proposedStartTime + const Duration(seconds: 3);
-                final totalDuration = Duration(milliseconds: (editorState.durationSeconds * 1000).toInt());
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const AudioDrawer(),
+                    );
+                  } else if (tool.id == 'filters') {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const FiltersDrawer(),
+                    );
+                  } else if (tool.id == 'stickers') {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const StickersDrawer(),
+                    );
+                  } else if (tool.id == 'text' &&
+                      editorState.currentMenuId == 'root') {
+                    // From root menu, directly add a new text overlay
+                    var proposedStartTime = Duration(
+                      milliseconds: (editorState.currentPlaybackPosition * 1000)
+                          .toInt(),
+                    );
+                    var proposedEndTime =
+                        proposedStartTime + const Duration(seconds: 3);
+                    final totalDuration = Duration(
+                      milliseconds: (editorState.durationSeconds * 1000)
+                          .toInt(),
+                    );
 
-                if (proposedEndTime > totalDuration) {
-                  proposedEndTime = totalDuration;
-                  if ((proposedEndTime - proposedStartTime) < const Duration(milliseconds: 500)) {
-                    proposedStartTime = proposedEndTime - const Duration(seconds: 3);
-                    if (proposedStartTime < Duration.zero) proposedStartTime = Duration.zero;
+                    if (proposedEndTime > totalDuration) {
+                      proposedEndTime = totalDuration;
+                      if ((proposedEndTime - proposedStartTime) <
+                          const Duration(milliseconds: 500)) {
+                        proposedStartTime =
+                            proposedEndTime - const Duration(seconds: 3);
+                        if (proposedStartTime < Duration.zero)
+                          proposedStartTime = Duration.zero;
+                      }
+                    }
+
+                    final canvasSize = ref.read(videoCanvasSizeProvider);
+                    final newOverlay = TextOverlayModel(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      text: 'Double Tap to Edit',
+                      startTime: proposedStartTime,
+                      endTime: proposedEndTime,
+                      referenceCanvasSize: canvasSize,
+                    );
+                    notifier.addTextOverlay(newOverlay);
+                    notifier.selectTextOverlay(newOverlay.id);
+                    showTextEditor(
+                      context: context,
+                      overlay: newOverlay,
+                      ref: ref,
+                    );
+                  } else if (tool.hasSubMenu) {
+                    notifier.setCurrentMenu(tool.id);
+                    if (tool.id == 'edit' &&
+                        editorState.selectedSegmentId == null &&
+                        editorState.segments.isNotEmpty) {
+                      notifier.selectSegment(editorState.segments.first.id);
+                    }
+                  } else if (tool.id == 'split') {
+                    if (editorState.selectedVideoOverlayId != null) {
+                      try {
+                        notifier.splitVideoOverlay(
+                          editorState.currentPlaybackPosition,
+                        );
+                      } catch (e) {
+                        ToastUtils.show(context, e.toString(), isError: true);
+                      }
+                    } else {
+                      _splitAtPlayhead();
+                    }
+                  } else if (tool.id == 'delete') {
+                    if (editorState.selectedTextId != null) {
+                      notifier.deleteTextOverlay(editorState.selectedTextId!);
+                      notifier.selectTextOverlay(null);
+                    } else if (editorState.selectedImageId != null) {
+                      notifier.deleteImageOverlay(editorState.selectedImageId!);
+                      notifier.selectImageOverlay(null);
+                    } else if (editorState.selectedVideoOverlayId != null) {
+                      notifier.deleteVideoOverlay(
+                        editorState.selectedVideoOverlayId!,
+                      );
+                      notifier.selectVideoOverlay(null);
+                    } else {
+                      _deleteSelectedSegment();
+                    }
+                  } else if (tool.id == 'transition') {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const TransitionsDrawer(),
+                    );
+                  } else if (tool.id == 'reverse') {
+                    if (editorState.selectedSegmentId != null) {
+                      notifier.toggleReverse(editorState.selectedSegmentId!);
+                      ToastUtils.show(context, 'Reversed clip', isError: false);
+                    } else {
+                      ToastUtils.show(
+                        context,
+                        'Please select a clip to reverse',
+                        isError: true,
+                      );
+                    }
+                  } else if (tool.id == 'opacity') {
+                    notifier.setActiveTool('opacity');
+                  } else if (tool.id == 'animation') {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const AnimationDrawer(),
+                    );
+                  } else if (tool.id == 'duplicate') {
+                    if (editorState.selectedTextId != null) {
+                      notifier.duplicateTextOverlay(
+                        editorState.selectedTextId!,
+                      );
+                    } else if (editorState.selectedImageId != null) {
+                      notifier.duplicateImageOverlay(
+                        editorState.selectedImageId!,
+                      );
+                    } else if (editorState.selectedVideoOverlayId != null) {
+                      notifier.duplicateVideoOverlay(
+                        editorState.selectedVideoOverlayId!,
+                      );
+                    }
+                  } else if (tool.id == 'add_text') {
+                    var proposedStartTime = Duration(
+                      milliseconds: (editorState.currentPlaybackPosition * 1000)
+                          .toInt(),
+                    );
+                    var proposedEndTime =
+                        proposedStartTime + const Duration(seconds: 3);
+                    final totalDuration = Duration(
+                      milliseconds: (editorState.durationSeconds * 1000)
+                          .toInt(),
+                    );
+
+                    if (proposedEndTime > totalDuration) {
+                      proposedEndTime = totalDuration;
+                      if ((proposedEndTime - proposedStartTime) <
+                          const Duration(milliseconds: 500)) {
+                        proposedStartTime =
+                            proposedEndTime - const Duration(seconds: 3);
+                        if (proposedStartTime < Duration.zero)
+                          proposedStartTime = Duration.zero;
+                      }
+                    }
+
+                    final canvasSize = ref.read(videoCanvasSizeProvider);
+                    final newOverlay = TextOverlayModel(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      text: 'Double Tap to Edit',
+                      startTime: proposedStartTime,
+                      endTime: proposedEndTime,
+                      referenceCanvasSize: canvasSize,
+                    );
+                    notifier.addTextOverlay(newOverlay);
+                    showTextEditor(
+                      context: buttonContext,
+                      overlay: newOverlay,
+                      ref: ref,
+                    );
+                  } else if (tool.id == 'overlay') {
+                    _showOverlaySelectionMenu(buttonContext);
+                  } else {
+                    notifier.setActiveTool(tool.id);
+                    if (tool.id == 'zoom') {
+                      notifier.setPreviewVideoTransform(
+                        previewVideoScale: editorState.videoScale,
+                        previewVideoPan: editorState.videoPan,
+                      );
+                    }
                   }
-                }
-
-                final canvasSize = ref.read(videoCanvasSizeProvider);
-                final newOverlay = TextOverlayModel(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  text: 'Double Tap to Edit',
-                  startTime: proposedStartTime,
-                  endTime: proposedEndTime,
-                  referenceCanvasSize: canvasSize,
-                );
-                notifier.addTextOverlay(newOverlay);
-                notifier.selectTextOverlay(newOverlay.id);
-                showTextEditor(context: context, overlay: newOverlay, ref: ref);
-              } else if (tool.hasSubMenu) {
-                notifier.setCurrentMenu(tool.id);
-                if (tool.id == 'edit' && editorState.selectedSegmentId == null && editorState.segments.isNotEmpty) {
-                  notifier.selectSegment(editorState.segments.first.id);
-                }
-              } else if (tool.id == 'split') {
-                if (editorState.selectedVideoOverlayId != null) {
-                  try {
-                    notifier.splitVideoOverlay(editorState.currentPlaybackPosition);
-                  } catch (e) {
-                    ToastUtils.show(context, e.toString(), isError: true);
-                  }
-                } else {
-                  _splitAtPlayhead();
-                }
-              } else if (tool.id == 'delete') {
-                if (editorState.selectedTextId != null) {
-                  notifier.deleteTextOverlay(editorState.selectedTextId!);
-                  notifier.selectTextOverlay(null);
-                } else if (editorState.selectedImageId != null) {
-                  notifier.deleteImageOverlay(editorState.selectedImageId!);
-                  notifier.selectImageOverlay(null);
-                } else if (editorState.selectedVideoOverlayId != null) {
-                  notifier.deleteVideoOverlay(editorState.selectedVideoOverlayId!);
-                  notifier.selectVideoOverlay(null);
-                } else {
-                  _deleteSelectedSegment();
-                }
-              } else if (tool.id == 'transition') {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => const TransitionsDrawer(),
-                );
-              } else if (tool.id == 'reverse') {
-                if (editorState.selectedSegmentId != null) {
-                  notifier.toggleReverse(editorState.selectedSegmentId!);
-                  ToastUtils.show(context, 'Reversed clip', isError: false);
-                } else {
-                  ToastUtils.show(context, 'Please select a clip to reverse', isError: true);
-                }
-              } else if (tool.id == 'opacity') {
-                notifier.setActiveTool('opacity');
-              } else if (tool.id == 'animation') {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => const AnimationDrawer(),
-                );
-              } else if (tool.id == 'duplicate') {
-                if (editorState.selectedTextId != null) {
-                  notifier.duplicateTextOverlay(editorState.selectedTextId!);
-                } else if (editorState.selectedImageId != null) {
-                  notifier.duplicateImageOverlay(editorState.selectedImageId!);
-                } else if (editorState.selectedVideoOverlayId != null) {
-                  notifier.duplicateVideoOverlay(editorState.selectedVideoOverlayId!);
-                }
-              } else if (tool.id == 'add_text') {
-                var proposedStartTime = Duration(milliseconds: (editorState.currentPlaybackPosition * 1000).toInt());
-                var proposedEndTime = proposedStartTime + const Duration(seconds: 3);
-                final totalDuration = Duration(milliseconds: (editorState.durationSeconds * 1000).toInt());
-
-                if (proposedEndTime > totalDuration) {
-                  proposedEndTime = totalDuration;
-                  if ((proposedEndTime - proposedStartTime) < const Duration(milliseconds: 500)) {
-                    proposedStartTime = proposedEndTime - const Duration(seconds: 3);
-                    if (proposedStartTime < Duration.zero) proposedStartTime = Duration.zero;
-                  }
-                }
-
-                final canvasSize = ref.read(videoCanvasSizeProvider);
-                final newOverlay = TextOverlayModel(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  text: 'Double Tap to Edit',
-                  startTime: proposedStartTime,
-                  endTime: proposedEndTime,
-                  referenceCanvasSize: canvasSize,
-                );
-                notifier.addTextOverlay(newOverlay);
-                showTextEditor(context: buttonContext, overlay: newOverlay, ref: ref);
-              } else if (tool.id == 'overlay') {
-                _showOverlaySelectionMenu(buttonContext);
-              } else {
-                notifier.setActiveTool(tool.id);
-                if (tool.id == 'zoom') {
-                  notifier.setPreviewVideoTransform(
-                    previewVideoScale: editorState.videoScale,
-                    previewVideoPan: editorState.videoPan,
-                  );
-                }
-              }
-            },
-            child: Container(
-              width: 56,
-              margin: const EdgeInsets.only(right: 4),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(tool.icon, color: Colors.white, size: 24),
-                  const SizedBox(height: 4),
-                  Text(
-                    tool.label,
-                    style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                },
+                child: Container(
+                  width: 56,
+                  margin: const EdgeInsets.only(right: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(tool.icon, color: Colors.white, size: 24),
+                      const SizedBox(height: 4),
+                      Text(
+                        tool.label,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          );
+                ),
+              );
             },
           );
         },
@@ -1386,7 +1720,12 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
         content = _buildTextAnimationPanel();
         break;
       case 'templates':
-        content = const Center(child: Text('Templates coming soon!', style: TextStyle(color: Colors.white54)));
+        content = const Center(
+          child: Text(
+            'Templates coming soon!',
+            style: TextStyle(color: Colors.white54),
+          ),
+        );
         break;
       case 'background':
         content = BackgroundPanel(onClose: notifier.closeActiveTool);
@@ -1436,32 +1775,48 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                 },
                 child: const Padding(
                   padding: EdgeInsets.all(12),
-                  child: Icon(LucideIcons.x, color: AppColors.textSecondary, size: 20),
+                  child: Icon(
+                    LucideIcons.x,
+                    color: AppColors.textSecondary,
+                    size: 20,
+                  ),
                 ),
               ),
               Text(
                 _getToolLabel(activeToolId),
-                style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 14),
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
               ),
               GestureDetector(
                 onTap: () {
                   HapticFeedback.selectionClick();
-                  
-                  if (activeToolId == 'volume' && editorState.previewVolume != null) {
+
+                  if (activeToolId == 'volume' &&
+                      editorState.previewVolume != null) {
                     if (editorState.selectedAudioId != null) {
-                      final track = editorState.audioTracks.firstWhere((a) => a.id == editorState.selectedAudioId!);
+                      final track = editorState.audioTracks.firstWhere(
+                        (a) => a.id == editorState.selectedAudioId!,
+                      );
                       notifier.updateAudioTrack(
                         track.copyWith(volume: editorState.previewVolume!),
                       );
-                      notifier.setPreviewVolume(null); // just clears the preview state
+                      notifier.setPreviewVolume(
+                        null,
+                      ); // just clears the preview state
                     } else if (editorState.selectedVideoOverlayId != null) {
-                      notifier.setPreviewVolume(null); // already updated in the panel
+                      notifier.setPreviewVolume(
+                        null,
+                      ); // already updated in the panel
                     } else {
                       notifier.commitPreviewVolume();
                     }
                   }
-                  
-                  if (activeToolId == 'speed' && editorState.previewSpeed != null) {
+
+                  if (activeToolId == 'speed' &&
+                      editorState.previewSpeed != null) {
                     notifier.commitPreviewSpeed();
                   }
                   if (activeToolId == 'zoom' &&
@@ -1472,7 +1827,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                 },
                 child: const Padding(
                   padding: EdgeInsets.all(12),
-                  child: Icon(LucideIcons.check, color: AppColors.primaryStart, size: 20),
+                  child: Icon(
+                    LucideIcons.check,
+                    color: AppColors.primaryStart,
+                    size: 20,
+                  ),
                 ),
               ),
             ],
@@ -1486,9 +1845,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
 
   Widget _buildTrimPanel() {
     final editorState = ref.watch(videoEditorProvider);
-    final trimDuration = (editorState.trimRange.end - editorState.trimRange.start)
-        .clamp(0.0, editorState.durationSeconds)
-        .toDouble();
+    final trimDuration =
+        (editorState.trimRange.end - editorState.trimRange.start)
+            .clamp(0.0, editorState.durationSeconds)
+            .toDouble();
 
     return TrimPanel(
       trimLabel: _formatDuration(trimDuration),
@@ -1530,7 +1890,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     final notifier = ref.read(videoEditorProvider.notifier);
 
     if (editorState.selectedAudioId != null) {
-      final audioTrack = editorState.audioTracks.firstWhere((a) => a.id == editorState.selectedAudioId);
+      final audioTrack = editorState.audioTracks.firstWhere(
+        (a) => a.id == editorState.selectedAudioId,
+      );
       return VolumePanel(
         displayVolume: editorState.previewVolume ?? audioTrack.volume,
         emptyMessage: null,
@@ -1540,16 +1902,21 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
         },
       );
     }
-    
+
     if (editorState.selectedVideoOverlayId != null) {
-      final videoOverlay = editorState.videoOverlays.firstWhere((v) => v.id == editorState.selectedVideoOverlayId);
+      final videoOverlay = editorState.videoOverlays.firstWhere(
+        (v) => v.id == editorState.selectedVideoOverlayId,
+      );
       return VolumePanel(
         displayVolume: editorState.previewVolume ?? videoOverlay.volume,
         emptyMessage: null,
         onChanged: (value) {
           // Immediately update actual model so video playback engine reacts
           notifier.setPreviewVolume(value);
-          notifier.updateVideoOverlay(videoOverlay.id, (v) => v.copyWith(volume: value));
+          notifier.updateVideoOverlay(
+            videoOverlay.id,
+            (v) => v.copyWith(volume: value),
+          );
         },
       );
     }
@@ -1557,8 +1924,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     final activeSegment = ref.watch(activeSegmentProvider);
     return VolumePanel(
       displayVolume: editorState.previewVolume ?? activeSegment?.volume ?? 0,
-      emptyMessage:
-          activeSegment == null ? 'Select a clip to adjust volume' : null,
+      emptyMessage: activeSegment == null
+          ? 'Select a clip to adjust volume'
+          : null,
       onChanged: (value) {
         notifier.setPreviewVolume(value);
         _player?.setVolume(value * value * 100.0);
@@ -1573,8 +1941,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
 
     return SpeedPanel(
       displaySpeed: editorState.previewSpeed ?? activeSegment?.speed ?? 1.0,
-      emptyMessage:
-          activeSegment == null ? 'Select a clip to adjust speed' : null,
+      emptyMessage: activeSegment == null
+          ? 'Select a clip to adjust speed'
+          : null,
       onChanged: (value) {
         notifier.setPreviewSpeed(value);
         _player?.setRate(value);
@@ -1585,7 +1954,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
   Widget _buildOpacityPanel() {
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
-    
+
     double currentOpacity = 1.0;
     if (editorState.selectedImageId != null) {
       currentOpacity = editorState.imageOverlays
@@ -1618,44 +1987,80 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
 
   Widget _buildZoomPanel() {
     final editorState = ref.watch(videoEditorProvider);
-    final currentScale = editorState.previewVideoScale ?? editorState.videoScale;
+    final currentScale =
+        editorState.previewVideoScale ?? editorState.videoScale;
 
     return ZoomPanel(
       currentScale: currentScale,
       onChanged: (value) {
-        ref.read(videoEditorProvider.notifier).setPreviewVideoTransform(
-          previewVideoScale: value,
-          previewVideoPan: editorState.previewVideoPan ?? editorState.videoPan,
-        );
+        ref
+            .read(videoEditorProvider.notifier)
+            .setPreviewVideoTransform(
+              previewVideoScale: value,
+              previewVideoPan:
+                  editorState.previewVideoPan ?? editorState.videoPan,
+            );
       },
       onReset: () {
         HapticFeedback.selectionClick();
-        ref.read(videoEditorProvider.notifier).setPreviewVideoTransform(
-          previewVideoScale: 1.0,
-          previewVideoPan: Offset.zero,
-        );
+        ref
+            .read(videoEditorProvider.notifier)
+            .setPreviewVideoTransform(
+              previewVideoScale: 1.0,
+              previewVideoPan: Offset.zero,
+            );
       },
     );
   }
-
-
-
 
   Widget _buildTextStylePanel() {
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
     final textModel = editorState.selectedTextId != null
-        ? editorState.textOverlays.firstWhere((t) => t.id == editorState.selectedTextId, orElse: () => editorState.textOverlays.first)
+        ? editorState.textOverlays.firstWhere(
+            (t) => t.id == editorState.selectedTextId,
+            orElse: () => editorState.textOverlays.first,
+          )
         : null;
 
     return TextStylePanel(
       textModel: textModel,
-      onColorChanged: (val) => textModel != null ? notifier.updateTextOverlay(textModel.id, (c) => c.copyWith(color: val)) : null,
-      onBackgroundColorChanged: (val) => textModel != null ? notifier.updateTextOverlay(textModel.id, (c) => c.copyWith(backgroundColor: val)) : null,
-      onStrokeColorChanged: (val) => textModel != null ? notifier.updateTextOverlay(textModel.id, (c) => c.copyWith(strokeColor: val)) : null,
-      onStrokeWidthChanged: (val) => textModel != null ? notifier.updateTextOverlay(textModel.id, (c) => c.copyWith(strokeWidth: val)) : null,
-      onShadowColorChanged: (val) => textModel != null ? notifier.updateTextOverlay(textModel.id, (c) => c.copyWith(shadowColor: val)) : null,
-      onShadowBlurChanged: (val) => textModel != null ? notifier.updateTextOverlay(textModel.id, (c) => c.copyWith(shadowBlurRadius: val)) : null,
+      onColorChanged: (val) => textModel != null
+          ? notifier.updateTextOverlay(
+              textModel.id,
+              (c) => c.copyWith(color: val),
+            )
+          : null,
+      onBackgroundColorChanged: (val) => textModel != null
+          ? notifier.updateTextOverlay(
+              textModel.id,
+              (c) => c.copyWith(backgroundColor: val),
+            )
+          : null,
+      onStrokeColorChanged: (val) => textModel != null
+          ? notifier.updateTextOverlay(
+              textModel.id,
+              (c) => c.copyWith(strokeColor: val),
+            )
+          : null,
+      onStrokeWidthChanged: (val) => textModel != null
+          ? notifier.updateTextOverlay(
+              textModel.id,
+              (c) => c.copyWith(strokeWidth: val),
+            )
+          : null,
+      onShadowColorChanged: (val) => textModel != null
+          ? notifier.updateTextOverlay(
+              textModel.id,
+              (c) => c.copyWith(shadowColor: val),
+            )
+          : null,
+      onShadowBlurChanged: (val) => textModel != null
+          ? notifier.updateTextOverlay(
+              textModel.id,
+              (c) => c.copyWith(shadowBlurRadius: val),
+            )
+          : null,
     );
   }
 
@@ -1663,12 +2068,20 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
     final textModel = editorState.selectedTextId != null
-        ? editorState.textOverlays.firstWhere((t) => t.id == editorState.selectedTextId, orElse: () => editorState.textOverlays.first)
+        ? editorState.textOverlays.firstWhere(
+            (t) => t.id == editorState.selectedTextId,
+            orElse: () => editorState.textOverlays.first,
+          )
         : null;
 
     return TextFontPanel(
       textModel: textModel,
-      onFontChanged: (val) => textModel != null ? notifier.updateTextOverlay(textModel.id, (c) => c.copyWith(fontFamily: val)) : null,
+      onFontChanged: (val) => textModel != null
+          ? notifier.updateTextOverlay(
+              textModel.id,
+              (c) => c.copyWith(fontFamily: val),
+            )
+          : null,
     );
   }
 
@@ -1676,13 +2089,26 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
     final textModel = editorState.selectedTextId != null
-        ? editorState.textOverlays.firstWhere((t) => t.id == editorState.selectedTextId, orElse: () => editorState.textOverlays.first)
+        ? editorState.textOverlays.firstWhere(
+            (t) => t.id == editorState.selectedTextId,
+            orElse: () => editorState.textOverlays.first,
+          )
         : null;
 
     return TextAnimationPanel(
       textModel: textModel,
-      onInAnimationChanged: (val) => textModel != null ? notifier.updateTextOverlay(textModel.id, (c) => c.copyWith(inAnimation: val)) : null,
-      onOutAnimationChanged: (val) => textModel != null ? notifier.updateTextOverlay(textModel.id, (c) => c.copyWith(outAnimation: val)) : null,
+      onInAnimationChanged: (val) => textModel != null
+          ? notifier.updateTextOverlay(
+              textModel.id,
+              (c) => c.copyWith(inAnimation: val),
+            )
+          : null,
+      onOutAnimationChanged: (val) => textModel != null
+          ? notifier.updateTextOverlay(
+              textModel.id,
+              (c) => c.copyWith(outAnimation: val),
+            )
+          : null,
     );
   }
 
@@ -1699,8 +2125,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     }
 
     List<VideoSegment> displaySegments = editorState.segments;
-    if (editorState.activeToolId == 'speed' && editorState.previewSpeed != null) {
-      final activeId = editorState.isClipSelected && editorState.selectedSegmentId != null
+    if (editorState.activeToolId == 'speed' &&
+        editorState.previewSpeed != null) {
+      final activeId =
+          editorState.isClipSelected && editorState.selectedSegmentId != null
           ? editorState.selectedSegmentId
           : editorState.segments.first.id;
 
@@ -1730,7 +2158,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
       onTextDoubleTapped: (id) {
         notifier.selectTextOverlay(id);
         if (id != null) {
-          final overlay = editorState.textOverlays.firstWhere((text) => text.id == id);
+          final overlay = editorState.textOverlays.firstWhere(
+            (text) => text.id == id,
+          );
           showTextEditor(
             context: context,
             overlay: overlay,
@@ -1796,7 +2226,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     final editorState = ref.watch(videoEditorProvider);
 
     // Listen to play/pause state to start/stop Ticker and manage play/pause of the global clock
-    ref.listen<bool>(videoEditorProvider.select((s) => s.isPlaying), (prev, isPlaying) {
+    ref.listen<bool>(videoEditorProvider.select((s) => s.isPlaying), (
+      prev,
+      isPlaying,
+    ) {
       if (isPlaying) {
         _lastTick = DateTime.now();
         // Ensure audio players are loaded before playing
@@ -1817,17 +2250,27 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
     });
 
     // Sync audio player instances whenever the track list changes (import, delete, etc.)
-    ref.listen<List<AudioTrackModel>>(videoEditorProvider.select((s) => s.audioTracks), (prev, tracks) {
-      _audioPlayerManager.syncTracks(tracks);
-    });
+    ref.listen<List<AudioTrackModel>>(
+      videoEditorProvider.select((s) => s.audioTracks),
+      (prev, tracks) {
+        _audioPlayerManager.syncTracks(tracks);
+      },
+    );
 
     // Sync audio players when scrubbing the timeline (while paused)
-    ref.listen<double>(videoEditorProvider.select((s) => s.currentPlaybackPosition), (prev, currentPos) {
-      final state = ref.read(videoEditorProvider);
-      if (!state.isPlaying) {
-         _audioPlayerManager.seekAndPlaySync(currentPos, state.audioTracks, false);
-      }
-    });
+    ref.listen<double>(
+      videoEditorProvider.select((s) => s.currentPlaybackPosition),
+      (prev, currentPos) {
+        final state = ref.read(videoEditorProvider);
+        if (!state.isPlaying) {
+          _audioPlayerManager.seekAndPlaySync(
+            currentPos,
+            state.audioTracks,
+            false,
+          );
+        }
+      },
+    );
 
     return PopScope(
       canPop: false,
@@ -1840,97 +2283,113 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
       },
       child: Scaffold(
         backgroundColor: AppColors.background, // match dark theme
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // 0. Top Bar
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.bottomCenter,
-              child: Offstage(
-                offstage: _isFullscreen,
-                child: _buildTopBar(),
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              // 0. Top Bar
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.bottomCenter,
+                child: Offstage(offstage: _isFullscreen, child: _buildTopBar()),
               ),
-            ),
 
-            // 2. Video Area (Expanded)
-            Expanded(
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: _videoController != null
-                        ? VideoPreviewCanvas(
-                            videoController: _videoController!,
-                            onTogglePreview: () => ref.read(videoEditorProvider.notifier).togglePreview(),
-                            onDeadZoneTapped: () {
-                              final notifier = ref.read(videoEditorProvider.notifier);
-                              notifier.selectTextOverlay(null);
-                              notifier.selectImageOverlay(null);
-                            },
-                            onShowTextEditor: (TextOverlayModel overlay, bool showKeyboard) => showTextEditor(
-                              context: context,
-                              overlay: overlay,
-                              ref: ref,
-                              initialTool: showKeyboard ? TextEditorTool.keyboard : TextEditorTool.color,
+              // 2. Video Area (Expanded)
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: _videoController != null
+                          ? VideoPreviewCanvas(
+                              videoController: _videoController!,
+                              onTogglePreview: () => ref
+                                  .read(videoEditorProvider.notifier)
+                                  .togglePreview(),
+                              onDeadZoneTapped: () {
+                                final notifier = ref.read(
+                                  videoEditorProvider.notifier,
+                                );
+                                notifier.selectTextOverlay(null);
+                                notifier.selectImageOverlay(null);
+                              },
+                              onShowTextEditor:
+                                  (
+                                    TextOverlayModel overlay,
+                                    bool showKeyboard,
+                                  ) => showTextEditor(
+                                    context: context,
+                                    overlay: overlay,
+                                    ref: ref,
+                                    initialTool: showKeyboard
+                                        ? TextEditorTool.keyboard
+                                        : TextEditorTool.color,
+                                  ),
+                              onCanvasSizeChanged: (size) {
+                                ref
+                                        .read(videoCanvasSizeProvider.notifier)
+                                        .state =
+                                    size;
+                              },
+                            )
+                          : Container(
+                              color: Colors.black,
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  color: Colors.white38,
+                                ),
+                              ),
                             ),
-                            onCanvasSizeChanged: (size) {
-                              ref.read(videoCanvasSizeProvider.notifier).state = size;
-                            },
-                          )
-                        : Container(
-                            color: Colors.black,
-                            child: const Center(
-                              child: CircularProgressIndicator(color: Colors.white38),
+                    ),
+                    if (_isFullscreen)
+                      Positioned(
+                        bottom: 16,
+                        right: 16,
+                        child: GestureDetector(
+                          onTap: _openFullscreenPreview,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                          ),
-                  ),
-                  if (_isFullscreen)
-                    Positioned(
-                      bottom: 16,
-                      right: 16,
-                      child: GestureDetector(
-                        onTap: _openFullscreenPreview,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            LucideIcons.minimize,
-                            color: Colors.white,
-                            size: 20,
+                            child: const Icon(
+                              LucideIcons.minimize,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          // 2. Playback Controls Row
-          AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            child: Offstage(
-              offstage: _isFullscreen,
-              child: _buildPlaybackControls(),
-            ),
-          ),
+              // 2. Playback Controls Row
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                child: Offstage(
+                  offstage: _isFullscreen,
+                  child: _buildPlaybackControls(),
+                ),
+              ),
 
-          // 3 & 4. Scrollable Timeline Area and Bottom Toolbar
-          AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: Offstage(
-              offstage: _isFullscreen,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+              // 3 & 4. Scrollable Timeline Area and Bottom Toolbar
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: Offstage(
+                  offstage: _isFullscreen,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                       Offstage(
-                        offstage: ['style', 'font', 'animation'].contains(editorState.activeToolId),
+                        offstage: [
+                          'style',
+                          'font',
+                          'animation',
+                        ].contains(editorState.activeToolId),
                         child: _buildScrollableTimeline(),
                       ),
                       Container(
@@ -1944,11 +2403,25 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                               : null,
                           border: editorState.activeToolId != null
                               ? const Border(
-                                  top: BorderSide(color: Colors.white12, width: 1.0),
-                                  left: BorderSide(color: Colors.white12, width: 1.0),
-                                  right: BorderSide(color: Colors.white12, width: 1.0),
+                                  top: BorderSide(
+                                    color: Colors.white12,
+                                    width: 1.0,
+                                  ),
+                                  left: BorderSide(
+                                    color: Colors.white12,
+                                    width: 1.0,
+                                  ),
+                                  right: BorderSide(
+                                    color: Colors.white12,
+                                    width: 1.0,
+                                  ),
                                 )
-                              : const Border(top: BorderSide(color: Colors.white12, width: 1.0)),
+                              : const Border(
+                                  top: BorderSide(
+                                    color: Colors.white12,
+                                    width: 1.0,
+                                  ),
+                                ),
                         ),
                         child: ClipRRect(
                           borderRadius: editorState.activeToolId != null
@@ -1965,35 +2438,58 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                               alignment: Alignment.bottomCenter,
                               child: AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 300),
-                                reverseDuration: const Duration(milliseconds: 250),
-                                layoutBuilder: (currentChild, previousChildren) {
-                                  return Stack(
-                                    alignment: Alignment.bottomCenter,
-                                    children: <Widget>[
-                                      ...previousChildren,
-                                      if (currentChild != null) currentChild,
-                                    ],
-                                  );
-                                },
+                                reverseDuration: const Duration(
+                                  milliseconds: 250,
+                                ),
+                                layoutBuilder:
+                                    (currentChild, previousChildren) {
+                                      return Stack(
+                                        alignment: Alignment.bottomCenter,
+                                        children: <Widget>[
+                                          ...previousChildren,
+                                          if (currentChild != null)
+                                            currentChild,
+                                        ],
+                                      );
+                                    },
                                 transitionBuilder: (child, animation) {
                                   return SlideTransition(
-                                    position: Tween<Offset>(
-                                      begin: const Offset(0, 0.4),
-                                      end: Offset.zero,
-                                    ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
-                                    child: FadeTransition(opacity: animation, child: child),
+                                    position:
+                                        Tween<Offset>(
+                                          begin: const Offset(0, 0.4),
+                                          end: Offset.zero,
+                                        ).animate(
+                                          CurvedAnimation(
+                                            parent: animation,
+                                            curve: Curves.easeOutCubic,
+                                          ),
+                                        ),
+                                    child: FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    ),
                                   );
                                 },
                                 child: editorState.activeToolId == null
-                                    ? (editorState.selectedAudioId != null ? _buildAudioContextMenu() : _buildHomeToolbar())
+                                    ? (editorState.selectedAudioId != null
+                                          ? _buildAudioContextMenu()
+                                          : _buildHomeToolbar())
                                     : Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           _buildActiveToolPanel(),
-                                          if (editorState.activeToolId == 'edit')
+                                          if (editorState.activeToolId ==
+                                              'edit')
                                             Padding(
-                                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                                              child: _buildSplitMarkersSummary(),
+                                              padding:
+                                                  const EdgeInsets.fromLTRB(
+                                                    20,
+                                                    0,
+                                                    20,
+                                                    10,
+                                                  ),
+                                              child:
+                                                  _buildSplitMarkersSummary(),
                                             ),
                                         ],
                                       ),
@@ -2005,10 +2501,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen> with Sing
                     ],
                   ),
                 ),
+              ),
+            ],
           ),
-        ],
-      ),
-      ),
+        ),
       ),
     );
   }

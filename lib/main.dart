@@ -36,6 +36,7 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   MobileAds.instance.initialize();
   AdService.loadInterstitialAd(); // Start background preload immediately
+  AdService.loadRewardedAd(); // Start background preload for Rewarded Ads
   GoogleFonts.config.allowRuntimeFetching = true;
 
   final prefs = await SharedPreferences.getInstance();
@@ -204,13 +205,13 @@ GoRouter createAppRouter(String initialRoute) {
           final info = state.extra as UpdateInfo?;
           final safeInfo = info ??
               const UpdateInfo(
-                latestVersion: '1.0.0',
-                latestBuildNumber: 1,
+                latestVersion: '2.0.0',
+                latestBuildNumber: 2,
                 forceUpdate: false,
                 title: 'Update Available',
                 releaseNotes: [],
                 updateUrl: '',
-                minSupportedVersion: '1.0.0',
+                minSupportedVersion: '2.0.0',
               );
           return _buildTransitionPage(
             state: state,

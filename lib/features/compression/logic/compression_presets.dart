@@ -14,6 +14,7 @@ class CompressionPreset {
   final String ffmpegPreset; // for video (ultrafast, veryfast, medium, slow)
   final int targetBitrate; // for video in bps
   final String expectedCompression;
+  final bool isPro;
 
   const CompressionPreset({
     required this.id,
@@ -24,6 +25,7 @@ class CompressionPreset {
     this.quality = 0.8,
     this.ffmpegPreset = 'medium',
     this.targetBitrate = 3000000,
+    this.isPro = false,
   });
 }
 
@@ -232,6 +234,7 @@ class CompressionPresets {
       expectedCompression: '30-50%',
       targetBitrate: 0, // dynamic/CRF
       ffmpegPreset: 'fast',
+      isPro: true,
     ),
     CompressionPreset(
       id: 'smart',
@@ -261,6 +264,7 @@ class CompressionPresets {
       icon: LucideIcons.sparkles,
       expectedCompression: '30-50%',
       quality: 0.90,
+      isPro: true,
     ),
     CompressionPreset(
       id: 'smart',
