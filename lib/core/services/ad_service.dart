@@ -3,9 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AdService {
+  // --- INTERSTITIAL ADS ---
   static InterstitialAd? _interstitialAd;
   static bool _isAdReady = false;
   static bool _isLoading = false;
+
+  // --- REWARDED ADS ---
+  static RewardedAd? _rewardedAd;
+  static bool _isRewardedAdReady = false;
+  static bool _isRewardedAdLoading = false;
 
   // Live Ad Unit IDs provided by TechFamz
   static String get _interstitialAdUnitId {
@@ -13,6 +19,17 @@ class AdService {
       return 'ca-app-pub-7001751702275942/1220151318';
     } else if (Platform.isIOS) {
       return 'ca-app-pub-3940256099942544/4411468910';
+    } else {
+      throw UnsupportedError('Unsupported platform');
+    }
+  }
+
+  // Live Ad Unit IDs for Rewarded Ads
+  static String get _rewardedAdUnitId {
+    if (Platform.isAndroid) {
+      return 'ca-app-pub-7001751702275942/3806842044';
+    } else if (Platform.isIOS) {
+      return 'ca-app-pub-3940256099942544/1712485313'; // Still using test ID for iOS until provided
     } else {
       throw UnsupportedError('Unsupported platform');
     }
@@ -156,5 +173,99 @@ class AdService {
       debugPrint('Ad timed out after 3 seconds. Proceeding to save.');
       onAdDismissed(); // Proceed immediately
     }
+  }
+
+  // ==========================================
+  // REWARDED ADS IMPLEMENTATION
+  // ==========================================
+
+  /// Preloads a rewarded ad in the background.
+  static void loadRewardedAd() {
+    if (_isRewardedAdReady || _isRewardedAdLoading) return;
+    _isRewardedAdLoading = true;
+
+    RewardedAd.load(
+      adUnitId: _rewardedAdUnitId,
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) {
+          debugPrint('Rewarded Ad loaded successfully');
+          _rewardedAd = ad;
+          _isRewardedAdReady = true;
+          _isRewardedAdLoading = false;
+
+          _rewardedAd?.fullScreenContentCallback = FullScreenContentCallback(
+            onAdDismissedFullScreenContent: (ad) {
+              ad.dispose();
+              _isRewardedAdReady = false;
+              _rewardedAd = null;
+              loadRewardedAd(); // Preload next ad immediately
+            },
+            onAdFailedToShowFullScreenContent: (ad, error) {
+              debugPrint('Rewarded Ad failed to show: $error');
+              ad.dispose();
+              _isRewardedAdReady = false;
+              _rewardedAd = null;
+              loadRewardedAd(); // Retry loading
+            },
+          );
+        },
+        onAdFailedToLoad: (err) {
+          debugPrint('Rewarded Ad failed to load: ${err.message}');
+          _isRewardedAdReady = false;
+          _rewardedAd = null;
+          _isRewardedAdLoading = false;
+          
+          // Retry after delay
+          Future.delayed(const Duration(seconds: 10), loadRewardedAd);
+        },
+      ),
+    );
+  }
+
+  /// Shows the preloaded rewarded ad.
+  /// If ad is not ready or fails, invokes [onFailed].
+  /// If the user fully watches the ad, invokes [onRewardEarned].
+  static Future<void> showRewardedAd(
+      BuildContext context, {
+      required VoidCallback onRewardEarned,
+      required VoidCallback onFailed,
+  }) async {
+    
+    if (!_isRewardedAdReady || _rewardedAd == null) {
+      debugPrint('Rewarded Ad is not ready.');
+      onFailed();
+      return;
+    }
+
+    bool rewardEarned = false;
+
+    // We must reset the callback before showing it to handle the specific reward action for this call
+    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _isRewardedAdReady = false;
+        _rewardedAd = null;
+        loadRewardedAd(); // Preload next ad in background
+        if (!rewardEarned) {
+           debugPrint('Rewarded Ad dismissed without earning reward.');
+           onFailed();
+        }
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        debugPrint('Rewarded Ad failed to show: $error');
+        ad.dispose();
+        _isRewardedAdReady = false;
+        _rewardedAd = null;
+        loadRewardedAd(); // Preload next ad in background
+        onFailed();
+      },
+    );
+
+    _rewardedAd!.show(onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
+      debugPrint('User earned reward: ${reward.amount} ${reward.type}');
+      rewardEarned = true;
+      onRewardEarned();
+    });
   }
 }

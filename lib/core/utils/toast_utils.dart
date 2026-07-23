@@ -7,6 +7,8 @@ class ToastUtils {
     BuildContext context,
     String message, {
     bool isError = false,
+    bool isWarning = false,
+    String? title,
   }) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
@@ -19,9 +21,9 @@ class ToastUtils {
         child: Material(
           color: Colors.transparent,
           child: AwesomeSnackbarContent(
-            title: isError ? 'Error!' : 'Success!',
+            title: title ?? (isError ? 'Error!' : (isWarning ? 'Warning!' : 'Success!')),
             message: message,
-            contentType: isError ? ContentType.failure : ContentType.success,
+            contentType: isError ? ContentType.failure : (isWarning ? ContentType.warning : ContentType.success),
           )
               .animate()
               .fadeIn(duration: 300.ms)

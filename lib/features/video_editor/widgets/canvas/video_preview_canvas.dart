@@ -93,148 +93,156 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: widget.onTogglePreview,
-                    child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
                     child: Stack(
-                      alignment: Alignment.center,
+                      clipBehavior: Clip.none,
                       children: [
-                        // Background Layer
                         Positioned.fill(
-                          child: Container(
-                            color: isAudioTail
-                                ? Colors.black
-                                : editorState.backgroundType == EditorBackgroundType.color
-                                ? editorState.backgroundColor
-                                : Colors.black,
-                          ),
-                        ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                // Background Layer
+                                Positioned.fill(
+                                  child: Container(
+                                    color: isAudioTail
+                                        ? Colors.black
+                                        : editorState.backgroundType == EditorBackgroundType.color
+                                        ? editorState.backgroundColor
+                                        : Colors.black,
+                                  ),
+                                ),
 
-                        // The actual video
-                        if (!isAudioTail)
-                          Builder(
-                          builder: (context) {
-                            Widget videoWidget = ClipRect(
-                              child: Transform.translate(
-                                offset: editorState.previewVideoPan ?? editorState.videoPan,
-                                child: Transform.scale(
-                                  scale: editorState.previewVideoScale ?? editorState.videoScale,
-                                  child: showCroppedView
-                                      ? AspectRatio(
-                                          aspectRatio: ((controller.player.state.width ?? 16) / (controller.player.state.height ?? 9)) *
-                                              (editorState.customCropRect.width /
-                                                  editorState.customCropRect.height),
-                                          child: ClipRect(
-                                            child: LayoutBuilder(
-                                              builder: (context, constraints) {
-                                                final cropW = constraints.maxWidth;
-                                                final cropH = constraints.maxHeight;
+                                // The actual video
+                                if (!isAudioTail)
+                                  Builder(
+                                  builder: (context) {
+                                    Widget videoWidget = ClipRect(
+                                      child: Transform.translate(
+                                        offset: editorState.previewVideoPan ?? editorState.videoPan,
+                                        child: Transform.scale(
+                                          scale: editorState.previewVideoScale ?? editorState.videoScale,
+                                          child: showCroppedView
+                                              ? AspectRatio(
+                                                  aspectRatio: ((controller.player.state.width ?? 16) / (controller.player.state.height ?? 9)) *
+                                                      (editorState.customCropRect.width /
+                                                          editorState.customCropRect.height),
+                                                  child: ClipRect(
+                                                    child: LayoutBuilder(
+                                                      builder: (context, constraints) {
+                                                        final cropW = constraints.maxWidth;
+                                                        final cropH = constraints.maxHeight;
 
-                                                final origW =
-                                                    cropW / editorState.customCropRect.width;
-                                                final origH =
-                                                    cropH / editorState.customCropRect.height;
+                                                        final origW =
+                                                            cropW / editorState.customCropRect.width;
+                                                        final origH =
+                                                            cropH / editorState.customCropRect.height;
 
-                                                return OverflowBox(
-                                                  maxWidth: origW,
-                                                  maxHeight: origH,
-                                                  child: Transform.translate(
-                                                    offset: Offset(
-                                                      (0.5 -
-                                                              editorState.customCropRect.center.dx) *
-                                                          origW,
-                                                      (0.5 -
-                                                              editorState.customCropRect.center.dy) *
-                                                          origH,
-                                                    ),
-                                                    child: SizedBox(
-                                                      width: origW,
-                                                      height: origH,
-                                                      child: Video(controller: controller, controls: NoVideoControls),
+                                                        return OverflowBox(
+                                                          maxWidth: origW,
+                                                          maxHeight: origH,
+                                                          child: Transform.translate(
+                                                            offset: Offset(
+                                                              (0.5 -
+                                                                      editorState.customCropRect.center.dx) *
+                                                                  origW,
+                                                              (0.5 -
+                                                                      editorState.customCropRect.center.dy) *
+                                                                  origH,
+                                                            ),
+                                                            child: SizedBox(
+                                                              width: origW,
+                                                              height: origH,
+                                                              child: Video(controller: controller, controls: NoVideoControls),
+                                                            ),
+                                                          ),
+                                                        );
+                                                      },
                                                     ),
                                                   ),
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        )
-                                      : AspectRatio(
-                                          aspectRatio: ((controller.player.state.width ?? 16) / (controller.player.state.height ?? 9)),
-                                          child: Video(controller: controller, controls: NoVideoControls),
+                                                )
+                                              : AspectRatio(
+                                                  aspectRatio: ((controller.player.state.width ?? 16) / (controller.player.state.height ?? 9)),
+                                                  child: Video(controller: controller, controls: NoVideoControls),
+                                                ),
                                         ),
+                                      ),
+                                    );
+
+                                    if (editorState.selectedFilter != null) {
+                                      videoWidget = ColorFiltered(
+                                        colorFilter: ColorFilter.matrix(
+                                          editorState.selectedFilter!.getInterpolatedMatrix(
+                                            editorState.filterIntensity,
+                                          ),
+                                        ),
+                                        child: videoWidget,
+                                      );
+                                    }
+
+                                    return videoWidget;
+                                  },
                                 ),
-                              ),
-                            );
 
-                            if (editorState.selectedFilter != null) {
-                              videoWidget = ColorFiltered(
-                                colorFilter: ColorFilter.matrix(
-                                  editorState.selectedFilter!.getInterpolatedMatrix(
-                                    editorState.filterIntensity,
+                                ...List.generate(
+                                  _getMaxLane(editorState) + 1,
+                                  (lane) => Positioned.fill(
+                                    child: IgnorePointer(
+                                      ignoring: false,
+                                      child: Stack(
+                                        clipBehavior: Clip.none,
+                                        children: [
+                                          ImageOverlayLayer(
+                                            videoCanvasSize: _videoCanvasSize!,
+                                            targetLaneIndex: lane,
+                                          ),
+                                          VideoOverlayLayer(
+                                            mainPlayer: controller.player,
+                                            videoCanvasSize: _videoCanvasSize!,
+                                            targetLaneIndex: lane,
+                                          ),
+                                          TextOverlayLayer(
+                                            videoCanvasSize: _videoCanvasSize!,
+                                            onShowTextEditor: widget.onShowTextEditor ?? (_, __) {},
+                                            targetLaneIndex: lane,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
-                                child: videoWidget,
-                              );
-                            }
 
-                            return videoWidget;
-                          },
-                        ),
-
-                        ...List.generate(
-                          _getMaxLane(editorState) + 1,
-                          (lane) => Positioned.fill(
-                            child: IgnorePointer(
-                              ignoring: false,
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  ImageOverlayLayer(
-                                    videoCanvasSize: _videoCanvasSize!,
-                                    targetLaneIndex: lane,
+                                // Zoom Overlay (only show when zoom tool is active)
+                                if (editorState.activeToolId == 'zoom')
+                                  Positioned.fill(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: AppColors.primaryStart, width: 3),
+                                      ),
+                                      child: GestureDetector(
+                                        onScaleStart: (details) {
+                                          _baseVideoScale =
+                                              editorState.previewVideoScale ??
+                                                  editorState.videoScale;
+                                          _baseVideoPan =
+                                              editorState.previewVideoPan ??
+                                                  editorState.videoPan;
+                                        },
+                                        onScaleUpdate: (details) {
+                                          ref.read(videoEditorProvider.notifier).setPreviewVideoTransform(
+                                            previewVideoScale: (_baseVideoScale * details.scale)
+                                                .clamp(1.0, 5.0),
+                                            previewVideoPan:
+                                                _baseVideoPan + details.focalPointDelta,
+                                          );
+                                        },
+                                      ),
+                                    ),
                                   ),
-                                  VideoOverlayLayer(
-                                    mainPlayer: controller.player,
-                                    videoCanvasSize: _videoCanvasSize!,
-                                    targetLaneIndex: lane,
-                                  ),
-                                  TextOverlayLayer(
-                                    videoCanvasSize: _videoCanvasSize!,
-                                    onShowTextEditor: widget.onShowTextEditor ?? (_, __) {},
-                                    targetLaneIndex: lane,
-                                  ),
-                                ],
-                              ),
+                              ],
                             ),
                           ),
                         ),
-
-                        // Zoom Overlay (only show when zoom tool is active)
-                        if (editorState.activeToolId == 'zoom')
-                          Positioned.fill(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                border: Border.all(color: AppColors.primaryStart, width: 3),
-                              ),
-                              child: GestureDetector(
-                                onScaleStart: (details) {
-                                  _baseVideoScale =
-                                      editorState.previewVideoScale ??
-                                          editorState.videoScale;
-                                  _baseVideoPan =
-                                      editorState.previewVideoPan ??
-                                          editorState.videoPan;
-                                },
-                                onScaleUpdate: (details) {
-                                  ref.read(videoEditorProvider.notifier).setPreviewVideoTransform(
-                                    previewVideoScale: (_baseVideoScale * details.scale)
-                                        .clamp(1.0, 5.0),
-                                    previewVideoPan:
-                                        _baseVideoPan + details.focalPointDelta,
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
 
                         // Crop Overlay brackets (only show when crop tool is active)
                         if (editorState.activeToolId == 'crop')
@@ -259,7 +267,6 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                           ),
                       ],
                     ),
-                  ),
                   );
                 },
               ),
@@ -399,6 +406,8 @@ class _CropBoundsPainter extends CustomPainter {
     } else {
       drawRect = Rect.fromLTWH(0, 0, width, height);
     }
+    
+    drawRect = drawRect.deflate(1.5);
 
     final paint = Paint()
       ..color = Colors.white

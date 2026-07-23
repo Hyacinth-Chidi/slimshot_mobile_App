@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../core/services/ad_service.dart';
 import '../core/services/media_picker_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/widgets/gradient_button.dart';
@@ -269,91 +270,166 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
                                   ),
                               const SizedBox(height: 16),
                               Row(
-                                children: CompressionPresets.imagePresets.asMap().entries.map((entry) {
+                                children: CompressionPresets.imagePresets.asMap().entries.expand((entry) {
                                   final index = entry.key;
                                   final preset = entry.value;
                                   final isSelected = state.selectedPreset?.id == preset.id;
-                                  
-                                  return Expanded(
-                                    child: Padding(
-                                      padding: EdgeInsets.only(
-                                        right: index < CompressionPresets.imagePresets.length - 1 ? 12.0 : 0,
-                                      ),
-                                      child: GestureDetector(
+                                  final card = Expanded(
+                                    child: GestureDetector(
                                         onTap: () {
                                           HapticFeedback.selectionClick();
-                                          notifier.selectPreset(preset);
+                                          if (preset.isPro && !isSelected) {
+                                            AdService.showRewardedAd(
+                                              context,
+                                              onRewardEarned: () {
+                                                if (context.mounted) {
+                                                  notifier.selectPreset(preset);
+                                                  ToastUtils.show(context, '${preset.name} unlocked!', isError: false);
+                                                }
+                                              },
+                                              onFailed: () {
+                                                if (context.mounted) {
+                                                  ToastUtils.show(
+                                                    context, 
+                                                    'Please check your internet connection to unlock Pro features.', 
+                                                    isWarning: true,
+                                                    title: 'No Internet Connection',
+                                                  );
+                                                }
+                                              },
+                                            );
+                                          } else {
+                                            notifier.selectPreset(preset);
+                                          }
                                         },
-                                        child: AnimatedContainer(
-                                          duration: 200.ms,
-                                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-                                          decoration: BoxDecoration(
-                                            color: isSelected
-                                                ? AppColors.primaryStart.withValues(alpha: 0.15)
-                                                : AppColors.surface,
-                                            borderRadius: BorderRadius.circular(16),
-                                            border: Border.all(
-                                              color: isSelected ? AppColors.primaryStart : AppColors.border,
-                                              width: isSelected ? 2 : 1,
+                                        child: Stack(
+                                          children: [
+                                            AnimatedContainer(
+                                              duration: 200.ms,
+                                              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
+                                              decoration: BoxDecoration(
+                                                color: isSelected
+                                                    ? AppColors.primaryStart.withValues(alpha: 0.15)
+                                                    : AppColors.surface,
+                                                borderRadius: BorderRadius.circular(16),
+                                                border: Border.all(
+                                                  color: isSelected ? AppColors.primaryStart : AppColors.border,
+                                                  width: isSelected ? 2 : 1,
+                                                ),
+                                              ),
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Container(
+                                                    padding: const EdgeInsets.all(10),
+                                                    decoration: BoxDecoration(
+                                                      gradient: isSelected
+                                                          ? const LinearGradient(
+                                                              colors: [AppColors.primaryStart, AppColors.primaryEnd],
+                                                              begin: Alignment.topLeft,
+                                                              end: Alignment.bottomRight,
+                                                            )
+                                                          : null,
+                                                      color: isSelected ? null : AppColors.surfaceLight,
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                    child: Icon(
+                                                      preset.icon,
+                                                      color: isSelected ? Colors.white : AppColors.textSecondary,
+                                                      size: 24,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  Text(
+                                                    preset.name.replaceAll(' ', '\n'),
+                                                    textAlign: TextAlign.center,
+                                                    maxLines: 2,
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 13,
+                                                      height: 1.1,
+                                                      color: isSelected ? Colors.white : AppColors.textPrimary,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: isSelected ? AppColors.primaryStart.withValues(alpha: 0.2) : AppColors.surfaceLight,
+                                                      borderRadius: BorderRadius.circular(6),
+                                                    ),
+                                                    child: Text(
+                                                      '-${preset.expectedCompression.replaceAll('~', '').replaceAll('smaller', '').trim()}',
+                                                      textAlign: TextAlign.center,
+                                                      style: TextStyle(
+                                                        color: isSelected ? AppColors.primaryStart : AppColors.textSecondary,
+                                                        fontWeight: FontWeight.w800,
+                                                        fontSize: 10,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Visibility(
+                                                    visible: preset.isPro,
+                                                    maintainSize: true,
+                                                    maintainAnimation: true,
+                                                    maintainState: true,
+                                                    child: const Row(
+                                                      mainAxisAlignment: MainAxisAlignment.center,
+                                                      children: [
+                                                        Icon(LucideIcons.playCircle, size: 10, color: Color(0xFFD946EF)),
+                                                        SizedBox(width: 4),
+                                                        Text(
+                                                          'Watch ad\nto unlock',
+                                                          textAlign: TextAlign.center,
+                                                          style: TextStyle(
+                                                            fontSize: 8,
+                                                            fontWeight: FontWeight.w600,
+                                                            color: Color(0xFFD946EF),
+                                                            height: 1.1,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.all(10),
-                                                decoration: BoxDecoration(
-                                                  gradient: isSelected
-                                                      ? const LinearGradient(
-                                                          colors: [AppColors.primaryStart, AppColors.primaryEnd],
-                                                          begin: Alignment.topLeft,
-                                                          end: Alignment.bottomRight,
-                                                        )
-                                                      : null,
-                                                  color: isSelected ? null : AppColors.surfaceLight,
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: Icon(
-                                                  preset.icon,
-                                                  color: isSelected ? Colors.white : AppColors.textSecondary,
-                                                  size: 24,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 12),
-                                              Text(
-                                                preset.name.replaceAll(' ', '\n'),
-                                                textAlign: TextAlign.center,
-                                                maxLines: 2,
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 13,
-                                                  height: 1.1,
-                                                  color: isSelected ? Colors.white : AppColors.textPrimary,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 6),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: isSelected ? AppColors.primaryStart.withValues(alpha: 0.2) : AppColors.surfaceLight,
-                                                  borderRadius: BorderRadius.circular(6),
-                                                ),
-                                                child: Text(
-                                                  '-${preset.expectedCompression.replaceAll('~', '').replaceAll('smaller', '').trim()}',
-                                                  textAlign: TextAlign.center,
-                                                  style: TextStyle(
-                                                    color: isSelected ? AppColors.primaryStart : AppColors.textSecondary,
-                                                    fontWeight: FontWeight.w800,
-                                                    fontSize: 10,
+                                            if (preset.isPro)
+                                              Positioned(
+                                                top: 0,
+                                                left: 0,
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: const BoxDecoration(
+                                                    gradient: LinearGradient(
+                                                      colors: [Color(0xFF8B5CF6), Color(0xFFD946EF)],
+                                                    ),
+                                                    borderRadius: BorderRadius.only(
+                                                      topLeft: Radius.circular(16),
+                                                      bottomRight: Radius.circular(8),
+                                                    ),
+                                                  ),
+                                                  child: const Text(
+                                                    'PRO',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 8,
+                                                      fontWeight: FontWeight.w900,
+                                                      letterSpacing: 0.5,
+                                                    ),
                                                   ),
                                                 ),
                                               ),
-                                            ],
-                                          ),
+                                          ],
                                         ),
                                       ),
-                                    ),
                                   );
+
+                                  if (index == CompressionPresets.imagePresets.length - 1) {
+                                    return [card];
+                                  }
+                                  return [card, const SizedBox(width: 8)];
                                 }).toList(),
                               )
                               .animate()
