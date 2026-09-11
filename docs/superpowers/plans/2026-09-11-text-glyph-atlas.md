@@ -10,6 +10,33 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-11-text-animation-design.md`
 
+## Correction: bleed and placement are different rects
+
+**The first draft of this plan was wrong, and the error is instructive.** It had each atlas
+cell clipped to the glyph's *padded* rect and stored that same padded rect as the glyph's
+placement. Padding exists so a shadow or stroke is not clipped — but padded rects of
+neighbouring glyphs **overlap in box space**, so reassembling them with ordinary source-over
+blending composites the shared ink twice. Measured against the flat raster: a 20px shadow
+gained 7.4% ink area and 2396 pixels moved by more than 32/255 alpha. It looks plausible and
+every well-formedness test passes; it is simply heavier than the preview, worst where glyphs
+are tightly spaced.
+
+So a glyph carries **three** rects, and conflating any two of them reintroduces the bug:
+
+| Rect | Space | Meaning |
+| :--- | :--- | :--- |
+| `atlasRect` | atlas px | The whole cell, padded. The bleed is real ink and must live in the texture. |
+| `boxRect` | box px | Where the glyph is **placed**. These tile the box and **never overlap**. |
+| `srcRect` | cell fractions | Which part of the cell corresponds to `boxRect`. The bleed sits outside it. |
+
+The renderer maps `srcRect` → `boxRect` and lets the padding extend beyond, so a shadow still
+spills over its neighbours without any pixel being drawn twice.
+
+Two rejected alternatives, so they are not retried: masking a cell to its own glyph's ink
+cannot work (nothing distinguishes whose pixels are whose once rasterised), and compositing
+cells with a max/coverage blend would break legitimate alpha blending between overlapping
+glyphs and change how every other overlay composites.
+
 ## What this stage does NOT touch
 
 **The canvas preview is unchanged.** `text_overlay_layer.dart` draws text as Flutter widgets
