@@ -317,7 +317,76 @@ class EditorTimelineVideoClip {
   }
 }
 
-/// A photo or video laid over the timeline.
+/// One glyph of a `text` overlay: where its cell sits in the atlas, where it
+/// is placed on the text box, and which part of the cell is real ink.
+///
+/// A glyph carries **three** rects, not two, because a padded cell and a
+/// placed glyph are not the same rectangle:
+///
+/// - [atlasLeft]/[atlasTop]/[atlasRight]/[atlasBottom] (fractions of the
+///   atlas) — the whole padded cell. The padding is real ink (shadow/stroke
+///   bleed) and must be sampled, not cropped away.
+/// - [boxLeft]/[boxTop]/[boxRight]/[boxBottom] (fractions of the text box) —
+///   where the glyph is **placed**. These tile the box and never overlap,
+///   unlike the padded cells, which do overlap their neighbours.
+/// - [srcLeft]/[srcTop]/[srcRight]/[srcBottom] (fractions **of the cell**) —
+///   which sub-rectangle of the cell maps onto the box rect; the bleed sits
+///   outside it and is allowed to spill past the box rect's edges.
+///
+/// Placing by the padded rect instead of the box rect double-composites the
+/// shared ink where two padded cells overlap — see Task 2's fix (C1) for the
+/// measured effect. All twelve values are 0..1 fractions, never pixels, so
+/// the renderer never inherits a device resolution.
+class EditorTimelineGlyph {
+  const EditorTimelineGlyph({
+    required this.atlasLeft,
+    required this.atlasTop,
+    required this.atlasRight,
+    required this.atlasBottom,
+    required this.boxLeft,
+    required this.boxTop,
+    required this.boxRight,
+    required this.boxBottom,
+    required this.srcLeft,
+    required this.srcTop,
+    required this.srcRight,
+    required this.srcBottom,
+  });
+
+  final double atlasLeft;
+  final double atlasTop;
+  final double atlasRight;
+  final double atlasBottom;
+
+  final double boxLeft;
+  final double boxTop;
+  final double boxRight;
+  final double boxBottom;
+
+  final double srcLeft;
+  final double srcTop;
+  final double srcRight;
+  final double srcBottom;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'atlasLeft': atlasLeft,
+      'atlasTop': atlasTop,
+      'atlasRight': atlasRight,
+      'atlasBottom': atlasBottom,
+      'boxLeft': boxLeft,
+      'boxTop': boxTop,
+      'boxRight': boxRight,
+      'boxBottom': boxBottom,
+      'srcLeft': srcLeft,
+      'srcTop': srcTop,
+      'srcRight': srcRight,
+      'srcBottom': srcBottom,
+    };
+  }
+}
+
+/// A photo, video, or text block laid over the timeline.
 ///
 /// All geometry is **normalised to the canvas** — `0..1` fractions rather than
 /// pixels. The editor stores overlay position and size in preview-canvas
@@ -353,11 +422,17 @@ class EditorTimelineOverlay {
     this.sourceEnd = 0,
     this.volume = 1.0,
     this.isMuted = false,
+    this.glyphs,
+    this.backgroundLeft = 0,
+    this.backgroundTop = 0,
+    this.backgroundRight = 0,
+    this.backgroundBottom = 0,
+    this.backgroundRadius = 0,
   });
 
   final String id;
 
-  /// `image` or `video`.
+  /// `image`, `video`, or `text`.
   final String kind;
 
   final String path;
@@ -394,6 +469,19 @@ class EditorTimelineOverlay {
   final double volume;
   final bool isMuted;
 
+  /// Text overlays only: one entry per drawn character. A `text` overlay with
+  /// no glyphs is drawn as a plain image, which is the fallback path.
+  final List<EditorTimelineGlyph>? glyphs;
+
+  /// Text overlays only: the background box, in text-box fractions, and its
+  /// corner radius as a fraction of the box width. Drawn as one quad behind
+  /// the glyphs — slicing it per glyph would make it move with the letters.
+  final double backgroundLeft;
+  final double backgroundTop;
+  final double backgroundRight;
+  final double backgroundBottom;
+  final double backgroundRadius;
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -419,6 +507,12 @@ class EditorTimelineOverlay {
       'sourceEnd': sourceEnd,
       'volume': volume,
       'isMuted': isMuted,
+      'glyphs': glyphs?.map((glyph) => glyph.toJson()).toList(),
+      'backgroundLeft': backgroundLeft,
+      'backgroundTop': backgroundTop,
+      'backgroundRight': backgroundRight,
+      'backgroundBottom': backgroundBottom,
+      'backgroundRadius': backgroundRadius,
     };
   }
 }
