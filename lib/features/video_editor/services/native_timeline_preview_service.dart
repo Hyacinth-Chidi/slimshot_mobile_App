@@ -9,6 +9,7 @@ import '../logic/text_overlay_geometry.dart';
 import '../logic/timeline/video_editor_timeline_composer.dart';
 import '../models/editor_timeline.dart';
 import '../models/video_editor_state.dart';
+import 'text_atlas_overlay.dart';
 import 'text_overlay_rasterizer.dart';
 
 const EventChannel _defaultEventChannel =
@@ -252,13 +253,55 @@ class NativeTimelinePreviewService {
     final tempFiles = <String>[];
 
     for (final text in state.textOverlays) {
-      final raster = await TextOverlayRasterizer.rasterize(
+      final atlas = await TextOverlayRasterizer.rasterizeAtlas(
         overlay: text,
         canvasSize: canvas,
         rasterScale: rasterScale,
       );
-      if (raster == null) continue;
-      tempFiles.add(raster.pngPath);
+
+      // The atlas is the animation-capable path, and it is preferred wherever
+      // it can draw the overlay faithfully. Two cases fall back to the flat
+      // raster instead:
+      //
+      // 1. No atlas, or an empty one — text too large to pack inside the
+      //    4096px texture limit even at floor density.
+      // 2. Text with a background box. The native glyph pass draws letters
+      //    only, so a background would simply vanish; backgrounds keep the
+      //    flat raster until the background quad lands.
+      //
+      // Both are silent on purpose at this stage: the flat path produces the
+      // same file it produces today, so there is nothing to warn about. That
+      // changes once per-character animation ships, where a fallback means
+      // "no animation" and must be surfaced.
+      final RasterizedTextAtlas? usableAtlas = atlas != null &&
+              atlas.glyphs.isNotEmpty &&
+              atlas.backgroundRect == null
+          ? atlas
+          : null;
+
+      final String pngPath;
+      final Size boxPxSize;
+      final List<EditorTimelineGlyph>? glyphs;
+      if (usableAtlas != null) {
+        pngPath = usableAtlas.pngPath;
+        boxPxSize = usableAtlas.canvasPxSize;
+        glyphs = glyphsForAtlas(usableAtlas);
+      } else {
+        // The atlas PNG, if one was written, is still on disk — register it
+        // for deletion even though it is not used, or an unusable atlas leaks
+        // a file per export.
+        if (atlas != null) tempFiles.add(atlas.pngPath);
+        final flat = await TextOverlayRasterizer.rasterize(
+          overlay: text,
+          canvasSize: canvas,
+          rasterScale: rasterScale,
+        );
+        if (flat == null) continue;
+        pngPath = flat.pngPath;
+        boxPxSize = flat.canvasPxSize;
+        glyphs = null;
+      }
+      tempFiles.add(pngPath);
 
       // The layer's own placement, in canvas fractions: the box centre is the
       // canvas centre plus the (clamped) offset — the same helper the layer
@@ -270,13 +313,22 @@ class NativeTimelinePreviewService {
       // overlays' 200×200 contract). Sending the raster's own rectangle made
       // it apply the aspect twice and squash every exported text — see
       // `textOverlayFitBox`.
-      final fitBox = textOverlayFitBox(raster.canvasPxSize);
+      final fitBox = textOverlayFitBox(boxPxSize);
+      final boxDivW = boxPxSize.width == 0 ? 1.0 : boxPxSize.width;
+      final boxDivH = boxPxSize.height == 0 ? 1.0 : boxPxSize.height;
 
       overlays.add(
         EditorTimelineOverlay(
           id: 'text_${text.id}',
-          kind: 'image',
-          path: raster.pngPath,
+          kind: glyphs == null ? 'image' : 'text',
+          path: pngPath,
+          glyphs: glyphs,
+          backgroundLeft: (usableAtlas?.backgroundRect?.left ?? 0) / boxDivW,
+          backgroundTop: (usableAtlas?.backgroundRect?.top ?? 0) / boxDivH,
+          backgroundRight: (usableAtlas?.backgroundRect?.right ?? 0) / boxDivW,
+          backgroundBottom:
+              (usableAtlas?.backgroundRect?.bottom ?? 0) / boxDivH,
+          backgroundRadius: (usableAtlas?.borderRadius ?? 0) / boxDivW,
           centerX: center.dx / canvas.width,
           centerY: center.dy / canvas.height,
           boxWidth: fitBox.width / canvas.width,
@@ -291,8 +343,8 @@ class NativeTimelinePreviewService {
           laneIndex: 1000 + text.laneIndex,
           // flutter_animate slides by the widget's own size, not the image
           // overlays' fixed 200px, so the travel is the raster's own box.
-          slideOffsetX: raster.canvasPxSize.width / canvas.width,
-          slideOffsetY: raster.canvasPxSize.height / canvas.height,
+          slideOffsetX: boxPxSize.width / canvas.width,
+          slideOffsetY: boxPxSize.height / canvas.height,
           animationIn: _mapTextAnimation(text.inAnimation, isOut: false),
           animationOut: _mapTextAnimation(text.outAnimation, isOut: true),
           // The preview animates text with flutter_animate's stock 0.5s and
