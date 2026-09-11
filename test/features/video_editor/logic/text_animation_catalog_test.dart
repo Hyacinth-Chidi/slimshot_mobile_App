@@ -166,4 +166,99 @@ void main() {
       expect(r.outSeconds, greaterThanOrEqualTo(0));
     });
   });
+
+  // Every case below is pinned against `_animated` in text_overlay_layer.dart,
+  // the layer these drafts were written by. A saved project must keep playing
+  // what its author saw.
+  group('legacy ids resolve by slot', () {
+    const inSlot = TextAnimationCategory.inAnim;
+    const outSlot = TextAnimationCategory.outAnim;
+
+    test("'fade' means fade-in in the in slot and fade-out in the out slot", () {
+      // The old layer: `'fade_in' || 'fade' => anim.fadeIn()` in one switch,
+      // `'fade_out' || 'fade' => anim.fadeOut()` in the other.
+      expect(resolveTextAnimation('fade', inSlot)?.id, 'fade_in');
+      expect(resolveTextAnimation('fade', outSlot)?.id, 'fade_out');
+    });
+
+    test("'scale' grows in and shrinks away out", () {
+      // `'zoom_in' || 'scale' => scaleXY(begin: 0)` vs `'scale' => scaleXY(end: 0)`,
+      // the latter identical to the layer's own 'zoom_in_out' arm.
+      expect(resolveTextAnimation('scale', inSlot)?.id, 'zoom_in');
+      expect(resolveTextAnimation('scale', outSlot)?.id, 'zoom_in_out');
+    });
+
+    test('a legacy id resolved by slot actually plays the right direction', () {
+      // The regression this guards: resolving an out-slot 'fade' to fade_in
+      // would make a saved project fade *in* as it left.
+      final out = resolveTextAnimation('fade', outSlot)!;
+      expect(out.stateAt(0, 0, 3).opacity, closeTo(1, 1e-9));
+      expect(out.stateAt(1, 0, 3).opacity, closeTo(0, 1e-9));
+
+      final inAnim = resolveTextAnimation('fade', inSlot)!;
+      expect(inAnim.stateAt(0, 0, 3).opacity, closeTo(0, 1e-9));
+      expect(inAnim.stateAt(1, 0, 3).opacity, closeTo(1, 1e-9));
+
+      // 'scale' out must shrink to nothing, not grow.
+      final scaleOut = resolveTextAnimation('scale', outSlot)!;
+      expect(scaleOut.stateAt(1, 0, 3).scale, closeTo(0, 1e-9));
+    });
+
+    test('a bare in-only name in the out slot resolves to nothing', () {
+      // The old out-slot switch handled only the _out-suffixed names, so these
+      // fell through its default arm and played no out-animation. They are real
+      // catalog ids, so a plain lookup would find the in-variant and *add* an
+      // exit the user never had.
+      for (final id in [
+        'slide_up', 'slide_down', 'slide_left', 'slide_right',
+        'zoom_in', 'zoom_out', 'fade_in',
+      ]) {
+        expect(resolveTextAnimation(id, outSlot), isNull,
+            reason: '$id must not animate in the out slot');
+        expect(resolveTextAnimation(id, inSlot), isNotNull,
+            reason: '$id must still animate in the in slot');
+      }
+    });
+
+    test('an out-only name in the in slot resolves to nothing', () {
+      for (final id in ['fade_out', 'slide_up_out', 'zoom_in_out']) {
+        expect(resolveTextAnimation(id, inSlot), isNull, reason: id);
+        expect(resolveTextAnimation(id, outSlot), isNotNull, reason: id);
+      }
+    });
+
+    test('the bare slide names keep their old in-slot direction', () {
+      // slideY(begin: 1) started below and rose; +Y is down.
+      expect(resolveTextAnimation('slide_up', inSlot)!.stateAt(0, 0, 3).offsetY,
+          greaterThan(0.5));
+      expect(resolveTextAnimation('slide_down', inSlot)!.stateAt(0, 0, 3).offsetY,
+          lessThan(-0.5));
+      expect(resolveTextAnimation('slide_left', inSlot)!.stateAt(0, 0, 3).offsetX,
+          greaterThan(0.5));
+      expect(resolveTextAnimation('slide_right', inSlot)!.stateAt(0, 0, 3).offsetX,
+          lessThan(-0.5));
+    });
+
+    test('none, empty, null and unknown resolve to nothing in every slot', () {
+      for (final slot in TextAnimationCategory.values) {
+        expect(resolveTextAnimation(null, slot), isNull);
+        expect(resolveTextAnimation('', slot), isNull);
+        expect(resolveTextAnimation('none', slot), isNull);
+        expect(resolveTextAnimation('circleOpen', slot), isNull);
+      }
+    });
+
+    test('a loop id resolves in the loop slot and nowhere else', () {
+      expect(resolveTextAnimation('wave_loop', TextAnimationCategory.loop)?.id,
+          'wave_loop');
+      expect(resolveTextAnimation('wave_loop', inSlot), isNull);
+      expect(resolveTextAnimation('wave_loop', outSlot), isNull);
+    });
+
+    test('every catalog id resolves in its own slot', () {
+      for (final a in kTextAnimations) {
+        expect(resolveTextAnimation(a.id, a.category)?.id, a.id, reason: a.id);
+      }
+    });
+  });
 }

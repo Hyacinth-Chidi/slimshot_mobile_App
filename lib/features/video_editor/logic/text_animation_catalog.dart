@@ -796,26 +796,43 @@ double _loopCycleSlow(int glyphCount) => 2.4;
 // Lookup
 // ---------------------------------------------------------------------------
 
-/// Names older drafts stored, mapped onto catalog ids.
+/// Legacy ids that meant **different animations in different slots**.
 ///
-/// [id] is persisted, so an existing project holding `fade` or `scale` must
-/// still animate rather than silently going still. The two bare names came
-/// from the old widget layer, where one id served both ends — `fade` meant
-/// `fadeIn` in `inAnimation` and `fadeOut` in `outAnimation`. Resolving both to
-/// their in-variant is correct here because the caller already knows which
-/// field it read; the out-field lookup is handled by [textAnimationById]
-/// returning the in-variant and the consumer's own category check, so nothing
-/// crashes either way.
-const Map<String, String> _kLegacyAnimationIds = {
+/// The old widget layer (`text_overlay_layer.dart`, `_animated`) switched on
+/// one string per slot, and two ids appeared in both switches meaning opposite
+/// things: `'fade'` was `fadeIn()` in the in-slot and `fadeOut()` in the
+/// out-slot, `'scale'` was `scaleXY(begin: 0)` in the in-slot and
+/// `scaleXY(end: 0)` in the out-slot.
+///
+/// So the slot, not the id alone, decides — which is why
+/// [resolveTextAnimation] exists and why callers reading a persisted
+/// `inAnimation`/`outAnimation` must use it. Resolving `'fade'` from the
+/// out-slot to `fade_in` would play a saved project's exit **backwards**: the
+/// text would fade *in* as it left.
+const Map<String, String> _kLegacyInIds = {
   'fade': 'fade_in',
   'scale': 'zoom_in',
+};
+
+/// `'scale'` maps to `zoom_in_out` because the old out-slot drew it as
+/// `scaleXY(end: 0)` — shrink away to nothing — which is character for
+/// character what its `'zoom_in_out'` arm did.
+const Map<String, String> _kLegacyOutIds = {
+  'fade': 'fade_out',
+  'scale': 'zoom_in_out',
 };
 
 final Map<String, TextAnimation> _byId = {
   for (final a in kTextAnimations) a.id: a,
 };
 
-/// The animation stored under [id], or null if nothing matches.
+/// The animation stored under [id], ignoring which slot it came from.
+///
+/// Use this only where the slot genuinely does not matter — the animation tab
+/// listing a catalog entry by id, say. **To resolve a persisted
+/// `inAnimation`/`outAnimation`, use [resolveTextAnimation]**, or a legacy
+/// `'fade'`/`'scale'` will resolve to its in-variant in both slots and a saved
+/// project's exit animation will play backwards.
 ///
 /// **Never throws.** An id can arrive from a draft written by an older build,
 /// or from a rename that has not been migrated; the caller's contract is that
@@ -823,6 +840,39 @@ final Map<String, TextAnimation> _byId = {
 /// throw here would turn a stale draft into a crash on open.
 TextAnimation? textAnimationById(String? id) {
   if (id == null || id.isEmpty || id == 'none') return null;
-  final resolved = _kLegacyAnimationIds[id] ?? id;
-  return _byId[resolved];
+  return _byId[_kLegacyInIds[id] ?? id];
+}
+
+/// The animation a persisted [id] means **in the slot it was read from**.
+///
+/// [slot] is the field's own category: [TextAnimationCategory.inAnim] for
+/// `TextOverlayModel.inAnimation`, [TextAnimationCategory.outAnim] for
+/// `outAnimation`. It resolves the legacy tables above, then **refuses an
+/// animation belonging to a different slot** — and that second rule is doing
+/// real work, not being defensive for its own sake.
+///
+/// The old layer's out-slot switch handled *only* the `_out`-suffixed names.
+/// A bare `'slide_up'`, `'zoom_in'` or `'zoom_out'` sitting in `outAnimation`
+/// fell through its default arm and played **no out-animation at all** — and
+/// those bare names are real catalog ids, so a plain id lookup would find the
+/// in-variant and cheerfully animate. That would *add* an exit animation to a
+/// project that never had one, which is as much a regression as losing one.
+/// Returning null here preserves what the user actually saw.
+///
+/// It looks like an oversight that `'slide_up'` in the out-slot does nothing.
+/// It is not: it is bug-for-bug fidelity to the drafts people already have.
+TextAnimation? resolveTextAnimation(String? id, TextAnimationCategory slot) {
+  if (id == null || id.isEmpty || id == 'none') return null;
+
+  final legacy = switch (slot) {
+    TextAnimationCategory.inAnim => _kLegacyInIds,
+    TextAnimationCategory.outAnim => _kLegacyOutIds,
+    // Loops were never persisted by the old layer, so there is nothing to
+    // translate; a loop id is already a catalog id.
+    TextAnimationCategory.loop => const <String, String>{},
+  };
+
+  final anim = _byId[legacy[id] ?? id];
+  if (anim == null) return null;
+  return anim.category == slot ? anim : null;
 }
