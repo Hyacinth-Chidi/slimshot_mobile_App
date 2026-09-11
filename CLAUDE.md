@@ -772,6 +772,66 @@ Kotlin contract — not both.
 rasterised at canvas density and upscaled 3× in GL, which is exactly what made exported text look
 soft next to the preview; now it is drawn at its final pixel size.
 
+**Text exports as a glyph atlas** (Stage 1 of per-character animation; **awaiting device
+verification**). `TextOverlayRasterizer.rasterizeAtlas` draws each inked character into its own
+cell of one sprite sheet, and the timeline carries a `text` overlay kind holding a per-glyph
+table. `OverlayRenderer.Draw` gained an exact-rect placement mode (`srcRect` + `boxRect`): a
+glyph's cell already has the right shape, so contain-fitting it the way an image overlay is
+fitted would letterbox a letter. Nothing animates yet — the stage's gate is that text exports
+*identically* to the flat raster, which is what proves the atlas reassembles correctly before
+animation is built on it.
+
+Each cell draws the **whole text run** translated and clipped to one glyph, never characters
+painted individually — kerning and ligatures mean the width of "AV" is not the width of "A"
+plus "V", so per-character painting would drift from the flat raster.
+
+**A glyph carries three rects, and conflating any two of them is a real bug that was made
+once.** The first design stored a glyph's *padded* rect as both its clip and its placement.
+Padding exists so a shadow or stroke is not clipped — but padded rects of neighbouring glyphs
+**overlap in box space**, so reassembling them with ordinary source-over blending composites
+the shared ink twice. Measured against the flat raster: a 20px shadow gained 7.4% ink area and
+2396 pixels moved by more than 32/255 alpha. It looked plausible and every well-formedness test
+passed; it was simply heavier than the preview, worst where glyphs are tightly spaced.
+
+| Rect | Space | Meaning |
+| :--- | :--- | :--- |
+| `atlasRect` | atlas fractions | The whole padded cell. What gets **sampled**. |
+| `boxRect` | text-box fractions | Where the glyph is **placed**. These tile the box and never overlap. |
+| `srcRect` | fractions **of the cell** | Which sub-rectangle of the cell maps to `boxRect`. Bleed sits outside it. |
+
+The renderer draws the full cell positioned so `srcRect` lands on `boxRect`
+(`fullCellW = boxW / srcW`, `cellLeft = boxLeft - srcLeft * fullCellW`), so bleed extends past
+the placement rect without any ink being drawn twice. `glyphsForAtlas` converts at the Dart
+boundary with **three different denominators** — and `srcRect` is *already* a cell fraction, so
+it is passed through undivided; dividing it yields values that still look plausible while
+silently mis-sampling every glyph.
+
+A residual remains and is **accepted, not a bug to chase**: adjacent glyphs' padded cells can
+still overlap on canvas, so faint *bleed* re-composites even though *ink* does not. It is
+measured at 100% outside `boxRect`, and the text sheet can only ever emit
+`shadowBlurRadius: 8.0`. The reassembly tests gate ink hard (`60 × glyphCount` pixels, max
+delta 80 — a real double-composite saturates near 255) and halo softly with per-case measured
+numbers. Masking a cell to its own ink cannot work (nothing attributes rasterised pixels to a
+glyph) and a max/coverage blend would break alpha for every overlay; neither is worth retrying.
+
+**Two cases deliberately keep the flat raster**: text whose atlas exceeds the 4096px texture
+limit even at floor density, and text with a **background box** (the glyph pass draws letters
+only, so a background would vanish — it becomes its own quad in a later stage). Both are silent
+*by design here* because the output is identical either way. **The moment animation lands, a
+fallback means "no per-character animation" and must warn.** A rejected atlas still wrote its
+PNG, so it is registered for deletion or an unusable atlas leaks a file per export.
+
+`TEXT_ATLAS_MAX_PX` (4096) is separate from `OVERLAY_IMAGE_MAX_PX` (1024) on purpose: the 1024
+cap is generous for a photo in a small overlay box, but decoding an atlas at 1024 would
+downscale it and make exported text *blurrier* than the flat raster it replaced.
+
+**Tests that measure text must use `kTestFontFamily`** (`test/support/test_fonts.dart`).
+`GoogleFonts.getFont` throws from an async continuation nothing awaits when a font is neither
+cached nor fetchable, and `flutter_test` charges that error to whichever test is running —
+including ones that already passed. It cannot be caught at the call site or through
+`FlutterError.onError`, so the fix is a bundled family, not a try/catch. Production
+`font_utils.dart` is deliberately unchanged.
+
 If the layout, the layer's drawing or the animation curves change, the rasteriser must change
 with them. `needsLegacyExport` is deleted and **every project routes to
 native export** (except reversed clips without proxies, which fail `_canUseNativeTimelinePreview`
