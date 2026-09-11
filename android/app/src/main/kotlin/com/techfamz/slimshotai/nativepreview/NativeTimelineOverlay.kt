@@ -1,6 +1,41 @@
 package com.techfamz.slimshotai.nativepreview
 
 /**
+ * One glyph of a text overlay.
+ *
+ * A glyph carries **three** rects, not two, because a padded cell and a placed
+ * glyph are not the same rectangle:
+ *
+ * - `atlas*` — fractions of the sprite sheet. The whole **padded** cell, which
+ *   is what gets sampled: the padding is real ink (stroke and shadow bleed) and
+ *   cropping it away would clip a shadow at the letter's edge.
+ * - `box*` — fractions of the text box. Where the glyph is **placed**. These
+ *   tile the box and never overlap, unlike the padded cells, which do overlap
+ *   their neighbours; placing by the padded rect composites the shared ink
+ *   twice.
+ * - `src*` — fractions **of the cell**. Which sub-rectangle of the cell maps
+ *   onto `box*`; the bleed sits outside it and spills past the box rect's edges,
+ *   which is exactly how a shadow reaches beyond its own letter.
+ *
+ * All twelve values are `0..1` fractions — the Dart side converts at the
+ * boundary so this side never sees a device pixel.
+ */
+internal data class NativeTimelineGlyph(
+    val atlasLeft: Double,
+    val atlasTop: Double,
+    val atlasRight: Double,
+    val atlasBottom: Double,
+    val boxLeft: Double,
+    val boxTop: Double,
+    val boxRight: Double,
+    val boxBottom: Double,
+    val srcLeft: Double,
+    val srcTop: Double,
+    val srcRight: Double,
+    val srcBottom: Double,
+)
+
+/**
  * A photo or video laid over the timeline, as the Dart composer emits it.
  *
  * All geometry is **normalised to the canvas** — `0..1` fractions, never device
@@ -14,7 +49,7 @@ package com.techfamz.slimshotai.nativepreview
  */
 internal data class NativeTimelineOverlay(
     val id: String,
-    /** `image` or `video`. */
+    /** `image`, `video`, or `text`. */
     val kind: String,
     val path: String,
     val centerX: Double,
@@ -42,9 +77,25 @@ internal data class NativeTimelineOverlay(
     val sourceEnd: Double,
     val volume: Double,
     val isMuted: Boolean,
+    /** Text overlays only: one entry per drawn character. */
+    val glyphs: List<NativeTimelineGlyph>,
+    /** Text overlays only: the background box in text-box fractions. */
+    val backgroundLeft: Double,
+    val backgroundTop: Double,
+    val backgroundRight: Double,
+    val backgroundBottom: Double,
+    /** Corner radius as a fraction of the box width. */
+    val backgroundRadius: Double,
 ) {
 
     val isVideo: Boolean get() = kind == "video"
+
+    /**
+     * A text overlay with glyphs to draw. A `text` overlay that arrived without
+     * them (the atlas exceeded the texture limit) falls back to the plain image
+     * path, which is why this checks both.
+     */
+    val isText: Boolean get() = kind == "text" && glyphs.isNotEmpty()
 
     fun contains(timelineSeconds: Double): Boolean {
         return timelineSeconds >= startSeconds && timelineSeconds < endSeconds
@@ -132,6 +183,27 @@ internal data class NativeTimelineOverlay(
             val end = map.number("endSeconds") ?: return null
             if (end <= start) return null
 
+            // A glyph missing any of its twelve values is dropped rather than
+            // defaulted: a zero rect would draw a degenerate quad, and a
+            // half-parsed table is a contract mismatch, not a layout.
+            val glyphs = (map["glyphs"] as? List<*>)?.mapNotNull { entry ->
+                val glyph = entry as? Map<*, *> ?: return@mapNotNull null
+                NativeTimelineGlyph(
+                    atlasLeft = glyph.number("atlasLeft") ?: return@mapNotNull null,
+                    atlasTop = glyph.number("atlasTop") ?: return@mapNotNull null,
+                    atlasRight = glyph.number("atlasRight") ?: return@mapNotNull null,
+                    atlasBottom = glyph.number("atlasBottom") ?: return@mapNotNull null,
+                    boxLeft = glyph.number("boxLeft") ?: return@mapNotNull null,
+                    boxTop = glyph.number("boxTop") ?: return@mapNotNull null,
+                    boxRight = glyph.number("boxRight") ?: return@mapNotNull null,
+                    boxBottom = glyph.number("boxBottom") ?: return@mapNotNull null,
+                    srcLeft = glyph.number("srcLeft") ?: return@mapNotNull null,
+                    srcTop = glyph.number("srcTop") ?: return@mapNotNull null,
+                    srcRight = glyph.number("srcRight") ?: return@mapNotNull null,
+                    srcBottom = glyph.number("srcBottom") ?: return@mapNotNull null,
+                )
+            } ?: emptyList()
+
             return NativeTimelineOverlay(
                 id = id,
                 kind = kind,
@@ -156,6 +228,12 @@ internal data class NativeTimelineOverlay(
                 sourceEnd = map.number("sourceEnd") ?: 0.0,
                 volume = (map.number("volume") ?: 1.0).coerceIn(0.0, 1.0),
                 isMuted = map["isMuted"] as? Boolean ?: false,
+                glyphs = glyphs,
+                backgroundLeft = map.number("backgroundLeft") ?: 0.0,
+                backgroundTop = map.number("backgroundTop") ?: 0.0,
+                backgroundRight = map.number("backgroundRight") ?: 0.0,
+                backgroundBottom = map.number("backgroundBottom") ?: 0.0,
+                backgroundRadius = map.number("backgroundRadius") ?: 0.0,
             )
         }
 
