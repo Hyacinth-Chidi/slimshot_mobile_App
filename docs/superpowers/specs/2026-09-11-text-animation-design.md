@@ -169,10 +169,21 @@ Extensible by design — adding another is one catalog entry plus its Kotlin twi
 mechanism. Unknown ids degrade to no animation, the same rule unknown transitions follow.
 
 **In:** Typing, Fade, Zoom In, Zoom Out, Slide ×4, Bounce In, Pop, Wave In, Colour Fill,
-Blur In, Rise (per-word), Spin In
-**Out:** Un-typing, Fade Out, Zoom In/Out variants, Slide-out ×4, Bounce Out, Pop Out,
-Blur Out, Sink
-**Loop:** Wave, Pulse, Shake, Colour Cycle, Wiggle, Neon Flicker
+Rise (per-word), Spin In
+**Out:** Un-typing, Fade Out, Zoom In/Out variants, Slide-out ×4, Bounce Out, Pop Out, Sink
+**Loop:** Wave, Pulse, Shake, Colour Cycle, Wiggle
+
+Everything here is a per-quad transform, opacity or colour operation — what a GPU does
+natively — so all of it is expressible on the single-pass renderer we already have.
+
+### Deliberately deferred: Blur and Neon Flicker
+
+Both are **multi-pass** effects: render to a texture, blur it on one axis, blur on the other,
+composite. There is no FBO pass framework in the renderer yet, and CLAUDE.md already records
+the background `blur` option falling back to black for exactly this reason. Rather than ship
+a weak approximation that would then have to be replaced, they are deferred to become the
+first customers of the effects pipeline, where the multi-pass machinery gets built once and
+serves every glow, blur and bloom.
 
 ## Staging
 
@@ -203,3 +214,15 @@ slider in its final form.
 
 Word-level animation granularity (only per-character and whole-box here), text templates,
 and animated backgrounds.
+
+### Not a server feature
+
+Server-side rendering was considered and rejected. Text animation is ~20 textured quads per
+frame — a phone from 2015 draws thousands; the difficulty here was never performance, it was
+that one flat quad cannot express per-character motion. Once the atlas exists, animation is
+close to free. Rendering remotely would mean uploading and downloading 50–100 MB per export,
+losing offline use, paying per export, and — the real killer — maintaining **two** renderers
+that must agree pixel for pixel, which is the exact class of bug this codebase keeps hitting.
+Neither CapCut nor InShot renders text animation remotely. A server earns its keep for AI
+features (auto-captions, background removal, generative fill) and asset libraries, where the
+models or data are too large to ship in an APK. Rendering is not on that list.
