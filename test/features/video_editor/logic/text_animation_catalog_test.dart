@@ -1,6 +1,23 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/text_animation_catalog.dart';
 
+/// `(glyphIndex, glyphCount)` pairs the boundary tests sweep.
+///
+/// A single `(2, 5)` sample is not enough: the stagger's delay term scales with
+/// `i/(n-1)`, so a boundary fault can hide at one index and show at another.
+/// `n = 1` is the divide-by-zero guard's path and `n = 40` exercises the
+/// smallest per-glyph delay.
+const List<(int, int)> _glyphSamples = [
+  (0, 1),
+  (0, 2),
+  (1, 2),
+  (2, 5),
+  (0, 7),
+  (6, 7),
+  (0, 40),
+  (39, 40),
+];
+
 void main() {
   group('catalog shape', () {
     test('every animation has a unique id', () {
@@ -29,35 +46,101 @@ void main() {
     test('every in-animation rests at p=1', () {
       for (final anim in kTextAnimations.where(
           (a) => a.category == TextAnimationCategory.inAnim)) {
-        final s = anim.stateAt(1.0, 2, 5);
-        expect(s.opacity, closeTo(1, 1e-6), reason: '${anim.id} opacity');
-        expect(s.scale, closeTo(1, 1e-6), reason: '${anim.id} scale');
-        expect(s.offsetX, closeTo(0, 1e-6), reason: '${anim.id} offsetX');
-        expect(s.offsetY, closeTo(0, 1e-6), reason: '${anim.id} offsetY');
-        expect(s.rotation, closeTo(0, 1e-6), reason: '${anim.id} rotation');
-        expect(s.fillProgress, closeTo(1, 1e-6), reason: '${anim.id} fill');
+        for (final (i, n) in _glyphSamples) {
+          final s = anim.stateAt(1.0, i, n);
+          final where = '${anim.id} i=$i n=$n';
+          expect(s.opacity, closeTo(1, 1e-6), reason: '$where opacity');
+          expect(s.scale, closeTo(1, 1e-6), reason: '$where scale');
+          expect(s.offsetX, closeTo(0, 1e-6), reason: '$where offsetX');
+          expect(s.offsetY, closeTo(0, 1e-6), reason: '$where offsetY');
+          expect(s.rotation, closeTo(0, 1e-6), reason: '$where rotation');
+          expect(s.fillProgress, closeTo(1, 1e-6), reason: '$where fill');
+        }
       }
     });
 
     test('every out-animation starts from the resting state at p=0', () {
       for (final anim in kTextAnimations.where(
           (a) => a.category == TextAnimationCategory.outAnim)) {
-        final s = anim.stateAt(0.0, 2, 5);
-        expect(s.opacity, closeTo(1, 1e-6), reason: '${anim.id} opacity');
-        expect(s.scale, closeTo(1, 1e-6), reason: '${anim.id} scale');
-        expect(s.offsetX, closeTo(0, 1e-6), reason: '${anim.id} offsetX');
-        expect(s.offsetY, closeTo(0, 1e-6), reason: '${anim.id} offsetY');
+        for (final (i, n) in _glyphSamples) {
+          final s = anim.stateAt(0.0, i, n);
+          final where = '${anim.id} i=$i n=$n';
+          expect(s.opacity, closeTo(1, 1e-6), reason: '$where opacity');
+          expect(s.scale, closeTo(1, 1e-6), reason: '$where scale');
+          expect(s.offsetX, closeTo(0, 1e-6), reason: '$where offsetX');
+          expect(s.offsetY, closeTo(0, 1e-6), reason: '$where offsetY');
+          expect(s.rotation, closeTo(0, 1e-6), reason: '$where rotation');
+          expect(s.fillProgress, closeTo(1, 1e-6), reason: '$where fill');
+        }
       }
     });
 
+    // All six channels, not just the three a sine-driven wave happens to use.
+    // shake_loop moves in offsetX, wiggle_loop in rotation and
+    // colour_cycle_loop in fillProgress — so checking only offsetY/scale/
+    // opacity left every loop's *primary* channel untested, and a seam
+    // discontinuity in exactly the thing the user would see passed silently.
     test('a loop animation is seamless: p=0 and p=1 agree', () {
       for (final anim in kTextAnimations.where(
           (a) => a.category == TextAnimationCategory.loop)) {
-        final a0 = anim.stateAt(0.0, 2, 5);
-        final a1 = anim.stateAt(1.0, 2, 5);
-        expect(a1.offsetY, closeTo(a0.offsetY, 1e-6), reason: '${anim.id} offsetY seam');
-        expect(a1.scale, closeTo(a0.scale, 1e-6), reason: '${anim.id} scale seam');
-        expect(a1.opacity, closeTo(a0.opacity, 1e-6), reason: '${anim.id} opacity seam');
+        for (final (i, n) in _glyphSamples) {
+          final a0 = anim.stateAt(0.0, i, n);
+          final a1 = anim.stateAt(1.0, i, n);
+          final where = '${anim.id} i=$i n=$n';
+          expect(a1.opacity, closeTo(a0.opacity, 1e-6), reason: '$where opacity seam');
+          expect(a1.offsetX, closeTo(a0.offsetX, 1e-6), reason: '$where offsetX seam');
+          expect(a1.offsetY, closeTo(a0.offsetY, 1e-6), reason: '$where offsetY seam');
+          expect(a1.scale, closeTo(a0.scale, 1e-6), reason: '$where scale seam');
+          expect(a1.rotation, closeTo(a0.rotation, 1e-6), reason: '$where rotation seam');
+          expect(a1.fillProgress, closeTo(a0.fillProgress, 1e-6),
+              reason: '$where fill seam');
+        }
+      }
+    });
+
+    test('each loop actually moves the channel it is named for', () {
+      // Guards the test above from passing vacuously: a loop that did nothing
+      // would have a perfect seam on every channel.
+      double swing(TextAnimation a, double Function(TextGlyphState) channel) {
+        var lo = double.infinity, hi = double.negativeInfinity;
+        for (var s = 0; s <= 100; s++) {
+          final v = channel(a.stateAt(s / 100, 2, 6));
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+        return hi - lo;
+      }
+
+      expect(swing(textAnimationById('wave_loop')!, (s) => s.offsetY),
+          greaterThan(0.1), reason: 'wave_loop offsetY');
+      expect(swing(textAnimationById('pulse_loop')!, (s) => s.scale),
+          greaterThan(0.05), reason: 'pulse_loop scale');
+      expect(swing(textAnimationById('shake_loop')!, (s) => s.offsetX),
+          greaterThan(0.05), reason: 'shake_loop offsetX');
+      expect(swing(textAnimationById('wiggle_loop')!, (s) => s.rotation),
+          greaterThan(0.05), reason: 'wiggle_loop rotation');
+      expect(swing(textAnimationById('colour_cycle_loop')!, (s) => s.fillProgress),
+          greaterThan(0.5), reason: 'colour_cycle_loop fillProgress');
+    });
+
+    // Jitter from `Random()` would differ between the preview and the export,
+    // and between two draws of the same frame.
+    test('shake and wiggle are deterministic', () {
+      for (final id in ['shake_loop', 'wiggle_loop']) {
+        final anim = textAnimationById(id)!;
+        for (final (i, n) in _glyphSamples) {
+          for (final p in [0.0, 0.17, 0.5, 0.83, 1.0]) {
+            final a = anim.stateAt(p, i, n);
+            final b = anim.stateAt(p, i, n);
+            final where = '$id p=$p i=$i n=$n';
+            expect(b.opacity, a.opacity, reason: '$where opacity');
+            expect(b.offsetX, a.offsetX, reason: '$where offsetX');
+            expect(b.offsetY, a.offsetY, reason: '$where offsetY');
+            expect(b.scale, a.scale, reason: '$where scale');
+            expect(b.rotation, a.rotation, reason: '$where rotation');
+            expect(b.fillProgress, a.fillProgress, reason: '$where fill');
+          }
+        }
       }
     });
 
@@ -259,6 +342,40 @@ void main() {
       for (final a in kTextAnimations) {
         expect(resolveTextAnimation(a.id, a.category)?.id, a.id, reason: a.id);
       }
+    });
+
+    // The old arms were bare scaleXY / slideX / slideY with no fadeIn()/
+    // fadeOut() beside them (text_overlay_layer.dart:248-253 and :263-269).
+    // Adding a fade would change how an already-saved project looks — the same
+    // regression class as resolving a legacy id to the wrong slot.
+    test('legacy slides and zooms never touch opacity', () {
+      const legacy = [
+        'slide_up', 'slide_down', 'slide_left', 'slide_right',
+        'slide_up_out', 'slide_down_out', 'slide_left_out', 'slide_right_out',
+        'zoom_in', 'zoom_out', 'zoom_in_out', 'zoom_out_out',
+      ];
+      for (final id in legacy) {
+        final anim = textAnimationById(id)!;
+        for (var step = 0; step <= 40; step++) {
+          for (final (i, n) in _glyphSamples) {
+            expect(anim.stateAt(step / 40, i, n).opacity, 1.0,
+                reason: '$id faded at p=${step / 40} i=$i n=$n');
+          }
+        }
+      }
+    });
+
+    test('legacy slides and zooms still move or scale', () {
+      // Guards the test above from being satisfied by a curve that does
+      // nothing at all.
+      expect(textAnimationById('slide_up')!.stateAt(0, 0, 3).offsetY.abs(),
+          greaterThan(0.5));
+      expect(textAnimationById('slide_up_out')!.stateAt(1, 0, 3).offsetY.abs(),
+          greaterThan(0.5));
+      expect(textAnimationById('zoom_in')!.stateAt(0, 0, 3).scale, closeTo(0, 1e-9));
+      expect(textAnimationById('zoom_out')!.stateAt(0, 0, 3).scale, greaterThan(1.5));
+      expect(textAnimationById('zoom_in_out')!.stateAt(1, 0, 3).scale, closeTo(0, 1e-9));
+      expect(textAnimationById('zoom_out_out')!.stateAt(1, 0, 3).scale, closeTo(2, 1e-9));
     });
   });
 }

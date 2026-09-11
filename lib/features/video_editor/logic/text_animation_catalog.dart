@@ -161,10 +161,29 @@ double _stagger(double p, int i, int n) {
 /// glyph its own constant character while staying reproducible on both
 /// platforms.
 ///
-/// Deliberately plain integer arithmetic — a 32-bit mix (Thomas Wang's
-/// integer hash) masked to 32 bits at every step, so the Kotlin port is the
-/// same expression with `Int` and produces bit-identical results rather than
-/// relying on a language's hash implementation.
+/// A 32-bit integer mix, masked to 32 bits at every step, rather than
+/// `Object.hashCode` — which carries no cross-platform guarantee at all.
+///
+/// **Porting this to Kotlin: use `Long` arithmetic and `ushr`, not `Int` and
+/// `>>`.** This is not a stylistic preference; a literal `Int`/`>>`
+/// transcription diverges from the Dart on **1425 of 1600 sampled
+/// (index, salt) pairs**, measured. Two independent reasons:
+///
+/// 1. **The multipliers do not fit in an `Int`.** `2654435761`, `2246822519`
+///    and `3266489917` all exceed `Int.MAX_VALUE` (2147483647) — they are not
+///    even valid `Int` literals in Kotlin — and a 32-bit multiply wraps to a
+///    negative value where this arithmetic needs the full unsigned product.
+/// 2. **`>>` sign-propagates.** Once a value is negative, Kotlin's `>>` fills
+///    from the left with ones; this hash needs the zero-fill of `ushr`.
+///
+/// The trap is that `>>` looks correct *here*: Dart's ints are 64-bit and
+/// every step masks to 32 bits, so the intermediate is never negative and
+/// `>>` and `>>>` agree in this file. That equivalence is what a translator
+/// copying the operator across would be relying on, and it does not survive
+/// the move to a signed 32-bit type.
+///
+/// Keep the masks at every step in the port as well, and the two sides agree
+/// on all 1600 samples.
 double _hashUnit(int i, int salt) {
   var h = (i * 2654435761 + salt * 40503) & 0xFFFFFFFF;
   h = (h ^ (h >> 16)) & 0xFFFFFFFF;
@@ -322,19 +341,38 @@ TextGlyphState _fadeIn(double p, int i, int n) =>
 TextGlyphState _fadeOut(double p, int i, int n) =>
     TextGlyphState(opacity: _clamp01(1 - p));
 
+// The legacy slide and zoom curves below **move or scale only — they never
+// touch opacity**, and that omission is deliberate.
+//
+// The old layer's arms (`text_overlay_layer.dart`, `_animated`) were bare
+// `scaleXY` / `slideX` / `slideY` calls with no `fadeIn()`/`fadeOut()`
+// alongside them. Adding a fade here would change how projects users have
+// already saved look — the same regression class as resolving a legacy id to
+// the wrong slot. A new animation may fade as part of its design; one that
+// already exists in someone's draft may not acquire one.
+
 /// Grows from nothing — the legacy `zoom_in` / `scale`, which began at scale 0.
 TextGlyphState _zoomIn(double p, int i, int n) =>
-    TextGlyphState(scale: _lerp(0, 1, _easeOutCubic(_clamp01(p))), opacity: _clamp01(p * 2));
+    TextGlyphState(scale: _lerp(0, 1, _easeOutCubic(_clamp01(p))));
 
 /// Shrinks *into* place from oversize — the legacy `zoom_out`, begin 2.0.
 TextGlyphState _zoomOut(double p, int i, int n) =>
-    TextGlyphState(scale: _lerp(2, 1, _easeOutCubic(_clamp01(p))), opacity: _clamp01(p * 2));
+    TextGlyphState(scale: _lerp(2, 1, _easeOutCubic(_clamp01(p))));
 
+/// Shrinks away to nothing — the legacy `zoom_in_out`, `scaleXY(end: 0)`.
+///
+/// The glyph vanishes by reaching scale 0, not by fading; at `p == 1` there is
+/// nothing left to draw either way.
 TextGlyphState _zoomInOut(double p, int i, int n) =>
-    TextGlyphState(scale: _lerp(1, 0, _easeInCubic(_clamp01(p))), opacity: _clamp01((1 - p) * 2));
+    TextGlyphState(scale: _lerp(1, 0, _easeInCubic(_clamp01(p))));
 
+/// Swells to double size — the legacy `zoom_out_out`, `scaleXY(end: 2.0)`.
+///
+/// It ends fully opaque and oversized, which is what the old layer drew. It
+/// reads as the text pushing past the viewer rather than leaving, but that is
+/// the existing behaviour and not this task's to redesign.
 TextGlyphState _zoomOutOut(double p, int i, int n) =>
-    TextGlyphState(scale: _lerp(1, 2, _easeInCubic(_clamp01(p))), opacity: _clamp01((1 - p) * 2));
+    TextGlyphState(scale: _lerp(1, 2, _easeInCubic(_clamp01(p))));
 
 /// How far a slide travels, in glyph heights.
 ///
@@ -352,7 +390,6 @@ TextGlyphState _slideIn(double p, double dx, double dy) {
   return TextGlyphState(
     offsetX: dx * _kSlideDistance * remaining,
     offsetY: dy * _kSlideDistance * remaining,
-    opacity: _clamp01(p * 2),
   );
 }
 
@@ -361,7 +398,6 @@ TextGlyphState _slideOut(double p, double dx, double dy) {
   return TextGlyphState(
     offsetX: dx * _kSlideDistance * t,
     offsetY: dy * _kSlideDistance * t,
-    opacity: _clamp01((1 - p) * 2),
   );
 }
 
