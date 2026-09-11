@@ -100,6 +100,9 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.13.1
+  # Only to fake PathProviderPlatform.instance in tests that rasterise text —
+  # flutter_test has no host implementation for the path_provider channel.
+  path_provider_platform_interface: ^2.1.2
 
 flutter_launcher_icons:
   android: "ic_launcher"
