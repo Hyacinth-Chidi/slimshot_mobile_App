@@ -61,3 +61,23 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Media3 modules must all be on the same version.
+    val media3Version = "1.11.0"
+
+    // Playback: the two preview lanes.
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-common:$media3Version")
+
+    // Export output. The standalone muxer, without Transformer — Transformer's
+    // composition model cannot express a two-texture shader blend, so it cannot
+    // be the export engine (docs/dead-ends.md entry 3), but its muxer is worth
+    // having on its own: B-frames, edit lists, and Google's device quirk
+    // handling instead of the platform MediaMuxer's.
+    implementation("androidx.media3:media3-muxer:$media3Version")
+
+    // Deliberately absent: media3-ui (the preview is a Flutter texture, not a
+    // PlayerView), media3-effect and media3-transformer (nothing references
+    // them now that the Transformer export route is ruled out).
+}

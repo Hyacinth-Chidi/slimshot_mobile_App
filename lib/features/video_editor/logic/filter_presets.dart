@@ -310,4 +310,17 @@ class FilterPresets {
   static List<FilterPreset> getByCategory(String category) {
     return allPresets.where((p) => p.category == category).toList();
   }
+
+  /// Looks a preset up by the id stored on a clip or in a draft.
+  ///
+  /// Returns null for an unknown id rather than throwing, so a filter retired
+  /// in a later build degrades to no filter instead of failing to open the
+  /// project. Ids are persisted — renaming one needs a migration.
+  static FilterPreset? byId(String? id) {
+    if (id == null || id.isEmpty) return null;
+    for (final preset in allPresets) {
+      if (preset.id == id) return preset;
+    }
+    return null;
+  }
 }

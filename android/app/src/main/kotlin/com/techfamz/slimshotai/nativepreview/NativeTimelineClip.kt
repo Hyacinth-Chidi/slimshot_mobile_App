@@ -1,0 +1,183 @@
+package com.techfamz.slimshotai.nativepreview
+
+/**
+ * One clip as resolved by the Dart timeline composer.
+ *
+ * Source ranges are **whole** — nothing is trimmed to make room for a
+ * transition. Two clips joined by a transition overlap in timeline time and are
+ * assigned different [laneIndex] values so both can decode at once.
+ */
+internal data class NativeTimelineClip(
+    val id: String,
+    val sourceVideoPath: String,
+    val playbackVideoPath: String,
+    val sourceStart: Double,
+    val sourceEnd: Double,
+    val timelineStart: Double,
+    val timelineEnd: Double,
+    val speed: Double,
+    val volume: Double,
+    val isReversed: Boolean,
+    val hasPreparedProxy: Boolean,
+    val needsReverseProxy: Boolean,
+    val laneIndex: Int,
+    val isImage: Boolean,
+    val sourceWidth: Double,
+    val sourceHeight: Double,
+    /**
+     * This clip's own colour filter, in Flutter's 4x5 `ColorFilter.matrix`
+     * layout with the offsets on a 0-255 scale, or null when ungraded.
+     *
+     * Applied to this clip before a transition blends it, so two clips carrying
+     * different filters cross-fade between their looks. The project-wide filter
+     * is separate and is applied once to the finished frame.
+     */
+    val colorMatrix: FloatArray?,
+    /**
+     * The user's pinch scale on top of the contain fit — 1.0 is the plain fit,
+     * above it crops toward fill, below it shrinks into the background.
+     */
+    val canvasScale: Double,
+    /** Where the clip's centre is dragged to, offset from canvas centre. */
+    val canvasOffsetX: Double,
+    val canvasOffsetY: Double,
+) {
+    /** Shape of this clip's own frame, or zero when it could not be probed. */
+    val sourceAspect: Double
+        get() = if (sourceWidth <= 0.0 || sourceHeight <= 0.0) {
+            0.0
+        } else {
+            sourceWidth / sourceHeight
+        }
+
+    val timelineDuration: Double
+        get() = timelineEnd - timelineStart
+
+    /**
+     * Source position for a given timeline instant.
+     *
+     * Both clips in a transition resolve their position through this from the
+     * one shared clock, which is what keeps the two decoders in step.
+     */
+    fun sourceAt(timelineSeconds: Double): Double {
+        val offset = (timelineSeconds - timelineStart) * speed
+        return (sourceStart + offset).coerceIn(sourceStart, sourceEnd)
+    }
+
+    fun contains(timelineSeconds: Double): Boolean {
+        return timelineSeconds >= timelineStart && timelineSeconds < timelineEnd
+    }
+
+    companion object {
+        /** Shortest source span a clamped clip is given, in seconds. */
+        private const val MIN_SOURCE_SPAN = 0.05
+
+        fun fromMap(map: Map<*, *>, fallbackSource: String): NativeTimelineClip? {
+            val id = map["id"] as? String ?: return null
+            val sourceVideoPath = (map["sourceVideoPath"] as? String)
+                ?.takeIf { it.isNotBlank() }
+                ?: fallbackSource
+            if (sourceVideoPath.isBlank()) return null
+
+            val playbackVideoPath = (map["playbackVideoPath"] as? String)
+                ?.takeIf { it.isNotBlank() }
+                ?: (map["overrideVideoPath"] as? String)?.takeIf { it.isNotBlank() }
+                ?: sourceVideoPath
+
+            val isImage = map["isImage"] as? Boolean ?: false
+
+            val sourceStart = map.number("sourceStart") ?: return null
+            val rawSourceEnd = map.number("sourceEnd") ?: return null
+
+            val timelineStart = map.number("timelineStart") ?: 0.0
+            val speed = (map.number("speed") ?: 1.0).coerceAtLeast(0.01)
+            val timelineEnd = map.number("timelineEnd")
+                ?: (timelineStart + ((rawSourceEnd - sourceStart) / speed))
+
+            // A degenerate source range must never remove the clip.
+            //
+            // Dropping it here left the engine playing a shorter timeline than
+            // the one the editor was drawing: the clip's neighbours closed the
+            // gap, so playback skipped straight past a clip the user could
+            // still see. An image legitimately has no source range at all, and
+            // a video can arrive mid-edit with a momentarily inverted one.
+            // Both are clamped to something playable instead.
+            val sourceEnd = if (rawSourceEnd > sourceStart) {
+                rawSourceEnd
+            } else {
+                sourceStart + ((timelineEnd - timelineStart) * speed).coerceAtLeast(MIN_SOURCE_SPAN)
+            }
+            val volume = (map.number("volume") ?: 1.0).coerceIn(0.0, 1.0)
+            val isReversed = map["isReversed"] as? Boolean ?: false
+            val hasPreparedProxy = map["hasPreparedProxy"] as? Boolean
+                ?: (playbackVideoPath != sourceVideoPath)
+
+            return NativeTimelineClip(
+                id = id,
+                sourceVideoPath = sourceVideoPath,
+                playbackVideoPath = playbackVideoPath,
+                sourceStart = sourceStart,
+                sourceEnd = sourceEnd,
+                timelineStart = timelineStart,
+                timelineEnd = timelineEnd,
+                speed = speed,
+                volume = volume,
+                isReversed = isReversed,
+                hasPreparedProxy = hasPreparedProxy,
+                needsReverseProxy = map["needsReverseProxy"] as? Boolean
+                    ?: (isReversed && !hasPreparedProxy),
+                laneIndex = (map["laneIndex"] as? Number)?.toInt() ?: 0,
+                isImage = isImage,
+                sourceWidth = map.number("sourceWidth") ?: 0.0,
+                sourceHeight = map.number("sourceHeight") ?: 0.0,
+                colorMatrix = map.matrix("colorMatrix"),
+                canvasScale = (map.number("canvasScale") ?: 1.0).coerceIn(0.05, 16.0),
+                canvasOffsetX = map.number("canvasOffsetX") ?: 0.0,
+                canvasOffsetY = map.number("canvasOffsetY") ?: 0.0,
+            )
+        }
+
+        private fun Map<*, *>.number(key: String): Double? {
+            return (this[key] as? Number)?.toDouble()
+        }
+
+        /** A 4x5 colour matrix, or null if absent or the wrong shape. */
+        private fun Map<*, *>.matrix(key: String): FloatArray? {
+            val values = this[key] as? List<*> ?: return null
+            if (values.size < 20) return null
+            return FloatArray(20) { (values[it] as? Number)?.toFloat() ?: 0f }
+        }
+    }
+}
+
+/**
+ * Reads the clip list out of a composed timeline.
+ *
+ * Shared by playback and export so both walk the *same* clips. If export chose
+ * its list differently it could render a timeline the user never previewed —
+ * which is the failure the timeline contract exists to prevent.
+ */
+internal object NativeTimelineClips {
+
+    fun fromTimeline(timeline: Map<String, Any?>): List<NativeTimelineClip> {
+        val hasTransitions = (timeline["transitions"] as? List<*>)?.isNotEmpty() == true
+
+        // Without transitions the merged playback list is the better source:
+        // adjacent cuts from one file collapse into a single item, so nothing
+        // is torn down at a plain split. With transitions the clips must stay
+        // separate and whole, because two of them overlap.
+        val rawClips = if (hasTransitions) {
+            (timeline["videoClips"] as? List<*>) ?: (timeline["segments"] as? List<*>)
+        } else {
+            (timeline["playbackClips"] as? List<*>)
+                ?: (timeline["videoClips"] as? List<*>)
+                ?: (timeline["segments"] as? List<*>)
+        } ?: return emptyList()
+
+        val fallbackSource = timeline["sourceVideoPath"] as? String ?: ""
+        return rawClips.mapNotNull { raw ->
+            val map = raw as? Map<*, *> ?: return@mapNotNull null
+            NativeTimelineClip.fromMap(map, fallbackSource)
+        }
+    }
+}

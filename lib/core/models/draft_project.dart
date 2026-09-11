@@ -8,6 +8,12 @@ class DraftProject {
   final double durationSeconds;
   final String? thumbnailPath;
   
+  /// Every imported file in the project.
+  ///
+  /// Empty for drafts written before projects could hold more than one file;
+  /// those are migrated on load from [sourceVideoPath] and [durationSeconds].
+  final List<Map<String, dynamic>> assets;
+
   // Serialized editor state
   final List<Map<String, dynamic>> segments;
   final List<Map<String, dynamic>> textOverlays;
@@ -38,6 +44,7 @@ class DraftProject {
     required this.updatedAt,
     required this.durationSeconds,
     this.thumbnailPath,
+    this.assets = const [],
     required this.segments,
     required this.textOverlays,
     required this.imageOverlays,
@@ -64,6 +71,7 @@ class DraftProject {
       'updatedAt': updatedAt.toIso8601String(),
       'durationSeconds': durationSeconds,
       'thumbnailPath': thumbnailPath,
+      'assets': assets,
       'segments': segments,
       'textOverlays': textOverlays,
       'imageOverlays': imageOverlays,
@@ -91,12 +99,15 @@ class DraftProject {
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       durationSeconds: (json['durationSeconds'] as num).toDouble(),
       thumbnailPath: json['thumbnailPath'] as String?,
+      assets: List<Map<String, dynamic>>.from(json['assets'] as List? ?? []),
       segments: List<Map<String, dynamic>>.from(json['segments'] as List? ?? []),
       textOverlays: List<Map<String, dynamic>>.from(json['textOverlays'] as List? ?? []),
       imageOverlays: List<Map<String, dynamic>>.from(json['imageOverlays'] as List? ?? []),
       videoOverlays: List<Map<String, dynamic>>.from(json['videoOverlays'] as List? ?? []),
       audioTracks: List<Map<String, dynamic>>.from(json['audioTracks'] as List? ?? []),
-      selectedRatioName: json['selectedRatioName'] as String? ?? 'custom',
+      // A draft predating the ratio feature never had a crop, so it reopens on
+      // the 9:16 default rather than the freeform custom path.
+      selectedRatioName: json['selectedRatioName'] as String? ?? 'ratio9x16',
       customCropRect: (json['customCropRect'] as List?)?.map((e) => (e as num).toDouble()).toList() ?? [0.0, 0.0, 1.0, 1.0],
       videoScale: (json['videoScale'] as num?)?.toDouble() ?? 1.0,
       videoPanX: (json['videoPanX'] as num?)?.toDouble() ?? 0.0,

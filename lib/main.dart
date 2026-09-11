@@ -7,11 +7,11 @@ import 'package:animations/animations.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/file_utils.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:media_kit/media_kit.dart';
 
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/services/ad_service.dart';
+import 'core/services/media_picker_service.dart';
 import 'core/models/update_info.dart';
 import 'core/models/draft_project.dart';
 import 'screens/onboarding_screen.dart';
@@ -33,7 +33,8 @@ import 'features/sharing/share_intent_service.dart';
 Future<void> main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-  MediaKit.ensureInitialized();
+  // Use the system gallery sheet for picking rather than the Files app.
+  MediaPickerService.enableAndroidPhotoPicker();
   MobileAds.instance.initialize();
   AdService.loadInterstitialAd(); // Start background preload immediately
   AdService.loadRewardedAd(); // Start background preload for Rewarded Ads
@@ -145,12 +146,18 @@ GoRouter createAppRouter(String initialRoute) {
         path: '/edit/video',
         pageBuilder: (context, state) {
           final extra = state.extra;
-          final initialVideo = extra is XFile ? extra : null;
           final draft = extra is DraftProject ? extra : null;
+          // A project can start from several photos and videos at once, so the
+          // route accepts a list as well as the single-file and draft forms.
+          final initialMedia = switch (extra) {
+            final List<XFile> files => files,
+            final XFile file => [file],
+            _ => const <XFile>[],
+          };
           return _buildTransitionPage(
             state: state,
             child: VideoEditorScreen(
-              initialVideo: initialVideo,
+              initialMedia: initialMedia,
               draft: draft,
             ),
           );

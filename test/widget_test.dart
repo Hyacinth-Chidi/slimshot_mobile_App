@@ -11,6 +11,7 @@ void main() {
     await tester.pumpWidget(
       const ProviderScope(child: SlimShotApp(enableShareIntents: false)),
     );
+    await tester.pumpAndSettle();
 
     expect(find.byType(SlimShotApp), findsOneWidget);
   });

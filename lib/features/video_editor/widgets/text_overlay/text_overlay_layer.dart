@@ -1,15 +1,33 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-
+import '../../logic/text_overlay_geometry.dart';
 import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
-import '../../utils/font_utils.dart';
 
+/// Text overlays on the preview canvas, with their selection frame.
+///
+/// Two things are drawn per overlay and they are deliberately separate:
+///
+/// - **The body** — the text box measured by [TextOverlayLayout], scaled and
+///   rotated about its centre. It is laid out inside a square big enough to
+///   hold the box at any scale and rotation, because every `RenderBox` gates
+///   hit-testing on its own size: a `Transform.scale`d child is untouchable
+///   outside its parent's unscaled rect, which is why the old layer's text
+///   could not be grabbed once it was scaled up. The gesture detector sits
+///   innermost, on the real box, so only the visible text catches a finger.
+/// - **The frame** — a sibling drawn in *canvas* space from the body's
+///   transformed corners. Handles keep one screen size whatever the text's
+///   scale (CapCut's behaviour), and their drags are computed against the
+///   box's centre and axes, so they feel the same on a rotated box.
+///
+/// Every drag is anchor-based (start value + total displacement), never a
+/// running sum of deltas — a clamped frame would otherwise leave the handle
+/// offset from the finger, the lesson the timeline's trim handles taught.
 class TextOverlayLayer extends ConsumerStatefulWidget {
   final Size videoCanvasSize;
   final void Function(TextOverlayModel, bool) onShowTextEditor;
@@ -27,507 +45,504 @@ class TextOverlayLayer extends ConsumerStatefulWidget {
 }
 
 class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
-  Offset _textBasePan = Offset.zero;
-  Offset _textBaseFocalPoint = Offset.zero;
-  double _textBaseScale = 1.0;
-  double _textBaseRotation = 0.0;
+  // Body gesture (one-finger move, pinch scale, two-finger rotate).
+  Offset _bodyBasePosition = Offset.zero;
+  Offset _bodyBaseFocal = Offset.zero;
+  double _bodyBaseScale = 1.0;
+  double _bodyBaseRotation = 0.0;
 
-  // Track absolute gesture drag state for resizing handles to prevent jitter
-  double _resizeBaseScale = 1.0;
-  double _resizeBaseWidth = 0.0;
-  double _accumulatedResizeDx = 0.0;
-  double _accumulatedResizeDy = 0.0;
+  // Corner rotate/scale handle.
+  Offset _handleCenter = Offset.zero;
+  Offset _handleStartVector = Offset.zero;
+  double _handleBaseScale = 1.0;
+  double _handleBaseRotation = 0.0;
+
+  // Edge width handles.
+  double _widthBase = 0.0;
+  Offset _widthBasePosition = Offset.zero;
+  Offset _widthStartLocal = Offset.zero;
+
+  /// Rotations within this of a right angle snap to it — a box that is
+  /// meant to be straight ends up exactly straight.
+  static const double _kSnapRadians = 3 * math.pi / 180;
+
+  static const double _kHandleHitSize = 44.0;
+
+  VideoEditorNotifier get _notifier => ref.read(videoEditorProvider.notifier);
 
   @override
   Widget build(BuildContext context) {
     final editorState = ref.watch(videoEditorProvider);
-    final notifier = ref.read(videoEditorProvider.notifier);
+    final canvasSize = widget.videoCanvasSize;
+    final currentPosMs = (editorState.currentPlaybackPosition * 1000).toInt();
 
-    return Stack(
-      clipBehavior: Clip.hardEdge,
-      children: _buildTextOverlays(
-        widget.videoCanvasSize,
-        (editorState.currentPlaybackPosition * 1000).toInt(),
-        editorState.textOverlays,
-        editorState.selectedTextId,
-        notifier.selectTextOverlay,
-        notifier.updateTextOverlay,
-        widget.onShowTextEditor,
-      ),
-    );
-  }
+    final children = <Widget>[];
+    Widget? selectedFrame;
 
-  List<Widget> _buildTextOverlays(
-    Size canvasSize,
-    int currentPosMs,
-    List<TextOverlayModel> textOverlays,
-    String? selectedTextId,
-    void Function(String?) onTextTapped,
-    void Function(String, TextOverlayModel Function(TextOverlayModel)) onUpdateTextOverlay,
-    void Function(TextOverlayModel, bool) onShowTextEditor,
-  ) {
-    var filteredOverlays = textOverlays;
-    if (widget.targetLaneIndex != null) {
-      filteredOverlays = filteredOverlays.where((o) => o.laneIndex == widget.targetLaneIndex).toList();
-    }
-
-    final List<Widget> children = [];
-    for (final overlay in filteredOverlays) {
-      final startMs = overlay.startTime.inMilliseconds;
-      final endMs = overlay.endTime.inMilliseconds;
-      
-      // Only show if within time bounds
-      if (currentPosMs < startMs || currentPosMs >= endMs) {
+    for (final overlay in editorState.textOverlays) {
+      if (widget.targetLaneIndex != null &&
+          overlay.laneIndex != widget.targetLaneIndex) {
         continue;
       }
+      final startMs = overlay.startTime.inMilliseconds;
+      final endMs = overlay.endTime.inMilliseconds;
+      if (currentPosMs < startMs || currentPosMs >= endMs) continue;
 
-      final refSize = overlay.referenceCanvasSize;
-      final scaleX = refSize != null && refSize.width > 0 ? canvasSize.width / refSize.width : 1.0;
-      final scaleY = refSize != null && refSize.height > 0 ? canvasSize.height / refSize.height : 1.0;
-      final renderScale = math.min(scaleX, scaleY);
+      final layout = TextOverlayLayout.measure(overlay, canvasSize);
+      final center = textOverlayCenter(overlay, canvasSize, layout.renderScale);
+      final isSelected = overlay.id == editorState.selectedTextId;
 
-      final isSelected = overlay.id == selectedTextId;
-      final padX = isSelected ? 24.0 / overlay.scale : 0.0;
-      final padY = isSelected ? 64.0 / overlay.scale : 0.0;
-      
-      final clampedPosition = _clampTextPosition(
-        overlay,
-        overlay.position,
-        canvasSize: canvasSize,
-        renderScale: renderScale,
-      );
-      final textSize = _measureTextOverlaySize(overlay, canvasSize, renderScale);
-      final left = ((canvasSize.width - textSize.width) / 2) + (clampedPosition.dx * renderScale) - padX;
-      final top = ((canvasSize.height - textSize.height) / 2) + (clampedPosition.dy * renderScale) - padY;
-
-      final shadows = overlay.shadowColor != Colors.transparent && overlay.shadowBlurRadius > 0
-          ? [Shadow(color: overlay.shadowColor, blurRadius: overlay.shadowBlurRadius * renderScale, offset: Offset((overlay.shadowBlurRadius * renderScale) / 2, (overlay.shadowBlurRadius * renderScale) / 2))]
-          : <Shadow>[];
-
-      Widget textFill = Text(
-        overlay.text,
-        style: getFontStyle(
-          overlay.fontFamily,
-          fontSize: 32 * renderScale,
-          color: overlay.color,
-          height: 1.15,
-          shadows: shadows,
-        ),
-        textAlign: overlay.textAlign == 'left' ? TextAlign.left : overlay.textAlign == 'right' ? TextAlign.right : overlay.textAlign == 'justify' ? TextAlign.justify : TextAlign.center,
-      );
-
-      Widget textWidget = textFill;
-
-      // Add stroke if needed
-      if (overlay.strokeColor != Colors.transparent && overlay.strokeWidth > 0) {
-        Widget textStroke = Text(
-          overlay.text,
-          style: getFontStyle(
-            overlay.fontFamily,
-            fontSize: 32 * renderScale,
-            height: 1.15,
-            foreground: Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = overlay.strokeWidth * renderScale
-              ..color = overlay.strokeColor,
-            shadows: shadows,
-          ),
-          textAlign: overlay.textAlign == 'left' ? TextAlign.left : overlay.textAlign == 'right' ? TextAlign.right : overlay.textAlign == 'justify' ? TextAlign.justify : TextAlign.center,
-        );
-        textWidget = Stack(
-          alignment: Alignment.center,
-          children: [textStroke, textFill],
-        );
+      children.add(_buildBody(overlay, layout, center, isSelected));
+      if (isSelected) {
+        // Built after the loop so it paints above every body, whichever lane
+        // the selected text is on.
+        selectedFrame = _buildFrame(overlay, layout, center);
       }
+    }
+    if (selectedFrame != null) children.add(selectedFrame);
 
-      // Add background if needed
-      if (overlay.backgroundColor != Colors.transparent) {
-        textWidget = Container(
-          decoration: BoxDecoration(
-            color: overlay.backgroundColor,
-            borderRadius: BorderRadius.circular(overlay.borderRadius * renderScale),
-          ),
-          padding: EdgeInsets.symmetric(horizontal: overlay.backgroundPadding * renderScale, vertical: (overlay.backgroundPadding / 2) * renderScale),
-          child: textWidget,
-        );
-      }
+    return Stack(clipBehavior: Clip.none, children: children);
+  }
 
-      // Apply Animations
-      if (overlay.inAnimation != 'none') {
-        final anim = textWidget.animate();
-        switch (overlay.inAnimation) {
-          case 'fade_in': textWidget = anim.fadeIn(); break;
-          case 'zoom_in': textWidget = anim.scaleXY(begin: 0); break;
-          case 'zoom_out': textWidget = anim.scaleXY(begin: 2.0, end: 1.0); break;
-          case 'slide_up': textWidget = anim.slideY(begin: 1); break;
-          case 'slide_down': textWidget = anim.slideY(begin: -1); break;
-          case 'slide_left': textWidget = anim.slideX(begin: 1); break;
-          case 'slide_right': textWidget = anim.slideX(begin: -1); break;
-          // Legacy compat
-          case 'fade': textWidget = anim.fadeIn(); break;
-          case 'scale': textWidget = anim.scaleXY(begin: 0); break;
-        }
-      }
+  // ---------------------------------------------------------------- body --
 
-      // We could add outAnimation logic here using .delay() based on (endMs - startMs - 500)
-      if (overlay.outAnimation != 'none') {
-        final outDelay = Duration(milliseconds: (endMs - startMs) - 500);
-        if (outDelay.isNegative) {
-           // Skip out animation if clip is too short
-        } else {
-           var anim = textWidget.animate(delay: outDelay);
-           switch (overlay.outAnimation) {
-             case 'fade_out': textWidget = anim.fadeOut(); break;
-             case 'zoom_in_out': textWidget = anim.scaleXY(end: 0); break;
-             case 'zoom_out_out': textWidget = anim.scaleXY(end: 2.0); break;
-             case 'slide_up_out': textWidget = anim.slideY(end: -1); break;
-             case 'slide_down_out': textWidget = anim.slideY(end: 1); break;
-             case 'slide_left_out': textWidget = anim.slideX(end: -1); break;
-             case 'slide_right_out': textWidget = anim.slideX(end: 1); break;
-             // Legacy compat
-             case 'fade': textWidget = anim.fadeOut(); break;
-             case 'scale': textWidget = anim.scaleXY(end: 0); break;
-           }
-        }
-      }
+  Widget _buildBody(
+    TextOverlayModel overlay,
+    TextOverlayLayout layout,
+    Offset center,
+    bool isSelected,
+  ) {
+    final box = layout.boxSize;
+    final scale = overlay.scale;
+    final scaledDiagonal =
+        math.sqrt(box.width * box.width + box.height * box.height) * scale;
+    // Holds the scaled box at any rotation *and* the unscaled box, which is
+    // what the inverse transforms hand the hit test on the way in.
+    final side = math.max(scaledDiagonal, math.max(box.width, box.height));
 
-      // Key wraps the ENTIRE animated widget so changing animation type
-      // forces Flutter to tear down old Animate controller and rebuild fresh
-      textWidget = KeyedSubtree(
-        key: ValueKey('${overlay.id}_${overlay.inAnimation}_${overlay.outAnimation}'),
-        child: textWidget,
-      );
+    Widget content = _textBox(overlay, layout);
+    content = _animated(overlay, content);
 
-      children.add(Positioned(
-        left: left,
-        top: top,
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () {
-            onTextTapped(overlay.id);
-            onShowTextEditor(overlay, false);
-          },
-          onDoubleTap: () {
-            onTextTapped(overlay.id);
-            onShowTextEditor(overlay, true);
-          },
-          onScaleStart: (details) {
-            if (!isSelected) return;
-            _textBasePan = overlay.position;
-            _textBaseFocalPoint = details.focalPoint;
-            _textBaseScale = overlay.scale;
-            _textBaseRotation = overlay.rotation;
-          },
-          onScaleUpdate: (details) {
-            if (!isSelected) return;
-            final newScale = (_textBaseScale * details.scale).clamp(0.2, 5.0);
-            final newRotation = _textBaseRotation + details.rotation;
-            final movedPosition =
-                _textBasePan + ((details.focalPoint - _textBaseFocalPoint) / renderScale);
-            final updatedOverlay = overlay.copyWith(
-              scale: newScale,
-              rotation: newRotation,
-            );
-            final clamped = _clampTextPosition(
-              updatedOverlay,
-              movedPosition,
-              canvasSize: canvasSize,
-              renderScale: renderScale,
-            );
-
-            onUpdateTextOverlay(
-              overlay.id,
-              (_) => updatedOverlay.copyWith(position: clamped),
-            );
-          },
-          child: Transform.scale(
-            scale: overlay.scale,
-            child: Transform.rotate(
-              angle: overlay.rotation,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: padX, vertical: padY),
-                    child: Container(
-                      constraints: BoxConstraints(
-                        maxWidth: math.max(120.0 * renderScale, ((overlay.boxWidth ?? (overlay.referenceCanvasSize?.width ?? canvasSize.width)) - 32) * renderScale),
-                        minWidth: overlay.boxWidth != null ? math.max(120.0 * renderScale, (overlay.boxWidth! - 32) * renderScale) : 0,
+    return Positioned(
+      left: center.dx - side / 2,
+      top: center.dy - side / 2,
+      width: side,
+      height: side,
+      child: Transform.rotate(
+        angle: overlay.rotation,
+        child: Transform.scale(
+          scale: scale,
+          child: Center(
+            child: SizedBox(
+              width: box.width,
+              height: box.height,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  // First tap selects; a tap on the selected text opens the
+                  // editor. Opening on every tap made a text impossible to
+                  // move — the sheet is modal and took the canvas away.
+                  if (!isSelected) {
+                    _notifier.selectTextOverlay(overlay.id);
+                  } else {
+                    widget.onShowTextEditor(overlay, false);
+                  }
+                },
+                onDoubleTap: () {
+                  _notifier.selectTextOverlay(overlay.id);
+                  widget.onShowTextEditor(overlay, true);
+                },
+                onScaleStart: (details) {
+                  if (!isSelected) _notifier.selectTextOverlay(overlay.id);
+                  _notifier.saveStateForUndo();
+                  _bodyBasePosition = overlay.position;
+                  _bodyBaseFocal = details.focalPoint;
+                  _bodyBaseScale = overlay.scale;
+                  _bodyBaseRotation = overlay.rotation;
+                },
+                onScaleUpdate: (details) {
+                  final renderScale = layout.renderScale;
+                  final moved = _bodyBasePosition +
+                      (details.focalPoint - _bodyBaseFocal) / renderScale;
+                  final newScale = (_bodyBaseScale * details.scale)
+                      .clamp(kMinTextScale, kMaxTextScale);
+                  final newRotation =
+                      _snapRotation(_bodyBaseRotation + details.rotation);
+                  _notifier.updateTextOverlayLive(
+                    overlay.id,
+                    (o) => o.copyWith(
+                      position: clampTextOverlayPosition(
+                        moved,
+                        widget.videoCanvasSize,
+                        renderScale,
                       ),
-                      padding: EdgeInsets.all(8 * renderScale),
-                      child: textWidget,
+                      scale: newScale,
+                      rotation: newRotation,
                     ),
-                  ),
-                  if (isSelected) ...[
-                    Positioned(
-                      top: padY,
-                      bottom: padY,
-                      left: padX,
-                      right: padX,
-                      child: CustomPaint(
-                        painter: _DashedBorderPainter(
-                          strokeWidth: 2 / overlay.scale,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ),
-                    Positioned(top: padY, left: padX, child: FractionalTranslation(translation: const Offset(-0.5, -0.5), child: Transform.scale(scale: 1 / overlay.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, -1, -1, renderScale, onUpdateTextOverlay))))),
-                    Positioned(top: padY, right: padX, child: FractionalTranslation(translation: const Offset(0.5, -0.5), child: Transform.scale(scale: 1 / overlay.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, 1, -1, renderScale, onUpdateTextOverlay))))),
-                    Positioned(bottom: padY, left: padX, child: FractionalTranslation(translation: const Offset(-0.5, 0.5), child: Transform.scale(scale: 1 / overlay.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, -1, 1, renderScale, onUpdateTextOverlay))))),
-                    Positioned(bottom: padY, right: padX, child: FractionalTranslation(translation: const Offset(0.5, 0.5), child: Transform.scale(scale: 1 / overlay.scale, child: _buildFreeformResizeDot((_) => _handleFreeformResizeStart(overlay, renderScale), (d) => _handleFreeformResizeUpdate(d, overlay, 1, 1, renderScale, onUpdateTextOverlay))))),
-                    
-                    Positioned(
-                      top: padY,
-                      bottom: padY,
-                      left: padX,
-                      child: FractionalTranslation(translation: const Offset(-0.5, 0), child: Transform.scale(scale: 1 / overlay.scale, child: _buildSideDot((_) => _handleFreeformResizeStart(overlay, renderScale), (d) => _handleFreeformResizeUpdate(d, overlay, -1, 0, renderScale, onUpdateTextOverlay))))
-                    ),
-                    Positioned(
-                      top: padY,
-                      bottom: padY,
-                      right: padX,
-                      child: FractionalTranslation(translation: const Offset(0.5, 0), child: Transform.scale(scale: 1 / overlay.scale, child: _buildSideDot((_) => _handleFreeformResizeStart(overlay, renderScale), (d) => _handleFreeformResizeUpdate(d, overlay, 1, 0, renderScale, onUpdateTextOverlay))))
-                    ),
-                  ],
-                ],
+                  );
+                },
+                child: content,
               ),
             ),
           ),
         ),
-      ));
+      ),
+    );
+  }
+
+  /// The box exactly as [TextOverlayLayout] measured it: outer padding, the
+  /// background's insets, then the text laid out at [TextOverlayLayout.textWidth]
+  /// so a widened box aligns its lines the way the raster will.
+  Widget _textBox(TextOverlayModel overlay, TextOverlayLayout layout) {
+    final renderScale = layout.renderScale;
+    final textAlign = TextOverlayLayout.textAlignFor(overlay);
+
+    Widget text = Text(
+      overlay.text,
+      style: TextOverlayLayout.fillStyleFor(overlay, renderScale),
+      textAlign: textAlign,
+      textScaler: TextScaler.noScaling,
+    );
+    if (TextOverlayLayout.hasStroke(overlay)) {
+      text = Stack(
+        alignment: Alignment.center,
+        children: [
+          Text(
+            overlay.text,
+            style: TextOverlayLayout.strokeStyleFor(overlay, renderScale),
+            textAlign: textAlign,
+            textScaler: TextScaler.noScaling,
+          ),
+          text,
+        ],
+      );
     }
-    return children;
-  }
+    text = SizedBox(width: layout.textWidth, height: layout.textHeight, child: text);
 
-  Size _measureTextOverlaySize(TextOverlayModel overlay, Size canvasSize, double renderScale) {
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: overlay.text,
-        style: getFontStyle(
-          overlay.fontFamily,
-          color: overlay.color,
-          fontSize: 32 * renderScale,
-          height: 1.15,
+    if (layout.hasBackground) {
+      text = Container(
+        decoration: BoxDecoration(
+          color: overlay.backgroundColor,
+          borderRadius: BorderRadius.circular(overlay.borderRadius * renderScale),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-      textAlign: overlay.textAlign == 'left' ? TextAlign.left : overlay.textAlign == 'right' ? TextAlign.right : overlay.textAlign == 'justify' ? TextAlign.justify : TextAlign.center,
+        padding: EdgeInsets.symmetric(
+          horizontal: layout.backgroundPaddingH,
+          vertical: layout.backgroundPaddingV,
+        ),
+        child: text,
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.all(layout.outerPadding),
+      child: text,
     );
-    final maxWidth = overlay.referenceCanvasSize?.width ?? (canvasSize.width == 0 ? double.infinity : canvasSize.width);
-    final outerMaxWidth = math.max(120.0, (overlay.boxWidth ?? maxWidth) - 32.0) * renderScale;
-    final hasBg = overlay.backgroundColor != Colors.transparent;
-    final totalPaddingH = (16.0 + (hasBg ? overlay.backgroundPadding * 2 : 0.0)) * renderScale;
-    final totalPaddingV = (16.0 + (hasBg ? overlay.backgroundPadding : 0.0)) * renderScale;
-    final innerMaxWidth = math.max(0.0, outerMaxWidth - totalPaddingH);
-
-    textPainter.layout(minWidth: 0, maxWidth: innerMaxWidth);
-    return Size(textPainter.width + totalPaddingH, textPainter.height + totalPaddingV);
   }
 
-
-
-  Offset _clampTextPosition(
-    TextOverlayModel overlay,
-    Offset position, {
-    Size? canvasSize,
-    double renderScale = 1.0,
-  }) {
-    final size = canvasSize ?? widget.videoCanvasSize;
-    // Allow the center of the text to reach the edges of the canvas
-    final maxDx = size.width / 2;
-    final maxDy = size.height / 2;
-    
-    // Convert current position (which is in reference coords) to render coords for clamping,
-    // then back to reference coords.
-    final renderPos = position * renderScale;
-    final clampedRenderPos = Offset(
-      renderPos.dx.clamp(-maxDx, maxDx).toDouble(),
-      renderPos.dy.clamp(-maxDy, maxDy).toDouble(),
+  Widget _animated(TextOverlayModel overlay, Widget child) {
+    var widget = child;
+    if (overlay.inAnimation != 'none') {
+      final anim = widget.animate();
+      widget = switch (overlay.inAnimation) {
+        'fade_in' || 'fade' => anim.fadeIn(),
+        'zoom_in' || 'scale' => anim.scaleXY(begin: 0),
+        'zoom_out' => anim.scaleXY(begin: 2.0, end: 1.0),
+        'slide_up' => anim.slideY(begin: 1),
+        'slide_down' => anim.slideY(begin: -1),
+        'slide_left' => anim.slideX(begin: 1),
+        'slide_right' => anim.slideX(begin: -1),
+        _ => widget,
+      };
+    }
+    if (overlay.outAnimation != 'none') {
+      final outDelay = overlay.endTime - overlay.startTime - const Duration(milliseconds: 500);
+      if (!outDelay.isNegative) {
+        final anim = widget.animate(delay: outDelay);
+        widget = switch (overlay.outAnimation) {
+          'fade_out' || 'fade' => anim.fadeOut(),
+          'zoom_in_out' => anim.scaleXY(end: 0),
+          'scale' => anim.scaleXY(end: 0),
+          'zoom_out_out' => anim.scaleXY(end: 2.0),
+          'slide_up_out' => anim.slideY(end: -1),
+          'slide_down_out' => anim.slideY(end: 1),
+          'slide_left_out' => anim.slideX(end: -1),
+          'slide_right_out' => anim.slideX(end: 1),
+          _ => widget,
+        };
+      }
+    }
+    // Keyed on the animation pair so changing it tears the Animate
+    // controller down and starts the new one from its beginning.
+    return KeyedSubtree(
+      key: ValueKey('${overlay.id}_${overlay.inAnimation}_${overlay.outAnimation}'),
+      child: widget,
     );
-
-    return clampedRenderPos / renderScale;
   }
 
-  void _handleResizeStart(TextOverlayModel overlay) {
-    _resizeBaseScale = overlay.scale;
-    _accumulatedResizeDx = 0.0;
-    _accumulatedResizeDy = 0.0;
-  }
+  // --------------------------------------------------------------- frame --
 
-  void _handleResizeUpdate(
-    DragUpdateDetails details,
+  Widget _buildFrame(
     TextOverlayModel overlay,
-    double dirX,
-    double dirY,
-    double renderScale,
-    void Function(String, TextOverlayModel Function(TextOverlayModel)) onUpdate,
+    TextOverlayLayout layout,
+    Offset center,
   ) {
-    _accumulatedResizeDx += details.delta.dx * dirX;
-    _accumulatedResizeDy += details.delta.dy * dirY;
-    
-    final expansion = (_accumulatedResizeDx + _accumulatedResizeDy) / 2.0;
-    // apply renderScale to make resize feeling consistent regardless of canvas size
-    final newScale = (_resizeBaseScale + (expansion / renderScale) * 0.02).clamp(0.2, 5.0);
-    
-    onUpdate(overlay.id, (o) => o.copyWith(scale: newScale));
-  }
-
-  Widget _buildCornerDot(GestureDragStartCallback onPanStart, GestureDragUpdateCallback onPanUpdate) {
-    return GestureDetector(
-      onPanStart: onPanStart,
-      onPanUpdate: onPanUpdate,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: 44, // Larger hit area
-        height: 44,
-        alignment: Alignment.center,
-        child: Container(
-          width: 14,
-          height: 14,
-          decoration: const BoxDecoration(
-            color: Color(0xFFE0E0E0),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(color: Colors.black26, blurRadius: 4, spreadRadius: 1),
-            ],
-          ),
-        ),
-      ),
+    final half = Offset(
+      layout.boxSize.width * overlay.scale / 2,
+      layout.boxSize.height * overlay.scale / 2,
     );
-  }
+    Offset corner(double sx, double sy) =>
+        center + _rotate(Offset(sx * half.dx, sy * half.dy), overlay.rotation);
 
-  Widget _buildFreeformResizeDot(GestureDragStartCallback onPanStart, GestureDragUpdateCallback onPanUpdate) {
-    return GestureDetector(
-      onPanStart: onPanStart,
-      onPanUpdate: onPanUpdate,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        child: Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE0E0E0),
-            borderRadius: BorderRadius.circular(5),
-            boxShadow: const [
-              BoxShadow(color: Colors.black26, blurRadius: 4, spreadRadius: 1),
-            ],
-          ),
-          child: Transform.rotate(
-            angle: -math.pi / 4,
-            child: const Icon(
-              LucideIcons.moveVertical,
-              size: 12,
-              color: Colors.black54,
+    final topLeft = corner(-1, -1);
+    final topRight = corner(1, -1);
+    final bottomLeft = corner(-1, 1);
+    final bottomRight = corner(1, 1);
+    final leftMid = corner(-1, 0);
+    final rightMid = corner(1, 0);
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: _SelectionFramePainter(
+                corners: [topLeft, topRight, bottomRight, bottomLeft],
+              ),
             ),
           ),
         ),
+        _edgeHandle(leftMid, overlay, layout, direction: -1),
+        _edgeHandle(rightMid, overlay, layout, direction: 1),
+        _tapHandle(
+          topLeft,
+          icon: LucideIcons.x,
+          onTap: () => _notifier.deleteTextOverlay(overlay.id),
+        ),
+        _tapHandle(
+          topRight,
+          icon: LucideIcons.pencil,
+          onTap: () => widget.onShowTextEditor(overlay, false),
+        ),
+        _tapHandle(
+          bottomLeft,
+          icon: LucideIcons.copy,
+          onTap: () => _notifier.duplicateTextOverlay(overlay.id),
+        ),
+        _rotateScaleHandle(bottomRight, overlay, center),
+      ],
+    );
+  }
+
+  Widget _tapHandle(
+    Offset at, {
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return _positionedHandle(
+      at,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Center(child: _HandleDisc(icon: icon)),
       ),
     );
   }
 
-  void _handleFreeformResizeStart(TextOverlayModel overlay, double renderScale) {
-    _resizeBaseWidth = overlay.boxWidth ?? _measureTextOverlaySize(overlay, Size.zero, renderScale).width / renderScale;
-    _resizeBaseScale = overlay.scale;
-    _accumulatedResizeDx = 0.0;
-    _accumulatedResizeDy = 0.0;
+  /// Drag to rotate *and* scale about the box centre: the finger's distance
+  /// from the centre sets the scale, its angle sets the rotation. One
+  /// gesture, no modes, no accumulation.
+  Widget _rotateScaleHandle(Offset at, TextOverlayModel overlay, Offset center) {
+    return _positionedHandle(
+      at,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanStart: (details) {
+          _notifier.saveStateForUndo();
+          _handleCenter = center;
+          _handleStartVector = _toLocal(details.globalPosition) - center;
+          _handleBaseScale = overlay.scale;
+          _handleBaseRotation = overlay.rotation;
+        },
+        onPanUpdate: (details) {
+          final vector = _toLocal(details.globalPosition) - _handleCenter;
+          final startDistance = _handleStartVector.distance;
+          if (startDistance < 1e-3) return;
+          final newScale = (_handleBaseScale * vector.distance / startDistance)
+              .clamp(kMinTextScale, kMaxTextScale);
+          final newRotation = _snapRotation(
+            _handleBaseRotation +
+                math.atan2(vector.dy, vector.dx) -
+                math.atan2(_handleStartVector.dy, _handleStartVector.dx),
+          );
+          _notifier.updateTextOverlayLive(
+            overlay.id,
+            (o) => o.copyWith(scale: newScale, rotation: newRotation),
+          );
+        },
+        child: const Center(child: _HandleDisc(icon: LucideIcons.rotateCw, size: 30)),
+      ),
+    );
   }
 
-  void _handleFreeformResizeUpdate(
-    DragUpdateDetails details,
+  /// Drag an edge to change the box's width. The opposite edge stays where it
+  /// is — the centre moves by half the change along the box's own x-axis — so
+  /// the box grows toward the finger, as a resize is expected to.
+  Widget _edgeHandle(
+    Offset at,
     TextOverlayModel overlay,
-    double dirX,
-    double dirY,
-    double renderScale,
-    void Function(String, TextOverlayModel Function(TextOverlayModel)) onUpdate,
-  ) {
-    _accumulatedResizeDx += details.delta.dx * dirX;
-    _accumulatedResizeDy += details.delta.dy * dirY;
-    
-    // Horizontal changes box width (convert delta to reference coords)
-    final expansionX = (_accumulatedResizeDx / renderScale) / overlay.scale * 2.0; 
-    final newWidth = math.max(120.0, _resizeBaseWidth + expansionX);
-    
-    // Vertical changes text scale
-    final expansionY = _accumulatedResizeDy / renderScale;
-    final newScale = (_resizeBaseScale + expansionY * 0.01).clamp(0.2, 5.0);
-    
-    onUpdate(overlay.id, (o) => o.copyWith(
-      boxWidth: newWidth,
-      scale: newScale,
-    ));
-  }
-
-  Widget _buildSideDot(GestureDragStartCallback onDragStart, GestureDragUpdateCallback onDragUpdate) {
-    return GestureDetector(
-      onHorizontalDragStart: onDragStart,
-      onHorizontalDragUpdate: onDragUpdate,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: 64, // Larger hit area width to easily grab
-        height: 84, // Larger hit area height
-        alignment: Alignment.center,
-        child: Container(
-          width: 8,
-          height: 24,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE0E0E0),
-            borderRadius: BorderRadius.circular(4),
-            boxShadow: const [
-              BoxShadow(color: Colors.black26, blurRadius: 4, spreadRadius: 1),
-            ],
+    TextOverlayLayout layout, {
+    required int direction,
+  }) {
+    return _positionedHandle(
+      at,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanStart: (details) {
+          _notifier.saveStateForUndo();
+          _widthBase = layout.boxSize.width / layout.renderScale;
+          _widthBasePosition = overlay.position;
+          _widthStartLocal = _toLocal(details.globalPosition);
+        },
+        onPanUpdate: (details) {
+          final renderScale = layout.renderScale;
+          final axis = Offset(math.cos(overlay.rotation), math.sin(overlay.rotation));
+          final travel = _toLocal(details.globalPosition) - _widthStartLocal;
+          // Displacement along the box's x-axis, in render px on the canvas,
+          // then into the box's own reference px (undo the pinch scale).
+          final alongAxis = (travel.dx * axis.dx + travel.dy * axis.dy) * direction;
+          final wanted = _widthBase + alongAxis / (renderScale * overlay.scale);
+          final newWidth = wanted.clamp(kMinTextBoxWidth, kMaxTextBoxWidth);
+          // Half the *applied* change, so a clamped width leaves the far edge
+          // exactly where it was.
+          final shift = (newWidth - _widthBase) * overlay.scale / 2 * direction;
+          final newPosition = clampTextOverlayPosition(
+            _widthBasePosition + axis * shift,
+            widget.videoCanvasSize,
+            renderScale,
+          );
+          _notifier.updateTextOverlayLive(
+            overlay.id,
+            (o) => o.copyWith(boxWidth: newWidth, position: newPosition),
+          );
+        },
+        child: Center(
+          child: Transform.rotate(
+            angle: overlay.rotation,
+            child: const _HandlePill(),
           ),
         ),
       ),
     );
   }
 
+  Widget _positionedHandle(Offset at, {required Widget child}) {
+    return Positioned(
+      left: at.dx - _kHandleHitSize / 2,
+      top: at.dy - _kHandleHitSize / 2,
+      width: _kHandleHitSize,
+      height: _kHandleHitSize,
+      child: child,
+    );
+  }
 
+  // ------------------------------------------------------------- helpers --
+
+  Offset _toLocal(Offset global) {
+    final box = context.findRenderObject() as RenderBox?;
+    return box?.globalToLocal(global) ?? global;
+  }
+
+  static Offset _rotate(Offset v, double radians) {
+    final c = math.cos(radians);
+    final s = math.sin(radians);
+    return Offset(v.dx * c - v.dy * s, v.dx * s + v.dy * c);
+  }
+
+  static double _snapRotation(double radians) {
+    const quarter = math.pi / 2;
+    final nearest = (radians / quarter).round() * quarter;
+    return (radians - nearest).abs() <= _kSnapRadians ? nearest : radians;
+  }
 }
 
-class _DashedBorderPainter extends CustomPainter {
-  final double strokeWidth;
-  final Color color;
+/// A round white handle with a dark glyph, as CapCut draws its corner
+/// controls; the drop shadow keeps it legible over white text.
+class _HandleDisc extends StatelessWidget {
+  const _HandleDisc({required this.icon, this.size = 26});
 
-  _DashedBorderPainter({this.strokeWidth = 2.0, this.color = Colors.white});
+  final IconData icon;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 1)),
+        ],
+      ),
+      child: Icon(icon, size: size * 0.55, color: Colors.black87),
+    );
+  }
+}
+
+class _HandlePill extends StatelessWidget {
+  const _HandlePill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 7,
+      height: 28,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(3.5),
+        boxShadow: const [
+          BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 1)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The selection rectangle through the body's four transformed corners: a
+/// thin white line over a faint dark one, so it reads on light and dark
+/// footage alike.
+class _SelectionFramePainter extends CustomPainter {
+  _SelectionFramePainter({required this.corners});
+
+  final List<Offset> corners;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-
-    const dashWidth = 6.0;
-    const dashSpace = 4.0;
-    
-    _drawDashedLine(canvas, const Offset(0, 0), Offset(size.width, 0), paint, dashWidth, dashSpace);
-    _drawDashedLine(canvas, Offset(size.width, 0), Offset(size.width, size.height), paint, dashWidth, dashSpace);
-    _drawDashedLine(canvas, Offset(size.width, size.height), Offset(0, size.height), paint, dashWidth, dashSpace);
-    _drawDashedLine(canvas, Offset(0, size.height), const Offset(0, 0), paint, dashWidth, dashSpace);
-  }
-
-  void _drawDashedLine(Canvas canvas, Offset p1, Offset p2, Paint paint, double dashWidth, double dashSpace) {
-    var distance = (p2 - p1).distance;
-    var direction = (p2 - p1) / distance;
-    var start = p1;
-    var currentDistance = 0.0;
-
-    while (currentDistance < distance) {
-      var drawLength = dashWidth;
-      if (currentDistance + drawLength > distance) {
-        drawLength = distance - currentDistance;
-      }
-      canvas.drawLine(start, start + direction * drawLength, paint);
-      currentDistance += drawLength + dashSpace;
-      start = p1 + direction * currentDistance;
-    }
+    final path = Path()..addPolygon(corners, true);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.black38
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.5,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
   }
 
   @override
-  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) {
-    return oldDelegate.strokeWidth != strokeWidth || oldDelegate.color != color;
+  bool shouldRepaint(covariant _SelectionFramePainter oldDelegate) {
+    if (oldDelegate.corners.length != corners.length) return true;
+    for (var i = 0; i < corners.length; i++) {
+      if (oldDelegate.corners[i] != corners[i]) return true;
+    }
+    return false;
   }
 }

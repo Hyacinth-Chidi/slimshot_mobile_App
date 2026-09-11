@@ -29,8 +29,10 @@ class VideoEditorTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Kept deliberately shallow: every pixel this bar does not use is one the
+    // timeline gets.
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -38,23 +40,24 @@ class VideoEditorTopBar extends StatelessWidget {
             child: Row(
               children: [
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: onBack,
                   child: Container(
-                    width: 44,
-                    height: 44,
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
                       color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
                     ),
                     child: const Icon(
                       LucideIcons.arrowLeft,
                       color: AppColors.textPrimary,
-                      size: 20,
+                      size: 18,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Flexible(
                   child: Text(
                     title,
@@ -88,7 +91,7 @@ class VideoEditorTopBar extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     onTap: onResolutionTap,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
+                      padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
                       child: Row(
                         children: [
                           Text(
@@ -96,11 +99,11 @@ class VideoEditorTopBar extends StatelessWidget {
                             style: const TextStyle(
                               color: AppColors.textPrimary,
                               fontWeight: FontWeight.w700,
-                              fontSize: 16,
+                              fontSize: 14,
                             ),
                           ),
-                          const SizedBox(width: 4),
-                          const Icon(LucideIcons.chevronDown, color: AppColors.textSecondary, size: 18),
+                          const SizedBox(width: 3),
+                          const Icon(LucideIcons.chevronDown, color: AppColors.textSecondary, size: 15),
                         ],
                       ),
                     ),
@@ -109,8 +112,8 @@ class VideoEditorTopBar extends StatelessWidget {
                 ],
                 isExporting
                     ? const SizedBox(
-                        width: 32,
-                        height: 32,
+                        width: 28,
+                        height: 28,
                         child: Padding(
                           padding: EdgeInsets.all(4),
                           child: CircularProgressIndicator(
@@ -122,31 +125,33 @@ class VideoEditorTopBar extends StatelessWidget {
                     : GestureDetector(
                         onTap: onExport,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
+                          // A fixed height keeps the pill's shape stable: with
+                          // padding alone the trailing icon set the height and
+                          // the label floated off-centre.
+                          height: 34,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
                               colors: [AppColors.primaryStart, AppColors.primaryEnd],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Row(
+                          child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Text(
+                              Icon(LucideIcons.upload, color: Colors.white, size: 14),
+                              SizedBox(width: 6),
+                              Text(
                                 'Export',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 14,
+                                  fontSize: 13,
                                 ),
                               ),
-                              const SizedBox(width: 4),
-                              const Icon(LucideIcons.chevronRight, color: Colors.white, size: 18),
                             ],
                           ),
                         ),

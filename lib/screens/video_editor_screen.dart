@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -8,10 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
-import '../core/services/media_picker_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/permission_dialog.dart';
@@ -22,11 +19,11 @@ import '../features/video_editor/models/text_overlay_model.dart';
 import '../features/video_editor/models/image_overlay_model.dart';
 import '../features/video_editor/models/video_segment.dart';
 import '../features/video_editor/models/video_editor_state.dart';
-import 'package:slimshotai/features/video_editor/models/filter_preset.dart';
 import 'package:slimshotai/features/video_editor/models/video_overlay_model.dart';
-import '../features/video_editor/logic/filter_presets.dart';
+import '../features/video_editor/logic/timeline/timeline_geometry.dart';
 import '../features/video_editor/providers/video_editor_notifier.dart';
-import '../features/video_editor/services/video_editor_service.dart';
+import '../features/video_editor/services/media_import_service.dart';
+import '../features/video_editor/services/native_timeline_preview_service.dart';
 import '../core/models/draft_project.dart';
 import '../features/video_editor/widgets/editor_playback_controls.dart';
 import '../features/video_editor/widgets/timeline/scrollable_timeline.dart';
@@ -38,6 +35,7 @@ import '../features/video_editor/widgets/panels/stickers_drawer.dart';
 import '../features/video_editor/services/audio_player_manager.dart';
 import '../features/video_editor/models/audio_track_model.dart';
 import '../features/video_editor/widgets/text_overlay/text_editor_dialog.dart';
+import '../features/video_editor/widgets/canvas/native_timeline_preview_view.dart';
 import '../features/video_editor/widgets/canvas/video_preview_canvas.dart';
 import '../features/video_editor/widgets/panels/audio_panel.dart';
 import '../features/video_editor/widgets/panels/crop_panel.dart';
@@ -46,7 +44,6 @@ import '../features/video_editor/widgets/panels/speed_panel.dart';
 import '../features/video_editor/widgets/panels/trim_panel.dart';
 import '../features/video_editor/widgets/panels/volume_panel.dart';
 import '../features/video_editor/widgets/panels/zoom_panel.dart';
-import '../features/video_editor/widgets/panels/text_panels.dart';
 import '../features/video_editor/widgets/panels/background_panel.dart';
 import '../features/video_editor/widgets/panels/opacity_panel.dart';
 import '../features/video_editor/widgets/panels/animation_drawer.dart';
@@ -80,18 +77,19 @@ const EditorMenu _rootMenu = EditorMenu(
       icon: LucideIcons.scissors,
       hasSubMenu: true,
     ),
+    // Appends more photos or videos to the project already open.
+    EditorTool(id: 'add', label: 'Add', icon: LucideIcons.plusCircle),
     EditorTool(
       id: 'audio',
       label: 'Audio',
       icon: LucideIcons.music,
       hasSubMenu: true,
     ),
-    EditorTool(
-      id: 'text',
-      label: 'Text',
-      icon: LucideIcons.type,
-      hasSubMenu: true,
-    ),
+    // One tap straight to typing — no submenu. A text submenu earns its
+    // place when it has a second real entry (templates, captions); today it
+    // would be a tap tax on the most common action. There is no 'text' menu
+    // in `_menus`, so the flag was dead and contradictory.
+    EditorTool(id: 'text', label: 'Text', icon: LucideIcons.type),
     EditorTool(id: 'overlay', label: 'Overlay', icon: LucideIcons.layers),
     EditorTool(
       id: 'transform',
@@ -122,6 +120,9 @@ const EditorMenu _editMenu = EditorMenu(
       icon: LucideIcons.arrowLeftRight,
     ),
     EditorTool(id: 'reverse', label: 'Reverse', icon: LucideIcons.rewind),
+    // Same tool as the root menu, but reached with a clip selected — opening it
+    // from here grades that clip rather than the whole project.
+    EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
     EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
   ],
 );
@@ -194,11 +195,19 @@ final Map<String, EditorMenu> _menus = {
   ), // Transitions drawer replaces the tools list
 };
 
+// Supported transitions come from EditorTransition â€” see
+// features/video_editor/logic/transitions/transition_catalog.dart.
+
 class VideoEditorScreen extends ConsumerStatefulWidget {
-  final XFile? initialVideo;
+  /// Files the project starts from, in the order they were picked.
+  final List<XFile> initialMedia;
   final DraftProject? draft;
 
-  const VideoEditorScreen({super.key, this.initialVideo, this.draft});
+  const VideoEditorScreen({
+    super.key,
+    this.initialMedia = const [],
+    this.draft,
+  });
 
   @override
   ConsumerState<VideoEditorScreen> createState() => _VideoEditorScreenState();
@@ -207,14 +216,29 @@ class VideoEditorScreen extends ConsumerStatefulWidget {
 class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     with SingleTickerProviderStateMixin {
   final AudioPlayerManager _audioPlayerManager = AudioPlayerManager();
+  final NativeTimelinePreviewService _nativePreviewService =
+      NativeTimelinePreviewService();
+  final MediaImportService _mediaImportService = MediaImportService();
 
   late final Ticker _ticker;
   DateTime? _lastTick;
-
-  Player? _player;
-  VideoController? _videoController;
+  StreamSubscription<NativeTimelinePreviewEvent>? _nativePreviewSubscription;
+  String? _nativePreviewTimelineSignature;
 
   bool _isFullscreen = false;
+
+  /// True while a trim handle is held. Gates work that must not run per frame.
+  bool _isTrimming = false;
+  bool _isScrubbing = false;
+
+  /// True while the ticker is walking the playhead through an audio/overlay
+  /// tail past the video's end. Engine position events are ignored for its
+  /// duration: the engine is parked on its last frame and any event it emits
+  /// would drag the playhead back to the video end.
+  bool _isDrivingTail = false;
+
+  /// Guards the one-shot export capability probe. Temporary.
+  bool _hasProbedExport = false;
 
   int _exportHeight = 1080;
   int _exportFps = 30;
@@ -228,57 +252,23 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   }
 
   double _videoTimelineDuration(List<VideoSegment> segments) {
-    return segments.fold(0.0, (sum, segment) => sum + segment.duration);
+    return videoTimelineDuration(segments);
   }
 
-  double _timelineTimeToSourceTime(
-    double timelineTime,
-    List<VideoSegment> segments,
-  ) {
-    if (segments.isEmpty) return timelineTime;
-    double accumulated = 0.0;
-    for (final segment in segments) {
-      if (timelineTime >= accumulated &&
-          timelineTime <= accumulated + segment.duration) {
-        return segment.sourceStart +
-            ((timelineTime - accumulated) * segment.speed);
-      }
-      accumulated += segment.duration;
-    }
-    return segments.last.sourceEnd;
-  }
 
-  Future<void> _syncVideoLayerToTimeline(
-    double timelinePosition,
-    VideoEditorState editorState, {
-    required bool shouldPlay,
-    double seekThresholdSeconds = 0.08,
-  }) async {
-    final player = _player;
-    if (player == null) return;
-
-    final videoDuration = _videoTimelineDuration(editorState.segments);
-    if (timelinePosition >= videoDuration) {
-      if (player.state.playing) {
-        await player.pause();
-      }
-      return;
-    }
-
-    final sourceTarget = _timelineTimeToSourceTime(
-      timelinePosition,
-      editorState.segments,
+  /// Whether the engine can play this project as it stands.
+  ///
+  /// The one thing it cannot: a reversed clip whose proxy has not been
+  /// rendered yet — no decoder plays backwards. There is no second engine to
+  /// fall back to any more, so callers wait for the proxy rather than
+  /// substituting a different picture.
+  bool _canUseNativeTimelinePreview(VideoEditorState state) {
+    return !state.segments.any(
+      (segment) =>
+          segment.isReversed &&
+          (segment.overrideVideoPath == null ||
+              segment.overrideVideoPath!.isEmpty),
     );
-    final currentSource = player.state.position.inMilliseconds / 1000.0;
-    if ((currentSource - sourceTarget).abs() > seekThresholdSeconds) {
-      await player.seek(Duration(milliseconds: (sourceTarget * 1000).round()));
-    }
-
-    if (shouldPlay && !player.state.playing) {
-      await player.play();
-    } else if (!shouldPlay && player.state.playing) {
-      await player.pause();
-    }
   }
 
   String _getToolLabel(String id) {
@@ -297,17 +287,20 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       ref.read(videoEditorProvider.notifier).reset();
 
       final draft = widget.draft;
-      final initialVideo = widget.initialVideo;
 
       if (draft != null) {
         _loadDraft(draft);
-      } else if (initialVideo != null) {
-        _loadVideo(initialVideo);
+      } else if (widget.initialMedia.isNotEmpty) {
+        _loadMedia(widget.initialMedia);
       } else {
         // Fallback if navigated without a video or draft
         if (mounted) context.pop();
       }
     });
+
+    _nativePreviewSubscription = _nativePreviewService.events.listen(
+      _handleNativePreviewEvent,
+    );
 
     _ticker = createTicker(_onTick);
   }
@@ -322,38 +315,60 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final editorState = ref.read(videoEditorProvider);
     if (!editorState.isPlaying) return;
 
-    final notifier = ref.read(videoEditorProvider.notifier);
-    final videoDuration = _videoTimelineDuration(editorState.segments);
-    final totalDuration = ref.read(totalEditedDurationProvider);
+    // The engine is the sole writer of the playhead while it has one; the
+    // ticker exists only for the tail past the last video frame, where there
+    // is no native clock left. Two clocks writing the playhead is entry 12 in
+    // dead-ends.
+    _driveNativeAudioTail(
+      editorState: editorState,
+      notifier: ref.read(videoEditorProvider.notifier),
+      delta: delta,
+      videoDuration: _videoTimelineDuration(editorState.segments),
+      totalDuration: ref.read(totalEditedDurationProvider),
+    );
+  }
 
-    final newPos = editorState.currentPlaybackPosition + delta;
-    if (newPos >= totalDuration) {
-      notifier.updatePlaybackPosition(0.0);
-      notifier.setPlaying(false);
-      _audioPlayerManager.pauseAll();
+  /// Keeps imported audio in step during native playback.
+  ///
+  /// The native engine is the **only** writer of the playhead while it has
+  /// video to decode — a second clock here would let the playhead run on while
+  /// a decoder stalls. The ticker takes over solely for an audio-only tail,
+  /// where the video has genuinely ended and there is no native clock left.
+  void _driveNativeAudioTail({
+    required VideoEditorState editorState,
+    required VideoEditorNotifier notifier,
+    required double delta,
+    required double videoDuration,
+    required double totalDuration,
+  }) {
+    final position = editorState.currentPlaybackPosition;
+
+    if (position < videoDuration - 0.001) {
+      _audioPlayerManager.seekAndPlaySync(position, editorState.audioTracks, true);
       return;
     }
 
-    notifier.updatePlaybackPosition(newPos);
-
-    if (newPos >= videoDuration) {
-      if (_player?.state.playing == true) {
-        _player?.pause();
-      }
-    } else {
-      final player = _player;
-      if (player != null) {
-        if (!player.state.playing) {
-          player.play();
-        }
-      }
+    if (totalDuration <= videoDuration + 0.001) {
+      // No audio past the end of the video; native reports completion itself.
+      return;
     }
 
-    if (_player?.state.playing == true) {
-      _handlePlayerUpdate();
+    final newPosition = position + delta;
+    if (newPosition >= totalDuration) {
+      // Park at the end rather than rewinding — going back is the user's move.
+      notifier.updatePlaybackPosition(totalDuration);
+      notifier.setPlaying(false);
+      _audioPlayerManager.pauseAll();
+      unawaited(_nativePreviewService.pause());
+      return;
     }
 
-    _audioPlayerManager.seekAndPlaySync(newPos, editorState.audioTracks, true);
+    notifier.updatePlaybackPosition(newPosition);
+    _audioPlayerManager.seekAndPlaySync(
+      newPosition,
+      editorState.audioTracks,
+      true,
+    );
   }
 
   @override
@@ -365,233 +380,186 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
     _ticker.dispose();
     _audioPlayerManager.dispose();
-    _player?.dispose();
+    unawaited(_nativePreviewSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_nativePreviewService.dispose());
     super.dispose();
   }
 
   Future<void> _loadDraft(DraftProject draft) async {
     final notifier = ref.read(videoEditorProvider.notifier);
     try {
-      final oldPlayer = _player;
-      final player = Player();
-      final controller = VideoController(player);
-
-      await player.open(Media(draft.sourceVideoPath), play: false);
-      await oldPlayer?.dispose();
-
-      if (!mounted) {
-        await player.dispose();
-        return;
-      }
-
-      setState(() {
-        _player = player;
-        _videoController = controller;
-      });
-      ref.read(playerProvider.notifier).state = player;
-
       await notifier.loadDraft(draft);
+      await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
     } catch (e) {
       if (!mounted) return;
       ToastUtils.show(context, 'Error loading draft: $e', isError: true);
     }
   }
 
-  Future<void> _loadVideo(XFile video) async {
+  /// Builds a project from one or more picked files.
+  ///
+  /// Durations and dimensions come from the native probe: a project can hold
+  /// photos and several videos, so there is no single file to interrogate.
+  Future<void> _loadMedia(List<XFile> files) async {
+    if (files.isEmpty) return;
     final notifier = ref.read(videoEditorProvider.notifier);
+
     try {
-      final oldPlayer = _player;
-      final player = Player();
-      final controller = VideoController(player);
-
-      await player.open(Media(video.path), play: false);
-      await oldPlayer?.dispose();
-
-      if (!mounted) {
-        await player.dispose();
+      final assets = await _mediaImportService.assetsFor(files);
+      if (assets.isEmpty) {
+        if (!mounted) return;
+        ToastUtils.show(context, 'Could not read the selected media.',
+            isError: true);
         return;
       }
 
-      var durationMs = player.state.duration.inMilliseconds;
-      if (durationMs == 0) {
-        final durationObj = await player.stream.duration.firstWhere(
-          (d) => d != Duration.zero,
-          orElse: () => const Duration(seconds: 1),
-        );
-        durationMs = durationObj.inMilliseconds;
-      }
-      final duration = durationMs / 1000.0;
-
-      setState(() {
-        _player = player;
-        _videoController = controller;
-      });
-      ref.read(playerProvider.notifier).state = player;
-
-      await notifier.loadAndInitializeVideo(
-        video: video,
-        durationSeconds: duration > 0 ? duration : 1.0, // fallback
-      );
+      await notifier.loadProject(assets: assets);
+      await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
     } catch (e) {
       if (!mounted) return;
-      ToastUtils.show(context, 'Error loading video: $e', isError: true);
+      ToastUtils.show(context, 'Error loading media: $e', isError: true);
+    }
+  }
+
+  /// Adds more files to the project already open in the editor.
+  Future<void> _addMedia() async {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    try {
+      final assets = await _mediaImportService.pickMedia();
+      if (assets.isEmpty) return;
+
+      notifier.addAssets(assets);
+      await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
+      if (mounted) HapticFeedback.selectionClick();
+    } catch (e) {
+      if (!mounted) return;
+      ToastUtils.show(context, 'Could not add media: $e', isError: true);
     }
   }
 
   void _togglePreview() {
-    if (_player != null) {
-      ref.read(videoEditorProvider.notifier).togglePreview();
+    ref.read(videoEditorProvider.notifier).togglePreview();
+  }
+
+  void _handleNativePreviewEvent(NativeTimelinePreviewEvent event) {
+    if (!mounted) return;
+    if (event.type == 'error') {
+      ToastUtils.show(
+        context,
+        event.message ?? 'Native preview error',
+        isError: true,
+      );
+    } else if (event.type == 'position' && event.positionSeconds != null) {
+      final state = ref.read(videoEditorProvider);
+      if (!_canUseNativeTimelinePreview(state) || !state.isPlaying) return;
+      if (_isDrivingTail) return;
+
+      final position = event.positionSeconds!;
+      ref.read(videoEditorProvider.notifier).updatePlaybackPosition(position);
+      _audioPlayerManager.seekAndPlaySync(position, state.audioTracks, true);
+    } else if (event.type == 'completed') {
+      final state = ref.read(videoEditorProvider);
+      if (!_canUseNativeTimelinePreview(state)) return;
+
+      final notifier = ref.read(videoEditorProvider.notifier);
+      final videoDuration = _videoTimelineDuration(state.segments);
+      final totalDuration = ref.read(totalEditedDurationProvider);
+
+      // Audio or an overlay can outlast the video. The engine's clock ends
+      // with its last frame, so the ticker takes over from here and walks the
+      // playhead through the tail while the canvas shows the background.
+      if (totalDuration > videoDuration + 0.05) {
+        notifier.updatePlaybackPosition(videoDuration);
+        _isDrivingTail = true;
+        _lastTick = DateTime.now();
+        _ticker.start();
+        return;
+      }
+
+      // The playhead parks at the end. Snapping back to zero threw away where
+      // the user was — reviewing an edit means scrubbing around the ending,
+      // and the jump made that a two-step chore every single time.
+      notifier.updatePlaybackPosition(videoDuration);
+      notifier.setPlaying(false);
+      _audioPlayerManager.pauseAll();
     }
   }
 
-  void _handlePlayerUpdate() {
-    final player = _player;
-    final editorState = ref.read(videoEditorProvider);
-    final notifier = ref.read(videoEditorProvider.notifier);
-    if (!mounted || player == null) {
+  Future<void> _syncNativePreviewTimeline(VideoEditorState state) async {
+    if (!_canUseNativeTimelinePreview(state) || state.sourceVideo == null) {
+      _nativePreviewTimelineSignature = null;
       return;
     }
 
-    final state = player.state;
-    final positionSeconds = state.position.inMilliseconds / 1000.0;
+    // Pushing a timeline replaces each lane's media items and re-prepares the
+    // player, which rebuilds a decoder. Doing that per frame of a trim drag is
+    // what made the handles feel heavy, so the drag runs on the Flutter side
+    // only and the engine is caught up once on release.
+    //
+    // A scrub is skipped for a different reason: it does not change the
+    // timeline at all, only the playhead. Composing and JSON-encoding the
+    // whole timeline every gesture frame just to find the signature unchanged
+    // was pure cost on the frame that had to stay smooth.
+    // A canvas pinch/drag is the same shape: the engine is fed through its own
+    // override channel during the gesture and caught up once on release.
+    if (_isTrimming || _isScrubbing || state.isClipTransformActive) return;
 
-    if (state.playing) {
-      int currentIndex = -1;
-      for (int i = 0; i < editorState.segments.length; i++) {
-        if (positionSeconds >= editorState.segments[i].sourceStart &&
-            positionSeconds < editorState.segments[i].sourceEnd) {
-          currentIndex = i;
-          break;
-        }
-      }
+    // Overlay geometry is stored in preview-canvas pixels, so the engine needs
+    // the canvas size to normalise it.
+    final canvasSize = ref.read(videoCanvasSizeProvider);
+    final signature = _nativeTimelineSignature(state, canvasSize);
+    if (_nativePreviewTimelineSignature == signature) return;
+    _nativePreviewTimelineSignature = signature;
 
-      if (currentIndex != -1) {
-        double expectedVolume = editorState.segments[currentIndex].volume;
-        if (editorState.activeToolId == 'volume' &&
-            editorState.previewVolume != null &&
-            editorState.selectedAudioId == null) {
-          final activeSegment = notifier.getActiveSegment();
-          if (activeSegment != null &&
-              activeSegment.id == editorState.segments[currentIndex].id) {
-            expectedVolume = editorState.previewVolume!;
-          }
-        }
-
-        final targetPlayerVolume =
-            expectedVolume * expectedVolume * 100; // media_kit volume is 0-100
-        if ((state.volume - targetPlayerVolume).abs() > 1.0) {
-          player.setVolume(targetPlayerVolume);
-        }
-
-        double expectedSpeed = editorState.segments[currentIndex].speed;
-        if (editorState.activeToolId == 'speed' &&
-            editorState.previewSpeed != null) {
-          final activeSegment = notifier.getActiveSegment();
-          if (activeSegment != null &&
-              activeSegment.id == editorState.segments[currentIndex].id) {
-            expectedSpeed = editorState.previewSpeed!;
-          }
-        }
-
-        // Apply negative speed if reversed
-        if (editorState.segments[currentIndex].isReversed) {
-          expectedSpeed = -expectedSpeed;
-        }
-
-        if ((state.rate - expectedSpeed).abs() > 0.01) {
-          player.setRate(expectedSpeed);
-        }
-
-        if (positionSeconds >=
-            editorState.segments[currentIndex].sourceEnd - 0.05) {
-          if (currentIndex < editorState.segments.length - 1) {
-            final nextSegment = editorState.segments[currentIndex + 1];
-            if ((nextSegment.sourceStart -
-                        editorState.segments[currentIndex].sourceEnd)
-                    .abs() >
-                0.05) {
-              player.seek(
-                Duration(
-                  milliseconds: (nextSegment.sourceStart * 1000).round(),
-                ),
-              );
-            }
-          } else if (editorState.segments.isNotEmpty) {
-            // Video reached the end of its last segment
-            final totalDuration = ref.read(totalEditedDurationProvider);
-            final videoDuration = _videoTimelineDuration(editorState.segments);
-            if (totalDuration > videoDuration) {
-              // Audio extends beyond video — only pause player,
-              // let the ticker keep driving audio playback
-              notifier.updatePlaybackPosition(videoDuration);
-              player.pause();
-            } else {
-              // No audio extends beyond — stop everything
-              player.pause();
-              notifier.setPlaying(false);
-              player.seek(
-                Duration(
-                  milliseconds: (editorState.segments.first.sourceStart * 1000)
-                      .round(),
-                ),
-              );
-            }
-          }
-        }
-      } else {
-        VideoSegment? nextSegment;
-        for (final seg in editorState.segments) {
-          if (seg.sourceStart > positionSeconds) {
-            nextSegment = seg;
-            break;
-          }
-        }
-        if (nextSegment != null) {
-          _player!.seek(
-            Duration(milliseconds: (nextSegment.sourceStart * 1000).round()),
-          );
-        } else if (editorState.segments.isNotEmpty) {
-          final totalDuration = ref.read(totalEditedDurationProvider);
-          final videoDuration = _videoTimelineDuration(editorState.segments);
-          if (totalDuration > videoDuration &&
-              editorState.currentPlaybackPosition >= videoDuration - 0.05) {
-            notifier.updatePlaybackPosition(videoDuration);
-            _player!.pause();
-          } else {
-            _player!.pause();
-            notifier.setPlaying(false);
-            _player!.seek(
-              Duration(
-                milliseconds: (editorState.segments.first.sourceStart * 1000)
-                    .round(),
-              ),
-            );
-          }
-        }
-      }
-    }
-
-    if (editorState.isPlaying) {
-      return;
-    }
-
-    // Only sync video controller's play state to global state if we're not in
-    // an audio-only phase (where video is paused but audio continues playing)
-    if (editorState.isPlaying != _player!.state.playing) {
-      if (_player!.state.playing) {
-        // Video started playing — sync
-        notifier.setPlaying(true);
-      } else {
-        // Video paused — only stop global playback if audio doesn't extend beyond video
-        final totalDuration = ref.read(totalEditedDurationProvider);
-        final videoDuration = _videoTimelineDuration(editorState.segments);
-        final audioExtendsBeyond = totalDuration > videoDuration;
-        if (!audioExtendsBeyond) {
-          notifier.setPlaying(false);
-        }
-      }
+    try {
+      await _nativePreviewService.setTimeline(
+        state,
+        previewCanvasSize: canvasSize,
+      );
+      await _seekNativePreviewToTimeline(state);
+      unawaited(_probeExportCapabilitiesOnce(state));
+    } catch (e) {
+      if (!mounted) return;
+      ToastUtils.show(context, 'Native preview unavailable: $e', isError: true);
     }
   }
+
+  /// Logs what this device's codecs will do for an export, once per session.
+  ///
+  /// Deliberately run with the preview already loaded: export holds two
+  /// decoders and an encoder at the same time, and whether the encoder will
+  /// start *while playback owns its decoders* is the question that decides
+  /// whether export can render straight through or has to bring the second
+  /// decoder up only across a transition. Filter logcat on `SlimshotExport`.
+  ///
+  /// Temporary — it comes out once the export pipeline reads the capabilities
+  /// itself.
+  Future<void> _probeExportCapabilitiesOnce(VideoEditorState state) async {
+    if (_hasProbedExport) return;
+    _hasProbedExport = true;
+    try {
+      await _nativePreviewService.probeExportCapabilities(
+        state.projectCanvasSize,
+      );
+    } catch (e) {
+      debugPrint('[SlimshotExport] capability probe failed: $e');
+    }
+  }
+
+  Future<void> _seekNativePreviewToTimeline(VideoEditorState state) {
+    return _nativePreviewService.seek(state.currentPlaybackPosition);
+  }
+
+  String _nativeTimelineSignature(
+    VideoEditorState state,
+    Size? previewCanvasSize,
+  ) {
+    return _nativePreviewService.playbackSignature(
+      state,
+      previewCanvasSize: previewCanvasSize,
+    );
+  }
+
 
   void _showPermissionDialog() {
     PermissionDialog.showGalleryAccessRequired(
@@ -604,18 +572,67 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     );
   }
 
+  /// Applies a trim while the handle is being dragged.
+  ///
+  /// Deliberately does **not** seek: the timeline widget already previews the
+  /// frame under the handle at its own rate, and seeking here as well meant two
+  /// decoder flushes per drag frame.
   void _setTrimRange(RangeValues value) {
-    final notifier = ref.read(videoEditorProvider.notifier);
-    final player = _player;
-    if (player == null) return;
-    notifier.setTrimRangeAndSeek(value, player);
+    ref.read(videoEditorProvider.notifier).setTrimRange(value);
+  }
+
+  void _beginTrimDrag() {
+    _isTrimming = true;
+  }
+
+  /// Puts the engine into scrubbing mode for the duration of a playhead drag.
+  ///
+  /// A scrub asks for a new position every gesture frame. Served as ordinary
+  /// seeks that is a decoder flush each, which is what made the preview flash
+  /// while the timeline moved. In scrubbing mode ExoPlayer coalesces them:
+  /// a newer target replaces an unstarted one, and the next seek waits until a
+  /// frame from the previous one has actually been rendered.
+  void _beginScrub() {
+    if (_isScrubbing) return;
+    _isScrubbing = true;
+    if (!_canUseNativeTimelinePreview(ref.read(videoEditorProvider))) return;
+    unawaited(_nativePreviewService.setScrubbing(true));
+  }
+
+  /// Leaves scrubbing mode and lands on the exact position.
+  ///
+  /// The final seek matters: the coalesced ones are keyframe-cheap and the
+  /// last target of a gesture may never have been served.
+  void _endScrub() {
+    if (!_isScrubbing) return;
+    _isScrubbing = false;
+    final state = ref.read(videoEditorProvider);
+    if (!_canUseNativeTimelinePreview(state)) return;
+    unawaited(() async {
+      await _nativePreviewService.setScrubbing(false);
+      await _seekNativePreviewToTimeline(ref.read(videoEditorProvider));
+    }());
+  }
+
+  /// Catches the editor up once the handle is released.
+  ///
+  /// Pushing the timeline is now the only thing the release has to do. It used
+  /// to also render the whole edit to an MP4 through Transformer, or failing
+  /// that a per-clip FFmpeg proxy, so that a single decoder could play across a
+  /// non-contiguous trim. The dual-lane engine plays a trim directly as a
+  /// clipping configuration, so a trim is a property change on a media item and
+  /// never a reason to re-encode. See `docs/dead-ends.md` entry 17.
+  void _endTrimDrag() {
+    if (!_isTrimming) return;
+    _isTrimming = false;
+
+    unawaited(_syncNativePreviewTimeline(ref.read(videoEditorProvider)));
   }
 
   void _splitAtPlayhead() {
     final notifier = ref.read(videoEditorProvider.notifier);
-    final controller = _player;
-    if (controller == null) return;
-    final position = controller.state.position.inMilliseconds / 1000.0;
+    final state = ref.read(videoEditorProvider);
+    final position = state.currentPlaybackPosition;
     try {
       notifier.splitAtPlayhead(position);
       HapticFeedback.selectionClick();
@@ -651,18 +668,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       var proposedStart = Duration(
         milliseconds: (editorState.currentPlaybackPosition * 1000).toInt(),
       );
-      var proposedEnd = proposedStart + const Duration(seconds: 5);
-      final totalDuration = Duration(
-        milliseconds: (editorState.durationSeconds * 1000).toInt(),
-      );
-
-      if (proposedEnd > totalDuration) {
-        proposedEnd = totalDuration;
-        if ((proposedEnd - proposedStart) < const Duration(milliseconds: 500)) {
-          proposedStart = proposedEnd - const Duration(seconds: 5);
-          if (proposedStart < Duration.zero) proposedStart = Duration.zero;
-        }
-      }
+      // Deliberately not clamped to the video's end: an overlay may outlast
+      // the video, and playback then continues over the background — the same
+      // rule audio already follows. The old clamp went further wrong by using
+      // `durationSeconds`, the *first asset's* length.
+      final proposedEnd = proposedStart + const Duration(seconds: 5);
 
       final overlay = ImageOverlayModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -687,29 +697,20 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       final editorState = ref.read(videoEditorProvider);
       final notifier = ref.read(videoEditorProvider.notifier);
 
-      // We need to find the duration of the selected video
-      final tempPlayer = Player();
-      await tempPlayer.open(Media(picked.path), play: false);
-      Duration videoDuration = tempPlayer.state.duration;
-      if (videoDuration.inMilliseconds == 0) {
-        videoDuration = await tempPlayer.stream.duration.firstWhere(
-          (d) => d.inMilliseconds > 0,
-          orElse: () => const Duration(seconds: 5),
-        );
-      }
-      await tempPlayer.dispose();
+      // Duration from the native probe — the same one import uses. It reads
+      // the container directly instead of opening a whole player to ask.
+      final probed = await _mediaImportService.assetsFor([picked]);
+      final videoDuration = probed.isEmpty
+          ? const Duration(seconds: 5)
+          : Duration(
+              milliseconds: (probed.first.durationSeconds * 1000).round(),
+            );
 
       var proposedStart = Duration(
         milliseconds: (editorState.currentPlaybackPosition * 1000).toInt(),
       );
-      var proposedEnd = proposedStart + videoDuration;
-      final totalDuration = Duration(
-        milliseconds: (editorState.durationSeconds * 1000).toInt(),
-      );
-
-      if (proposedEnd > totalDuration) {
-        proposedEnd = totalDuration;
-      }
+      // Not clamped to the video's end — see the image-overlay add above.
+      final proposedEnd = proposedStart + videoDuration;
 
       final overlay = VideoOverlayModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -869,9 +870,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
   Future<void> _exportVideo() async {
     final notifier = ref.read(videoEditorProvider.notifier);
-    final exportParams = ref.read(exportPayloadProvider);
+    final previewCanvasSize = ref.read(exportCanvasSizeProvider);
 
-    if (exportParams == null) {
+    if (previewCanvasSize == null) {
       ToastUtils.show(
         context,
         "Cannot export video. Missing parameters.",
@@ -882,6 +883,20 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
     final targetHeight = _exportHeight;
     final targetFps = _exportFps;
+    final exportState = ref.read(videoEditorProvider);
+
+    // The one thing native export cannot render: a reversed clip whose proxy
+    // has not been prepared, because no decoder plays backwards. There is no
+    // legacy path to fall back to any more, so this says so rather than
+    // exporting the clip forwards.
+    if (!_canUseNativeTimelinePreview(exportState)) {
+      ToastUtils.show(
+        context,
+        'A reversed clip is still preparing. Try again in a moment.',
+        isError: true,
+      );
+      return;
+    }
 
     try {
       notifier.setExporting(true);
@@ -891,26 +906,12 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         Navigator.push(
           context,
           MaterialPageRoute(
+            // Native export renders through the preview engine, so the file
+            // matches what was previewed — correct per-clip filters, all
+            // eleven transitions, and the right source file for every clip.
             builder: (context) => ExportVideoScreen(
-              sourceVideo: exportParams['sourceVideo'],
-              segments: exportParams['segments'],
-              muteAudio: exportParams['muteAudio'],
-              targetAspectRatio: exportParams['targetAspectRatio'],
-              customCropRect: exportParams['customCropRect'],
-              originalVideoSize: exportParams['originalVideoSize'],
-              previewCanvasSize: exportParams['previewCanvasSize'],
-              renderId: exportParams['renderId'],
-              colorFilterMatrix: exportParams['colorFilterMatrix'],
-              textOverlays: exportParams['textOverlays'],
-              imageOverlays: exportParams['imageOverlays'],
-              videoOverlays: exportParams['videoOverlays'],
-              audioTracks: exportParams['audioTracks'],
-              backgroundType: exportParams['backgroundType']
-                  .toString()
-                  .split('.')
-                  .last,
-              backgroundColor: exportParams['backgroundColor'],
-              backgroundBlurIntensity: exportParams['backgroundBlurIntensity'],
+              exportState: exportState,
+              previewCanvasSize: previewCanvasSize,
               targetHeight: targetHeight,
               targetFps: targetFps,
             ),
@@ -1466,7 +1467,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
             builder: (buttonContext) {
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () {
+                onTap: () async {
                   HapticFeedback.selectionClick();
                   if (tool.id == 'audio') {
                     showModalBottomSheet(
@@ -1476,6 +1477,16 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       builder: (context) => const AudioDrawer(),
                     );
                   } else if (tool.id == 'filters') {
+                    // Reached from the clip menu, the tool means "filter this
+                    // clip", so the sheet opens in per-clip mode. The switch
+                    // moves the project look down onto every clip rather than
+                    // dropping it, so the picture is unchanged — and the
+                    // toggle at the top of the sheet shows the mode and
+                    // reverses it.
+                    if (editorState.currentMenuId == 'edit' &&
+                        editorState.selectedSegmentId != null) {
+                      notifier.setFilterAppliesToAll(false);
+                    }
                     showModalBottomSheet(
                       context: context,
                       isScrollControlled: true,
@@ -1496,28 +1507,19 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       milliseconds: (editorState.currentPlaybackPosition * 1000)
                           .toInt(),
                     );
-                    var proposedEndTime =
+                    // Not clamped to the video's end — an overlay may outlast
+                    // the video, matching audio.
+                    final proposedEndTime =
                         proposedStartTime + const Duration(seconds: 3);
-                    final totalDuration = Duration(
-                      milliseconds: (editorState.durationSeconds * 1000)
-                          .toInt(),
-                    );
-
-                    if (proposedEndTime > totalDuration) {
-                      proposedEndTime = totalDuration;
-                      if ((proposedEndTime - proposedStartTime) <
-                          const Duration(milliseconds: 500)) {
-                        proposedStartTime =
-                            proposedEndTime - const Duration(seconds: 3);
-                        if (proposedStartTime < Duration.zero)
-                          proposedStartTime = Duration.zero;
-                      }
-                    }
 
                     final canvasSize = ref.read(videoCanvasSizeProvider);
                     final newOverlay = TextOverlayModel(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      text: 'Double Tap to Edit',
+                      // Created empty: the editor sheet opens with the
+                      // keyboard up, and an overlay still empty when the
+                      // sheet closes is deleted — no placeholder ghosts in
+                      // an export.
+                      text: '',
                       startTime: proposedStartTime,
                       endTime: proposedEndTime,
                       referenceCanvasSize: canvasSize,
@@ -1536,6 +1538,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                         editorState.segments.isNotEmpty) {
                       notifier.selectSegment(editorState.segments.first.id);
                     }
+                  } else if (tool.id == 'add') {
+                    unawaited(_addMedia());
                   } else if (tool.id == 'split') {
                     if (editorState.selectedVideoOverlayId != null) {
                       try {
@@ -1572,8 +1576,37 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     );
                   } else if (tool.id == 'reverse') {
                     if (editorState.selectedSegmentId != null) {
-                      notifier.toggleReverse(editorState.selectedSegmentId!);
-                      ToastUtils.show(context, 'Reversed clip', isError: false);
+                      final segment = editorState.segments.firstWhere(
+                        (segment) =>
+                            segment.id == editorState.selectedSegmentId,
+                      );
+                      if (segment.isReversed) {
+                        await notifier.toggleReverse(
+                          editorState.selectedSegmentId!,
+                        );
+                        if (!context.mounted) return;
+                        ToastUtils.show(
+                          context,
+                          'Restored normal clip',
+                          isError: false,
+                        );
+                      } else {
+                        ToastUtils.show(context, 'Preparing reverse...');
+                        try {
+                          await notifier.toggleReverse(
+                            editorState.selectedSegmentId!,
+                          );
+                          if (!context.mounted) return;
+                            ToastUtils.show(
+                            context,
+                            'Reversed clip is ready',
+                            isError: false,
+                          );
+                        } catch (e) {
+                          if (!context.mounted) return;
+                          ToastUtils.show(context, e.toString(), isError: true);
+                        }
+                      }
                     } else {
                       ToastUtils.show(
                         context,
@@ -1609,28 +1642,19 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       milliseconds: (editorState.currentPlaybackPosition * 1000)
                           .toInt(),
                     );
-                    var proposedEndTime =
+                    // Not clamped to the video's end — an overlay may outlast
+                    // the video, matching audio.
+                    final proposedEndTime =
                         proposedStartTime + const Duration(seconds: 3);
-                    final totalDuration = Duration(
-                      milliseconds: (editorState.durationSeconds * 1000)
-                          .toInt(),
-                    );
-
-                    if (proposedEndTime > totalDuration) {
-                      proposedEndTime = totalDuration;
-                      if ((proposedEndTime - proposedStartTime) <
-                          const Duration(milliseconds: 500)) {
-                        proposedStartTime =
-                            proposedEndTime - const Duration(seconds: 3);
-                        if (proposedStartTime < Duration.zero)
-                          proposedStartTime = Duration.zero;
-                      }
-                    }
 
                     final canvasSize = ref.read(videoCanvasSizeProvider);
                     final newOverlay = TextOverlayModel(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      text: 'Double Tap to Edit',
+                      // Created empty: the editor sheet opens with the
+                      // keyboard up, and an overlay still empty when the
+                      // sheet closes is deleted — no placeholder ghosts in
+                      // an export.
+                      text: '',
                       startTime: proposedStartTime,
                       endTime: proposedEndTime,
                       referenceCanvasSize: canvasSize,
@@ -1710,15 +1734,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       case 'zoom':
         content = _buildZoomPanel();
         break;
-      case 'style':
-        content = _buildTextStylePanel();
-        break;
-      case 'font':
-        content = _buildTextFontPanel();
-        break;
-      case 'animation':
-        content = _buildTextAnimationPanel();
-        break;
       case 'templates':
         content = const Center(
           child: Text(
@@ -1739,9 +1754,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     }
 
     double panelHeight = 160;
-    if (['style', 'font', 'animation'].contains(activeToolId)) {
-      panelHeight = 260;
-    } else if (activeToolId == 'background') {
+    if (activeToolId == 'background') {
       panelHeight = 200;
     }
 
@@ -1757,20 +1770,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
               GestureDetector(
                 onTap: () {
                   HapticFeedback.lightImpact();
-                  final activeSegment = notifier.getActiveSegment();
-                  if (activeToolId == 'volume' &&
-                      editorState.previewVolume != null &&
-                      editorState.selectedAudioId == null &&
-                      activeSegment != null) {
-                    _player?.setVolume(
-                      (activeSegment.volume * activeSegment.volume * 100.0),
-                    );
-                  }
-                  if (activeToolId == 'speed' &&
-                      editorState.previewSpeed != null &&
-                      activeSegment != null) {
-                    _player?.setRate(activeSegment.speed);
-                  }
+                  // Discarding a preview needs no player call: the engine
+                  // reapplies each clip's committed volume and speed from the
+                  // timeline on its next tick.
                   notifier.closeActiveTool();
                 },
                 child: const Padding(
@@ -1927,10 +1929,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       emptyMessage: activeSegment == null
           ? 'Select a clip to adjust volume'
           : null,
-      onChanged: (value) {
-        notifier.setPreviewVolume(value);
-        _player?.setVolume(value * value * 100.0);
-      },
+      // The preview value reaches the engine through the timeline's per-tick
+      // volume application, so the slider only has to write state.
+      onChanged: notifier.setPreviewVolume,
     );
   }
 
@@ -1944,10 +1945,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       emptyMessage: activeSegment == null
           ? 'Select a clip to adjust speed'
           : null,
-      onChanged: (value) {
-        notifier.setPreviewSpeed(value);
-        _player?.setRate(value);
-      },
+      onChanged: notifier.setPreviewSpeed,
     );
   }
 
@@ -2013,105 +2011,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     );
   }
 
-  Widget _buildTextStylePanel() {
-    final editorState = ref.watch(videoEditorProvider);
-    final notifier = ref.read(videoEditorProvider.notifier);
-    final textModel = editorState.selectedTextId != null
-        ? editorState.textOverlays.firstWhere(
-            (t) => t.id == editorState.selectedTextId,
-            orElse: () => editorState.textOverlays.first,
-          )
-        : null;
-
-    return TextStylePanel(
-      textModel: textModel,
-      onColorChanged: (val) => textModel != null
-          ? notifier.updateTextOverlay(
-              textModel.id,
-              (c) => c.copyWith(color: val),
-            )
-          : null,
-      onBackgroundColorChanged: (val) => textModel != null
-          ? notifier.updateTextOverlay(
-              textModel.id,
-              (c) => c.copyWith(backgroundColor: val),
-            )
-          : null,
-      onStrokeColorChanged: (val) => textModel != null
-          ? notifier.updateTextOverlay(
-              textModel.id,
-              (c) => c.copyWith(strokeColor: val),
-            )
-          : null,
-      onStrokeWidthChanged: (val) => textModel != null
-          ? notifier.updateTextOverlay(
-              textModel.id,
-              (c) => c.copyWith(strokeWidth: val),
-            )
-          : null,
-      onShadowColorChanged: (val) => textModel != null
-          ? notifier.updateTextOverlay(
-              textModel.id,
-              (c) => c.copyWith(shadowColor: val),
-            )
-          : null,
-      onShadowBlurChanged: (val) => textModel != null
-          ? notifier.updateTextOverlay(
-              textModel.id,
-              (c) => c.copyWith(shadowBlurRadius: val),
-            )
-          : null,
-    );
-  }
-
-  Widget _buildTextFontPanel() {
-    final editorState = ref.watch(videoEditorProvider);
-    final notifier = ref.read(videoEditorProvider.notifier);
-    final textModel = editorState.selectedTextId != null
-        ? editorState.textOverlays.firstWhere(
-            (t) => t.id == editorState.selectedTextId,
-            orElse: () => editorState.textOverlays.first,
-          )
-        : null;
-
-    return TextFontPanel(
-      textModel: textModel,
-      onFontChanged: (val) => textModel != null
-          ? notifier.updateTextOverlay(
-              textModel.id,
-              (c) => c.copyWith(fontFamily: val),
-            )
-          : null,
-    );
-  }
-
-  Widget _buildTextAnimationPanel() {
-    final editorState = ref.watch(videoEditorProvider);
-    final notifier = ref.read(videoEditorProvider.notifier);
-    final textModel = editorState.selectedTextId != null
-        ? editorState.textOverlays.firstWhere(
-            (t) => t.id == editorState.selectedTextId,
-            orElse: () => editorState.textOverlays.first,
-          )
-        : null;
-
-    return TextAnimationPanel(
-      textModel: textModel,
-      onInAnimationChanged: (val) => textModel != null
-          ? notifier.updateTextOverlay(
-              textModel.id,
-              (c) => c.copyWith(inAnimation: val),
-            )
-          : null,
-      onOutAnimationChanged: (val) => textModel != null
-          ? notifier.updateTextOverlay(
-              textModel.id,
-              (c) => c.copyWith(outAnimation: val),
-            )
-          : null,
-    );
-  }
-
   Widget _buildPlaceholderPanel(String toolName) {
     return PlaceholderPanel(toolName: toolName);
   }
@@ -2120,7 +2019,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
     final sourceVideo = editorState.sourceVideo;
-    if (sourceVideo == null || _player == null) {
+    if (sourceVideo == null) {
       return const SizedBox(height: 120);
     }
 
@@ -2141,7 +2040,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     }
 
     return ScrollableTimeline(
-      player: _player!,
+      onPausePlayback: () {
+        if (ref.read(videoEditorProvider).isPlaying) {
+          ref.read(videoEditorProvider.notifier).setPlaying(false);
+        }
+      },
       inputPath: sourceVideo.path,
       durationSeconds: editorState.durationSeconds,
       timelinePositionSeconds: editorState.currentPlaybackPosition,
@@ -2218,6 +2121,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       },
       onTimelinePositionChanged: notifier.updatePlaybackPosition,
       onDragEnd: notifier.saveStateForUndo,
+      onTrimDragStart: _beginTrimDrag,
+      onTrimDragEnd: _endTrimDrag,
+      onScrubStart: _beginScrub,
+      onScrubEnd: _endScrub,
     );
   }
 
@@ -2231,20 +2138,33 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       isPlaying,
     ) {
       if (isPlaying) {
+        // Any transport change ends the tail; the engine owns the clock again.
+        _isDrivingTail = false;
         _lastTick = DateTime.now();
         // Ensure audio players are loaded before playing
         final state = ref.read(videoEditorProvider);
         _audioPlayerManager.syncTracks(state.audioTracks);
-        _syncVideoLayerToTimeline(
-          state.currentPlaybackPosition,
-          state,
-          shouldPlay: true,
-          seekThresholdSeconds: 0.5,
-        );
-        _ticker.start();
-      } else {
+
+        // The playhead parks at the end when playback finishes. Pressing play
+        // there means "again", so it restarts from the top — anywhere else it
+        // resumes in place.
+        final totalDuration = ref.read(totalEditedDurationProvider);
+        if (state.currentPlaybackPosition >= totalDuration - 0.05) {
+          ref.read(videoEditorProvider.notifier).updatePlaybackPosition(0.0);
+        }
+
+        unawaited(() async {
+          await _syncNativePreviewTimeline(state);
+          await _seekNativePreviewToTimeline(ref.read(videoEditorProvider));
+          await _nativePreviewService.play();
+        }());
+        // The engine drives the playhead; the ticker only takes over for a
+        // tail past the last video frame.
         _ticker.stop();
-        _player?.pause();
+      } else {
+        _isDrivingTail = false;
+        _ticker.stop();
+        unawaited(_nativePreviewService.pause());
         _audioPlayerManager.pauseAll();
       }
     });
@@ -2257,12 +2177,27 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       },
     );
 
+    ref.listen<VideoEditorState>(videoEditorProvider, (prev, state) {
+      if (_canUseNativeTimelinePreview(state) && !state.isPlaying) {
+        // Adding or retuning a transition costs nothing now — it is a shader
+        // uniform, not a render — so there is no cache to schedule here.
+        unawaited(_syncNativePreviewTimeline(state));
+      }
+    });
+
     // Sync audio players when scrubbing the timeline (while paused)
     ref.listen<double>(
       videoEditorProvider.select((s) => s.currentPlaybackPosition),
       (prev, currentPos) {
         final state = ref.read(videoEditorProvider);
         if (!state.isPlaying) {
+          // Deliberately no _syncNativePreviewTimeline here: the whole-state
+          // listener above already runs on this change, and composing plus
+          // encoding the timeline twice per gesture frame was a large part of
+          // why dragging the playhead felt heavy.
+          if (_canUseNativeTimelinePreview(state)) {
+            unawaited(_seekNativePreviewToTimeline(state));
+          }
           _audioPlayerManager.seekAndPlaySync(
             currentPos,
             state.audioTracks,
@@ -2300,9 +2235,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: _videoController != null
-                          ? VideoPreviewCanvas(
-                              videoController: _videoController!,
+                      child: VideoPreviewCanvas(
+                              videoSurface: NativeTimelinePreviewView(
+                                service: _nativePreviewService,
+                              ),
                               onTogglePreview: () => ref
                                   .read(videoEditorProvider.notifier)
                                   .togglePreview(),
@@ -2323,7 +2259,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                                     ref: ref,
                                     initialTool: showKeyboard
                                         ? TextEditorTool.keyboard
-                                        : TextEditorTool.color,
+                                        : TextEditorTool.style,
                                   ),
                               onCanvasSizeChanged: (size) {
                                 ref
@@ -2331,14 +2267,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                                         .state =
                                     size;
                               },
-                            )
-                          : Container(
-                              color: Colors.black,
-                              child: const Center(
-                                child: CircularProgressIndicator(
-                                  color: Colors.white38,
-                                ),
-                              ),
                             ),
                     ),
                     if (_isFullscreen)
@@ -2385,11 +2313,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Offstage(
-                        offstage: [
-                          'style',
-                          'font',
-                          'animation',
-                        ].contains(editorState.activeToolId),
+                        // The panels that used to replace the timeline
+                        // (text style/font/animation) collapsed into the
+                        // text editor sheet; the timeline stays visible.
+                        offstage: false,
                         child: _buildScrollableTimeline(),
                       ),
                       Container(

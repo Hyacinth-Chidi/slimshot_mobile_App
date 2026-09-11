@@ -1,12 +1,17 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/toast_utils.dart';
+import '../../logic/timeline/timeline_geometry.dart';
+import '../../logic/transitions/transition_catalog.dart';
+import '../../models/media_asset.dart';
 import '../../models/video_segment.dart';
 import '../../models/text_overlay_model.dart';
 import '../../models/image_overlay_model.dart';
@@ -14,7 +19,9 @@ import '../../models/video_overlay_model.dart';
 import '../../models/audio_track_model.dart';
 import '../../models/video_editor_state.dart';
 import '../../providers/video_editor_notifier.dart';
-import '../../services/video_editor_service.dart';
+import '../../services/video_thumbnail_service.dart';
+import '../panels/cover_picker_sheet.dart';
+import 'clip_filmstrip.dart';
 
 class _WaveformPainter extends CustomPainter {
   final Color color;
@@ -41,7 +48,11 @@ class _WaveformPainter extends CustomPainter {
       final barHeight = size.height * amplitude * 0.8;
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromCenter(center: Offset(x + barWidth / 2, centerY), width: barWidth, height: barHeight),
+          Rect.fromCenter(
+            center: Offset(x + barWidth / 2, centerY),
+            width: barWidth,
+            height: barHeight,
+          ),
           const Radius.circular(1),
         ),
         paint,
@@ -54,7 +65,12 @@ class _WaveformPainter extends CustomPainter {
 }
 
 class ScrollableTimeline extends ConsumerStatefulWidget {
-  final Player player;
+  /// Stops playback when a gesture takes over the timeline.
+  ///
+  /// A callback rather than a player: the timeline never needed to *drive* a
+  /// player, only to stop one, and taking the engine's own pause path keeps
+  /// that true whichever engine is playing.
+  final VoidCallback onPausePlayback;
   final String inputPath;
   final double durationSeconds;
   final double timelinePositionSeconds;
@@ -68,29 +84,72 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
   final String? selectedTextId;
   final ValueChanged<String>? onTextTapped;
   final ValueChanged<String>? onTextDoubleTapped;
-  final void Function(String id, Duration start, Duration end, {int? newLaneIndex})? onTextTrimChanged;
+  final void Function(
+    String id,
+    Duration start,
+    Duration end, {
+    int? newLaneIndex,
+  })?
+  onTextTrimChanged;
 
   final List<ImageOverlayModel> imageOverlays;
   final String? selectedImageId;
   final ValueChanged<String>? onImageTapped;
-  final void Function(String id, Duration start, Duration end, {int? newLaneIndex})? onImageTrimChanged;
+  final void Function(
+    String id,
+    Duration start,
+    Duration end, {
+    int? newLaneIndex,
+  })?
+  onImageTrimChanged;
 
   final List<VideoOverlayModel> videoOverlays;
   final String? selectedVideoId;
   final ValueChanged<String>? onVideoTapped;
-  final void Function(String id, Duration start, Duration end, {int? newLaneIndex})? onVideoTrimChanged;
+  final void Function(
+    String id,
+    Duration start,
+    Duration end, {
+    int? newLaneIndex,
+  })?
+  onVideoTrimChanged;
 
   final List<AudioTrackModel> audioTracks;
   final String? selectedAudioId;
   final ValueChanged<String>? onAudioTapped;
-  final void Function(String id, double newTimelineStart, {int? newLaneIndex})? onAudioDragChanged;
-  final void Function(String id, double newTimelineStart, double newSourceStart, double newSourceEnd)? onAudioTrimChanged;
+  final void Function(String id, double newTimelineStart, {int? newLaneIndex})?
+  onAudioDragChanged;
+  final void Function(
+    String id,
+    double newTimelineStart,
+    double newSourceStart,
+    double newSourceEnd,
+  )?
+  onAudioTrimChanged;
   final ValueChanged<double>? onTimelinePositionChanged;
+  final ValueChanged<String>? onTransitionTapped;
   final VoidCallback? onDragEnd;
+
+  /// Fires when a trim handle is grabbed.
+  ///
+  /// Lets the editor hold off work that is far too expensive to repeat per
+  /// drag frame — rebuilding the native timeline in particular — until the
+  /// handle is released.
+  final VoidCallback? onTrimDragStart;
+
+  final VoidCallback? onTrimDragEnd;
+
+  /// Fires when the timeline starts and stops being dragged under the playhead.
+  ///
+  /// A scrub produces a seek per gesture frame. The engine can coalesce those
+  /// far more cheaply than it can serve them one at a time, but only if it
+  /// knows a scrub is in progress.
+  final VoidCallback? onScrubStart;
+  final VoidCallback? onScrubEnd;
 
   const ScrollableTimeline({
     super.key,
-    required this.player,
+    required this.onPausePlayback,
     required this.inputPath,
     required this.durationSeconds,
     this.timelinePositionSeconds = 0.0,
@@ -118,7 +177,12 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
     this.onAudioDragChanged,
     this.onAudioTrimChanged,
     this.onTimelinePositionChanged,
+    this.onTransitionTapped,
     this.onDragEnd,
+    this.onTrimDragStart,
+    this.onTrimDragEnd,
+    this.onScrubStart,
+    this.onScrubEnd,
   });
 
   @override
@@ -126,20 +190,107 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
 }
 
 class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
-  final VideoEditorService _service = VideoEditorService();
   final ScrollController _scrollController = ScrollController();
 
-  List<Uint8List>? _thumbnails;
-  bool _isLoading = true;
-  String? _error;
+  /// The lanes area's vertical scroll, tracked so the cover card overlay can
+  /// stay glued to the filmstrip row when tall lane stacks scroll.
+  final ScrollController _verticalScrollController = ScrollController();
+
+  /// Window assumed visible before the scroll view has been laid out, so the
+  /// opening filmstrip tiles are already being fetched on first paint.
+  static const double _kInitialVisibleSeconds = 12.0;
 
   static const double _pixelsPerSecond = 50.0;
   static const double _filmstripHeight = 48.0; // Reduced to be more compact
+
+  /// Width of the marker drawn where one clip is cut from the next.
+  static const double _clipSeamWidth = 4.0;
+
+  /// Effectively-unbounded upper limit for overlay drags and trims, in ms.
+  ///
+  /// Overlays and audio may extend past the video's end — the project then
+  /// runs longer over the background — so their gestures have no ceiling.
+  /// A day keeps the arithmetic in comfortable int range on every platform.
+  static const int _kUnboundedMs = 24 * 60 * 60 * 1000;
+
+  /// How close to the viewport edge a carried clip starts pulling the timeline.
+  static const double _kReorderEdgeZonePx = 64.0;
+
+  /// Fastest the timeline scrolls itself while a clip is held at the edge.
+  static const double _kReorderAutoScrollPxPerTick = 12.0;
+
+  /// How long the other clips take to slide out of the way.
+  static const Duration _kReorderSettleDuration = Duration(milliseconds: 160);
+
+  /// How far a carried clip lifts off the track, and how much it grows.
+  static const double _kCarriedLiftPx = 6.0;
+  static const double _kCarriedScale = 1.06;
   static const double _laneHeight = 32.0;
   static const double _handleWidth = 12.0; // Thinner handle
-  static const double _handleTouchWidth = 44.0; // Keep hit area large for easy grabbing
+  static const double _handleTouchWidth =
+      44.0; // Keep hit area large for easy grabbing
+
+  /// Minimum length any trim can leave behind — the video clips' rule
+  /// ([kMinClipDurationSeconds]) shared by every trimmable thing on the
+  /// timeline, so there is one minimum instead of a different one per lane.
+  static final Duration _kMinTrimDuration =
+      Duration(milliseconds: (kMinClipDurationSeconds * 1000).round());
   static const double _timeRulerHeight = 20.0;
   static const int _textSnapThresholdMs = 200;
+
+  /// Width of the lane-identity gutter drawn in the run-in before 00:00.
+  static const double _laneGutterWidth = 72.0;
+
+  /// Width of the project cover card in the run-in before 00:00.
+  static const double _coverTileWidth = 44.0;
+
+  /// Which trim handle is being held, so it can show it has been grabbed.
+  _TrimHandle? _activeTrimHandle;
+
+  /// Where the finger went down, and the trim value at that instant.
+  ///
+  /// A handle follows `anchorValue + (fingerX - anchorX)` rather than a running
+  /// sum of per-frame deltas. A delta that gets dropped — because the range hit
+  /// its minimum length, or the notifier clamped it against the clip's asset —
+  /// would otherwise be lost for good, leaving the handle offset from the
+  /// finger by however far it was pushed past the limit: dragging back then
+  /// does nothing until the overshoot has been paid off.
+  double _trimAnchorGlobalX = 0.0;
+  double _trimAnchorValue = 0.0;
+
+  // ── Clip reordering ──
+  //
+  // Picked up with a long press so it cannot be confused with a scrub (a
+  // horizontal drag anywhere on the timeline) or with a trim (a horizontal drag
+  // on a handle). While a clip is held the timeline stops scrolling with the
+  // finger and drives itself instead, so a clip can be carried past the edge of
+  // the viewport.
+
+  /// Clip currently being carried, or null.
+  String? _reorderingSegmentId;
+
+  /// Its index in `widget.segments` when it was picked up.
+  int _reorderFromIndex = -1;
+
+  /// Where it would land if dropped now. Drives the preview layout.
+  int _reorderToIndex = -1;
+
+  /// Content-space x of the finger, and where inside the clip it grabbed.
+  double _reorderPointerContentX = 0.0;
+  double _reorderGrabOffsetPx = 0.0;
+
+  /// Captured at pickup so the preview layout does not have to re-resolve
+  /// transition overlaps on every frame of the drag — the widths tile the
+  /// timeline exactly, so reusing them reproduces the layout the user grabbed.
+  Map<String, double> _reorderWidthsPx = const {};
+
+  /// Pointer and scroll positions at pickup, so finger movement and
+  /// auto-scrolling can both be added to the grab point.
+  double _reorderStartContentX = 0.0;
+  double _reorderStartScrollOffset = 0.0;
+  Timer? _reorderAutoScrollTimer;
+
+  bool get _isReorderingClip => _reorderingSegmentId != null;
 
   bool _isUserScrolling = false;
   bool _isAutoScrolling = false;
@@ -186,13 +337,24 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   int _dragStartMaxLane = 0;
 
   double get _totalEditedDuration {
-    final videoDuration =
-        widget.segments.fold(0.0, (sum, seg) => sum + seg.duration);
-    final maxAudioEnd = widget.audioTracks.fold(
-      0.0,
-      (maxEnd, track) => max(maxEnd, track.timelineEnd),
-    );
-    return max(videoDuration, maxAudioEnd);
+    // Through the shared geometry, never a sum: transitions overlap their
+    // clips, so summing durations draws a timeline longer than playback.
+    var lastEnd = videoTimelineDuration(widget.segments);
+    for (final track in widget.audioTracks) {
+      lastEnd = max(lastEnd, track.timelineEnd);
+    }
+    // Overlays count too: any of them may outlast the video, and the timeline
+    // has to be scrollable out to wherever the last thing ends.
+    for (final text in widget.textOverlays) {
+      lastEnd = max(lastEnd, text.endTime.inMilliseconds / 1000.0);
+    }
+    for (final image in widget.imageOverlays) {
+      lastEnd = max(lastEnd, image.endTime.inMilliseconds / 1000.0);
+    }
+    for (final video in widget.videoOverlays) {
+      lastEnd = max(lastEnd, video.timelineEnd.inMilliseconds / 1000.0);
+    }
+    return lastEnd;
   }
 
   int get _maxLane {
@@ -212,35 +374,13 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     return m;
   }
 
-  double _timelineTimeToSourceTime(double timelineTime) {
-    if (widget.segments.isEmpty) return timelineTime;
-    double accumulated = 0.0;
-    for (final segment in widget.segments) {
-      if (timelineTime >= accumulated && timelineTime <= accumulated + segment.duration) {
-        return segment.sourceStart + ((timelineTime - accumulated) * segment.speed);
-      }
-      accumulated += segment.duration;
-    }
-    return widget.segments.last.sourceEnd;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadThumbnails();
-  }
-
   @override
   void didUpdateWidget(covariant ScrollableTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.inputPath != widget.inputPath) {
-      _thumbnails = null;
-      _error = null;
-      _isLoading = true;
       if (_scrollController.hasClients) {
         _scrollController.jumpTo(0);
       }
-      _loadThumbnails();
     }
 
     if (oldWidget.timelinePositionSeconds != widget.timelinePositionSeconds) {
@@ -250,20 +390,29 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
 
   @override
   void dispose() {
+    _reorderAutoScrollTimer?.cancel();
     _scrollController.dispose();
+    _verticalScrollController.dispose();
     super.dispose();
   }
 
   void _syncScrollToTimelinePosition(double timelinePosition) {
-    if (_isUserScrolling || _isDraggingTrimHandle || _isDraggingTextClip) {
+    // A carried clip owns the scroll position; letting the playhead pull it
+    // back would fight the drag.
+    if (_isUserScrolling ||
+        _isDraggingTrimHandle ||
+        _isDraggingTextClip ||
+        _isReorderingClip) {
       return;
     }
     if (_scrollController.hasClients) {
       final targetOffset = timelinePosition * _pixelsPerSecond;
-      final nextOffset = targetOffset.clamp(
-        _scrollController.position.minScrollExtent,
-        _scrollController.position.maxScrollExtent,
-      ).toDouble();
+      final nextOffset = targetOffset
+          .clamp(
+            _scrollController.position.minScrollExtent,
+            _scrollController.position.maxScrollExtent,
+          )
+          .toDouble();
 
       if ((_scrollController.offset - nextOffset).abs() < 0.5) return;
 
@@ -277,31 +426,27 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     }
   }
 
-  Future<void> _loadThumbnails() async {
-    try {
-      final thumbnailCount =
-          (widget.durationSeconds / 2).ceil().clamp(5, 30).toInt();
+  /// Timeline window currently on screen, in seconds.
+  ///
+  /// Content is padded by half a screen on each side so the playhead sits in
+  /// the middle, which means scroll offset `x` puts timeline time
+  /// `(x - halfWidth) / pixelsPerSecond` at the left edge of the viewport.
+  /// Filmstrips use this to fetch only the frames the user can actually see.
+  double get _visibleStartSeconds {
+    if (!_scrollController.hasClients) return 0.0;
+    final halfViewport = _scrollController.position.viewportDimension / 2;
+    return ((_scrollController.offset - halfViewport) / _pixelsPerSecond)
+        .clamp(0.0, double.infinity)
+        .toDouble();
+  }
 
-      final thumbnails = await _service.generateThumbnails(
-        inputPath: widget.inputPath,
-        durationSeconds: widget.durationSeconds,
-        count: thumbnailCount,
-      );
-
-      if (mounted) {
-        setState(() {
-          _thumbnails = thumbnails;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _isLoading = false;
-        });
-      }
+  double get _visibleEndSeconds {
+    if (!_scrollController.hasClients) {
+      // Before first layout, cover a screenful so the opening frames load.
+      return _kInitialVisibleSeconds;
     }
+    final halfViewport = _scrollController.position.viewportDimension / 2;
+    return (_scrollController.offset + halfViewport) / _pixelsPerSecond;
   }
 
   bool _onScrollNotification(ScrollNotification notification) {
@@ -310,54 +455,244 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       return false;
     }
 
-    if (_isAutoScrolling || _isDraggingTrimHandle || _isDraggingTextClip) {
+    // A reorder drives the scroll itself when a clip is carried to the edge, so
+    // those movements must not be read as the user scrubbing.
+    if (_isAutoScrolling ||
+        _isDraggingTrimHandle ||
+        _isDraggingTextClip ||
+        _isReorderingClip) {
       return false;
     }
 
     if (notification is ScrollStartNotification) {
       _isUserScrolling = true;
-      if (widget.player.state.playing) {
-        widget.player.pause();
-      }
+      widget.onScrubStart?.call();
+      widget.onPausePlayback();
     } else if (notification is ScrollUpdateNotification) {
       final timelineSeconds = (notification.metrics.pixels / _pixelsPerSecond)
           .clamp(0.0, _totalEditedDuration)
           .toDouble();
+      // The engine follows the reported position; the timeline itself never
+      // seeks anything.
       widget.onTimelinePositionChanged?.call(timelineSeconds);
-      final sourceSeconds = _timelineTimeToSourceTime(timelineSeconds);
-      widget.player.seek(
-        Duration(milliseconds: (sourceSeconds * 1000).round()),
-      );
     } else if (notification is ScrollEndNotification) {
       _isUserScrolling = false;
+      widget.onScrubEnd?.call();
     }
     return true;
   }
 
   void _updateTrim(double newStart, double newEnd) {
-    newStart = newStart.clamp(0.0, widget.durationSeconds).toDouble();
-    newEnd = newEnd.clamp(0.0, widget.durationSeconds).toDouble();
-    if (newEnd - newStart < 0.5) return;
+    // Deliberately not clamped to `widget.durationSeconds`: that is the *first
+    // asset's* length, which says nothing about the clip being trimmed. On a
+    // photo project it is zero — a photo has no source duration — so clamping
+    // to it collapsed every drag to an empty range and the handles did
+    // nothing at all. `VideoEditorNotifier.setTrimRange` clamps against the
+    // clip's own asset, which is the only correct bound.
+    if (newStart < 0) newStart = 0;
+    if (newEnd - newStart < kMinClipDurationSeconds) return;
     widget.onTrimChanged?.call(RangeValues(newStart, newEnd));
   }
 
-  void _previewTrimPosition(double sourceSeconds) {
-    final preview = sourceSeconds.clamp(0.0, widget.durationSeconds).toDouble();
-    widget.player.seek(
-      Duration(milliseconds: (preview * 1000).round()),
-    );
+  /// Where a trim handle currently sits, for a live preview of that frame.
+  ///
+  /// Intentionally does nothing today. It drove a `media_kit` seek per drag
+  /// frame, which the native engine made pointless — that player's output was
+  /// no longer on screen, so each seek bought nothing and cost a decoder
+  /// flush on the device already serving the drag. The call sites remain
+  /// because the *feature* is still wanted: the engine should show the frame
+  /// under the handle, through its own coalescing scrub path rather than a
+  /// second seek channel.
+  // ignore: avoid_unused_constructor_parameters
+  void _previewTrimPosition(double sourceSeconds) {}
+
+  void _beginTrimDrag(_TrimHandle handle, double globalX) {
+    _isDraggingTrimHandle = true;
+    _trimAnchorGlobalX = globalX;
+    _trimAnchorValue = handle == _TrimHandle.start
+        ? widget.trimRange.start
+        : widget.trimRange.end;
+
+    widget.onPausePlayback();
+    HapticFeedback.selectionClick();
+    setState(() => _activeTrimHandle = handle);
+    widget.onTrimDragStart?.call();
   }
 
-  void _beginTrimDrag() {
-    _isDraggingTrimHandle = true;
-    if (widget.player.state.playing) {
-      widget.player.pause();
+  void _dragTrimHandle(double globalX) {
+    final handle = _activeTrimHandle;
+    if (handle == null) return;
+
+    // Absolute, from the anchor — see [_trimAnchorGlobalX].
+    final next =
+        _trimAnchorValue + (globalX - _trimAnchorGlobalX) / _pixelsPerSecond;
+
+    // Clamped to the shortest allowed clip here, rather than left for
+    // `_updateTrim` to reject: a rejected update leaves the handle wherever the
+    // last accepted frame put it, which on a fast drag is short of the limit
+    // and looks like the handle gave up early. Clamping walks it right up to
+    // the limit and holds it there.
+    final double target;
+    if (handle == _TrimHandle.start) {
+      final maxStart =
+          max(0.0, widget.trimRange.end - kMinClipDurationSeconds);
+      target = next.clamp(0.0, maxStart).toDouble();
+      _updateTrim(target, widget.trimRange.end);
+    } else {
+      final minEnd = widget.trimRange.start + kMinClipDurationSeconds;
+      target = max(next, minEnd);
+      _updateTrim(widget.trimRange.start, target);
     }
+    _previewTrimPosition(target);
   }
 
   void _endTrimDrag() {
+    if (!_isDraggingTrimHandle) return;
     _isDraggingTrimHandle = false;
+    setState(() => _activeTrimHandle = null);
+    widget.onTrimDragEnd?.call();
     widget.onDragEnd?.call();
+  }
+
+  /// One end of the selected clip, as a grab handle.
+  ///
+  /// The grip widens and brightens while held. Without that there is nothing to
+  /// confirm the handle was caught, so a drag that has not moved far enough to
+  /// change the trim yet reads as the handle having missed the touch.
+  Widget _buildTrimHandle(_TrimHandle handle) {
+    final isHeld = _activeTrimHandle == handle;
+
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: _trimHandleGestures(handle),
+      child: SizedBox(
+        width: _handleTouchWidth,
+        child: Align(
+          alignment: Alignment.center,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 110),
+            curve: Curves.easeOut,
+            width: isHeld ? _handleWidth + 4 : _handleWidth,
+            decoration: BoxDecoration(
+              color: isHeld
+                  ? AppColors.textPrimary
+                  : AppColors.primaryStart,
+              boxShadow: isHeld
+                  ? [
+                      BoxShadow(
+                        color: AppColors.primaryStart.withValues(alpha: 0.6),
+                        blurRadius: 8,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Center(
+              // The same grip on both ends — a chevron implied a direction
+              // the drag does not have.
+              child: Container(
+                width: 2.5,
+                height: 14,
+                color: Colors.black,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Gesture wiring shared by both trim handles.
+  Map<Type, GestureRecognizerFactory> _trimHandleGestures(_TrimHandle handle) {
+    return <Type, GestureRecognizerFactory>{
+      _ImmediateHorizontalDragRecognizer:
+          GestureRecognizerFactoryWithHandlers<
+              _ImmediateHorizontalDragRecognizer>(
+        () => _ImmediateHorizontalDragRecognizer(debugOwner: this),
+        (instance) {
+          instance.onStart =
+              (details) => _beginTrimDrag(handle, details.globalPosition.dx);
+          instance.onUpdate =
+              (details) => _dragTrimHandle(details.globalPosition.dx);
+          instance.onEnd = (_) => _endTrimDrag();
+          instance.onCancel = _endTrimDrag;
+        },
+      ),
+    };
+  }
+
+  /// Which lane trim handle (audio/overlay) is currently held, as a
+  /// `'<kind>:<id>:<edge>'` key, so exactly that handle lights up.
+  String? _heldLaneHandleKey;
+
+  /// A lane trim handle that wins the gesture arena on touch-down and lights
+  /// up while held.
+  ///
+  /// A plain [GestureDetector] waits out `kTouchSlop` (~18px) before its drag
+  /// beats the scrolling timeline — a third of a second of trim at 50px/s
+  /// swallowed before anything moves, so the handle read as having missed the
+  /// touch. Same fix as the clip trim handles: claim the pointer immediately.
+  /// The held highlight is the confirmation the grab landed; without it a
+  /// drag that has not moved far enough to change anything looks like a miss.
+  Widget _laneTrimHandle({
+    required String handleKey,
+    required GestureDragStartCallback onStart,
+    required GestureDragUpdateCallback onUpdate,
+    required VoidCallback onEnd,
+    required Widget Function(bool isHeld) visual,
+  }) {
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: <Type, GestureRecognizerFactory>{
+        _ImmediateHorizontalDragRecognizer:
+            GestureRecognizerFactoryWithHandlers<
+                _ImmediateHorizontalDragRecognizer>(
+          () => _ImmediateHorizontalDragRecognizer(debugOwner: this),
+          (instance) {
+            instance.onStart = (details) {
+              setState(() => _heldLaneHandleKey = handleKey);
+              onStart(details);
+            };
+            instance.onUpdate = onUpdate;
+            instance.onEnd = (_) {
+              setState(() => _heldLaneHandleKey = null);
+              onEnd();
+            };
+            instance.onCancel = () {
+              setState(() => _heldLaneHandleKey = null);
+              onEnd();
+            };
+          },
+        ),
+      },
+      child: visual(_heldLaneHandleKey == handleKey),
+    );
+  }
+
+  /// The audio lane's handle block: full-height colour with a centred grip
+  /// bar — the same bar on both ends, because a chevron implied a direction
+  /// the drag does not have.
+  Widget _audioHandleVisual(bool isHeld) {
+    return Container(
+      color: isHeld ? AppColors.textPrimary : AppColors.primaryStart,
+      child: Center(
+        child: Container(width: 2.5, height: 14, color: Colors.black),
+      ),
+    );
+  }
+
+  /// The overlay lanes' slim handle: a centred bar that widens and brightens
+  /// while held, like the clip trim handles.
+  Widget _overlayHandleVisual(bool isHeld) {
+    return Align(
+      alignment: Alignment.center,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        width: isHeld ? 12 : 8,
+        color: isHeld ? AppColors.textPrimary : AppColors.primaryStart,
+      ),
+    );
   }
 
   void _beginTextClipDrag(TextOverlayModel text) {
@@ -370,9 +705,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _dragStartLaneIndex = text.laneIndex;
       _dragStartMaxLane = _maxLane;
     });
-    if (widget.player.state.playing) {
-      widget.player.pause();
-    }
+    widget.onPausePlayback();
     widget.onTextTapped?.call(text.id);
   }
 
@@ -380,7 +713,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     int snappedStartMs = proposedStartMs;
     int? snapGuideMs;
 
-    final playheadMs = (widget.timelinePositionSeconds * 1000).round()
+    final playheadMs = (widget.timelinePositionSeconds * 1000)
+        .round()
         .clamp(0, (_totalEditedDuration * 1000).round())
         .toInt();
     if ((proposedStartMs - playheadMs).abs() <= _textSnapThresholdMs) {
@@ -413,13 +747,15 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       return;
     }
 
-    final deltaMs =
-        (details.offsetFromOrigin.dx / _pixelsPerSecond * 1000).round();
+    final deltaMs = (details.offsetFromOrigin.dx / _pixelsPerSecond * 1000)
+        .round();
     final clipDurationMs =
-        _textDragInitialEnd!.inMilliseconds - _textDragInitialStart!.inMilliseconds;
-    final maxStartMs = ((widget.durationSeconds * 1000).round() - clipDurationMs)
-        .clamp(0, double.infinity)
-        .toInt();
+        _textDragInitialEnd!.inMilliseconds -
+        _textDragInitialStart!.inMilliseconds;
+    // No upper bound: an overlay may be dragged past the video's end and the
+    // project simply runs longer, matching audio. The old ceiling was also
+    // computed from `durationSeconds` — the *first asset's* length.
+    const maxStartMs = _kUnboundedMs;
 
     final proposedStartMs = (_textDragInitialStart!.inMilliseconds + deltaMs)
         .clamp(0, maxStartMs)
@@ -430,10 +766,21 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final nextStart = Duration(milliseconds: nextStartMs);
     final nextEnd = Duration(milliseconds: nextEndMs);
 
-    final lanesMoved = -(details.offsetFromOrigin.dy / _laneHeight).round();
-    final newLaneIndex = max(0, min(_dragStartMaxLane, _dragStartLaneIndex + lanesMoved));
+    // Lanes stack *downward* (lane 0 nearest the filmstrip), so dragging down
+    // is a higher lane index. The old negation came from the upward-growing
+    // layout and made every vertical drag land on the opposite side.
+    final lanesMoved = (details.offsetFromOrigin.dy / _laneHeight).round();
+    final newLaneIndex = max(
+      0,
+      min(_dragStartMaxLane, _dragStartLaneIndex + lanesMoved),
+    );
 
-    widget.onTextTrimChanged?.call(_draggingTextId!, nextStart, nextEnd, newLaneIndex: newLaneIndex);
+    widget.onTextTrimChanged?.call(
+      _draggingTextId!,
+      nextStart,
+      nextEnd,
+      newLaneIndex: newLaneIndex,
+    );
     _previewTrimPosition(nextStart.inMilliseconds / 1000.0);
   }
 
@@ -461,13 +808,16 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
 
   void _moveAudioClip(LongPressMoveUpdateDetails details) {
     if (!_isDraggingAudioClip || _audioDragInitialTimelineStart == null) return;
-    
+
     final deltaSeconds = details.localOffsetFromOrigin.dx / _pixelsPerSecond;
     final totalVideoDuration = widget.durationSeconds;
-    
-    final audio = widget.audioTracks.firstWhere((a) => a.id == _draggingAudioId, orElse: () => widget.audioTracks.first);
+
+    final audio = widget.audioTracks.firstWhere(
+      (a) => a.id == _draggingAudioId,
+      orElse: () => widget.audioTracks.first,
+    );
     if (audio.id != _draggingAudioId) return;
-    
+
     final duration = audio.trimmedDuration;
 
     double nextStart = _audioDragInitialTimelineStart! + deltaSeconds;
@@ -477,10 +827,19 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       if (nextStart < 0) nextStart = 0;
     }
 
-    final lanesMoved = -(details.localOffsetFromOrigin.dy / _laneHeight).round();
-    final newLaneIndex = max(0, min(_dragStartMaxLane, _dragStartLaneIndex + lanesMoved));
+    // Same downward lane order as the overlay movers: drag down = higher lane.
+    final lanesMoved = (details.localOffsetFromOrigin.dy / _laneHeight)
+        .round();
+    final newLaneIndex = max(
+      0,
+      min(_dragStartMaxLane, _dragStartLaneIndex + lanesMoved),
+    );
 
-    widget.onAudioDragChanged?.call(_draggingAudioId!, nextStart, newLaneIndex: newLaneIndex);
+    widget.onAudioDragChanged?.call(
+      _draggingAudioId!,
+      nextStart,
+      newLaneIndex: newLaneIndex,
+    );
   }
 
   void _endAudioClipDrag() {
@@ -501,15 +860,20 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _audioTrimInitialSourceEnd = audio.sourceEnd;
       _audioTrimAccumulatedDelta = 0.0;
     });
-    if (widget.player.state.playing) {
-      widget.player.pause();
-    }
+    widget.onPausePlayback();
   }
 
   void _updateAudioTrimStart(DragUpdateDetails details) {
-    if (_trimmingAudioId == null || _audioTrimInitialTimelineStart == null || _audioTrimInitialSourceStart == null || _audioTrimInitialSourceEnd == null) return;
+    if (_trimmingAudioId == null ||
+        _audioTrimInitialTimelineStart == null ||
+        _audioTrimInitialSourceStart == null ||
+        _audioTrimInitialSourceEnd == null)
+      return;
 
-    final audio = widget.audioTracks.firstWhere((a) => a.id == _trimmingAudioId, orElse: () => widget.audioTracks.first);
+    final audio = widget.audioTracks.firstWhere(
+      (a) => a.id == _trimmingAudioId,
+      orElse: () => widget.audioTracks.first,
+    );
     if (audio.id != _trimmingAudioId) return;
 
     _audioTrimAccumulatedDelta += details.delta.dx;
@@ -529,17 +893,31 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     }
     if (_audioTrimInitialSourceEnd! - newSourceStart < 0.5) {
       newSourceStart = _audioTrimInitialSourceEnd! - 0.5;
-      newTimelineStart = _audioTrimInitialTimelineStart! + (newSourceStart - _audioTrimInitialSourceStart!);
+      newTimelineStart =
+          _audioTrimInitialTimelineStart! +
+          (newSourceStart - _audioTrimInitialSourceStart!);
     }
 
-    widget.onAudioTrimChanged?.call(_trimmingAudioId!, newTimelineStart, newSourceStart, _audioTrimInitialSourceEnd!);
+    widget.onAudioTrimChanged?.call(
+      _trimmingAudioId!,
+      newTimelineStart,
+      newSourceStart,
+      _audioTrimInitialSourceEnd!,
+    );
     _previewTrimPosition(newTimelineStart);
   }
 
   void _updateAudioTrimEnd(DragUpdateDetails details) {
-    if (_trimmingAudioId == null || _audioTrimInitialTimelineStart == null || _audioTrimInitialSourceStart == null || _audioTrimInitialSourceEnd == null) return;
+    if (_trimmingAudioId == null ||
+        _audioTrimInitialTimelineStart == null ||
+        _audioTrimInitialSourceStart == null ||
+        _audioTrimInitialSourceEnd == null)
+      return;
 
-    final audio = widget.audioTracks.firstWhere((a) => a.id == _trimmingAudioId, orElse: () => widget.audioTracks.first);
+    final audio = widget.audioTracks.firstWhere(
+      (a) => a.id == _trimmingAudioId,
+      orElse: () => widget.audioTracks.first,
+    );
     if (audio.id != _trimmingAudioId) return;
 
     _audioTrimAccumulatedDelta += details.delta.dx;
@@ -555,9 +933,16 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       newSourceEnd = _audioTrimInitialSourceStart! + 0.5;
     }
 
-    widget.onAudioTrimChanged?.call(_trimmingAudioId!, _audioTrimInitialTimelineStart!, _audioTrimInitialSourceStart!, newSourceEnd);
-    
-    final newTimelineEnd = _audioTrimInitialTimelineStart! + (newSourceEnd - _audioTrimInitialSourceStart!);
+    widget.onAudioTrimChanged?.call(
+      _trimmingAudioId!,
+      _audioTrimInitialTimelineStart!,
+      _audioTrimInitialSourceStart!,
+      newSourceEnd,
+    );
+
+    final newTimelineEnd =
+        _audioTrimInitialTimelineStart! +
+        (newSourceEnd - _audioTrimInitialSourceStart!);
     _previewTrimPosition(newTimelineEnd);
   }
 
@@ -574,111 +959,407 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   String _formatTimeRuler(double seconds) {
     final mins = (seconds ~/ 60).toString().padLeft(1, '0');
     final secs = (seconds.toInt() % 60).toString().padLeft(2, '0');
-    final ms = ((seconds - seconds.toInt()) * 100).toInt().toString().padLeft(2, '0');
+    final ms = ((seconds - seconds.toInt()) * 100).toInt().toString().padLeft(
+      2,
+      '0',
+    );
     return '$mins:$secs:$ms';
   }
 
-  Widget _buildGlobalFilmstripRow(double totalVideoWidth) {
-    if (_isLoading) {
-      return const Center(
-        child: SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryStart),
+
+  // ───────────────────────────── clip reordering ─────────────────────────────
+
+  /// Where every clip box sits, in content pixels.
+  ///
+  /// One place decides this so the filmstrip, the selection border, the trim
+  /// handles and the transition markers cannot disagree — during a reorder they
+  /// all have to move together or the timeline comes apart in the user's hands.
+  List<_ClipLayout> _clipLayouts() {
+    final segments = widget.segments;
+    if (segments.isEmpty) return const [];
+
+    if (!_isReorderingClip) {
+      final starts = segmentTimelineStarts(segments);
+      final displays = segmentDisplayDurations(segments);
+      return [
+        for (var i = 0; i < segments.length; i++)
+          _ClipLayout(
+            segment: segments[i],
+            index: i,
+            leftPx: starts[i] * _pixelsPerSecond,
+            widthPx: displays[i] * _pixelsPerSecond,
+            timelineStart: starts[i],
+            displaySeconds: displays[i],
+            isDragged: false,
+          ),
+      ];
+    }
+
+    // Preview order: the carried clip lifted out and put back where it would
+    // land. Widths are the ones captured at pickup — recomputing transition
+    // overlaps for a hypothetical order every frame would be both expensive and
+    // jumpy, and the real geometry is resolved on drop anyway.
+    final order = [...segments];
+    final from = order.indexWhere((s) => s.id == _reorderingSegmentId);
+    if (from == -1) return _clipLayoutsUnordered(segments);
+    final carried = order.removeAt(from);
+    order.insert(_reorderToIndex.clamp(0, order.length), carried);
+
+    final layouts = <_ClipLayout>[];
+    var leftPx = 0.0;
+    for (var i = 0; i < order.length; i++) {
+      final segment = order[i];
+      final widthPx = _reorderWidthsPx[segment.id] ?? 0.0;
+      layouts.add(
+        _ClipLayout(
+          segment: segment,
+          index: i,
+          leftPx: leftPx,
+          widthPx: widthPx,
+          timelineStart: leftPx / _pixelsPerSecond,
+          displaySeconds: widthPx / _pixelsPerSecond,
+          isDragged: segment.id == _reorderingSegmentId,
         ),
       );
+      leftPx += widthPx;
     }
+    return layouts;
+  }
 
-    if (_error != null || _thumbnails == null || _thumbnails!.isEmpty) {
-      return Center(
-        child: Icon(LucideIcons.imageOff, color: AppColors.textSecondary.withValues(alpha: 0.5), size: 18),
-      );
-    }
+  List<_ClipLayout> _clipLayoutsUnordered(List<VideoSegment> segments) {
+    final starts = segmentTimelineStarts(segments);
+    final displays = segmentDisplayDurations(segments);
+    return [
+      for (var i = 0; i < segments.length; i++)
+        _ClipLayout(
+          segment: segments[i],
+          index: i,
+          leftPx: starts[i] * _pixelsPerSecond,
+          widthPx: displays[i] * _pixelsPerSecond,
+          timelineStart: starts[i],
+          displaySeconds: displays[i],
+          isDragged: false,
+        ),
+    ];
+  }
 
-    return SizedBox(
-      width: totalVideoWidth,
-      height: _filmstripHeight,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: _thumbnails!.map((bytes) {
-          return Expanded(
-            child: Image.memory(
-              bytes,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-            ),
-          );
-        }).toList(),
-      ),
+  /// Left edge of the carried clip as it follows the finger.
+  double get _carriedLeftPx => _reorderPointerContentX - _reorderGrabOffsetPx;
+
+  void _beginClipReorder(VideoSegment segment, double grabOffsetPx) {
+    if (widget.segments.length < 2) return;
+
+    final index = widget.segments.indexWhere((s) => s.id == segment.id);
+    if (index == -1) return;
+
+    final starts = segmentTimelineStarts(widget.segments);
+    final displays = segmentDisplayDurations(widget.segments);
+
+    setState(() {
+      _reorderingSegmentId = segment.id;
+      _reorderFromIndex = index;
+      _reorderToIndex = index;
+      _reorderGrabOffsetPx = grabOffsetPx;
+      _reorderStartContentX = starts[index] * _pixelsPerSecond + grabOffsetPx;
+      _reorderPointerContentX = _reorderStartContentX;
+      _reorderStartScrollOffset =
+          _scrollController.hasClients ? _scrollController.offset : 0.0;
+      _reorderWidthsPx = {
+        for (var i = 0; i < widget.segments.length; i++)
+          widget.segments[i].id: displays[i] * _pixelsPerSecond,
+      };
+    });
+
+    HapticFeedback.mediumImpact();
+    widget.onSegmentTapped?.call(segment.id);
+    _reorderAutoScrollTimer = Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _tickReorderAutoScroll(),
     );
   }
 
-  List<Widget> _buildSegmentTracks(double totalVideoWidth, double topOffset) {
+  void _updateClipReorder(double fingerDx) {
+    if (!_isReorderingClip) return;
+
+    final scrolled = _scrollController.hasClients
+        ? _scrollController.offset - _reorderStartScrollOffset
+        : 0.0;
+    _reorderPointerContentX = _reorderStartContentX + fingerDx + scrolled;
+    _recomputeReorderTarget();
+  }
+
+  /// Chooses the slot the carried clip would drop into.
+  ///
+  /// Decided by where the carried clip's **centre** falls among the others,
+  /// rather than by the finger: dragging a long clip by its left edge should
+  /// not move it a slot before any of it overlaps the neighbour.
+  void _recomputeReorderTarget() {
+    final carriedWidth = _reorderWidthsPx[_reorderingSegmentId] ?? 0.0;
+    final centre = _carriedLeftPx + carriedWidth / 2;
+
+    final others = widget.segments
+        .where((s) => s.id != _reorderingSegmentId)
+        .toList(growable: false);
+
+    var target = others.length;
+    var cursor = 0.0;
+    for (var i = 0; i < others.length; i++) {
+      final width = _reorderWidthsPx[others[i].id] ?? 0.0;
+      if (centre < cursor + width / 2) {
+        target = i;
+        break;
+      }
+      cursor += width;
+    }
+
+    if (target == _reorderToIndex) {
+      setState(() {}); // the carried clip still has to follow the finger
+      return;
+    }
+
+    setState(() => _reorderToIndex = target);
+    HapticFeedback.selectionClick();
+  }
+
+  /// Carries the timeline along when the clip is held near an edge.
+  void _tickReorderAutoScroll() {
+    if (!_isReorderingClip || !_scrollController.hasClients) return;
+
+    final position = _scrollController.position;
+    final viewport = position.viewportDimension;
+    final halfViewport = viewport / 2;
+    // Content x → viewport x. Timeline zero sits half a screen in, because the
+    // playhead is pinned to the middle.
+    final pointerViewportX =
+        halfViewport + _reorderPointerContentX - position.pixels;
+
+    var delta = 0.0;
+    if (pointerViewportX < _kReorderEdgeZonePx) {
+      delta = -(_kReorderEdgeZonePx - pointerViewportX);
+    } else if (pointerViewportX > viewport - _kReorderEdgeZonePx) {
+      delta = pointerViewportX - (viewport - _kReorderEdgeZonePx);
+    }
+    if (delta == 0.0) return;
+
+    final step = (delta / _kReorderEdgeZonePx * _kReorderAutoScrollPxPerTick)
+        .clamp(-_kReorderAutoScrollPxPerTick, _kReorderAutoScrollPxPerTick);
+    final next = (position.pixels + step)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if (next == position.pixels) return;
+
+    _scrollController.jumpTo(next);
+    // The finger has not moved but the content under it has.
+    _reorderPointerContentX += next - position.pixels;
+    _recomputeReorderTarget();
+  }
+
+  void _endClipReorder({required bool cancelled}) {
+    if (!_isReorderingClip) return;
+
+    _reorderAutoScrollTimer?.cancel();
+    _reorderAutoScrollTimer = null;
+
+    final from = _reorderFromIndex;
+    final to = _reorderToIndex;
+
+    setState(() {
+      _reorderingSegmentId = null;
+      _reorderFromIndex = -1;
+      _reorderToIndex = -1;
+      _reorderWidthsPx = const {};
+    });
+
+    if (cancelled || from < 0 || to < 0 || from == to) return;
+
+    HapticFeedback.mediumImpact();
+    ref.read(videoEditorProvider.notifier).reorderSegment(from, to);
+  }
+
+  List<Widget> _buildSegmentTracks(
+    List<_ClipLayout> layouts,
+    double topOffset,
+  ) {
     final widgets = <Widget>[];
-    double accumulatedPx = 0.0;
+    final editorState = ref.read(videoEditorProvider);
 
-    for (int i = 0; i < widget.segments.length; i++) {
-      final segment = widget.segments[i];
-      final segmentWidthPx = segment.duration * _pixelsPerSecond;
-      final sourceStartPx = segment.sourceStart * _pixelsPerSecond;
+    for (var i = 0; i < layouts.length; i++) {
+      final layout = layouts[i];
+      final segment = layout.segment;
 
-      // Filmstrip chunk
+      // Filmstrip chunk — each clip owns its own strip, indexed by timeline
+      // time, so trims, speed, reversal and transition overlaps all stay
+      // aligned to the playhead.
+      final proxyPath = segment.overrideVideoPath;
+      final hasProxy = proxyPath != null && proxyPath.isNotEmpty;
+      // Each clip reads frames from its own imported file; a project can mix
+      // several videos and photos, so there is no single source to fall back on
+      // except for drafts that predate the asset pool.
+      final assetPath =
+          editorState.assetFor(segment)?.path ?? widget.inputPath;
+
+      final filmstrip = ClipFilmstrip(
+        key: ValueKey('filmstrip_${segment.id}'),
+        segment: segment,
+        sourcePath: hasProxy ? proxyPath : assetPath,
+        isProxySource: hasProxy,
+        // The carried copy is drawn on its own, always fully visible, so it is
+        // given a strip that starts at zero and spans the whole clip. Tile
+        // source times come from the clip's own offsets either way, so moving a
+        // clip's preview position never re-decodes its frames.
+        timelineStart: layout.isDragged ? 0.0 : layout.timelineStart,
+        displaySeconds: layout.displaySeconds,
+        pixelsPerSecond: _pixelsPerSecond,
+        height: _filmstripHeight,
+        visibleStartSeconds: layout.isDragged ? 0.0 : _visibleStartSeconds,
+        visibleEndSeconds:
+            layout.isDragged ? layout.displaySeconds : _visibleEndSeconds,
+      );
+
+      // The carried clip is drawn separately, on top and at the finger.
+      if (layout.isDragged) continue;
+
       widgets.add(
-        Positioned(
+        AnimatedPositioned(
+          key: ValueKey('strip_slot_${segment.id}'),
+          duration: _isReorderingClip ? _kReorderSettleDuration : Duration.zero,
+          curve: Curves.easeOutCubic,
           top: topOffset,
-          left: accumulatedPx,
-          width: segmentWidthPx,
+          left: layout.leftPx,
+          width: layout.widthPx,
           height: _filmstripHeight,
-          child: ClipRect(
-            child: OverflowBox(
-              alignment: Alignment.centerLeft,
-              minWidth: totalVideoWidth,
-              maxWidth: totalVideoWidth,
-              child: Transform.scale(
-                scaleX: 1 / segment.speed,
-                alignment: Alignment.centerLeft,
-                child: Transform.translate(
-                  offset: Offset(-sourceStartPx, 0),
-                  child: _buildGlobalFilmstripRow(totalVideoWidth),
+          child: filmstrip,
+        ),
+      );
+
+      // The seam between this clip and the one before it.
+      //
+      // A cut has to be legible against whatever frames happen to sit either
+      // side of it. The previous 2px of pure black was invisible on dark
+      // footage, so a split looked like it had not happened; the pale edges
+      // give it contrast on any frame.
+      //
+      // Only drawn for a hard cut. Where a transition spans the boundary the
+      // clips genuinely blend, and the transition marker already sits on the
+      // seam — drawing a cut there would claim something untrue.
+      final previous = i > 0 ? layouts[i - 1].segment : null;
+      final joinsPrevious =
+          previous != null && EditorTransition.isSupported(previous.transitionType);
+      if (previous != null && !joinsPrevious) {
+        widgets.add(
+          AnimatedPositioned(
+            key: ValueKey('seam_${segment.id}'),
+            duration: _isReorderingClip ? _kReorderSettleDuration : Duration.zero,
+            curve: Curves.easeOutCubic,
+            top: topOffset,
+            left: layout.leftPx - _clipSeamWidth / 2,
+            width: _clipSeamWidth,
+            height: _filmstripHeight,
+            child: const DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                border: Border.symmetric(
+                  vertical: BorderSide(color: AppColors.textPrimary, width: 1),
                 ),
               ),
             ),
           ),
-        ),
-      );
-
-
-
-      // Gap line between segments
-      if (i > 0) {
-        widgets.add(
-          Positioned(
-            top: topOffset,
-            left: accumulatedPx - 1,
-            width: 2,
-            height: _filmstripHeight,
-            child: Container(color: Colors.black),
-          ),
         );
       }
-
-      accumulatedPx += segmentWidthPx;
     }
 
     return widgets;
   }
 
-  List<Widget> _buildSegmentBorders(double topOffset, VideoEditorState editorState) {
-    final widgets = <Widget>[];
-    double accumulatedPx = 0.0;
+  /// The clip under the finger, drawn lifted off the timeline.
+  ///
+  /// Deliberately the last thing painted and never animated: it has to track
+  /// the finger exactly, so any easing here would read as lag.
+  Widget? _buildCarriedClip(List<_ClipLayout> layouts, double topOffset) {
+    if (!_isReorderingClip) return null;
 
-    for (int i = 0; i < widget.segments.length; i++) {
-      final segment = widget.segments[i];
-      final segmentWidthPx = segment.duration * _pixelsPerSecond;
+    _ClipLayout? carried;
+    for (final layout in layouts) {
+      if (layout.isDragged) carried = layout;
+    }
+    if (carried == null) return null;
+
+    final segment = carried.segment;
+    final proxyPath = segment.overrideVideoPath;
+    final hasProxy = proxyPath != null && proxyPath.isNotEmpty;
+    final assetPath =
+        ref.read(videoEditorProvider).assetFor(segment)?.path ?? widget.inputPath;
+
+    return Positioned(
+      top: topOffset - _kCarriedLiftPx,
+      left: _carriedLeftPx,
+      width: carried.widthPx,
+      height: _filmstripHeight,
+      child: IgnorePointer(
+        child: Transform.scale(
+          scale: _kCarriedScale,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ClipRect(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipFilmstrip(
+                    key: ValueKey('carried_${segment.id}'),
+                    segment: segment,
+                    sourcePath: hasProxy ? proxyPath : assetPath,
+                    isProxySource: hasProxy,
+                    timelineStart: 0.0,
+                    displaySeconds: carried.displaySeconds,
+                    pixelsPerSecond: _pixelsPerSecond,
+                    height: _filmstripHeight,
+                    visibleStartSeconds: 0.0,
+                    visibleEndSeconds: carried.displaySeconds,
+                  ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: AppColors.primaryStart,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildSegmentBorders(
+    List<_ClipLayout> layouts,
+    double topOffset,
+    VideoEditorState editorState,
+  ) {
+    final widgets = <Widget>[];
+
+    for (int i = 0; i < layouts.length; i++) {
+      final layout = layouts[i];
+      final segment = layout.segment;
+      final accumulatedPx = layout.leftPx;
+      final segmentWidthPx = layout.widthPx;
       final isSelected = widget.selectedSegmentId == segment.id;
+      final canReorder = widget.segments.length > 1;
 
       widgets.add(
-        Positioned(
+        AnimatedPositioned(
+          key: ValueKey('border_${segment.id}'),
+          duration: _isReorderingClip ? _kReorderSettleDuration : Duration.zero,
+          curve: Curves.easeOutCubic,
           top: topOffset,
           left: accumulatedPx,
           width: segmentWidthPx,
@@ -686,13 +1367,37 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => widget.onSegmentTapped?.call(segment.id),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(
-                  color: isSelected ? AppColors.primaryStart : Colors.white.withValues(alpha: 0.18),
-                  width: isSelected ? 2.5 : 1,
+            // Long press to pick a clip up, so reordering cannot be confused
+            // with a scrub — which is a plain horizontal drag anywhere on the
+            // timeline — or with a trim, which is a horizontal drag on a handle
+            // sitting on this same box.
+            onLongPressStart: canReorder
+                ? (details) =>
+                    _beginClipReorder(segment, details.localPosition.dx)
+                : null,
+            onLongPressMoveUpdate: canReorder
+                ? (details) => _updateClipReorder(details.offsetFromOrigin.dx)
+                : null,
+            onLongPressEnd: canReorder
+                ? (_) => _endClipReorder(cancelled: false)
+                : null,
+            onLongPressCancel: canReorder
+                ? () => _endClipReorder(cancelled: true)
+                : null,
+            child: AnimatedOpacity(
+              duration: _kReorderSettleDuration,
+              // The clip left behind fades to a slot: the carried copy is the
+              // one the user is looking at.
+              opacity: layout.isDragged ? 0.0 : 1.0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  border: Border.all(
+                    color: isSelected
+                        ? AppColors.primaryStart
+                        : Colors.white.withValues(alpha: 0.18),
+                    width: isSelected ? 2.5 : 1,
+                  ),
                 ),
               ),
             ),
@@ -700,37 +1405,26 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         ),
       );
 
-      // Add Transition Indicator between clips
-      if (i < widget.segments.length - 1) {
-        final transitionType = segment.transitionType;
-        final hasTransition = transitionType != null;
-        final isTransitionSelected = editorState.selectedTransitionSegmentId == segment.id;
-
+      // The gap the carried clip would drop into, so the landing place is
+      // obvious before the finger is lifted.
+      if (layout.isDragged) {
         widgets.add(
-          Positioned(
-            top: topOffset + _filmstripHeight / 2 - 12, // Centered vertically
-            left: accumulatedPx + segmentWidthPx - 12, // Centered horizontally on the seam
-            width: 24,
-            height: 24,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                ref.read(videoEditorProvider.notifier).selectTransition(segment.id);
-              },
-              child: Container(
+          AnimatedPositioned(
+            key: ValueKey('drop_slot_${segment.id}'),
+            duration: _kReorderSettleDuration,
+            curve: Curves.easeOutCubic,
+            top: topOffset,
+            left: accumulatedPx,
+            width: segmentWidthPx,
+            height: _filmstripHeight,
+            child: IgnorePointer(
+              child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: isTransitionSelected
-                      ? AppColors.primaryStart
-                      : (hasTransition ? Colors.white : Colors.black87),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.white24, width: 1),
-                ),
-                child: Icon(
-                  hasTransition ? LucideIcons.infinity : LucideIcons.minus,
-                  color: isTransitionSelected
-                      ? Colors.white
-                      : (hasTransition ? Colors.black : Colors.white),
-                  size: 14,
+                  color: AppColors.primaryStart.withValues(alpha: 0.14),
+                  border: Border.all(
+                    color: AppColors.primaryStart.withValues(alpha: 0.7),
+                    width: 1.5,
+                  ),
                 ),
               ),
             ),
@@ -738,10 +1432,260 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         );
       }
 
-      accumulatedPx += segmentWidthPx;
+      // Add Transition Indicator between clips.
+      //
+      // Hidden while a clip is being carried: which clips meet at a seam is
+      // exactly what is in flux, so a marker there would be pointing at a
+      // boundary that does not exist yet.
+      if (i < layouts.length - 1 && !_isReorderingClip) {
+        final transitionType = segment.transitionType;
+        final hasTransition = transitionType != null;
+        final isTransitionSelected =
+            editorState.selectedTransitionSegmentId == segment.id;
+
+        widgets.add(
+          Positioned(
+            top:
+                topOffset +
+                _filmstripHeight / 2 -
+                18, // Centered vertically with 36px touch target
+            left:
+                accumulatedPx +
+                segmentWidthPx -
+                18, // Centered horizontally on the seam
+            width: 36,
+            height: 36,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                ref
+                    .read(videoEditorProvider.notifier)
+                    .selectTransition(segment.id);
+                widget.onTransitionTapped?.call(segment.id);
+              },
+              child: Center(
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: isTransitionSelected
+                        ? AppColors.primaryStart
+                        : (hasTransition
+                              ? const Color(0xFF1E293B)
+                              : const Color(0xFF0F172A)),
+                    border: Border.all(
+                      color: isTransitionSelected
+                          ? Colors.white
+                          : (hasTransition
+                                ? AppColors.primaryStart
+                                : Colors.white30),
+                      width: isTransitionSelected || hasTransition ? 1.5 : 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (isTransitionSelected || hasTransition)
+                            ? AppColors.primaryStart.withValues(alpha: 0.4)
+                            : Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    hasTransition ? LucideIcons.sparkles : LucideIcons.split,
+                    color: isTransitionSelected
+                        ? Colors.white
+                        : (hasTransition
+                              ? AppColors.primaryStart
+                              : Colors.white70),
+                    size: 13,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
     }
 
     return widgets;
+  }
+
+  /// Lane identity, drawn in the empty run-in before 00:00.
+  ///
+  /// A vertical line marks the timeline's start, and to its left each lane
+  /// shows one icon per kind of thing it holds — audio, text, sticker, video
+  /// overlay — so a stack of thin lanes can be told apart at a glance. A lane
+  /// holding several kinds shows several icons. It lives in the scrolling
+  /// content deliberately: it is visible exactly when the start of the
+  /// timeline is, the way CapCut's lane icons behave.
+  List<Widget> _buildLaneGutter({
+    required double lanesTop,
+    required int maxLane,
+    required double totalHeight,
+  }) {
+    final widgets = <Widget>[
+      // The start line sits just before 00:00 so it can never cover frame one.
+      Positioned(
+        top: _timeRulerHeight,
+        left: -2,
+        width: 2,
+        height: totalHeight - _timeRulerHeight,
+        child: IgnorePointer(
+          child: Container(color: Colors.white.withValues(alpha: 0.3)),
+        ),
+      ),
+    ];
+
+    for (var lane = 0; lane <= maxLane; lane++) {
+      final icons = <IconData>[
+        if (widget.audioTracks.any((a) => a.laneIndex == lane))
+          LucideIcons.music,
+        if (widget.textOverlays.any((t) => t.laneIndex == lane))
+          LucideIcons.type,
+        if (widget.imageOverlays.any((i) => i.laneIndex == lane))
+          LucideIcons.image,
+        if (widget.videoOverlays.any((v) => v.laneIndex == lane))
+          LucideIcons.video,
+      ];
+      if (icons.isEmpty) continue;
+
+      widgets.add(
+        Positioned(
+          top: lanesTop + lane * _laneHeight,
+          left: -_laneGutterWidth,
+          width: _laneGutterWidth - 8,
+          height: _laneHeight,
+          child: IgnorePointer(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                for (final icon in icons) ...[
+                  Icon(icon, size: 12, color: Colors.white54),
+                  const SizedBox(width: 4),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return widgets;
+  }
+
+  /// Cover-file existence, cached so the 30Hz playback rebuild does not stat
+  /// the file every frame.
+  String? _checkedCoverPath;
+  bool _coverFileExists = false;
+
+  bool _coverExists(String? path) {
+    if (path == null) return false;
+    if (path != _checkedCoverPath) {
+      _checkedCoverPath = path;
+      _coverFileExists = File(path).existsSync();
+    }
+    return _coverFileExists;
+  }
+
+  /// First frame of the edit, for the cover tile's default picture.
+  Uint8List? _defaultCoverBytes(VideoEditorState editorState) {
+    if (widget.segments.isEmpty) return null;
+    final segment = widget.segments.first;
+    final proxy = segment.overrideVideoPath;
+    final path =
+        proxy ?? editorState.assetFor(segment)?.path ?? widget.inputPath;
+    final seconds = proxy != null ? 0.0 : segment.sourceAtOffset(0.0);
+    final timeMs = ((seconds * 1000).round() ~/ 200) * 200;
+
+    final bytes = VideoThumbnailService.instance.peek(path, timeMs);
+    if (bytes == null &&
+        !VideoThumbnailService.instance.isResolved(path, timeMs)) {
+      unawaited(
+        VideoThumbnailService.instance
+            .request(path: path, timesMs: [timeMs]).then((_) {
+          if (mounted) setState(() {});
+        }),
+      );
+    }
+    return bytes;
+  }
+
+  /// The project cover card: the chosen cover (or the edit's first frame
+  /// until one is chosen) under a translucent scrim with a pencil, opening
+  /// the cover picker. The small radius is deliberate — it is the one rounded
+  /// element on the timeline, which is what makes it read as a card rather
+  /// than a clip.
+  ///
+  /// Positioned by the caller: it lives in the **outer** stack, tracked over
+  /// the scroll offsets, not in the content stack. It sits before 00:00,
+  /// outside the content's bounds, and Flutter paints such overflow but never
+  /// hit-tests it — placed in the content the card showed perfectly while
+  /// every tap fell through to nothing.
+  Widget _coverTileBody(VideoEditorState editorState) {
+    final coverPath = editorState.thumbnailPath;
+    final hasCover = _coverExists(coverPath);
+
+    Widget picture;
+    if (hasCover) {
+      picture = Image.file(
+        File(coverPath!),
+        fit: BoxFit.cover,
+        cacheWidth: 132,
+        gaplessPlayback: true,
+      );
+    } else {
+      final bytes = _defaultCoverBytes(editorState);
+      picture = bytes != null
+          ? Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true)
+          : Container(color: Colors.white10);
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showCoverPicker(editorState),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            picture,
+            Container(color: Colors.black.withValues(alpha: 0.35)),
+            const Center(
+              child: Icon(LucideIcons.edit2, size: 13, color: Colors.white),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCoverPicker(VideoEditorState editorState) async {
+    final segments = List<VideoSegment>.from(widget.segments);
+    if (segments.isEmpty) return;
+
+    final bytes = await showModalBottomSheet<Uint8List>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => CoverPickerSheet(
+        segments: segments,
+        assetPathFor: (segment) =>
+            editorState.assetFor(segment)?.path ?? widget.inputPath,
+        aspectRatio: editorState.projectAspectRatio,
+      ),
+    );
+    if (bytes == null || !mounted) return;
+
+    final saved =
+        await ref.read(videoEditorProvider.notifier).setCoverImage(bytes);
+    if (!mounted) return;
+    ToastUtils.show(
+      context,
+      saved ? 'Cover updated' : 'Could not save the cover',
+      isError: !saved,
+    );
   }
 
   @override
@@ -749,40 +1693,66 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final editorState = ref.watch(videoEditorProvider);
     final screenWidth = MediaQuery.of(context).size.width;
     final halfWidth = screenWidth / 2;
-    
+
     final contentWidth = _totalEditedDuration * _pixelsPerSecond;
-    final totalVideoWidth = widget.durationSeconds * _pixelsPerSecond;
+
+    // Resolved once per frame: every clip-track widget positions itself from
+    // this, so a reorder preview cannot leave the filmstrip, the border and the
+    // trim handles disagreeing about where a clip is.
+    final clipLayouts = _clipLayouts();
 
     double? trimStartPx;
     double? trimEndPx;
 
     if (widget.selectedSegmentId != null) {
-      double accumulated = 0.0;
-      for (final segment in widget.segments) {
-        if (segment.id == widget.selectedSegmentId) {
-          trimStartPx = accumulated * _pixelsPerSecond;
-          trimEndPx = (accumulated + segment.duration) * _pixelsPerSecond;
-          break;
-        }
-        accumulated += segment.duration;
+      final starts = segmentTimelineStarts(widget.segments);
+      final displays = segmentDisplayDurations(widget.segments);
+      for (var i = 0; i < widget.segments.length; i++) {
+        if (widget.segments[i].id != widget.selectedSegmentId) continue;
+
+        // Handles sit on the clip's visible edges, which stop at the seam when
+        // it transitions into the next clip.
+        trimStartPx = starts[i] * _pixelsPerSecond;
+        trimEndPx = (starts[i] + displays[i]) * _pixelsPerSecond;
+        break;
       }
     }
 
-    final trimWidthPx = (trimEndPx != null && trimStartPx != null) ? trimEndPx - trimStartPx : 0.0;
+    final trimWidthPx = (trimEndPx != null && trimStartPx != null)
+        ? trimEndPx - trimStartPx
+        : 0.0;
     final int maxLane = _maxLane;
+    // The video track sits directly under the ruler and everything added —
+    // overlays, audio — stacks *below* it, lane 0 nearest the video. The old
+    // layout grew upwards, so each addition pushed the filmstrip further down
+    // and the primary content kept moving under the user's finger.
     final double lanesHeight = (maxLane + 1) * _laneHeight;
-    final double filmstripTop = _timeRulerHeight + lanesHeight;
-    final double totalHeight = filmstripTop + _filmstripHeight;
+    final double filmstripTop = _timeRulerHeight;
+    final double lanesTop = filmstripTop + _filmstripHeight;
+    final double totalHeight = lanesTop + lanesHeight;
 
-    final double containerHeight = min(totalHeight + 16, 250.0);
+    // A floor as well as a cap: the editor's canvas is `Expanded`, so any
+    // pixel the timeline does not claim the canvas absorbs. A simple project
+    // used to collapse this area to its content and the canvas ballooned;
+    // CapCut instead keeps a workable track area and sizes the canvas from
+    // what is left.
+    final double containerHeight =
+        (totalHeight + 16).clamp(190.0, 250.0).toDouble();
+
+    // The scroll content fills the whole track area. Sized to the lanes
+    // alone, the empty space under them belonged to the container's
+    // background — outside the scroll views — so a drag there scrubbed
+    // nothing, and the timeline only responded on rows that held content.
+    final double contentHeight = max(totalHeight, containerHeight - 16.0);
 
     return Container(
       height: containerHeight, // padding handled by containerHeight
       color: AppColors.background, // match dark theme
       child: Stack(
         children: [
-          // ── Scrollable content ──
+          // â”€â”€ Scrollable content â”€â”€
           SingleChildScrollView(
+            controller: _verticalScrollController,
             scrollDirection: Axis.vertical,
             physics: const BouncingScrollPhysics(),
             child: NotificationListener<ScrollNotification>(
@@ -791,182 +1761,201 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 controller: _scrollController,
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
-              child: Container(
-                padding: EdgeInsets.only(left: halfWidth, right: halfWidth, top: 8, bottom: 8),
-                child: SizedBox(
-                  width: max(contentWidth, screenWidth), // ensure minimum width to scroll
-                  height: totalHeight,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: () => widget.onSegmentTapped?.call(null),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                    children: [
-                      // 1. Time ruler
-                      SizedBox(
-                        height: _timeRulerHeight,
-                        width: contentWidth,
-                        child: CustomPaint(
-                          painter: _TimeRulerPainter(
-                            durationSeconds: _totalEditedDuration,
-                            pixelsPerSecond: _pixelsPerSecond,
-                            formatTime: _formatTimeRuler,
-                          ),
-                        ),
-                      ),
-
-                      // 2. Track contents (Video, Audio, Voiceover) clipped per segment
-                      ..._buildSegmentTracks(totalVideoWidth, filmstripTop),
-
-                      // 3. Selection borders & tap targets
-                      ..._buildSegmentBorders(filmstripTop, editorState),
-
-                      // 4. Audio tracks
-                      ..._buildAudioTracks(maxLane),
-
-                      // 5. Text overlays track
-                      ..._buildTextTracks(maxLane),
-
-                      // 6. Image overlays track
-                      ..._buildImageTracks(maxLane),
-
-                      // 7. Video overlays track
-                      ..._buildVideoTracks(maxLane),
-
-                      if (_activeSnapGuideMs != null)
-                        Positioned(
-                          top: _timeRulerHeight + 2,
-                          left: (_activeSnapGuideMs! / 1000.0) * _pixelsPerSecond,
-                          width: 2,
-                          height: _laneHeight - 4,
-                          child: IgnorePointer(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryStart,
-                                borderRadius: BorderRadius.circular(2),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: AppColors.primaryStart,
-                                    blurRadius: 8,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
+                child: Container(
+                  padding: EdgeInsets.only(
+                    left: halfWidth,
+                    right: halfWidth,
+                    top: 8,
+                    bottom: 8,
+                  ),
+                  child: SizedBox(
+                    width: max(
+                      contentWidth,
+                      screenWidth,
+                    ), // ensure minimum width to scroll
+                    height: contentHeight,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => widget.onSegmentTapped?.call(null),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          // 1. Time ruler
+                          SizedBox(
+                            height: _timeRulerHeight,
+                            width: contentWidth,
+                            child: CustomPaint(
+                              painter: _TimeRulerPainter(
+                                durationSeconds: _totalEditedDuration,
+                                pixelsPerSecond: _pixelsPerSecond,
+                                formatTime: _formatTimeRuler,
                               ),
                             ),
                           ),
-                        ),
 
-                      // 4. Trim brackets & handles for selected segment
-                      if (widget.selectedSegmentId != null && trimStartPx != null && trimEndPx != null) ...[
-                        // Top and bottom borders for the selected segment
-                        Positioned(
-                          top: filmstripTop,
-                          height: _filmstripHeight,
-                          left: trimStartPx + _handleWidth,
-                          width: (trimWidthPx - _handleWidth * 2).clamp(0, double.infinity).toDouble(),
-                          child: IgnorePointer(
-                            child: Container(
-                              decoration: const BoxDecoration(
-                                border: Border(
-                                  top: BorderSide(color: AppColors.primaryStart, width: 2.5),
-                                  bottom: BorderSide(color: AppColors.primaryStart, width: 2.5),
+                          // 2. Track contents (Video, Audio, Voiceover) clipped per segment
+                          ..._buildSegmentTracks(clipLayouts, filmstripTop),
+
+                          // 3. Selection borders & tap targets
+                          ..._buildSegmentBorders(
+                            clipLayouts,
+                            filmstripTop,
+                            editorState,
+                          ),
+
+                          // 4. Audio tracks
+                          ..._buildAudioTracks(lanesTop),
+
+                          // 5. Text overlays track
+                          ..._buildTextTracks(lanesTop),
+
+                          // 6. Image overlays track
+                          ..._buildImageTracks(lanesTop),
+
+                          // 7. Video overlays track
+                          ..._buildVideoTracks(lanesTop),
+
+                          // 8. Lane gutter: the start line and per-lane
+                          // identity icons in the run-in before 00:00.
+                          // Decoration only (IgnorePointer): the interactive
+                          // cover card lives in the outer stack, because
+                          // overflow past the content bounds paints but is
+                          // never hit-tested.
+                          ..._buildLaneGutter(
+                            lanesTop: lanesTop,
+                            maxLane: maxLane,
+                            totalHeight: totalHeight,
+                          ),
+
+                          if (_activeSnapGuideMs != null)
+                            Positioned(
+                              top: lanesTop + 2,
+                              left:
+                                  (_activeSnapGuideMs! / 1000.0) *
+                                  _pixelsPerSecond,
+                              width: 2,
+                              height: _laneHeight - 4,
+                              child: IgnorePointer(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryStart,
+                                    borderRadius: BorderRadius.circular(2),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: AppColors.primaryStart,
+                                        blurRadius: 8,
+                                        spreadRadius: 1,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
 
-                        // Left trim handle
-                        Positioned(
-                          top: filmstripTop,
-                          height: _filmstripHeight,
-                          left: trimStartPx - ((_handleTouchWidth - _handleWidth) / 2),
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onHorizontalDragStart: (_) => _beginTrimDrag(),
-                            onHorizontalDragUpdate: (details) {
-                              final nextStart = widget.trimRange.start + (details.delta.dx / _pixelsPerSecond);
-                              _updateTrim(nextStart, widget.trimRange.end);
-                              _previewTrimPosition(nextStart);
-                            },
-                            onHorizontalDragEnd: (_) => _endTrimDrag(),
-                            onHorizontalDragCancel: _endTrimDrag,
-                            child: SizedBox(
-                              width: _handleTouchWidth,
-                              child: Align(
-                                alignment: Alignment.center,
+                          // 4. Trim brackets & handles for selected segment.
+                          // Hidden while a clip is carried: the handles belong
+                          // to a clip whose position is provisional, and a
+                          // trim gesture must not compete with the drag.
+                          if (widget.selectedSegmentId != null &&
+                              !_isReorderingClip &&
+                              trimStartPx != null &&
+                              trimEndPx != null) ...[
+                            // Top and bottom borders for the selected segment
+                            Positioned(
+                              top: filmstripTop,
+                              height: _filmstripHeight,
+                              left: trimStartPx + _handleWidth,
+                              width: (trimWidthPx - _handleWidth * 2)
+                                  .clamp(0, double.infinity)
+                                  .toDouble(),
+                              child: IgnorePointer(
                                 child: Container(
-                                  width: _handleWidth,
                                   decoration: const BoxDecoration(
-                                    color: AppColors.primaryStart,
-                                    borderRadius: BorderRadius.only(
-                                      topLeft: Radius.circular(6),
-                                      bottomLeft: Radius.circular(6),
-                                    ),
-                                  ),
-                                  child: Center(
-                                    child: Container(
-                                      width: 2.5,
-                                      height: 14,
-                                      decoration: BoxDecoration(
-                                        color: Colors.black,
-                                        borderRadius: BorderRadius.circular(2),
+                                    border: Border(
+                                      top: BorderSide(
+                                        color: AppColors.primaryStart,
+                                        width: 2.5,
+                                      ),
+                                      bottom: BorderSide(
+                                        color: AppColors.primaryStart,
+                                        width: 2.5,
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
 
-                        // Right trim handle
-                        Positioned(
-                          top: filmstripTop,
-                          height: _filmstripHeight,
-                          left: trimEndPx - _handleWidth - ((_handleTouchWidth - _handleWidth) / 2),
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onHorizontalDragStart: (_) => _beginTrimDrag(),
-                            onHorizontalDragUpdate: (details) {
-                              final nextEnd = widget.trimRange.end + (details.delta.dx / _pixelsPerSecond);
-                              _updateTrim(widget.trimRange.start, nextEnd);
-                              _previewTrimPosition(nextEnd);
-                            },
-                            onHorizontalDragEnd: (_) => _endTrimDrag(),
-                            onHorizontalDragCancel: _endTrimDrag,
-                            child: SizedBox(
-                              width: _handleTouchWidth,
-                              child: Align(
-                                alignment: Alignment.center,
-                                child: Container(
-                                  width: _handleWidth,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.primaryStart,
-                                    borderRadius: BorderRadius.only(
-                                      topRight: Radius.circular(6),
-                                      bottomRight: Radius.circular(6),
-                                    ),
-                                  ),
-                                  child: const Center(
-                                    child: Icon(Icons.chevron_right, size: 16, color: Colors.black),
-                                  ),
-                                ),
-                              ),
+                            // Left trim handle
+                            Positioned(
+                              top: filmstripTop,
+                              height: _filmstripHeight,
+                              left:
+                                  trimStartPx -
+                                  ((_handleTouchWidth - _handleWidth) / 2),
+                              child: _buildTrimHandle(_TrimHandle.start),
                             ),
-                          ),
-                        ),
-                      ],
-                    ],
+
+                            // Right trim handle
+                            Positioned(
+                              top: filmstripTop,
+                              height: _filmstripHeight,
+                              left:
+                                  trimEndPx -
+                                  _handleWidth -
+                                  ((_handleTouchWidth - _handleWidth) / 2),
+                              child: _buildTrimHandle(_TrimHandle.end),
+                            ),
+                          ],
+
+                          // Last, so the clip being carried is above every
+                          // other track and above the drop slot.
+                          ?_buildCarriedClip(clipLayouts, filmstripTop),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          ),
-          ),
 
-          // ── Fixed center playhead ──
+          // â”€â”€ Cover card, tracked over the scroll position â”€â”€
+          // In the outer stack because it sits before 00:00: overflow past
+          // the content stack's bounds paints but is never hit-tested, so
+          // placed there the card was visible yet untappable.
+          if (widget.segments.isNotEmpty)
+            AnimatedBuilder(
+              animation: Listenable.merge(
+                [_scrollController, _verticalScrollController],
+              ),
+              builder: (context, _) {
+                final scrolledX = _scrollController.hasClients
+                    ? _scrollController.offset
+                    : 0.0;
+                final scrolledY = _verticalScrollController.hasClients
+                    ? _verticalScrollController.offset
+                    : 0.0;
+                // Content x=0 sits at screen `halfWidth - offset`; the card
+                // ends 8px before it, aligned with the lane-icon gutter.
+                final left =
+                    halfWidth - scrolledX - _coverTileWidth - 8;
+                final top = 8.0 + filmstripTop - scrolledY;
+                return Stack(
+                  children: [
+                    Positioned(
+                      top: top,
+                      left: left,
+                      width: _coverTileWidth,
+                      height: _filmstripHeight,
+                      child: _coverTileBody(editorState),
+                    ),
+                  ],
+                );
+              },
+            ),
+
+          // â”€â”€ Fixed center playhead â”€â”€
           Positioned(
             left: halfWidth - 0.75,
             top: 0,
@@ -979,9 +1968,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                     size: const Size(10, 6),
                     painter: _TrianglePainter(color: Colors.white),
                   ),
-                  Expanded(
-                    child: Container(width: 1.5, color: Colors.white),
-                  ),
+                  Expanded(child: Container(width: 1.5, color: Colors.white)),
                 ],
               ),
             ),
@@ -991,7 +1978,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     );
   }
 
-  List<Widget> _buildAudioTracks(int maxLane) {
+  List<Widget> _buildAudioTracks(double lanesTop) {
     final widgets = <Widget>[];
 
     for (int i = 0; i < widget.audioTracks.length; i++) {
@@ -999,10 +1986,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       final startPx = audio.timelineStart * _pixelsPerSecond;
       final endPx = audio.timelineEnd * _pixelsPerSecond;
       final widthPx = (endPx - startPx).clamp(0, double.infinity).toDouble();
-      
+
       final isSelected = audio.id == widget.selectedAudioId;
-      final isBeingDragged = _isDraggingAudioClip && _draggingAudioId == audio.id;
-      final double topOffset = _timeRulerHeight + (maxLane - audio.laneIndex) * _laneHeight + 4;
+      final isBeingDragged =
+          _isDraggingAudioClip && _draggingAudioId == audio.id;
+      final double topOffset =
+          lanesTop + audio.laneIndex * _laneHeight + 4;
 
       widgets.add(
         Positioned(
@@ -1018,18 +2007,19 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             onLongPressEnd: (_) => _endAudioClipDrag(),
             child: Container(
               decoration: BoxDecoration(
-                color: isBeingDragged 
-                    ? Colors.purpleAccent.shade400 
-                    : isSelected 
-                        ? Colors.purpleAccent 
-                        : Colors.purple.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(4),
+                // The fill does not change with selection — swapping it for
+                // opaque purpleAccent recoloured the body under the waveform,
+                // which read as a second purple washing over the clip.
+                // Selection is the border's job, like every other clip.
+                color: isBeingDragged
+                    ? Colors.purpleAccent.shade400
+                    : Colors.purple.withValues(alpha: 0.5),
                 border: Border.all(
-                  color: isBeingDragged 
-                      ? Colors.white 
-                      : isSelected 
-                          ? AppColors.primaryStart 
-                          : Colors.transparent,
+                  color: isBeingDragged
+                      ? Colors.white
+                      : isSelected
+                      ? AppColors.primaryStart
+                      : Colors.transparent,
                   width: isBeingDragged ? 2 : (isSelected ? 2.0 : 1.5),
                 ),
                 boxShadow: isBeingDragged
@@ -1043,18 +2033,24 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                       ]
                     : null,
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
+              child: ClipRect(
                 child: Stack(
                   children: [
                     Positioned.fill(
                       child: CustomPaint(
-                        painter: _WaveformPainter(color: Colors.white.withValues(alpha: 0.3), seed: audio.id.hashCode),
+                        painter: _WaveformPainter(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          seed: audio.id.hashCode,
+                        ),
                       ),
                     ),
                     Center(
-                      child: isBeingDragged 
-                          ? const Icon(Icons.drag_indicator, color: Colors.white, size: 14)
+                      child: isBeingDragged
+                          ? const Icon(
+                              Icons.drag_indicator,
+                              color: Colors.white,
+                              size: 14,
+                            )
                           : const SizedBox.shrink(),
                     ),
                   ],
@@ -1065,63 +2061,37 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         ),
       );
 
-
       if (isSelected && !isBeingDragged) {
-        // Left trim handle — overlap 4px into the clip body
+        // Left trim handle â€” overlap 4px into the clip body
         widgets.add(
           Positioned(
             top: topOffset,
             left: startPx - 12,
             width: 16,
             height: _laneHeight - 8,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (_) => _beginAudioTrim(audio),
-              onHorizontalDragUpdate: _updateAudioTrimStart,
-              onHorizontalDragEnd: (_) => _endAudioTrim(),
-              onHorizontalDragCancel: _endAudioTrim,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: AppColors.primaryStart,
-                  borderRadius: BorderRadius.only(topLeft: Radius.circular(8), bottomLeft: Radius.circular(8)),
-                ),
-                child: Center(
-                  child: Container(
-                    width: 2.5,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-              ),
+            child: _laneTrimHandle(
+              handleKey: 'audio:${audio.id}:start',
+              onStart: (_) => _beginAudioTrim(audio),
+              onUpdate: _updateAudioTrimStart,
+              onEnd: _endAudioTrim,
+              visual: _audioHandleVisual,
             ),
           ),
         );
 
-        // Right trim handle — overlap 4px into the clip body
+        // Right trim handle â€” overlap 4px into the clip body
         widgets.add(
           Positioned(
             top: topOffset,
             left: startPx + widthPx - 4,
             width: 16,
             height: _laneHeight - 8,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (_) => _beginAudioTrim(audio),
-              onHorizontalDragUpdate: _updateAudioTrimEnd,
-              onHorizontalDragEnd: (_) => _endAudioTrim(),
-              onHorizontalDragCancel: _endAudioTrim,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: AppColors.primaryStart,
-                  borderRadius: BorderRadius.only(topRight: Radius.circular(8), bottomRight: Radius.circular(8)),
-                ),
-                child: const Center(
-                  child: Icon(Icons.chevron_right, size: 16, color: Colors.black),
-                ),
-              ),
+            child: _laneTrimHandle(
+              handleKey: 'audio:${audio.id}:end',
+              onStart: (_) => _beginAudioTrim(audio),
+              onUpdate: _updateAudioTrimEnd,
+              onEnd: _endAudioTrim,
+              visual: _audioHandleVisual,
             ),
           ),
         );
@@ -1129,17 +2099,20 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     }
     return widgets;
   }
-  List<Widget> _buildTextTracks(int maxLane) {
+
+  List<Widget> _buildTextTracks(double lanesTop) {
     final widgets = <Widget>[];
 
     for (final text in widget.textOverlays) {
-      final startPx = (text.startTime.inMilliseconds / 1000.0) * _pixelsPerSecond;
+      final startPx =
+          (text.startTime.inMilliseconds / 1000.0) * _pixelsPerSecond;
       final endPx = (text.endTime.inMilliseconds / 1000.0) * _pixelsPerSecond;
       final widthPx = (endPx - startPx).clamp(0, double.infinity).toDouble();
-      
+
       final isSelected = text.id == widget.selectedTextId;
       final isBeingDragged = _isDraggingTextClip && _draggingTextId == text.id;
-      final double topOffset = _timeRulerHeight + (maxLane - text.laneIndex) * _laneHeight + 4; // 4px padding for visual separation
+      final double topOffset =
+          lanesTop + text.laneIndex * _laneHeight + 4; // 4px visual separation
 
       widgets.add(
         Positioned(
@@ -1159,15 +2132,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 color: isBeingDragged
                     ? Colors.deepOrange
                     : isSelected
-                        ? AppColors.primaryStart
-                        : AppColors.primaryStart.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(4),
+                    ? AppColors.primaryStart
+                    : AppColors.primaryStart.withValues(alpha: 0.5),
                 border: Border.all(
                   color: isBeingDragged
                       ? Colors.white
                       : isSelected
-                          ? Colors.white
-                          : Colors.transparent,
+                      ? Colors.white
+                      : Colors.transparent,
                   width: isBeingDragged ? 2 : 1.5,
                 ),
                 boxShadow: isBeingDragged
@@ -1186,13 +2158,21 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (isBeingDragged) ...[
-                      const Icon(Icons.drag_indicator, color: Colors.white, size: 12),
+                      const Icon(
+                        Icons.drag_indicator,
+                        color: Colors.white,
+                        size: 12,
+                      ),
                       const SizedBox(width: 4),
                     ],
                     Flexible(
                       child: Text(
                         text.text,
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1212,50 +2192,41 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             left: startPx - (_handleTouchWidth / 2),
             width: _handleTouchWidth,
             height: _laneHeight - 8,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (details) {
+            child: _laneTrimHandle(
+              handleKey: 'text:${text.id}:start',
+              onStart: (details) {
                 setState(() {
                   _trimmingTextId = text.id;
                   _textTrimInitialTime = text.startTime;
                   _textTrimAccumulatedDelta = 0.0;
                 });
               },
-              onHorizontalDragUpdate: (details) {
-                if (_trimmingTextId != text.id || _textTrimInitialTime == null) return;
-                
+              onUpdate: (details) {
+                if (_trimmingTextId != text.id || _textTrimInitialTime == null)
+                  return;
+
                 _textTrimAccumulatedDelta += details.delta.dx;
-                final deltaMs = (_textTrimAccumulatedDelta / _pixelsPerSecond * 1000).round();
-                
-                var newStart = Duration(milliseconds: _textTrimInitialTime!.inMilliseconds + deltaMs);
+                final deltaMs =
+                    (_textTrimAccumulatedDelta / _pixelsPerSecond * 1000)
+                        .round();
+
+                var newStart = Duration(
+                  milliseconds: _textTrimInitialTime!.inMilliseconds + deltaMs,
+                );
                 if (newStart < Duration.zero) newStart = Duration.zero;
-                if (newStart >= text.endTime) newStart = text.endTime - const Duration(milliseconds: 100);
-                
+                if (newStart >= text.endTime)
+                  newStart = text.endTime - _kMinTrimDuration;
+
                 widget.onTextTrimChanged?.call(text.id, newStart, text.endTime);
                 _previewTrimPosition(newStart.inMilliseconds / 1000.0);
               },
-              onHorizontalDragEnd: (_) {
+              onEnd: () {
                 setState(() {
                   _trimmingTextId = null;
                   _textTrimInitialTime = null;
                 });
               },
-              onHorizontalDragCancel: () {
-                setState(() {
-                  _trimmingTextId = null;
-                  _textTrimInitialTime = null;
-                });
-              },
-              child: Align(
-                alignment: Alignment.center,
-                child: Container(
-                  width: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primaryStart, // Yellow handle
-                    borderRadius: BorderRadius.only(topLeft: Radius.circular(4), bottomLeft: Radius.circular(4)),
-                  ),
-                ),
-              ),
+              visual: _overlayHandleVisual,
             ),
           ),
         );
@@ -1266,51 +2237,43 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             left: startPx + widthPx - (_handleTouchWidth / 2),
             width: _handleTouchWidth,
             height: _laneHeight - 8,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (details) {
+            child: _laneTrimHandle(
+              handleKey: 'text:${text.id}:end',
+              onStart: (details) {
                 setState(() {
                   _trimmingTextId = text.id;
                   _textTrimInitialTime = text.endTime;
                   _textTrimAccumulatedDelta = 0.0;
                 });
               },
-              onHorizontalDragUpdate: (details) {
-                if (_trimmingTextId != text.id || _textTrimInitialTime == null) return;
-                
+              onUpdate: (details) {
+                if (_trimmingTextId != text.id || _textTrimInitialTime == null)
+                  return;
+
                 _textTrimAccumulatedDelta += details.delta.dx;
-                final deltaMs = (_textTrimAccumulatedDelta / _pixelsPerSecond * 1000).round();
-                
-                var newEnd = Duration(milliseconds: _textTrimInitialTime!.inMilliseconds + deltaMs);
-                final maxEnd = Duration(milliseconds: (widget.durationSeconds * 1000).round());
+                final deltaMs =
+                    (_textTrimAccumulatedDelta / _pixelsPerSecond * 1000)
+                        .round();
+
+                var newEnd = Duration(
+                  milliseconds: _textTrimInitialTime!.inMilliseconds + deltaMs,
+                );
+                // Unbounded above: overlays may outlast the video, like audio.
+                const maxEnd = Duration(milliseconds: _kUnboundedMs);
                 if (newEnd > maxEnd) newEnd = maxEnd;
-                if (newEnd <= text.startTime) newEnd = text.startTime + const Duration(milliseconds: 100);
-                
+                if (newEnd <= text.startTime)
+                  newEnd = text.startTime + _kMinTrimDuration;
+
                 widget.onTextTrimChanged?.call(text.id, text.startTime, newEnd);
                 _previewTrimPosition(newEnd.inMilliseconds / 1000.0);
               },
-              onHorizontalDragEnd: (_) {
+              onEnd: () {
                 setState(() {
                   _trimmingTextId = null;
                   _textTrimInitialTime = null;
                 });
               },
-              onHorizontalDragCancel: () {
-                setState(() {
-                  _trimmingTextId = null;
-                  _textTrimInitialTime = null;
-                });
-              },
-              child: Align(
-                alignment: Alignment.center,
-                child: Container(
-                  width: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primaryStart, // Yellow handle
-                    borderRadius: BorderRadius.only(topRight: Radius.circular(4), bottomRight: Radius.circular(4)),
-                  ),
-                ),
-              ),
+              visual: _overlayHandleVisual,
             ),
           ),
         );
@@ -1328,9 +2291,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _dragStartLaneIndex = image.laneIndex;
       _dragStartMaxLane = _maxLane;
     });
-    if (widget.player.state.playing) {
-      widget.player.pause();
-    }
+    widget.onPausePlayback();
     widget.onImageTapped?.call(image.id);
   }
 
@@ -1342,13 +2303,15 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       return;
     }
 
-    final deltaMs =
-        (details.offsetFromOrigin.dx / _pixelsPerSecond * 1000).round();
+    final deltaMs = (details.offsetFromOrigin.dx / _pixelsPerSecond * 1000)
+        .round();
     final clipDurationMs =
-        _imageDragInitialEnd!.inMilliseconds - _imageDragInitialStart!.inMilliseconds;
-    final maxStartMs = ((widget.durationSeconds * 1000).round() - clipDurationMs)
-        .clamp(0, double.infinity)
-        .toInt();
+        _imageDragInitialEnd!.inMilliseconds -
+        _imageDragInitialStart!.inMilliseconds;
+    // No upper bound: an overlay may be dragged past the video's end and the
+    // project simply runs longer, matching audio. The old ceiling was also
+    // computed from `durationSeconds` — the *first asset's* length.
+    const maxStartMs = _kUnboundedMs;
 
     final proposedStartMs = (_imageDragInitialStart!.inMilliseconds + deltaMs)
         .clamp(0, maxStartMs)
@@ -1358,10 +2321,21 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final nextStart = Duration(milliseconds: proposedStartMs);
     final nextEnd = Duration(milliseconds: nextEndMs);
 
-    final lanesMoved = -(details.offsetFromOrigin.dy / _laneHeight).round();
-    final newLaneIndex = max(0, min(_dragStartMaxLane, _dragStartLaneIndex + lanesMoved));
+    // Lanes stack *downward* (lane 0 nearest the filmstrip), so dragging down
+    // is a higher lane index. The old negation came from the upward-growing
+    // layout and made every vertical drag land on the opposite side.
+    final lanesMoved = (details.offsetFromOrigin.dy / _laneHeight).round();
+    final newLaneIndex = max(
+      0,
+      min(_dragStartMaxLane, _dragStartLaneIndex + lanesMoved),
+    );
 
-    widget.onImageTrimChanged?.call(_draggingImageId!, nextStart, nextEnd, newLaneIndex: newLaneIndex);
+    widget.onImageTrimChanged?.call(
+      _draggingImageId!,
+      nextStart,
+      nextEnd,
+      newLaneIndex: newLaneIndex,
+    );
     _previewTrimPosition(nextStart.inMilliseconds / 1000.0);
   }
 
@@ -1374,17 +2348,20 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     });
   }
 
-  List<Widget> _buildImageTracks(int maxLane) {
+  List<Widget> _buildImageTracks(double lanesTop) {
     final widgets = <Widget>[];
 
     for (final image in widget.imageOverlays) {
-      final double imageTrackTop = _timeRulerHeight + (maxLane - image.laneIndex) * _laneHeight + 4;
-      final startPx = (image.startTime.inMilliseconds / 1000.0) * _pixelsPerSecond;
+      final double imageTrackTop =
+          lanesTop + image.laneIndex * _laneHeight + 4;
+      final startPx =
+          (image.startTime.inMilliseconds / 1000.0) * _pixelsPerSecond;
       final endPx = (image.endTime.inMilliseconds / 1000.0) * _pixelsPerSecond;
       final widthPx = (endPx - startPx).clamp(0, double.infinity).toDouble();
-      
+
       final isSelected = image.id == widget.selectedImageId;
-      final isBeingDragged = _isDraggingImageClip && _draggingImageId == image.id;
+      final isBeingDragged =
+          _isDraggingImageClip && _draggingImageId == image.id;
 
       widgets.add(
         Positioned(
@@ -1403,15 +2380,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 color: isBeingDragged
                     ? Colors.teal
                     : isSelected
-                        ? Colors.teal.shade400
-                        : Colors.teal.shade400.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(4),
+                    ? Colors.teal.shade400
+                    : Colors.teal.shade400.withValues(alpha: 0.5),
                 border: Border.all(
                   color: isBeingDragged
                       ? Colors.white
                       : isSelected
-                          ? Colors.white
-                          : Colors.transparent,
+                      ? Colors.white
+                      : Colors.transparent,
                   width: isBeingDragged ? 2 : 1.5,
                 ),
                 boxShadow: isBeingDragged
@@ -1430,7 +2406,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (isBeingDragged) ...[
-                      const Icon(Icons.drag_indicator, color: Colors.white, size: 12),
+                      const Icon(
+                        Icons.drag_indicator,
+                        color: Colors.white,
+                        size: 12,
+                      ),
                       const SizedBox(width: 4),
                     ],
                     const Icon(Icons.image, color: Colors.white, size: 12),
@@ -1438,7 +2418,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                     const Flexible(
                       child: Text(
                         'Image',
-                        style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1459,50 +2443,46 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             left: startPx - (_handleTouchWidth / 2),
             width: _handleTouchWidth,
             height: _laneHeight - 8,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (details) {
+            child: _laneTrimHandle(
+              handleKey: 'image:${image.id}:start',
+              onStart: (details) {
                 setState(() {
                   _trimmingImageId = image.id;
                   _imageTrimInitialTime = image.startTime;
                   _imageTrimAccumulatedDelta = 0.0;
                 });
               },
-              onHorizontalDragUpdate: (details) {
-                if (_trimmingImageId != image.id || _imageTrimInitialTime == null) return;
-                
+              onUpdate: (details) {
+                if (_trimmingImageId != image.id ||
+                    _imageTrimInitialTime == null)
+                  return;
+
                 _imageTrimAccumulatedDelta += details.delta.dx;
-                final deltaMs = (_imageTrimAccumulatedDelta / _pixelsPerSecond * 1000).round();
-                
-                var newStart = Duration(milliseconds: _imageTrimInitialTime!.inMilliseconds + deltaMs);
+                final deltaMs =
+                    (_imageTrimAccumulatedDelta / _pixelsPerSecond * 1000)
+                        .round();
+
+                var newStart = Duration(
+                  milliseconds: _imageTrimInitialTime!.inMilliseconds + deltaMs,
+                );
                 if (newStart < Duration.zero) newStart = Duration.zero;
-                if (newStart >= image.endTime) newStart = image.endTime - const Duration(milliseconds: 100);
-                
-                widget.onImageTrimChanged?.call(image.id, newStart, image.endTime);
+                if (newStart >= image.endTime)
+                  newStart = image.endTime - _kMinTrimDuration;
+
+                widget.onImageTrimChanged?.call(
+                  image.id,
+                  newStart,
+                  image.endTime,
+                );
                 _previewTrimPosition(newStart.inMilliseconds / 1000.0);
               },
-              onHorizontalDragEnd: (_) {
+              onEnd: () {
                 setState(() {
                   _trimmingImageId = null;
                   _imageTrimInitialTime = null;
                 });
               },
-              onHorizontalDragCancel: () {
-                setState(() {
-                  _trimmingImageId = null;
-                  _imageTrimInitialTime = null;
-                });
-              },
-              child: Align(
-                alignment: Alignment.center,
-                child: Container(
-                  width: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primaryStart,
-                    borderRadius: BorderRadius.only(topLeft: Radius.circular(4), bottomLeft: Radius.circular(4)),
-                  ),
-                ),
-              ),
+              visual: _overlayHandleVisual,
             ),
           ),
         );
@@ -1514,51 +2494,48 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             left: startPx + widthPx - (_handleTouchWidth / 2),
             width: _handleTouchWidth,
             height: _laneHeight - 8,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (details) {
+            child: _laneTrimHandle(
+              handleKey: 'image:${image.id}:end',
+              onStart: (details) {
                 setState(() {
                   _trimmingImageId = image.id;
                   _imageTrimInitialTime = image.endTime;
                   _imageTrimAccumulatedDelta = 0.0;
                 });
               },
-              onHorizontalDragUpdate: (details) {
-                if (_trimmingImageId != image.id || _imageTrimInitialTime == null) return;
-                
+              onUpdate: (details) {
+                if (_trimmingImageId != image.id ||
+                    _imageTrimInitialTime == null)
+                  return;
+
                 _imageTrimAccumulatedDelta += details.delta.dx;
-                final deltaMs = (_imageTrimAccumulatedDelta / _pixelsPerSecond * 1000).round();
-                
-                var newEnd = Duration(milliseconds: _imageTrimInitialTime!.inMilliseconds + deltaMs);
-                final maxEnd = Duration(milliseconds: (widget.durationSeconds * 1000).round());
+                final deltaMs =
+                    (_imageTrimAccumulatedDelta / _pixelsPerSecond * 1000)
+                        .round();
+
+                var newEnd = Duration(
+                  milliseconds: _imageTrimInitialTime!.inMilliseconds + deltaMs,
+                );
+                // Unbounded above: overlays may outlast the video, like audio.
+                const maxEnd = Duration(milliseconds: _kUnboundedMs);
                 if (newEnd > maxEnd) newEnd = maxEnd;
-                if (newEnd <= image.startTime) newEnd = image.startTime + const Duration(milliseconds: 100);
-                
-                widget.onImageTrimChanged?.call(image.id, image.startTime, newEnd);
+                if (newEnd <= image.startTime)
+                  newEnd = image.startTime + _kMinTrimDuration;
+
+                widget.onImageTrimChanged?.call(
+                  image.id,
+                  image.startTime,
+                  newEnd,
+                );
                 _previewTrimPosition(newEnd.inMilliseconds / 1000.0);
               },
-              onHorizontalDragEnd: (_) {
+              onEnd: () {
                 setState(() {
                   _trimmingImageId = null;
                   _imageTrimInitialTime = null;
                 });
               },
-              onHorizontalDragCancel: () {
-                setState(() {
-                  _trimmingImageId = null;
-                  _imageTrimInitialTime = null;
-                });
-              },
-              child: Align(
-                alignment: Alignment.center,
-                child: Container(
-                  width: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primaryStart,
-                    borderRadius: BorderRadius.only(topRight: Radius.circular(4), bottomRight: Radius.circular(4)),
-                  ),
-                ),
-              ),
+              visual: _overlayHandleVisual,
             ),
           ),
         );
@@ -1576,9 +2553,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _dragStartLaneIndex = video.laneIndex;
       _dragStartMaxLane = _maxLane;
     });
-    if (widget.player.state.playing) {
-      widget.player.pause();
-    }
+    widget.onPausePlayback();
     widget.onVideoTapped?.call(video.id);
   }
 
@@ -1590,13 +2565,15 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       return;
     }
 
-    final deltaMs =
-        (details.offsetFromOrigin.dx / _pixelsPerSecond * 1000).round();
+    final deltaMs = (details.offsetFromOrigin.dx / _pixelsPerSecond * 1000)
+        .round();
     final clipDurationMs =
-        _videoDragInitialEnd!.inMilliseconds - _videoDragInitialStart!.inMilliseconds;
-    final maxStartMs = ((widget.durationSeconds * 1000).round() - clipDurationMs)
-        .clamp(0, double.infinity)
-        .toInt();
+        _videoDragInitialEnd!.inMilliseconds -
+        _videoDragInitialStart!.inMilliseconds;
+    // No upper bound: an overlay may be dragged past the video's end and the
+    // project simply runs longer, matching audio. The old ceiling was also
+    // computed from `durationSeconds` — the *first asset's* length.
+    const maxStartMs = _kUnboundedMs;
 
     final proposedStartMs = (_videoDragInitialStart!.inMilliseconds + deltaMs)
         .clamp(0, maxStartMs)
@@ -1606,10 +2583,21 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final nextStart = Duration(milliseconds: proposedStartMs);
     final nextEnd = Duration(milliseconds: nextEndMs);
 
-    final lanesMoved = -(details.offsetFromOrigin.dy / _laneHeight).round();
-    final newLaneIndex = max(0, min(_dragStartMaxLane, _dragStartLaneIndex + lanesMoved));
+    // Lanes stack *downward* (lane 0 nearest the filmstrip), so dragging down
+    // is a higher lane index. The old negation came from the upward-growing
+    // layout and made every vertical drag land on the opposite side.
+    final lanesMoved = (details.offsetFromOrigin.dy / _laneHeight).round();
+    final newLaneIndex = max(
+      0,
+      min(_dragStartMaxLane, _dragStartLaneIndex + lanesMoved),
+    );
 
-    widget.onVideoTrimChanged?.call(_draggingVideoId!, nextStart, nextEnd, newLaneIndex: newLaneIndex);
+    widget.onVideoTrimChanged?.call(
+      _draggingVideoId!,
+      nextStart,
+      nextEnd,
+      newLaneIndex: newLaneIndex,
+    );
     _previewTrimPosition(nextStart.inMilliseconds / 1000.0);
   }
 
@@ -1622,17 +2610,21 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     });
   }
 
-  List<Widget> _buildVideoTracks(int maxLane) {
+  List<Widget> _buildVideoTracks(double lanesTop) {
     final widgets = <Widget>[];
 
     for (final video in widget.videoOverlays) {
-      final double videoTrackTop = _timeRulerHeight + (maxLane - video.laneIndex) * _laneHeight + 4;
-      final startPx = (video.timelineStart.inMilliseconds / 1000.0) * _pixelsPerSecond;
-      final endPx = (video.timelineEnd.inMilliseconds / 1000.0) * _pixelsPerSecond;
+      final double videoTrackTop =
+          lanesTop + video.laneIndex * _laneHeight + 4;
+      final startPx =
+          (video.timelineStart.inMilliseconds / 1000.0) * _pixelsPerSecond;
+      final endPx =
+          (video.timelineEnd.inMilliseconds / 1000.0) * _pixelsPerSecond;
       final widthPx = (endPx - startPx).clamp(0.0, double.infinity).toDouble();
-      
+
       final isSelected = video.id == widget.selectedVideoId;
-      final isBeingDragged = _isDraggingVideoClip && _draggingVideoId == video.id;
+      final isBeingDragged =
+          _isDraggingVideoClip && _draggingVideoId == video.id;
 
       widgets.add(
         Positioned(
@@ -1651,15 +2643,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 color: isBeingDragged
                     ? Colors.pink
                     : isSelected
-                        ? Colors.pink.shade400
-                        : Colors.pink.shade400.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(4),
+                    ? Colors.pink.shade400
+                    : Colors.pink.shade400.withValues(alpha: 0.5),
                 border: Border.all(
                   color: isBeingDragged
                       ? Colors.white
                       : isSelected
-                          ? Colors.white
-                          : Colors.transparent,
+                      ? Colors.white
+                      : Colors.transparent,
                   width: isBeingDragged ? 2 : 1.5,
                 ),
                 boxShadow: isBeingDragged
@@ -1678,7 +2669,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (isBeingDragged) ...[
-                      const Icon(Icons.drag_indicator, color: Colors.white, size: 12),
+                      const Icon(
+                        Icons.drag_indicator,
+                        color: Colors.white,
+                        size: 12,
+                      ),
                       const SizedBox(width: 4),
                     ],
                     const Icon(LucideIcons.film, color: Colors.white, size: 12),
@@ -1686,7 +2681,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                     const Flexible(
                       child: Text(
                         'Video',
-                        style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1707,50 +2706,47 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             left: startPx - (_handleTouchWidth / 2),
             width: _handleTouchWidth,
             height: _laneHeight - 8,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (details) {
+            child: _laneTrimHandle(
+              handleKey: 'video:${video.id}:start',
+              onStart: (details) {
                 setState(() {
                   _trimmingVideoId = video.id;
                   _videoTrimInitialTime = video.timelineStart;
                   _videoTrimAccumulatedDelta = 0.0;
                 });
               },
-              onHorizontalDragUpdate: (details) {
-                if (_trimmingVideoId != video.id || _videoTrimInitialTime == null) return;
-                
+              onUpdate: (details) {
+                if (_trimmingVideoId != video.id ||
+                    _videoTrimInitialTime == null)
+                  return;
+
                 _videoTrimAccumulatedDelta += details.delta.dx;
-                final deltaMs = (_videoTrimAccumulatedDelta / _pixelsPerSecond * 1000).round();
-                
-                var newStart = Duration(milliseconds: _videoTrimInitialTime!.inMilliseconds + deltaMs);
+                final deltaMs =
+                    (_videoTrimAccumulatedDelta / _pixelsPerSecond * 1000)
+                        .round();
+
+                var newStart = Duration(
+                  milliseconds: _videoTrimInitialTime!.inMilliseconds + deltaMs,
+                );
                 if (newStart < Duration.zero) newStart = Duration.zero;
-                if (newStart >= video.timelineEnd) newStart = video.timelineEnd - const Duration(milliseconds: 100);
-                
-                widget.onVideoTrimChanged?.call(video.id, newStart, video.timelineEnd);
+                if (newStart >= video.timelineEnd)
+                  newStart =
+                      video.timelineEnd - _kMinTrimDuration;
+
+                widget.onVideoTrimChanged?.call(
+                  video.id,
+                  newStart,
+                  video.timelineEnd,
+                );
                 _previewTrimPosition(newStart.inMilliseconds / 1000.0);
               },
-              onHorizontalDragEnd: (_) {
+              onEnd: () {
                 setState(() {
                   _trimmingVideoId = null;
                   _videoTrimInitialTime = null;
                 });
               },
-              onHorizontalDragCancel: () {
-                setState(() {
-                  _trimmingVideoId = null;
-                  _videoTrimInitialTime = null;
-                });
-              },
-              child: Align(
-                alignment: Alignment.center,
-                child: Container(
-                  width: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primaryStart,
-                    borderRadius: BorderRadius.only(topLeft: Radius.circular(4), bottomLeft: Radius.circular(4)),
-                  ),
-                ),
-              ),
+              visual: _overlayHandleVisual,
             ),
           ),
         );
@@ -1762,51 +2758,49 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             left: startPx + widthPx - (_handleTouchWidth / 2),
             width: _handleTouchWidth,
             height: _laneHeight - 8,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (details) {
+            child: _laneTrimHandle(
+              handleKey: 'video:${video.id}:end',
+              onStart: (details) {
                 setState(() {
                   _trimmingVideoId = video.id;
                   _videoTrimInitialTime = video.timelineEnd;
                   _videoTrimAccumulatedDelta = 0.0;
                 });
               },
-              onHorizontalDragUpdate: (details) {
-                if (_trimmingVideoId != video.id || _videoTrimInitialTime == null) return;
-                
+              onUpdate: (details) {
+                if (_trimmingVideoId != video.id ||
+                    _videoTrimInitialTime == null)
+                  return;
+
                 _videoTrimAccumulatedDelta += details.delta.dx;
-                final deltaMs = (_videoTrimAccumulatedDelta / _pixelsPerSecond * 1000).round();
-                
-                var newEnd = Duration(milliseconds: _videoTrimInitialTime!.inMilliseconds + deltaMs);
-                final maxEnd = Duration(milliseconds: (widget.durationSeconds * 1000).round());
+                final deltaMs =
+                    (_videoTrimAccumulatedDelta / _pixelsPerSecond * 1000)
+                        .round();
+
+                var newEnd = Duration(
+                  milliseconds: _videoTrimInitialTime!.inMilliseconds + deltaMs,
+                );
+                // Unbounded above: overlays may outlast the video, like audio.
+                const maxEnd = Duration(milliseconds: _kUnboundedMs);
                 if (newEnd > maxEnd) newEnd = maxEnd;
-                if (newEnd <= video.timelineStart) newEnd = video.timelineStart + const Duration(milliseconds: 100);
-                
-                widget.onVideoTrimChanged?.call(video.id, video.timelineStart, newEnd);
+                if (newEnd <= video.timelineStart)
+                  newEnd =
+                      video.timelineStart + _kMinTrimDuration;
+
+                widget.onVideoTrimChanged?.call(
+                  video.id,
+                  video.timelineStart,
+                  newEnd,
+                );
                 _previewTrimPosition(newEnd.inMilliseconds / 1000.0);
               },
-              onHorizontalDragEnd: (_) {
+              onEnd: () {
                 setState(() {
                   _trimmingVideoId = null;
                   _videoTrimInitialTime = null;
                 });
               },
-              onHorizontalDragCancel: () {
-                setState(() {
-                  _trimmingVideoId = null;
-                  _videoTrimInitialTime = null;
-                });
-              },
-              child: Align(
-                alignment: Alignment.center,
-                child: Container(
-                  width: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primaryStart,
-                    borderRadius: BorderRadius.only(topRight: Radius.circular(4), bottomRight: Radius.circular(4)),
-                  ),
-                ),
-              ),
+              visual: _overlayHandleVisual,
             ),
           ),
         );
@@ -1857,7 +2851,11 @@ class _TimeRulerPainter extends CustomPainter {
     for (double t = 0; t <= durationSeconds; t += interval) {
       final x = t * pixelsPerSecond;
       // Tick mark
-      canvas.drawLine(Offset(x, size.height - 4), Offset(x, size.height), tickPaint);
+      canvas.drawLine(
+        Offset(x, size.height - 4),
+        Offset(x, size.height),
+        tickPaint,
+      );
 
       // Label
       final tp = TextPainter(
@@ -1874,7 +2872,11 @@ class _TimeRulerPainter extends CustomPainter {
       ..strokeWidth = 0.5;
     for (double t = 0; t <= durationSeconds; t += smallInterval) {
       final x = t * pixelsPerSecond;
-      canvas.drawLine(Offset(x, size.height - 2), Offset(x, size.height), smallTickPaint);
+      canvas.drawLine(
+        Offset(x, size.height - 2),
+        Offset(x, size.height),
+        smallTickPaint,
+      );
     }
   }
 
@@ -1900,4 +2902,64 @@ class _TrianglePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Where one clip box sits on the timeline, in content pixels.
+///
+/// During a reorder this is the *preview* position — where the clip would be if
+/// the carried clip were dropped now — so the filmstrip, the border, the trim
+/// handles and the transition markers all read the same source and move
+/// together.
+class _ClipLayout {
+  const _ClipLayout({
+    required this.segment,
+    required this.index,
+    required this.leftPx,
+    required this.widthPx,
+    required this.timelineStart,
+    required this.displaySeconds,
+    required this.isDragged,
+  });
+
+  final VideoSegment segment;
+
+  /// Position in the previewed order, which is not the segment's index in
+  /// `widget.segments` while a clip is being carried.
+  final int index;
+
+  final double leftPx;
+  final double widthPx;
+  final double timelineStart;
+  final double displaySeconds;
+
+  /// True for the clip under the finger — drawn lifted, and last.
+  final bool isDragged;
+}
+
+/// Which end of the selected clip a trim gesture is holding.
+enum _TrimHandle { start, end }
+
+/// A horizontal drag that claims the pointer the moment it goes down.
+///
+/// Trim handles sit inside a horizontally scrolling timeline, so the handle and
+/// the scroll view want the same gesture. Left to the normal arena neither wins
+/// until the finger has travelled `kTouchSlop` — about 18 logical pixels, which
+/// at 50 pixels per second is a third of a second of trim swallowed before the
+/// handle moves at all. That is what makes a handle feel like it does not pick
+/// up when touched: it ignores the start of the drag and then jumps.
+///
+/// Claiming on pointer-down makes the grab immediate, and
+/// [DragStartBehavior.down] means the drag is measured from the touch itself,
+/// so none of that travel is lost and the handle tracks the finger exactly.
+class _ImmediateHorizontalDragRecognizer
+    extends HorizontalDragGestureRecognizer {
+  _ImmediateHorizontalDragRecognizer({super.debugOwner}) {
+    dragStartBehavior = DragStartBehavior.down;
+  }
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
+  }
 }

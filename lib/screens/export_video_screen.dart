@@ -3,58 +3,36 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:pro_video_editor/pro_video_editor.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../core/services/media_save_service.dart';
 import '../core/services/ad_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/utils/toast_utils.dart';
-import '../features/video_editor/models/text_overlay_model.dart';
-import '../features/video_editor/models/image_overlay_model.dart';
-import '../features/video_editor/models/video_overlay_model.dart';
-import '../features/video_editor/models/audio_track_model.dart';
-import '../features/video_editor/models/video_segment.dart' as app;
-import '../features/video_editor/services/video_editor_service.dart';
+import '../features/video_editor/models/media_asset.dart';
+import '../features/video_editor/models/video_editor_state.dart';
+import '../features/video_editor/services/native_timeline_preview_service.dart';
 
+/// Renders the project and previews the result.
+///
+/// **There is one export path.** It was routed by capability while the native
+/// engine could not draw everything — overlays, then text — and the legacy
+/// `pro_video_editor` branch has been deleted now that it can. The screen
+/// therefore takes the project state rather than the flattened parameters PVE
+/// needed.
 class ExportVideoScreen extends StatefulWidget {
-  final File sourceVideo;
-  final List<app.VideoSegment> segments;
-  final bool muteAudio;
-  final double? targetAspectRatio;
-  final Rect? customCropRect;
-  final Size originalVideoSize;
+  /// The project to render. Native export composes the timeline from it.
+  final VideoEditorState exportState;
+
   final Size previewCanvasSize;
-  final String renderId;
-  final List<double>? colorFilterMatrix;
-  final List<TextOverlayModel>? textOverlays;
-  final List<ImageOverlayModel>? imageOverlays;
-  final List<VideoOverlayModel>? videoOverlays;
-  final List<AudioTrackModel> audioTracks;
-  final String backgroundType;
-  final Color backgroundColor;
-  final double backgroundBlurIntensity;
   final int targetHeight;
   final int targetFps;
 
   const ExportVideoScreen({
     super.key,
-    required this.sourceVideo,
-    required this.segments,
-    required this.muteAudio,
-    required this.targetAspectRatio,
-    required this.customCropRect,
-    required this.originalVideoSize,
+    required this.exportState,
     required this.previewCanvasSize,
-    required this.renderId,
-    this.colorFilterMatrix,
-    this.textOverlays,
-    this.imageOverlays,
-    this.videoOverlays,
-    this.audioTracks = const [],
-    required this.backgroundType,
-    required this.backgroundColor,
-    required this.backgroundBlurIntensity,
     required this.targetHeight,
     required this.targetFps,
   });
@@ -64,7 +42,7 @@ class ExportVideoScreen extends StatefulWidget {
 }
 
 class _ExportVideoScreenState extends State<ExportVideoScreen> {
-  final _editorService = VideoEditorService();
+  final _nativePreview = NativeTimelinePreviewService();
   StreamSubscription? _progressSub;
   double _progress = 0.0;
   bool _isExporting = true;
@@ -85,48 +63,45 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
   }
 
   void _startExport() async {
+    await _startNativeExport(widget.exportState);
+  }
+
+  /// Renders through the preview engine, so the file matches what was previewed.
+  Future<void> _startNativeExport(VideoEditorState state) async {
+    _progressSub = _nativePreview.events.listen((event) {
+      if (!mounted) return;
+      if (event.type == 'exportProgress' && event.progress != null) {
+        setState(() => _progress = event.progress!.clamp(0.0, 1.0));
+      } else if (event.type == 'exportWarning' && event.message != null) {
+        // A device that forced a compromise says so; a file that quietly
+        // differs from the preview must never pass as a clean success.
+        ToastUtils.show(context, event.message!, isWarning: true);
+      }
+    });
+
     try {
-      final outputPath = await _editorService.exportTrimmedVideo(
-        inputPath: widget.sourceVideo.path,
-        segments: widget.segments,
-        muteAudio: widget.muteAudio,
-        targetAspectRatio: widget.targetAspectRatio,
-        customCropRect: widget.customCropRect,
-        originalVideoSize: widget.originalVideoSize,
+      final directory = await getTemporaryDirectory();
+      final outputPath =
+          '${directory.path}/slimshot_export_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+      final result = await _nativePreview.exportVideo(
+        state,
+        outputPath: outputPath,
         previewCanvasSize: widget.previewCanvasSize,
-        renderId: widget.renderId,
-        colorFilterMatrix: widget.colorFilterMatrix,
-        textOverlays: widget.textOverlays,
-        imageOverlays: widget.imageOverlays,
-        videoOverlays: widget.videoOverlays,
-        audioTracks: widget.audioTracks,
-        backgroundType: widget.backgroundType,
-        backgroundColor: widget.backgroundColor,
-        backgroundBlurIntensity: widget.backgroundBlurIntensity,
-        targetHeight: widget.targetHeight,
-        targetFps: widget.targetFps,
-        onProgress: (p) {
-          if (mounted) {
-            setState(() {
-              _progress = p.clamp(0.0, 1.0);
-            });
-          }
-        },
+        frameRate: widget.targetFps,
+        targetShortSidePx: widget.targetHeight,
       );
 
       if (!mounted) return;
       setState(() {
         _isExporting = false;
         _progress = 1.0;
-        _exportedVideoPath = outputPath;
+        _exportedVideoPath = result.outputPath;
       });
-
-      _initExportedVideo(outputPath);
+      _initExportedVideo(result.outputPath);
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _isExporting = false;
-      });
+      setState(() => _isExporting = false);
       ToastUtils.show(context, 'Export failed: $e', isError: true);
     }
   }
@@ -142,7 +117,9 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
   }
 
   void _cancelExport() {
-    ProVideoEditor.instance.cancel(widget.renderId);
+    // The engine deletes the partial file when it sees the flag; nothing is
+    // awaited here because the screen is leaving either way.
+    unawaited(_nativePreview.cancelExport());
     Navigator.pop(context);
   }
 
@@ -171,21 +148,14 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
     MediaSaveService.shareFiles([_exportedVideoPath!]);
   }
 
+  /// Shape of the result preview box.
+  ///
+  /// The project canvas *is* the exported frame, so this is simply its ratio —
+  /// it used to be reconstructed from the legacy crop parameters, which could
+  /// disagree with what the renderer actually produced.
   double _resolveDisplayAspectRatio() {
-    if (widget.targetAspectRatio != null && widget.targetAspectRatio! > 0) {
-      return widget.targetAspectRatio!;
-    }
-
-    final cropRect = widget.customCropRect;
-    if (cropRect != null &&
-        cropRect.width > 0 &&
-        cropRect.height > 0 &&
-        widget.originalVideoSize.height > 0) {
-      return (cropRect.width * widget.originalVideoSize.width) /
-          (cropRect.height * widget.originalVideoSize.height);
-    }
-
-    return widget.originalVideoSize.width / widget.originalVideoSize.height;
+    final ratio = widget.exportState.projectAspectRatio;
+    return ratio > 0 ? ratio : kDefaultCanvasAspectRatio;
   }
 
   @override

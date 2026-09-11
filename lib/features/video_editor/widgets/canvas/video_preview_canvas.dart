@@ -1,20 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/timeline/timeline_geometry.dart';
+import '../../models/media_asset.dart';
 import '../../models/video_editor_state.dart';
+import '../../services/native_timeline_preview_service.dart';
 import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../image_overlay/image_overlay_layer.dart';
 import '../video_overlay/video_overlay_layer.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../text_overlay/text_overlay_layer.dart';
 
 enum CropDragMode { none, top, bottom, left, right, topLeft, topRight, bottomLeft, bottomRight, center }
 
 class VideoPreviewCanvas extends ConsumerStatefulWidget {
-  final VideoController videoController;
+  /// The native engine's texture. The canvas draws this and nothing else —
+  /// crop, zoom, grade and letterboxing are already in those pixels, which is
+  /// why this widget must never re-apply them (it once wrapped the texture in
+  /// a `Transform.scale` + `ColorFiltered` and double-graded every frame).
+  final Widget videoSurface;
+
   final VoidCallback? onTogglePreview;
   final VoidCallback? onDeadZoneTapped;
   final ValueChanged<Size>? onCanvasSizeChanged;
@@ -22,7 +28,7 @@ class VideoPreviewCanvas extends ConsumerStatefulWidget {
 
   const VideoPreviewCanvas({
     super.key,
-    required this.videoController,
+    required this.videoSurface,
     this.onTogglePreview,
     this.onDeadZoneTapped,
     this.onCanvasSizeChanged,
@@ -36,17 +42,78 @@ class VideoPreviewCanvas extends ConsumerStatefulWidget {
 class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
   CropDragMode _cropDragMode = CropDragMode.none;
   double _baseVideoScale = 1.0;
+
+  /// Talks to the native engine for the live clip-transform gesture. The
+  /// method channel is stateless and the event stream is shared, so a second
+  /// service instance here costs nothing.
+  final _nativePreview = NativeTimelinePreviewService();
+
+  // Pinch/drag on the selected clip. Anchored, not accumulated: the values at
+  // finger-down plus the gesture's own deltas, so a clamped frame never leaves
+  // the picture offset from the finger.
+  double _clipGestureStartScale = 1.0;
+  double _clipGestureStartOffsetX = 0.0;
+  double _clipGestureStartOffsetY = 0.0;
+  double _clipGesturePanX = 0.0;
+  double _clipGesturePanY = 0.0;
+  String? _clipGestureSegmentId;
+
+  void _beginClipGesture(VideoEditorState state) {
+    final segment = state.selectedSegment;
+    if (segment == null) return;
+    _clipGestureSegmentId = segment.id;
+    _clipGestureStartScale = segment.canvasScale;
+    _clipGestureStartOffsetX = segment.canvasOffsetX;
+    _clipGestureStartOffsetY = segment.canvasOffsetY;
+    _clipGesturePanX = 0.0;
+    _clipGesturePanY = 0.0;
+    ref.read(videoEditorProvider.notifier).beginClipCanvasTransform();
+  }
+
+  void _updateClipGesture(ScaleUpdateDetails details) {
+    final segmentId = _clipGestureSegmentId;
+    final canvas = _videoCanvasSize;
+    if (segmentId == null || canvas == null || canvas.width <= 0) return;
+
+    // Pan travels in canvas fractions so it means the same thing at any
+    // preview size — and in the exported file.
+    _clipGesturePanX += details.focalPointDelta.dx / canvas.width;
+    _clipGesturePanY += details.focalPointDelta.dy / canvas.height;
+
+    final scale = (_clipGestureStartScale * details.scale)
+        .clamp(kMinClipCanvasScale, kMaxClipCanvasScale)
+        .toDouble();
+    final offsetX =
+        (_clipGestureStartOffsetX + _clipGesturePanX).clamp(-1.5, 1.5).toDouble();
+    final offsetY =
+        (_clipGestureStartOffsetY + _clipGesturePanY).clamp(-1.5, 1.5).toDouble();
+
+    // State for persistence and undo; the override channel for the live
+    // picture. The full timeline push is gated until the gesture ends.
+    ref.read(videoEditorProvider.notifier).updateClipCanvasTransform(
+          scale: scale,
+          offsetX: offsetX,
+          offsetY: offsetY,
+        );
+    _nativePreview.setClipTransform(
+      clipId: segmentId,
+      scale: scale,
+      offsetX: offsetX,
+      offsetY: offsetY,
+    );
+  }
+
+  void _endClipGesture() {
+    _clipGestureSegmentId = null;
+    ref.read(videoEditorProvider.notifier).endClipCanvasTransform();
+  }
   Offset _baseVideoPan = Offset.zero;
   Size? _videoCanvasSize;
 
   @override
   Widget build(BuildContext context) {
     final editorState = ref.watch(videoEditorProvider);
-    final controller = widget.videoController;
-
-    if (controller.player.state.duration == Duration.zero) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.primaryStart));
-    }
+    final previewSurface = widget.videoSurface;
 
     final bool isCustom = editorState.selectedRatio == EditorCropRatio.custom;
     final bool isCropToolActive = editorState.activeToolId == 'crop';
@@ -54,14 +121,11 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
         !isCropToolActive &&
         editorState.customCropRect.width > 0 &&
         editorState.customCropRect.height > 0;
-    final videoTimelineDuration = editorState.segments.fold<double>(
-      0.0,
-      (sum, segment) => sum + segment.duration,
-    );
+    final videoDuration = videoTimelineDuration(editorState.segments);
     final totalEditedDuration = ref.watch(totalEditedDurationProvider);
     final isAudioTail =
-        totalEditedDuration > videoTimelineDuration + 0.05 &&
-        editorState.currentPlaybackPosition >= videoTimelineDuration - 0.02;
+        totalEditedDuration > videoDuration + 0.05 &&
+        editorState.currentPlaybackPosition >= videoDuration - 0.02;
 
     return GestureDetector(
       onTap: widget.onDeadZoneTapped,
@@ -73,12 +137,16 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
           child: Padding(
             padding: const EdgeInsets.all(4.0),
             child: AspectRatio(
+              // The project canvas decides the frame — the tallest imported
+              // clip, or an explicit ratio. Taking it from the media_kit
+              // player meant the box kept the first video's shape while the
+              // renderer had already moved to the project's, so the picture
+              // was squeezed the moment a differently-shaped clip was added.
               aspectRatio: showCroppedView
-                  ? (controller.player.state.width ?? 16) / (controller.player.state.height ?? 9) *
+                  ? editorState.projectAspectRatio *
                       (editorState.customCropRect.width /
                           editorState.customCropRect.height)
-                  : (editorState.selectedRatio.ratio ??
-                      ((controller.player.state.width ?? 16) / (controller.player.state.height ?? 9))),
+                  : editorState.projectAspectRatio,
               child: LayoutBuilder(
                 builder: (context, canvasConstraints) {
                   final newSize = Size(canvasConstraints.maxWidth, canvasConstraints.maxHeight);
@@ -97,92 +165,87 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                       clipBehavior: Clip.none,
                       children: [
                         Positioned.fill(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
+                          // Square corners: the canvas is the output frame,
+                          // and the exported file has no rounded corners.
+                          child: ClipRect(
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
-                                // Background Layer
+                                // Background Layer. The audio/overlay tail
+                                // past the last clip shows this too — the
+                                // project background, not forced black — so
+                                // the tail looks the same here as in the
+                                // exported file.
                                 Positioned.fill(
                                   child: Container(
-                                    color: isAudioTail
-                                        ? Colors.black
-                                        : editorState.backgroundType == EditorBackgroundType.color
+                                    color: editorState.backgroundType == EditorBackgroundType.color
                                         ? editorState.backgroundColor
                                         : Colors.black,
                                   ),
                                 ),
 
-                                // The actual video
+                                // The picture. The native renderer has already
+                                // applied crop, zoom, pan, the letterbox and
+                                // both colour grades, so this draws the
+                                // texture and nothing else — re-applying any
+                                // of them here doubled them (the grade twice
+                                // over, a zoom that magnified the bars).
+                                //
+                                // With a clip selected, pinch scales it and a
+                                // one-finger drag moves it on the canvas; the
+                                // scale recogniser handles both. With nothing
+                                // selected there are no recognisers at all,
+                                // so taps and the other tools are unaffected.
                                 if (!isAudioTail)
                                   Builder(
-                                  builder: (context) {
-                                    Widget videoWidget = ClipRect(
-                                      child: Transform.translate(
-                                        offset: editorState.previewVideoPan ?? editorState.videoPan,
-                                        child: Transform.scale(
-                                          scale: editorState.previewVideoScale ?? editorState.videoScale,
-                                          child: showCroppedView
-                                              ? AspectRatio(
-                                                  aspectRatio: ((controller.player.state.width ?? 16) / (controller.player.state.height ?? 9)) *
-                                                      (editorState.customCropRect.width /
-                                                          editorState.customCropRect.height),
-                                                  child: ClipRect(
-                                                    child: LayoutBuilder(
-                                                      builder: (context, constraints) {
-                                                        final cropW = constraints.maxWidth;
-                                                        final cropH = constraints.maxHeight;
-
-                                                        final origW =
-                                                            cropW / editorState.customCropRect.width;
-                                                        final origH =
-                                                            cropH / editorState.customCropRect.height;
-
-                                                        return OverflowBox(
-                                                          maxWidth: origW,
-                                                          maxHeight: origH,
-                                                          child: Transform.translate(
-                                                            offset: Offset(
-                                                              (0.5 -
-                                                                      editorState.customCropRect.center.dx) *
-                                                                  origW,
-                                                              (0.5 -
-                                                                      editorState.customCropRect.center.dy) *
-                                                                  origH,
-                                                            ),
-                                                            child: SizedBox(
-                                                              width: origW,
-                                                              height: origH,
-                                                              child: Video(controller: controller, controls: NoVideoControls),
-                                                            ),
-                                                          ),
-                                                        );
-                                                      },
+                                    builder: (context) {
+                                      final canTransform =
+                                          editorState.selectedSegmentId != null;
+                                      return SizedBox.expand(
+                                        child: GestureDetector(
+                                          onScaleStart: canTransform
+                                              ? (_) =>
+                                                  _beginClipGesture(editorState)
+                                              : null,
+                                          onScaleUpdate: canTransform
+                                              ? _updateClipGesture
+                                              : null,
+                                          onScaleEnd: canTransform
+                                              ? (_) => _endClipGesture()
+                                              : null,
+                                          onDoubleTap: canTransform
+                                              ? () => ref
+                                                  .read(videoEditorProvider
+                                                      .notifier)
+                                                  .resetClipCanvasTransform()
+                                              : null,
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              previewSurface,
+                                              // The canvas edge lights up while
+                                              // a clip is selected, so it reads
+                                              // as "this clip is being placed"
+                                              // — yellow, because purple is the
+                                              // timeline's selection colour.
+                                              if (canTransform)
+                                                IgnorePointer(
+                                                  child: Container(
+                                                    decoration: BoxDecoration(
+                                                      border: Border.all(
+                                                        color:
+                                                            AppColors.warning,
+                                                        width: 2,
+                                                      ),
                                                     ),
                                                   ),
-                                                )
-                                              : AspectRatio(
-                                                  aspectRatio: ((controller.player.state.width ?? 16) / (controller.player.state.height ?? 9)),
-                                                  child: Video(controller: controller, controls: NoVideoControls),
                                                 ),
-                                        ),
-                                      ),
-                                    );
-
-                                    if (editorState.selectedFilter != null) {
-                                      videoWidget = ColorFiltered(
-                                        colorFilter: ColorFilter.matrix(
-                                          editorState.selectedFilter!.getInterpolatedMatrix(
-                                            editorState.filterIntensity,
+                                            ],
                                           ),
                                         ),
-                                        child: videoWidget,
                                       );
-                                    }
-
-                                    return videoWidget;
-                                  },
-                                ),
+                                    },
+                                  ),
 
                                 ...List.generate(
                                   _getMaxLane(editorState) + 1,
@@ -197,7 +260,6 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                                             targetLaneIndex: lane,
                                           ),
                                           VideoOverlayLayer(
-                                            mainPlayer: controller.player,
                                             videoCanvasSize: _videoCanvasSize!,
                                             targetLaneIndex: lane,
                                           ),

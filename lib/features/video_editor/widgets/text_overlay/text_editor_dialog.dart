@@ -1,27 +1,125 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../../utils/font_utils.dart';
 
-void showTextEditor({
+/// Opens the text editor sheet for [overlay].
+///
+/// When the sheet closes with the text still empty, the overlay is deleted:
+/// an accidental "Add text" must not leave a ghost box behind that would end
+/// up in the export.
+Future<void> showTextEditor({
   required BuildContext context,
   required TextOverlayModel overlay,
   required WidgetRef ref,
   TextEditorTool initialTool = TextEditorTool.keyboard,
-}) {
-  showModalBottomSheet(
+}) async {
+  await showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.transparent,
     builder: (context) {
-      return _TextEditorBottomSheet(overlay: overlay, ref: ref, initialTool: initialTool);
+      return _TextEditorBottomSheet(
+        overlay: overlay,
+        ref: ref,
+        initialTool: initialTool,
+      );
     },
   );
+
+  if (!ref.context.mounted) return;
+  final state = ref.read(videoEditorProvider);
+  TextOverlayModel? current;
+  for (final t in state.textOverlays) {
+    if (t.id == overlay.id) {
+      current = t;
+      break;
+    }
+  }
+  if (current != null && current.text.trim().isEmpty) {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    notifier.deleteTextOverlay(overlay.id);
+    notifier.selectTextOverlay(null);
+  }
 }
+
+enum TextEditorTool { keyboard, style, font, animation }
+
+enum ColorTarget { text, background, outline, shadow }
+
+/// A one-tap bundle of text styling — CapCut's "preset looks". Fonts are
+/// deliberately not part of a preset: the look and the typeface are separate
+/// choices, and a preset overwriting the chosen font would feel destructive.
+class _TextPreset {
+  const _TextPreset({
+    required this.name,
+    required this.color,
+    this.strokeColor = Colors.transparent,
+    this.strokeWidth = 0,
+    this.backgroundColor = Colors.transparent,
+    this.shadowColor = Colors.transparent,
+    this.borderRadius = 6,
+    this.backgroundPadding = 10,
+  });
+
+  final String name;
+  final Color color;
+  final Color strokeColor;
+  final double strokeWidth;
+  final Color backgroundColor;
+  final Color shadowColor;
+  final double borderRadius;
+  final double backgroundPadding;
+}
+
+const List<_TextPreset> _kTextPresets = [
+  _TextPreset(name: 'Classic', color: Colors.white),
+  _TextPreset(
+    name: 'Outline',
+    color: Colors.white,
+    strokeColor: Colors.black,
+    strokeWidth: 4,
+  ),
+  _TextPreset(
+    name: 'Caption',
+    color: Colors.white,
+    backgroundColor: Colors.black87,
+    borderRadius: 4,
+    backgroundPadding: 8,
+  ),
+  _TextPreset(
+    name: 'Boxed',
+    color: Colors.black,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+  ),
+  _TextPreset(
+    name: 'Sunny',
+    color: Colors.amber,
+    strokeColor: Colors.black,
+    strokeWidth: 3,
+  ),
+  _TextPreset(
+    name: 'Neon',
+    color: Colors.cyanAccent,
+    shadowColor: Colors.cyanAccent,
+  ),
+  _TextPreset(
+    name: 'Pop',
+    color: Colors.white,
+    backgroundColor: Colors.deepOrange,
+  ),
+  _TextPreset(
+    name: 'Shadow',
+    color: Colors.white,
+    shadowColor: Colors.black,
+  ),
+];
 
 class _TextEditorBottomSheet extends StatefulWidget {
   final TextOverlayModel overlay;
@@ -38,10 +136,11 @@ class _TextEditorBottomSheet extends StatefulWidget {
   State<_TextEditorBottomSheet> createState() => _TextEditorBottomSheetState();
 }
 
-enum TextEditorTool { keyboard, font, color, effects, animation }
-enum ColorTarget { text, background, outline, shadow }
-
 class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
+  /// Every tab's panel is exactly this tall, so switching tabs never resizes
+  /// the sheet — a sheet that jumps under the thumb reads as broken.
+  static const double _panelHeight = 250.0;
+
   late TextEditingController _textController;
   final FocusNode _focusNode = FocusNode();
   late TextEditorTool _activeTool;
@@ -62,6 +161,10 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
   late String _outAnimation;
   late double _inAnimationDuration;
   late double _outAnimationDuration;
+
+  /// Which preset was last applied, cleared the moment any individual style
+  /// property is changed by hand — a tweaked preset is no longer that preset.
+  int? _activePresetIndex;
 
   final List<String> _fonts = allFonts;
 
@@ -106,7 +209,7 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     _outAnimation = widget.overlay.outAnimation;
     _inAnimationDuration = widget.overlay.animationInDuration;
     _outAnimationDuration = widget.overlay.animationOutDuration;
-    
+
     if (_activeTool == TextEditorTool.keyboard) {
       _focusNode.requestFocus();
     }
@@ -114,25 +217,25 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
 
   void _updateOverlay() {
     widget.ref.read(videoEditorProvider.notifier).updateTextOverlay(
-      widget.overlay.id,
-      (current) => current.copyWith(
-        text: _textController.text,
-        fontFamily: _fontFamily,
-        color: _textColor,
-        strokeColor: _strokeColor,
-        strokeWidth: _strokeWidth,
-        backgroundColor: _backgroundColor,
-        shadowColor: _shadowColor,
-        shadowBlurRadius: _shadowColor != Colors.transparent ? 8.0 : 0.0,
-        textAlign: _textAlign,
-        borderRadius: _borderRadius,
-        backgroundPadding: _backgroundPadding,
-        inAnimation: _inAnimation,
-        outAnimation: _outAnimation,
-        animationInDuration: _inAnimationDuration,
-        animationOutDuration: _outAnimationDuration,
-      ),
-    );
+          widget.overlay.id,
+          (current) => current.copyWith(
+            text: _textController.text,
+            fontFamily: _fontFamily,
+            color: _textColor,
+            strokeColor: _strokeColor,
+            strokeWidth: _strokeWidth,
+            backgroundColor: _backgroundColor,
+            shadowColor: _shadowColor,
+            shadowBlurRadius: _shadowColor != Colors.transparent ? 8.0 : 0.0,
+            textAlign: _textAlign,
+            borderRadius: _borderRadius,
+            backgroundPadding: _backgroundPadding,
+            inAnimation: _inAnimation,
+            outAnimation: _outAnimation,
+            animationInDuration: _inAnimationDuration,
+            animationOutDuration: _outAnimationDuration,
+          ),
+        );
   }
 
   @override
@@ -151,13 +254,35 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     }
   }
 
+  void _applyPreset(int index) {
+    final preset = _kTextPresets[index];
+    setState(() {
+      _activePresetIndex = index;
+      _textColor = preset.color;
+      _strokeColor = preset.strokeColor;
+      _strokeWidth = preset.strokeWidth;
+      _backgroundColor = preset.backgroundColor;
+      _shadowColor = preset.shadowColor;
+      _borderRadius = preset.borderRadius;
+      _backgroundPadding = preset.backgroundPadding;
+    });
+    _updateOverlay();
+  }
+
+  /// Any hand edit to a style property means the preset no longer describes
+  /// the look.
+  void _markCustomized() {
+    _activePresetIndex = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF16181D),
+          color: AppColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: SafeArea(
@@ -165,91 +290,99 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Top Actions & Drag Handle
-              Padding(
-                padding: const EdgeInsets.only(top: 8, left: 16, right: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Copy / Duplicate
-                    IconButton(
-                      icon: const Icon(Icons.copy, color: Colors.white, size: 22),
-                      tooltip: 'Duplicate Text',
-                      onPressed: () {
-                        widget.ref.read(videoEditorProvider.notifier).duplicateTextOverlay(widget.overlay.id);
-                        Navigator.pop(context);
-                      },
-                    ),
-                    // Drag Handle
-                    Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-                    ),
-                    // Delete
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.redAccent, size: 22),
-                      tooltip: 'Delete Text',
-                      onPressed: () {
-                        widget.ref.read(videoEditorProvider.notifier).deleteTextOverlay(widget.overlay.id);
-                        Navigator.pop(context);
-                      },
-                    ),
-                  ],
+              const SizedBox(height: 10),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
+              const SizedBox(height: 10),
 
-              // Toolbar
+              // Tabs on the left, one explicit way out on the right. The old
+              // sheet could only be dismissed by tapping outside — which is
+              // also how you would try to touch the text itself.
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildToolbarIcon(Icons.edit, TextEditorTool.keyboard),
-                    _buildToolbarIcon(Icons.text_fields, TextEditorTool.font),
-                    _buildToolbarIcon(Icons.color_lens, TextEditorTool.color),
-                    // Alignment Cycler
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          if (_textAlign == 'center') _textAlign = 'left';
-                          else if (_textAlign == 'left') _textAlign = 'right';
-                          else _textAlign = 'center';
-                        });
-                        _updateOverlay();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          _textAlign == 'left' ? Icons.format_align_left : _textAlign == 'right' ? Icons.format_align_right : Icons.format_align_center,
-                          color: Colors.white,
-                          size: 24,
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildTab(
+                              LucideIcons.keyboard,
+                              'Keyboard',
+                              TextEditorTool.keyboard,
+                            ),
+                            _buildTab(
+                              LucideIcons.palette,
+                              'Style',
+                              TextEditorTool.style,
+                            ),
+                            _buildTab(
+                              LucideIcons.type,
+                              'Font',
+                              TextEditorTool.font,
+                            ),
+                            _buildTab(
+                              LucideIcons.playCircle,
+                              'Animation',
+                              TextEditorTool.animation,
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    _buildToolbarIcon(Icons.auto_awesome, TextEditorTool.effects), // Effects
-                    _buildToolbarIcon(Icons.animation, TextEditorTool.animation),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              AppColors.primaryStart,
+                              AppColors.primaryEnd,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          LucideIcons.check,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-              
-              // Dynamic Content Area
+              const SizedBox(height: 12),
+
+              // The three styling tabs share one fixed height so switching
+              // between them never resizes the sheet. The keyboard tab is
+              // deliberately *not* boxed: the IME already occupies the space
+              // below, and padding the field to the styling height stacked
+              // dead space on top of the keyboard and crushed the preview.
               if (_activeTool == TextEditorTool.keyboard)
                 _buildKeyboardPanel()
-              else if (_activeTool == TextEditorTool.font)
-                _buildFontPanel()
-              else if (_activeTool == TextEditorTool.color)
-                _buildColorPanel()
-              else if (_activeTool == TextEditorTool.effects)
-                _buildEffectsPanel()
-              else if (_activeTool == TextEditorTool.animation)
-                _buildAnimationPanel(),
-                
-              const SizedBox(height: 16),
+              else
+                SizedBox(
+                  height: _panelHeight,
+                  child: switch (_activeTool) {
+                    TextEditorTool.keyboard => const SizedBox.shrink(),
+                    TextEditorTool.style => _buildStylePanel(),
+                    TextEditorTool.font => _buildFontPanel(),
+                    TextEditorTool.animation => _buildAnimationPanel(),
+                  },
+                ),
+              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -257,154 +390,234 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     );
   }
 
-  Widget _buildToolbarIcon(IconData icon, TextEditorTool tool) {
+  Widget _buildTab(IconData icon, String label, TextEditorTool tool) {
     final isActive = _activeTool == tool;
     return GestureDetector(
       onTap: () => _setTool(tool),
       child: Container(
-        padding: const EdgeInsets.all(8),
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isActive ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          color: isActive ? Colors.white : Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, color: isActive ? Colors.black : Colors.white, size: 24),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isActive ? Colors.black : Colors.white70,
+              size: 15,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? Colors.black : Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  // ------------------------------------------------------------- keyboard
 
   Widget _buildKeyboardPanel() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: TextField(
-        controller: _textController,
-        focusNode: _focusNode,
-        style: getFontStyle(_fontFamily, color: _textColor, fontSize: 24),
-        minLines: 1,
-        maxLines: 4,
-        decoration: InputDecoration(
-          hintText: 'Enter text...',
-          hintStyle: const TextStyle(color: Colors.white30),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          filled: true,
-          fillColor: Colors.white.withValues(alpha: 0.1),
-          contentPadding: const EdgeInsets.all(16),
+          controller: _textController,
+          focusNode: _focusNode,
+          style: getFontStyle(_fontFamily, color: _textColor, fontSize: 24),
+          minLines: 1,
+          maxLines: 4,
+          decoration: InputDecoration(
+            hintText: 'Type something…',
+            hintStyle: const TextStyle(color: Colors.white30),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            filled: true,
+            fillColor: Colors.white.withValues(alpha: 0.1),
+            contentPadding: const EdgeInsets.all(16),
+          ),
+          textAlign: _textAlign == 'left'
+              ? TextAlign.left
+              : _textAlign == 'right'
+                  ? TextAlign.right
+                  : _textAlign == 'justify'
+                      ? TextAlign.justify
+                      : TextAlign.center,
+          onChanged: (_) => _updateOverlay(),
         ),
-        textAlign: _textAlign == 'left' ? TextAlign.left : _textAlign == 'right' ? TextAlign.right : _textAlign == 'justify' ? TextAlign.justify : TextAlign.center,
-        onChanged: (_) => _updateOverlay(),
-      ),
     );
   }
 
-  Widget _buildFontPanel() {
-    return SizedBox(
-      height: 250,
-      child: GridView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          childAspectRatio: 2.5,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
+  // ---------------------------------------------------------------- style
+
+  Widget _buildStylePanel() {
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      children: [
+        _buildSectionLabel('Presets'),
+        SizedBox(
+          height: 56,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: _kTextPresets.length,
+            itemBuilder: (context, index) =>
+                _buildPresetTile(index, _kTextPresets[index]),
+          ),
         ),
-        itemCount: _fonts.length,
-        itemBuilder: (context, index) {
-          final font = _fonts[index];
-          final isSelected = _fontFamily == font;
-          return GestureDetector(
-            onTap: () {
-              setState(() => _fontFamily = font);
-              _updateOverlay();
-            },
-            child: Container(
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isSelected ? Colors.white : Colors.transparent),
-              ),
-              child: Text(
-                font,
-                style: getFontStyle(font, color: Colors.white, fontSize: 16),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildColorPanel() {
-    return SizedBox(
-      height: 250,
-      child: ListView(
-        physics: const BouncingScrollPhysics(),
-        children: [
-          // Sub-menu for Color Target
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildColorTargetBtn('Text', ColorTarget.text),
-                  const SizedBox(width: 8),
-                  _buildColorTargetBtn('Background', ColorTarget.background),
-                  const SizedBox(width: 8),
-                  _buildColorTargetBtn('Outline', ColorTarget.outline),
-                  const SizedBox(width: 8),
-                  _buildColorTargetBtn('Shadow', ColorTarget.shadow),
-                ],
-              ),
+        const SizedBox(height: 16),
+        _buildSectionLabel('Alignment'),
+        _buildAlignmentPicker(),
+        const SizedBox(height: 16),
+        _buildSectionLabel('Colors'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildColorTargetBtn('Text', ColorTarget.text),
+                const SizedBox(width: 8),
+                _buildColorTargetBtn('Background', ColorTarget.background),
+                const SizedBox(width: 8),
+                _buildColorTargetBtn('Outline', ColorTarget.outline),
+                const SizedBox(width: 8),
+                _buildColorTargetBtn('Shadow', ColorTarget.shadow),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          // Dynamic Sliders based on target
-          if (_activeColorTarget == ColorTarget.outline && _strokeColor != Colors.transparent) ...[
-            _buildSliderRow('Thickness', _strokeWidth, 1, 10, (val) {
-              setState(() => _strokeWidth = val);
-              _updateOverlay();
-            }),
-            const SizedBox(height: 24),
-          ],
-          if (_activeColorTarget == ColorTarget.background && _backgroundColor != Colors.transparent) ...[
-            _buildSliderRow('Radius', _borderRadius, 0, 50, (val) {
-              setState(() => _borderRadius = val);
-              _updateOverlay();
-            }),
-            const SizedBox(height: 8),
-            _buildSliderRow('Padding', _backgroundPadding, 0, 64, (val) {
-              setState(() => _backgroundPadding = val);
-              _updateOverlay();
-            }),
-            const SizedBox(height: 24),
-          ],
-
-          // Unified Color Picker
-          _buildColorPicker(
-            selectedColor: _activeColorTarget == ColorTarget.text ? _textColor :
-                          _activeColorTarget == ColorTarget.outline ? _strokeColor :
-                          _activeColorTarget == ColorTarget.shadow ? _shadowColor : _backgroundColor,
-            includeTransparent: _activeColorTarget != ColorTarget.text, // Text must always have a color
-            onColorSelected: (c) {
-              setState(() {
-                if (_activeColorTarget == ColorTarget.text) {
-                  _textColor = c;
-                } else if (_activeColorTarget == ColorTarget.outline) {
-                  _strokeColor = c;
-                  if (c != Colors.transparent && _strokeWidth == 0) _strokeWidth = 3;
-                  else if (c == Colors.transparent) _strokeWidth = 0;
-                } else if (_activeColorTarget == ColorTarget.shadow) {
-                  _shadowColor = c;
-                } else if (_activeColorTarget == ColorTarget.background) {
-                  _backgroundColor = c;
-                }
-              });
-              _updateOverlay();
-            },
-          ),
-          
-          const SizedBox(height: 16),
+        ),
+        const SizedBox(height: 12),
+        if (_activeColorTarget == ColorTarget.outline &&
+            _strokeColor != Colors.transparent) ...[
+          _buildSliderRow('Thickness', _strokeWidth, 1, 10, (val) {
+            setState(() {
+              _strokeWidth = val;
+              _markCustomized();
+            });
+            _updateOverlay();
+          }),
+          const SizedBox(height: 8),
         ],
+        if (_activeColorTarget == ColorTarget.background &&
+            _backgroundColor != Colors.transparent) ...[
+          _buildSliderRow('Radius', _borderRadius, 0, 50, (val) {
+            setState(() {
+              _borderRadius = val;
+              _markCustomized();
+            });
+            _updateOverlay();
+          }),
+          const SizedBox(height: 8),
+          _buildSliderRow('Padding', _backgroundPadding, 0, 64, (val) {
+            setState(() {
+              _backgroundPadding = val;
+              _markCustomized();
+            });
+            _updateOverlay();
+          }),
+          const SizedBox(height: 8),
+        ],
+        _buildColorPicker(
+          selectedColor: _activeColorTarget == ColorTarget.text
+              ? _textColor
+              : _activeColorTarget == ColorTarget.outline
+                  ? _strokeColor
+                  : _activeColorTarget == ColorTarget.shadow
+                      ? _shadowColor
+                      : _backgroundColor,
+          // Text must always have a colour.
+          includeTransparent: _activeColorTarget != ColorTarget.text,
+          onColorSelected: (c) {
+            setState(() {
+              _markCustomized();
+              if (_activeColorTarget == ColorTarget.text) {
+                _textColor = c;
+              } else if (_activeColorTarget == ColorTarget.outline) {
+                _strokeColor = c;
+                if (c != Colors.transparent && _strokeWidth == 0) {
+                  _strokeWidth = 3;
+                } else if (c == Colors.transparent) {
+                  _strokeWidth = 0;
+                }
+              } else if (_activeColorTarget == ColorTarget.shadow) {
+                _shadowColor = c;
+              } else if (_activeColorTarget == ColorTarget.background) {
+                _backgroundColor = c;
+              }
+            });
+            _updateOverlay();
+          },
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildPresetTile(int index, _TextPreset preset) {
+    final isSelected = _activePresetIndex == index;
+
+    // The tile shows the preset's own pixels — background, stroke, shadow —
+    // so the user can tell the looks apart before applying one.
+    final sample = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: preset.backgroundColor,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Stack(
+        children: [
+          if (preset.strokeWidth > 0)
+            Text(
+              'Aa',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                foreground: Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = preset.strokeWidth
+                  ..color = preset.strokeColor,
+              ),
+            ),
+          Text(
+            'Aa',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: preset.color,
+              shadows: preset.shadowColor != Colors.transparent
+                  ? [Shadow(color: preset.shadowColor, blurRadius: 8)]
+                  : null,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return GestureDetector(
+      onTap: () => _applyPreset(index),
+      child: Container(
+        width: 56,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? Colors.white : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: sample,
       ),
     );
   }
@@ -431,127 +644,173 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     );
   }
 
-  Widget _buildEffectsPanel() {
-    return const SizedBox(
-      height: 250,
-      child: Center(
-        child: Text(
-          'Predesigned Text coming soon...',
-          style: TextStyle(color: Colors.white54),
-        ),
+  // ----------------------------------------------------------------- font
+
+  Widget _buildFontPanel() {
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 2.5,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
       ),
+      itemCount: _fonts.length,
+      itemBuilder: (context, index) {
+        final font = _fonts[index];
+        final isSelected = _fontFamily == font;
+        return GestureDetector(
+          onTap: () {
+            setState(() => _fontFamily = font);
+            _updateOverlay();
+          },
+          child: Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? Colors.white.withValues(alpha: 0.2)
+                  : Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? Colors.white : Colors.transparent,
+              ),
+            ),
+            child: Text(
+              font,
+              style: getFontStyle(font, color: Colors.white, fontSize: 16),
+            ),
+          ),
+        );
+      },
     );
   }
 
-  static const _animationsList = ['none', 'fade', 'scale', 'slide_up', 'slide_down', 'slide_left', 'slide_right'];
+  // ------------------------------------------------------------ animation
+
+  static const _animationsList = [
+    'none',
+    'fade',
+    'scale',
+    'slide_up',
+    'slide_down',
+    'slide_left',
+    'slide_right',
+  ];
 
   Widget _buildAnimationPanel() {
-    return SizedBox(
-      height: 250,
-      child: Column(
-        children: [
-          // Sub-menu for In/Out
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(child: _buildAnimTargetBtn('In Animation', 0)),
+              const SizedBox(width: 12),
+              Expanded(child: _buildAnimTargetBtn('Out Animation', 1)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        if ((_animationTabIndex == 0 && _inAnimation != 'none') ||
+            (_animationTabIndex == 1 && _outAnimation != 'none'))
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                Expanded(child: _buildAnimTargetBtn('In Animation', 0)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildAnimTargetBtn('Out Animation', 1)),
+                const Icon(LucideIcons.timer, color: Colors.white54, size: 16),
+                Expanded(
+                  child: SliderTheme(
+                    data: const SliderThemeData(
+                      activeTrackColor: AppColors.primaryStart,
+                      inactiveTrackColor: Colors.white12,
+                      thumbColor: Colors.white,
+                      trackHeight: 2,
+                      overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
+                    ),
+                    child: Slider(
+                      value: _animationTabIndex == 0
+                          ? _inAnimationDuration
+                          : _outAnimationDuration,
+                      min: 0.1,
+                      max: 2.0,
+                      onChanged: (val) {
+                        setState(() {
+                          if (_animationTabIndex == 0) {
+                            _inAnimationDuration = val;
+                          } else {
+                            _outAnimationDuration = val;
+                          }
+                        });
+                        _updateOverlay();
+                      },
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 40,
+                  child: Text(
+                    '${(_animationTabIndex == 0 ? _inAnimationDuration : _outAnimationDuration).toStringAsFixed(1)}s',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          // Duration Slider
-          if ((_animationTabIndex == 0 && _inAnimation != 'none') ||
-              (_animationTabIndex == 1 && _outAnimation != 'none'))
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  const Icon(Icons.timer, color: Colors.white54, size: 16),
-                  Expanded(
-                    child: SliderTheme(
-                      data: const SliderThemeData(
-                        activeTrackColor: AppColors.primaryStart,
-                        inactiveTrackColor: Colors.white12,
-                        thumbColor: Colors.white,
-                        trackHeight: 2,
-                        overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
-                      ),
-                      child: Slider(
-                        value: _animationTabIndex == 0 ? _inAnimationDuration : _outAnimationDuration,
-                        min: 0.1,
-                        max: 2.0,
-                        onChanged: (val) {
-                          setState(() {
-                            if (_animationTabIndex == 0) {
-                              _inAnimationDuration = val;
-                            } else {
-                              _outAnimationDuration = val;
-                            }
-                          });
-                          _updateOverlay();
-                        },
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 40,
-                    child: Text(
-                      '${(_animationTabIndex == 0 ? _inAnimationDuration : _outAnimationDuration).toStringAsFixed(1)}s',
-                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                ],
-              ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            physics: const BouncingScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              childAspectRatio: 2.5,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
             ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              physics: const BouncingScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 2.5,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemCount: _animationsList.length,
-              itemBuilder: (context, idx) {
-                final anim = _animationsList[idx];
-                final currentAnim = _animationTabIndex == 0 ? _inAnimation : _outAnimation;
-                final isSelected = currentAnim == anim;
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      if (_animationTabIndex == 0) _inAnimation = anim;
-                      else _outAnimation = anim;
-                    });
-                    _updateOverlay();
-                  },
-                  child: Container(
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      anim.toUpperCase().replaceAll('_', ' '),
-                      style: TextStyle(
-                        color: isSelected ? Colors.black : Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
+            itemCount: _animationsList.length,
+            itemBuilder: (context, idx) {
+              final anim = _animationsList[idx];
+              final currentAnim =
+                  _animationTabIndex == 0 ? _inAnimation : _outAnimation;
+              final isSelected = currentAnim == anim;
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (_animationTabIndex == 0) {
+                      _inAnimation = anim;
+                    } else {
+                      _outAnimation = anim;
+                    }
+                  });
+                  _updateOverlay();
+                },
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    anim.toUpperCase().replaceAll('_', ' '),
+                    style: TextStyle(
+                      color: isSelected ? Colors.black : Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -563,7 +822,9 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
         padding: const EdgeInsets.symmetric(vertical: 10),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isActive ? Colors.white.withValues(alpha: 0.15) : Colors.transparent,
+          color: isActive
+              ? Colors.white.withValues(alpha: 0.15)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(
@@ -578,75 +839,52 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     );
   }
 
+  // -------------------------------------------------------------- shared
+
   Widget _buildSectionLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(left: 16, bottom: 8),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-
-  Widget _buildFontPicker() {
-    return SizedBox(
-      height: 40,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: _fonts.length,
-        itemBuilder: (context, index) {
-          final font = _fonts[index];
-          final isSelected = _fontFamily == font;
-          return GestureDetector(
-            onTap: () {
-              setState(() => _fontFamily = font);
-              _updateOverlay();
-            },
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                font,
-                style: getFontStyle(font, color: isSelected ? Colors.black : Colors.white, fontSize: 14),
-              ),
-            ),
-          );
-        },
+        style: const TextStyle(
+          color: Colors.white54,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
 
   Widget _buildAlignmentPicker() {
     final alignments = [
-      {'val': 'left', 'icon': Icons.format_align_left},
-      {'val': 'center', 'icon': Icons.format_align_center},
-      {'val': 'right', 'icon': Icons.format_align_right},
-      {'val': 'justify', 'icon': Icons.format_align_justify},
+      (value: 'left', icon: LucideIcons.alignLeft),
+      (value: 'center', icon: LucideIcons.alignCenter),
+      (value: 'right', icon: LucideIcons.alignRight),
+      (value: 'justify', icon: LucideIcons.alignJustify),
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: alignments.map((a) {
-          final isSelected = _textAlign == a['val'];
+          final isSelected = _textAlign == a.value;
           return GestureDetector(
             onTap: () {
-              setState(() => _textAlign = a['val'] as String);
+              setState(() => _textAlign = a.value);
               _updateOverlay();
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               decoration: BoxDecoration(
                 color: isSelected ? AppColors.primaryStart : Colors.white12,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(a['icon'] as IconData, color: isSelected ? Colors.white : Colors.white70, size: 20),
+              child: Icon(
+                a.icon,
+                color: isSelected ? Colors.white : Colors.white70,
+                size: 20,
+              ),
             ),
           );
         }).toList(),
@@ -654,14 +892,23 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     );
   }
 
-  Widget _buildSliderRow(String label, double value, double min, double max, ValueChanged<double> onChanged) {
+  Widget _buildSliderRow(
+    String label,
+    double value,
+    double min,
+    double max,
+    ValueChanged<double> onChanged,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           SizedBox(
             width: 80,
-            child: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            ),
           ),
           Expanded(
             child: Slider(
@@ -678,7 +925,11 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     );
   }
 
-  Widget _buildColorPicker({required Color selectedColor, required Function(Color) onColorSelected, bool includeTransparent = false}) {
+  Widget _buildColorPicker({
+    required Color selectedColor,
+    required Function(Color) onColorSelected,
+    bool includeTransparent = false,
+  }) {
     final colors = includeTransparent ? [Colors.transparent, ..._colors] : _colors;
 
     return GridView.builder(
@@ -703,45 +954,18 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
               shape: BoxShape.circle,
               color: color,
               border: Border.all(
-                color: isSelected ? Colors.white : (isTransparent ? Colors.white24 : Colors.transparent),
+                color: isSelected
+                    ? Colors.white
+                    : (isTransparent ? Colors.white24 : Colors.transparent),
                 width: isSelected ? 2 : 1,
               ),
             ),
             child: isTransparent
-                ? const Icon(Icons.block, color: Colors.white54, size: 20)
+                ? const Icon(LucideIcons.ban, color: Colors.white54, size: 20)
                 : null,
           ),
         );
       },
-    );
-  }
-
-  Widget _buildToggleBtn({required IconData icon, required String label, required bool isActive, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isActive ? AppColors.primaryStart.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
-          border: Border.all(color: isActive ? AppColors.primaryStart : Colors.transparent),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: isActive ? AppColors.primaryStart : Colors.white70, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? AppColors.primaryStart : Colors.white70,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

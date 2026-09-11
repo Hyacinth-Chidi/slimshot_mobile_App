@@ -1,0 +1,434 @@
+﻿import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:ui';
+
+import 'package:flutter/services.dart';
+
+import '../logic/text_overlay_geometry.dart';
+import '../logic/timeline/video_editor_timeline_composer.dart';
+import '../models/editor_timeline.dart';
+import '../models/video_editor_state.dart';
+import 'text_overlay_rasterizer.dart';
+
+const EventChannel _defaultEventChannel =
+    EventChannel('slimshot_ai/native_timeline_preview/events');
+
+class NativeTimelinePreviewService {
+  NativeTimelinePreviewService({
+    MethodChannel? methodChannel,
+    EventChannel? playbackEventChannel,
+    VideoEditorTimelineComposer timelineComposer =
+        const VideoEditorTimelineComposer(),
+  })  : _methodChannel = methodChannel ??
+            const MethodChannel('slimshot_ai/native_timeline_preview'),
+        _playbackEventChannel = playbackEventChannel ?? _defaultEventChannel,
+        _timelineComposer = timelineComposer;
+
+  final MethodChannel _methodChannel;
+  final EventChannel _playbackEventChannel;
+  final VideoEditorTimelineComposer _timelineComposer;
+
+  Stream<NativeTimelinePreviewEvent>? _events;
+
+  /// Shared across every service instance that uses the default channel.
+  ///
+  /// `receiveBroadcastStream()` opens a **new** platform subscription per call,
+  /// and the platform side keeps only one `eventSink`. Two instances therefore
+  /// fight: the second one's `onListen` replaces the sink, and its `onCancel`
+  /// nulls it — silencing the first, which is still listening and has no way to
+  /// know. That is what stopped the editor's playhead the moment the export
+  /// screen was closed, while playback itself carried on perfectly.
+  ///
+  /// One shared stream means the platform sees a single subscription with
+  /// several Dart listeners, and it is only torn down when the last one goes.
+  static Stream<NativeTimelinePreviewEvent>? _sharedEvents;
+
+  Stream<NativeTimelinePreviewEvent> get events {
+    // A channel injected for a test gets its own stream; the default channel is
+    // shared, because that is the one several screens listen to at once.
+    if (!identical(_playbackEventChannel, _defaultEventChannel)) {
+      return _events ??= _playbackEventChannel
+          .receiveBroadcastStream()
+          .map(NativeTimelinePreviewEvent.fromPlatformEvent);
+    }
+
+    return _sharedEvents ??= _defaultEventChannel
+        .receiveBroadcastStream()
+        .map(NativeTimelinePreviewEvent.fromPlatformEvent);
+  }
+
+  /// Creates the native preview texture and returns its Flutter texture id.
+  ///
+  /// The preview renders straight into a Flutter texture rather than a
+  /// platform view, so it is composited by Flutter with no virtual display and
+  /// no extra per-frame copy. Safe to call more than once — the native side
+  /// returns the existing texture.
+  Future<int?> initialize() async {
+    final result = await _methodChannel.invokeMapMethod<String, dynamic>(
+      'initialize',
+    );
+    return (result?['textureId'] as num?)?.toInt();
+  }
+
+  Future<void> setTimeline(
+    VideoEditorState state, {
+    Size? previewCanvasSize,
+  }) {
+    final timeline = _timelineComposer.compose(
+      state,
+      previewCanvasSize: previewCanvasSize,
+    );
+    return _methodChannel.invokeMethod<void>('setTimeline', timeline.toJson());
+  }
+
+  /// Identity of everything the native engine would need to rebuild playback.
+  ///
+  /// The editor pushes a new timeline only when this changes, so a signature
+  /// that misses a field means edits silently fail to reach the engine, and one
+  /// that includes a field the engine ignores means playback restarts for no
+  /// reason.
+  String playbackSignature(
+    VideoEditorState state, {
+    Size? previewCanvasSize,
+  }) {
+    final timeline = _timelineComposer.compose(
+      state,
+      previewCanvasSize: previewCanvasSize,
+    );
+    return jsonEncode({
+      'sourceVideoPath': timeline.sourceVideoPath,
+      'durationSeconds': timeline.durationSeconds,
+      'canvas': timeline.canvas.toJson(),
+      'playbackClips': timeline.playbackClips
+          .map((clip) => clip.toJson())
+          .toList(growable: false),
+      'transitions': timeline.transitions
+          .map((transition) => transition.toJson())
+          .toList(growable: false),
+      // Overlays are deliberately absent. In the preview they are Flutter
+      // widgets stacked over the canvas — the engine never draws them — so
+      // putting them in the signature made every overlay add, drag or trim
+      // push a whole new timeline, and the resulting player re-prepare showed
+      // as the canvas flashing to the background. Export composes its own
+      // timeline and is unaffected.
+      'audioTracks': timeline.audioClips
+          .map((clip) => clip.toJson())
+          .toList(growable: false),
+    });
+  }
+
+  Future<void> play() {
+    return _methodChannel.invokeMethod<void>('play');
+  }
+
+  Future<void> pause() {
+    return _methodChannel.invokeMethod<void>('pause');
+  }
+
+  Future<void> seek(double seconds) {
+    return _methodChannel.invokeMethod<void>('seek', {'seconds': seconds});
+  }
+
+  /// Live pinch/drag transform for one clip, while the gesture is in flight.
+  ///
+  /// Deliberately not a timeline push: a gesture updates sixty times a second
+  /// and recomposing the timeline per frame would re-prepare the players. The
+  /// engine holds this as an override until the released gesture's committed
+  /// values arrive with the next `setTimeline`.
+  Future<void> setClipTransform({
+    required String clipId,
+    required double scale,
+    required double offsetX,
+    required double offsetY,
+  }) {
+    return _methodChannel.invokeMethod<void>('setClipTransform', {
+      'clipId': clipId,
+      'scale': scale,
+      'offsetX': offsetX,
+      'offsetY': offsetY,
+    });
+  }
+
+  /// Tells the engine a timeline drag is in progress.
+  ///
+  /// While this is on, the engine coalesces the seeks the drag produces
+  /// instead of flushing a decoder for each one. Must be turned off when the
+  /// gesture ends, or playback stays silent — scrubbing mode drops the audio
+  /// track.
+  Future<void> setScrubbing(bool enabled) {
+    return _methodChannel.invokeMethod<void>(
+      'setScrubbing',
+      {'enabled': enabled},
+    );
+  }
+
+  /// Renders the timeline to [outputPath] through the preview's own renderer.
+  ///
+  /// The exported frame is the previewed frame: both go through the same
+  /// `composite` call in `TransitionRenderer`, so transitions, letterboxing,
+  /// crop, per-clip grades and the project look cannot differ between them.
+  ///
+  /// Progress arrives as `exportProgress` events, and a device that forces a
+  /// compromise — a transition it could not run two decoders for — reports it
+  /// as an `exportWarning` rather than silently producing a different file.
+  Future<NativeExportResult> exportVideo(
+    VideoEditorState state, {
+    required String outputPath,
+    Size? previewCanvasSize,
+    int frameRate = 30,
+    int targetShortSidePx = 1080,
+  }) async {
+    // Text is rasterised by Flutter's own text engine and handed to the
+    // native overlay pass as images — reimplementing text layout in Android
+    // Canvas would drift (font metrics, stroke, shadow), and PVE cannot
+    // handle photo clips at all. This is what took `pro_video_editor` off the
+    // export path for text projects.
+    final textRasters = await _rasterizeTextOverlays(
+      state,
+      previewCanvasSize,
+      targetShortSidePx,
+    );
+
+    final timeline = _timelineComposer.compose(
+      state,
+      previewCanvasSize: previewCanvasSize,
+      extraOverlays: textRasters.overlays,
+    );
+
+    try {
+      final result = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'exportVideo',
+        {
+          'timeline': timeline.toJson(),
+          'outputPath': outputPath,
+          'frameRate': frameRate,
+          // The export's own resolution, independent of the preview canvas.
+          // The preview is deliberately capped at `kMaxPreviewCanvasPx` because
+          // a 4K clip previewed at 4K costs fill rate nobody can see — but an
+          // export inheriting that cap would ship a 720p-maximum editor.
+          'targetShortSidePx': targetShortSidePx,
+        },
+      );
+
+      if (result == null) {
+        throw StateError('Native export returned no result.');
+      }
+      return NativeExportResult.fromMap(result);
+    } finally {
+      for (final path in textRasters.tempFiles) {
+        unawaited(() async {
+          try {
+            await File(path).delete();
+          } catch (_) {}
+        }());
+      }
+    }
+  }
+
+  /// Rasterised text overlays as native image-overlay entries, plus the temp
+  /// files to delete once the export is done with them.
+  Future<({List<EditorTimelineOverlay> overlays, List<String> tempFiles})>
+      _rasterizeTextOverlays(
+    VideoEditorState state,
+    Size? previewCanvasSize,
+    int targetShortSidePx,
+  ) async {
+    final canvas = previewCanvasSize;
+    if (state.textOverlays.isEmpty ||
+        canvas == null ||
+        canvas.width <= 0 ||
+        canvas.height <= 0) {
+      return (overlays: <EditorTimelineOverlay>[], tempFiles: <String>[]);
+    }
+
+    // Raster at export density, not preview density: the canvas is preview
+    // pixels (~400), the export short side is 1080+, and a 1:1 raster would
+    // upscale soft.
+    final rasterScale =
+        (targetShortSidePx / canvas.shortestSide).clamp(1.0, 4.0).toDouble();
+
+    final overlays = <EditorTimelineOverlay>[];
+    final tempFiles = <String>[];
+
+    for (final text in state.textOverlays) {
+      final raster = await TextOverlayRasterizer.rasterize(
+        overlay: text,
+        canvasSize: canvas,
+        rasterScale: rasterScale,
+      );
+      if (raster == null) continue;
+      tempFiles.add(raster.pngPath);
+
+      // The layer's own placement, in canvas fractions: the box centre is the
+      // canvas centre plus the (clamped) offset — the same helper the layer
+      // positions its widget with.
+      final renderScale = textOverlayRenderScale(text, canvas);
+      final center = textOverlayCenter(text, canvas, renderScale);
+
+      // The native pass contain-fits inside a *pixel-square* box (the image
+      // overlays' 200×200 contract). Sending the raster's own rectangle made
+      // it apply the aspect twice and squash every exported text — see
+      // `textOverlayFitBox`.
+      final fitBox = textOverlayFitBox(raster.canvasPxSize);
+
+      overlays.add(
+        EditorTimelineOverlay(
+          id: 'text_${text.id}',
+          kind: 'image',
+          path: raster.pngPath,
+          centerX: center.dx / canvas.width,
+          centerY: center.dy / canvas.height,
+          boxWidth: fitBox.width / canvas.width,
+          boxHeight: fitBox.height / canvas.height,
+          scale: text.scale,
+          rotation: text.rotation,
+          opacity: 1.0,
+          startSeconds: text.startTime.inMilliseconds / 1000.0,
+          endSeconds: text.endTime.inMilliseconds / 1000.0,
+          // Above every image/video overlay, matching the preview's stacking
+          // where the text layer sits on top.
+          laneIndex: 1000 + text.laneIndex,
+          // flutter_animate slides by the widget's own size, not the image
+          // overlays' fixed 200px, so the travel is the raster's own box.
+          slideOffsetX: raster.canvasPxSize.width / canvas.width,
+          slideOffsetY: raster.canvasPxSize.height / canvas.height,
+          animationIn: _mapTextAnimation(text.inAnimation, isOut: false),
+          animationOut: _mapTextAnimation(text.outAnimation, isOut: true),
+          // The preview animates text with flutter_animate's stock 0.5s and
+          // ignores the stored durations; export matches what plays, not what
+          // is stored.
+          animationInSeconds: 0.5,
+          animationOutSeconds: 0.5,
+        ),
+      );
+    }
+    return (overlays: overlays, tempFiles: tempFiles);
+  }
+
+  /// Text animation names → the native overlay names, mapping exactly what
+  /// `text_overlay_layer.dart` actually plays. The layer has no out-variant
+  /// for the bare slide names, so those export as no animation — parity with
+  /// the preview, not with what the name suggests.
+  String? _mapTextAnimation(String name, {required bool isOut}) {
+    if (name == 'none' || name.isEmpty) return null;
+    if (!isOut) {
+      return switch (name) {
+        'fade' || 'fade_in' => 'fade_in',
+        'scale' || 'zoom_in' => 'zoom_in',
+        'zoom_out' => 'zoom_out',
+        'slide_up' || 'slide_down' || 'slide_left' || 'slide_right' => name,
+        _ => null,
+      };
+    }
+    return switch (name) {
+      'fade' || 'fade_out' => 'fade_out',
+      'scale' || 'zoom_out_out' => 'zoom_out_out',
+      'zoom_in_out' => 'zoom_in_out',
+      'slide_up_out' ||
+      'slide_down_out' ||
+      'slide_left_out' ||
+      'slide_right_out' =>
+        name,
+      _ => null,
+    };
+  }
+
+  Future<void> cancelExport() {
+    return _methodChannel.invokeMethod<void>('cancelExport');
+  }
+
+  /// Asks the device what its codecs will actually do for an export.
+  ///
+  /// Export holds two decoders and an encoder at once, and low-end parts limit
+  /// concurrent codec instances — so this is the one constraint that can change
+  /// the shape of the export pipeline rather than just its settings. Call it
+  /// with the preview loaded, so the encoder is created while playback already
+  /// holds its decoders.
+  Future<Map<String, dynamic>?> probeExportCapabilities(Size canvasSize) {
+    return _methodChannel.invokeMapMethod<String, dynamic>(
+      'probeExportCapabilities',
+      {
+        'width': canvasSize.width.round(),
+        'height': canvasSize.height.round(),
+      },
+    );
+  }
+
+  Future<void> setVolume(double volume) {
+    return _methodChannel.invokeMethod<void>('setVolume', {'volume': volume});
+  }
+
+  Future<void> dispose() {
+    return _methodChannel.invokeMethod<void>('dispose');
+  }
+
+}
+
+/// What a finished native export produced.
+class NativeExportResult {
+  const NativeExportResult({
+    required this.outputPath,
+    required this.durationSeconds,
+    required this.frameCount,
+    required this.degradedTransitions,
+  });
+
+  final String outputPath;
+  final double durationSeconds;
+  final int frameCount;
+
+  /// Transitions this device could not render, exported as a hard cut.
+  ///
+  /// Non-zero means the file legitimately differs from the preview, and the
+  /// user has to be told — a success message over a file that quietly lost its
+  /// transitions is exactly the "success before the result is usable" failure.
+  final int degradedTransitions;
+
+  bool get isExact => degradedTransitions == 0;
+
+  factory NativeExportResult.fromMap(Map<String, dynamic> map) {
+    return NativeExportResult(
+      outputPath: map['outputPath'] as String? ?? '',
+      durationSeconds: (map['durationSeconds'] as num?)?.toDouble() ?? 0.0,
+      frameCount: (map['frameCount'] as num?)?.toInt() ?? 0,
+      degradedTransitions: (map['degradedTransitions'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class NativeTimelinePreviewEvent {
+  const NativeTimelinePreviewEvent({
+    required this.type,
+    this.positionSeconds,
+    this.isReady,
+    this.message,
+    this.progress,
+  });
+
+  final String type;
+  final double? positionSeconds;
+  final bool? isReady;
+  final String? message;
+
+  /// Export completion, `0..1`, on `exportProgress` events.
+  final double? progress;
+
+  factory NativeTimelinePreviewEvent.fromPlatformEvent(dynamic event) {
+    if (event is! Map) {
+      return NativeTimelinePreviewEvent(
+        type: 'unknown',
+        message: event?.toString(),
+      );
+    }
+
+    return NativeTimelinePreviewEvent(
+      type: event['type'] as String? ?? 'unknown',
+      positionSeconds: (event['positionSeconds'] as num?)?.toDouble(),
+      isReady: event['isReady'] as bool?,
+      message: event['message'] as String?,
+      progress: (event['progress'] as num?)?.toDouble(),
+    );
+  }
+}
+

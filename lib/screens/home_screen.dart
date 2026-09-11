@@ -80,9 +80,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _handleEditVideo() async {
     try {
       final picker = MediaPickerService();
-      final video = await picker.pickVideo();
-      if (video != null && mounted) {
-        await context.push('/edit/video', extra: video);
+      // A project can start from several videos and photos at once, in the
+      // order they were picked.
+      final media = await picker.pickMedia();
+      if (media.isNotEmpty && mounted) {
+        await context.push('/edit/video', extra: media);
         _loadDrafts();
       }
     } catch (e) {
@@ -90,11 +92,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (MediaPickerService.isPermissionError(e)) {
         PermissionDialog.showGalleryAccessRequired(
           context: context,
-          message: 'Please grant storage access to pick videos for editing.',
+          message:
+              'Please grant storage access to pick photos and videos for editing.',
           onCancel: () {},
         );
       } else {
-        ToastUtils.show(context, 'Error picking video: $e', isError: true);
+        ToastUtils.show(context, 'Error picking media: $e', isError: true);
       }
     }
   }

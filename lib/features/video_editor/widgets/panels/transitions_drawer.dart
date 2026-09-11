@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/transitions/transition_catalog.dart';
 import '../../providers/video_editor_notifier.dart';
+import 'apply_to_all_toggle.dart';
 
 class TransitionsDrawer extends ConsumerWidget {
   const TransitionsDrawer({super.key});
@@ -16,10 +18,20 @@ class TransitionsDrawer extends ConsumerWidget {
 
     // Use the explicitly-selected transition segment, or fall back to the
     // currently selected clip (for when opened via the edit contextual menu).
-    final targetSegmentId = editorState.selectedTransitionSegmentId
+    final requestedSegmentId = editorState.selectedTransitionSegmentId
         ?? editorState.selectedSegmentId;
+    var targetSegmentId = requestedSegmentId;
+    if (targetSegmentId != null && editorState.segments.length > 1) {
+      final requestedIndex = editorState.segments.indexWhere(
+        (segment) => segment.id == targetSegmentId,
+      );
+      if (requestedIndex >= editorState.segments.length - 1) {
+        targetSegmentId = editorState.segments[editorState.segments.length - 2].id;
+      }
+    }
 
-    if (targetSegmentId == null || editorState.segments.length < 2) {
+    final resolvedTargetSegmentId = targetSegmentId;
+    if (resolvedTargetSegmentId == null || editorState.segments.length < 2) {
       return SizedBox(
         height: MediaQuery.of(context).size.height * 0.45,
         child: Container(
@@ -48,31 +60,26 @@ class TransitionsDrawer extends ConsumerWidget {
     // Auto-select if not already set
     if (editorState.selectedTransitionSegmentId == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        notifier.selectTransition(targetSegmentId);
+        notifier.selectTransition(resolvedTargetSegmentId);
       });
     }
 
     final activeSegment = editorState.segments.firstWhere(
-      (s) => s.id == targetSegmentId,
+      (s) => s.id == resolvedTargetSegmentId,
       orElse: () => editorState.segments.first,
     );
 
-    if (activeSegment.id != targetSegmentId) {
+    if (activeSegment.id != resolvedTargetSegmentId) {
       return const SizedBox.shrink();
     }
 
     final currentTransition = activeSegment.transitionType;
     final currentDuration = activeSegment.transitionDuration ?? 0.8;
 
-    final transitions = [
-      {'id': null, 'label': 'None', 'icon': LucideIcons.ban},
-      {'id': 'dissolve', 'label': 'Dissolve', 'icon': LucideIcons.infinity},
-      {'id': 'fadeToBlack', 'label': 'Fade Black', 'icon': LucideIcons.moon},
-      {'id': 'fadeToWhite', 'label': 'Fade White', 'icon': LucideIcons.sun},
-      {'id': 'slide', 'label': 'Slide', 'icon': LucideIcons.arrowRightFromLine},
-      {'id': 'push', 'label': 'Push', 'icon': LucideIcons.arrowRightSquare},
-      {'id': 'wipe', 'label': 'Wipe', 'icon': LucideIcons.removeFormatting},
-    ];
+    // `null` is the "None" (hard cut) choice; the rest comes straight from the
+    // catalog so this grid can never drift from what preview and export
+    // actually support.
+    final options = <EditorTransition?>[null, ...EditorTransition.values];
 
     return SizedBox(
       height: MediaQuery.of(context).size.height * 0.45,
@@ -86,6 +93,15 @@ class TransitionsDrawer extends ConsumerWidget {
             children: [
               // Handle
               _buildHandle(),
+
+              ApplyToAllToggle(
+                value: editorState.transitionAppliesToAll,
+                enabled: editorState.segments.length > 2,
+                subtitle: editorState.transitionAppliesToAll
+                    ? 'The same transition at every cut'
+                    : 'Only the cut you tapped',
+                onChanged: notifier.setTransitionAppliesToAll,
+              ),
 
               // Duration Slider (only when a transition is selected)
               if (currentTransition != null)
@@ -104,9 +120,12 @@ class TransitionsDrawer extends ConsumerWidget {
                             overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
                           ),
                           child: Slider(
-                            value: currentDuration,
-                            min: 0.2,
-                            max: 2.0,
+                            value: currentDuration.clamp(
+                              kMinTransitionSeconds,
+                              kMaxTransitionSeconds,
+                            ),
+                            min: kMinTransitionSeconds,
+                            max: kMaxTransitionSeconds,
                             onChanged: (val) {
                               notifier.setSegmentTransition(currentTransition, val);
                             },
@@ -139,15 +158,15 @@ class TransitionsDrawer extends ConsumerWidget {
                     mainAxisSpacing: 16,
                     childAspectRatio: 0.8,
                   ),
-                  itemCount: transitions.length,
+                  itemCount: options.length,
                   itemBuilder: (context, index) {
-                    final preset = transitions[index];
-                    final isSelected = currentTransition == preset['id'];
+                    final option = options[index];
+                    final isSelected = currentTransition == option?.name;
 
                     return GestureDetector(
                       onTap: () {
                         HapticFeedback.selectionClick();
-                        notifier.setSegmentTransition(preset['id'] as String?, currentDuration);
+                        notifier.setSegmentTransition(option?.name, currentDuration);
                       },
                       child: Column(
                         children: [
@@ -163,14 +182,14 @@ class TransitionsDrawer extends ConsumerWidget {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
-                                preset['icon'] as IconData,
+                                option?.icon ?? LucideIcons.ban,
                                 color: isSelected ? AppColors.primaryStart : Colors.white54,
                               ),
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            preset['label'] as String,
+                            option?.label ?? 'None',
                             style: TextStyle(
                               color: isSelected ? AppColors.primaryStart : Colors.white54,
                               fontSize: 11,

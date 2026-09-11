@@ -12,6 +12,17 @@ class ToastUtils {
   }) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
+    var removed = false;
+
+    // The animation's callback can fire more than once — and can fire after the
+    // overlay has already gone, if the screen was popped while a toast was on
+    // screen. `OverlayEntry.remove` asserts in both cases, which surfaces as a
+    // crash from inside the animation library rather than from here.
+    void dismiss() {
+      if (removed) return;
+      removed = true;
+      if (entry.mounted) entry.remove();
+    }
 
     entry = OverlayEntry(
       builder: (context) => Positioned(
@@ -31,7 +42,7 @@ class ToastUtils {
               .then(delay: 3000.ms)
               .fadeOut(duration: 500.ms)
               .slideY(begin: 0.0, end: -1.0)
-              .callback(callback: (_) => entry.remove()),
+              .callback(callback: (_) => dismiss()),
         ),
       ),
     );
