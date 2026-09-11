@@ -1,3 +1,7 @@
+// Explicit rather than leaning on `material.dart`'s re-export: cluster
+// iteration is load-bearing here, not incidental.
+// ignore: unnecessary_import
+import 'package:characters/characters.dart';
 import 'package:flutter/material.dart';
 
 import '../models/text_overlay_model.dart';
@@ -15,9 +19,15 @@ class TextGlyphBox {
     required this.paddedRect,
   });
 
-  /// Index into [TextOverlayModel.text]. Whitespace is skipped, so these are
-  /// not contiguous — an animation that staggers by character must use this,
-  /// not the list index, or a space would not consume a beat of the stagger.
+  /// The **UTF-16 offset** into [TextOverlayModel.text] of the first code unit
+  /// of this glyph's grapheme cluster.
+  ///
+  /// These are cluster *starts*, so they are not contiguous, for two reasons:
+  /// whitespace is skipped, and a cluster can span several code units — 👍 is a
+  /// surrogate pair, 👍🏽 adds a skin-tone modifier, 🇬🇧 is two regional
+  /// indicators, and a combining accent trails its base letter. An animation
+  /// that staggers by character must use this, not the list index, or a space
+  /// would not consume a beat of the stagger.
   final int charIndex;
 
   /// Where the glyph's own pixels land.
@@ -49,13 +59,26 @@ List<TextGlyphBox> layoutTextGlyphs({
   final origin = layout.textOrigin;
   final glyphs = <TextGlyphBox>[];
 
-  for (var i = 0; i < overlay.text.length; i++) {
+  // Iterate **grapheme clusters**, not code units. A `TextSelection` of one
+  // code unit selects half a surrogate pair, and `getBoxesForSelection`
+  // returns nothing for half a character — so 👍 produced no box at all and
+  // vanished from the atlas. Clusters cover the rest of the same family:
+  // skin-tone modifiers, flags (two regional indicators) and combining
+  // accents are all one glyph spanning several code units, which iterating
+  // runes would still split.
+  var offset = 0;
+  for (final cluster in overlay.text.characters) {
+    // `cluster.length` is in UTF-16 code units, which is what `TextSelection`
+    // indexes by — so the running offset stays in the painter's own units.
+    final start = offset;
+    offset += cluster.length;
+
     // Whitespace has no ink; drawing a quad for it wastes a draw call and
     // gives an empty atlas cell.
-    if (overlay.text[i].trim().isEmpty) continue;
+    if (cluster.trim().isEmpty) continue;
 
     final boxes = painter.getBoxesForSelection(
-      TextSelection(baseOffset: i, extentOffset: i + 1),
+      TextSelection(baseOffset: start, extentOffset: offset),
     );
     if (boxes.isEmpty) continue;
 
@@ -64,7 +87,7 @@ List<TextGlyphBox> layoutTextGlyphs({
 
     glyphs.add(
       TextGlyphBox(
-        charIndex: i,
+        charIndex: start,
         inkRect: box,
         paddedRect: box.inflate(shadowPadding),
       ),

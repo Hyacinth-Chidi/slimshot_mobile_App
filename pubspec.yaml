@@ -10,6 +10,12 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Grapheme-cluster iteration. Flutter re-exports this transitively, but text
+  # glyph layout depends on it directly — an emoji, a skin-tone modifier or a
+  # flag is one cluster spanning several UTF-16 code units, and iterating code
+  # units drops it from the exported atlas.
+  characters: ^1.3.0
+
   # UI & Animations
   flutter_animate: ^4.5.0
   google_fonts: ^6.2.1

@@ -1,3 +1,8 @@
+// Explicit: this test iterates grapheme clusters itself. `material.dart`
+// happens to re-export `characters`, but relying on that would make the test
+// depend on a Flutter implementation detail.
+// ignore: unnecessary_import
+import 'package:characters/characters.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/text_glyph_layout.dart';
@@ -95,6 +100,72 @@ void main() {
         shadowPadding: 0,
       );
       expect(glyphs, isEmpty);
+    });
+  });
+
+  // Iterating UTF-16 code units selects half a surrogate pair, and
+  // `getBoxesForSelection` returns nothing for half a character — so an emoji
+  // silently vanished from the exported atlas. These pin cluster iteration.
+  group('layoutTextGlyphs — grapheme clusters', () {
+    test('an emoji is one glyph, not two halves and not none', () {
+      final glyphs = layoutTextGlyphs(
+        overlay: overlayWith('Hello 👍'),
+        canvasSize: const Size(400, 700),
+        shadowPadding: 0,
+      );
+      // Five letters plus the emoji; the space is skipped as whitespace.
+      expect(glyphs.length, 6);
+      // The emoji's cluster starts at code unit 6, after "Hello ".
+      expect(glyphs.last.charIndex, 6);
+    });
+
+    test('the emoji glyph has real width', () {
+      final glyphs = layoutTextGlyphs(
+        overlay: overlayWith('Hello 👍'),
+        canvasSize: const Size(400, 700),
+        shadowPadding: 0,
+      );
+      expect(glyphs.last.inkRect.width, greaterThan(0));
+      expect(glyphs.last.inkRect.height, greaterThan(0));
+    });
+
+    test('charIndex values are strictly increasing and never overlap', () {
+      // A skin-tone modifier, a flag (two regional indicators) and a combining
+      // accent are each one cluster spanning several code units.
+      final glyphs = layoutTextGlyphs(
+        overlay: overlayWith('a👍🏽b🇬🇧éc'),
+        canvasSize: const Size(400, 700),
+        shadowPadding: 0,
+      );
+      expect(glyphs.length, greaterThan(1));
+      for (var i = 1; i < glyphs.length; i++) {
+        expect(
+          glyphs[i].charIndex,
+          greaterThan(glyphs[i - 1].charIndex),
+          reason: 'charIndex must advance by whole clusters',
+        );
+      }
+      // Every charIndex must be the *start* of a cluster in the source text:
+      // splitting a cluster would land an index mid-pair.
+      final clusterStarts = <int>[];
+      var offset = 0;
+      for (final cluster in 'a👍🏽b🇬🇧éc'.characters) {
+        clusterStarts.add(offset);
+        offset += cluster.length;
+      }
+      for (final g in glyphs) {
+        expect(clusterStarts, contains(g.charIndex));
+      }
+    });
+
+    test('a skin-tone modifier stays one glyph', () {
+      final glyphs = layoutTextGlyphs(
+        overlay: overlayWith('👍🏽'),
+        canvasSize: const Size(400, 700),
+        shadowPadding: 0,
+      );
+      expect(glyphs.length, 1);
+      expect(glyphs.single.charIndex, 0);
     });
   });
 }
