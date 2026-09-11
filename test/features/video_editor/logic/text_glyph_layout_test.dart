@@ -3,21 +3,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/text_glyph_layout.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 
+import '../../../support/test_fonts.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // TextOverlayLayout.measure resolves the overlay's font via
-  // font_utils.getFontStyle, which for the default 'Roboto' family calls
-  // GoogleFonts.getFont — an HTTP fetch with no viable path in this test
-  // environment (no network, and no bundled google_fonts test assets). A
-  // custom bundled font (declared directly in pubspec's `fonts:` section)
-  // takes font_utils's other branch, a plain TextStyle(fontFamily: ...)
-  // with no network or asset-manifest lookup, so layout proceeds on
-  // geometry alone — which is all this test checks.
+  // A bundled font, not a Google one — see test/support/test_fonts.dart.
+  // Metrics differ from any particular user font, so these tests assert on
+  // relationships (ordering, containment, proportion), never on absolute
+  // pixel widths.
   TextOverlayModel overlayWith(String text) => TextOverlayModel(
         id: 't',
         text: text,
-        fontFamily: 'Ariana Violeta',
+        fontFamily: kTestFontFamily,
         referenceCanvasSize: const Size(400, 700),
       );
 
