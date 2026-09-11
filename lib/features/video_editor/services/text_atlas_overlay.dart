@@ -1,5 +1,29 @@
+import 'dart:ui';
+
+import '../logic/text_overlay_geometry.dart';
 import '../models/editor_timeline.dart';
 import 'text_overlay_rasterizer.dart';
+
+/// The box dimensions to send as an overlay's `boxWidth`/`boxHeight`, in
+/// canvas pixels. The two raster paths need **different** boxes, and sending
+/// the wrong one distorts the text:
+///
+/// - **Flat raster** ([usingAtlas] false): a pixel *square*. The native pass
+///   contain-fits the PNG inside the box and derives the fit from the image's
+///   own aspect, so a box that already carries the raster's shape applies the
+///   aspect twice and squashes the text. See [textOverlayFitBox].
+/// - **Glyph atlas** ([usingAtlas] true): the **true, non-square** text box.
+///   A glyph's `boxRect` is a fraction of that real box, and the glyph branch
+///   of `OverlayRenderer.writeCorners` multiplies by the box dimensions
+///   *directly* with no contain-fit — a cell already has the right shape, so
+///   fitting it again would letterbox a letter. Handing it the square made a
+///   glyph spanning a 176x53 box draw 176px tall: a 3.3x vertical stretch.
+///
+/// Both branches leave the centre alone: `centerX`/`centerY` come from
+/// `textOverlayCenter` and do not depend on the box dimensions.
+Size textOverlayBoxPx(Size boxPxSize, {required bool usingAtlas}) {
+  return usingAtlas ? boxPxSize : textOverlayFitBox(boxPxSize);
+}
 
 /// The atlas's glyph cells as timeline glyphs — pixels converted to fractions
 /// at this boundary, so the renderer never sees a device resolution.

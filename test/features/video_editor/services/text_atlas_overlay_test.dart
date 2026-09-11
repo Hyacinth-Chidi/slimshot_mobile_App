@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/logic/text_overlay_geometry.dart';
+import 'package:slimshotai/features/video_editor/models/editor_timeline.dart';
 import 'package:slimshotai/features/video_editor/services/text_atlas_overlay.dart';
 import 'package:slimshotai/features/video_editor/services/text_overlay_rasterizer.dart';
 
@@ -97,6 +99,83 @@ void main() {
         borderRadius: 0,
       );
       expect(glyphsForAtlas(atlas), isEmpty);
+    });
+  });
+
+  group('textOverlayBoxPx', () {
+    // A realistic one-line box: the shape that produced the 3.32x vertical
+    // stretch on device.
+    const textBox = Size(176, 53);
+    const canvas = Size(400, 700);
+
+    /// The vertical/horizontal half-extents `OverlayRenderer.writeCorners`
+    /// computes for a glyph, replicated here so this test pins the
+    /// **Dart/Kotlin contract** rather than only the Dart side.
+    ///
+    /// `halfW` is a fraction of the canvas *width* and `halfH` a fraction of
+    /// the canvas *height*, so converting both to pixels is what yields the
+    /// rect actually drawn.
+    Size drawnGlyphPx({
+      required Size boxPx,
+      required EditorTimelineGlyph glyph,
+    }) {
+      final boxWidthFrac = boxPx.width / canvas.width;
+      final boxHeightFrac = boxPx.height / canvas.height;
+      final halfW = 0.5 * boxWidthFrac * (glyph.boxRight - glyph.boxLeft);
+      final halfH = 0.5 * boxHeightFrac * (glyph.boxBottom - glyph.boxTop);
+      return Size(2 * halfW * canvas.width, 2 * halfH * canvas.height);
+    }
+
+    test('the atlas path sends the true text box, not a square', () {
+      expect(textOverlayBoxPx(textBox, usingAtlas: true), textBox);
+    });
+
+    test('the flat fallback still sends the pixel square', () {
+      expect(
+        textOverlayBoxPx(textBox, usingAtlas: false),
+        textOverlayFitBox(textBox),
+      );
+      expect(textOverlayBoxPx(textBox, usingAtlas: false), const Size(176, 176));
+    });
+
+    // The bug, stated as the renderer sees it: a glyph spanning the whole text
+    // box must be drawn with the *text box's* aspect. Under the square box the
+    // same glyph came out 176x176 — 1:1 — which is the 3.32x vertical stretch.
+    test('a full-box glyph is drawn with the text box aspect, not 1:1', () {
+      final atlas = RasterizedTextAtlas(
+        pngPath: '/tmp/a.png',
+        canvasPxSize: textBox,
+        atlasPxSize: const Size(256, 64),
+        glyphs: [
+          RasterizedGlyph(
+            atlasRect: const Rect.fromLTWH(0, 0, 176, 53),
+            // Spans the full text box.
+            boxRect: Rect.fromLTWH(0, 0, textBox.width, textBox.height),
+            srcRect: const Rect.fromLTWH(0, 0, 1, 1),
+          ),
+        ],
+        backgroundRect: null,
+        borderRadius: 0,
+      );
+      final glyph = glyphsForAtlas(atlas).single;
+
+      final drawn = drawnGlyphPx(
+        boxPx: textOverlayBoxPx(textBox, usingAtlas: true),
+        glyph: glyph,
+      );
+      expect(drawn.width / drawn.height,
+          closeTo(textBox.width / textBox.height, 1e-9));
+      expect(drawn.width, closeTo(textBox.width, 1e-9));
+      expect(drawn.height, closeTo(textBox.height, 1e-9));
+
+      // And the shape the bug produced, for contrast: the square box drew the
+      // same glyph 1:1, stretching it vertically by the box's aspect.
+      final stretched = drawnGlyphPx(
+        boxPx: textOverlayFitBox(textBox),
+        glyph: glyph,
+      );
+      expect(stretched.height / drawn.height,
+          closeTo(textBox.width / textBox.height, 1e-9));
     });
   });
 }

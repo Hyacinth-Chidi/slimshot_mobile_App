@@ -309,11 +309,12 @@ class NativeTimelinePreviewService {
       final renderScale = textOverlayRenderScale(text, canvas);
       final center = textOverlayCenter(text, canvas, renderScale);
 
-      // The native pass contain-fits inside a *pixel-square* box (the image
-      // overlays' 200×200 contract). Sending the raster's own rectangle made
-      // it apply the aspect twice and squash every exported text — see
-      // `textOverlayFitBox`.
-      final fitBox = textOverlayFitBox(boxPxSize);
+      // The two raster paths need different boxes — see `textOverlayBoxPx`.
+      // The flat path contain-fits the PNG and so takes a pixel square; the
+      // glyph path multiplies each cell's fraction by the box directly and so
+      // takes the true text box. Sending the square down the glyph path
+      // stretched every exported text vertically by the box's own aspect.
+      final fitBox = textOverlayBoxPx(boxPxSize, usingAtlas: usableAtlas != null);
       final boxDivW = boxPxSize.width == 0 ? 1.0 : boxPxSize.width;
       final boxDivH = boxPxSize.height == 0 ? 1.0 : boxPxSize.height;
 
