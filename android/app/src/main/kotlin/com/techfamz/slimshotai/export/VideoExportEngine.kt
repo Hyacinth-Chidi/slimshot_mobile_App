@@ -826,12 +826,14 @@ internal class VideoExportEngine(
                 val state = overlay.stateAt(t)
                 if (state.opacity <= 0.0 || state.scale <= 0.0) continue
 
-                val draw = if (overlay.isVideo) {
-                    videoDraw(overlay, t, state)
+                val resolved = if (overlay.isVideo) {
+                    listOfNotNull(videoDraw(overlay, t, state))
+                } else if (overlay.isText) {
+                    textDraws(overlay, state)
                 } else {
-                    imageDraw(overlay, state)
+                    listOfNotNull(imageDraw(overlay, state))
                 }
-                if (draw != null) draws.add(draw)
+                draws.addAll(resolved)
             }
             return draws
         }
@@ -859,6 +861,84 @@ internal class VideoExportEngine(
             }
 
             return draw(overlay, state, textureId, isExternal = false, aspect, null)
+        }
+
+        /**
+         * One draw per glyph, all reading the overlay's atlas.
+         *
+         * The texture is uploaded once and every glyph samples its own cell, so
+         * a 40-character text costs one upload and 40 quads — nothing for a GPU,
+         * and what lets a later stage animate each character independently.
+         *
+         * **The quad is the whole padded cell, positioned so that the cell's
+         * `src` sub-rect lands exactly on the glyph's box rect.** The cell is
+         * bigger than the placement because its padding carries stroke and
+         * shadow bleed; drawing only the placement would clip a shadow at the
+         * letter's edge, while *placing* by the padded cell would composite the
+         * bleed twice wherever neighbouring cells overlap. Drawing the cell
+         * whole, anchored through `src`, gives the shadow its spill and each
+         * texel exactly one contribution.
+         */
+        private fun textDraws(
+            overlay: NativeTimelineOverlay,
+            state: NativeTimelineOverlay.FrameState,
+        ): List<OverlayRenderer.Draw> {
+            val cached = renderer.overlays.cachedImageTexture(overlay.path)
+            val (textureId, _) = cached ?: run {
+                val bitmap = StillImageDecoder.decode(
+                    overlay.path,
+                    TEXT_ATLAS_MAX_PX,
+                    TEXT_ATLAS_MAX_PX,
+                )
+                if (bitmap == null) {
+                    diagnostics.failedOverlays++
+                    return emptyList()
+                }
+                val uploaded = renderer.overlays.imageTexture(overlay.path, bitmap)
+                bitmap.recycle()
+                uploaded
+            }
+
+            val base = draw(
+                overlay,
+                state,
+                textureId,
+                isExternal = false,
+                contentAspect = 1.0,
+                texMatrix = null,
+            )
+
+            return overlay.glyphs.mapNotNull { glyph ->
+                val srcW = glyph.srcRight - glyph.srcLeft
+                val srcH = glyph.srcBottom - glyph.srcTop
+                // A degenerate sub-rect has no scale to solve for; skipping the
+                // glyph loses one letter, dividing by it would place every quad
+                // at infinity and lose the whole text.
+                if (srcW <= 0.0 || srcH <= 0.0) return@mapNotNull null
+
+                // The cell's `src` sub-rect must cover the box rect, so the full
+                // cell is that much larger, and its origin sits back by the
+                // bleed that precedes `src`.
+                val cellWidth = (glyph.boxRight - glyph.boxLeft) / srcW
+                val cellHeight = (glyph.boxBottom - glyph.boxTop) / srcH
+                val cellLeft = glyph.boxLeft - glyph.srcLeft * cellWidth
+                val cellTop = glyph.boxTop - glyph.srcTop * cellHeight
+
+                base.copy(
+                    srcRect = floatArrayOf(
+                        glyph.atlasLeft.toFloat(),
+                        glyph.atlasTop.toFloat(),
+                        glyph.atlasRight.toFloat(),
+                        glyph.atlasBottom.toFloat(),
+                    ),
+                    boxRect = floatArrayOf(
+                        cellLeft.toFloat(),
+                        cellTop.toFloat(),
+                        (cellLeft + cellWidth).toFloat(),
+                        (cellTop + cellHeight).toFloat(),
+                    ),
+                )
+            }
         }
 
         private fun videoDraw(
@@ -951,3 +1031,15 @@ internal class VideoExportEngine(
 
 /** Largest side an overlay image is decoded at; well above any overlay box. */
 private const val OVERLAY_IMAGE_MAX_PX = 1024
+
+/**
+ * Largest side a text atlas is decoded at.
+ *
+ * Separate from [OVERLAY_IMAGE_MAX_PX] (1024) deliberately: that cap is generous
+ * for a photo drawn into a small overlay box, but an atlas is rasterised at
+ * export density — up to 4096 — and decoding it at 1024 would downscale it,
+ * making exported text *blurrier* than the flat raster it replaced. The atlas is
+ * already capped at the texture limit on the Dart side, so this cap only has to
+ * not undercut it.
+ */
+private const val TEXT_ATLAS_MAX_PX = 4096

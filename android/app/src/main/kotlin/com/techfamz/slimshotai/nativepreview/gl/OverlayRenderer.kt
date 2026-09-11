@@ -50,6 +50,22 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
         val opacity: Double,
         /** `SurfaceTexture` transform for video; null for a bitmap. */
         val texMatrix: FloatArray?,
+        /**
+         * Sub-rect of the texture to sample (u0, v0, u1, v1), or null for the
+         * whole texture. A glyph reads one cell of the atlas.
+         */
+        val srcRect: FloatArray? = null,
+        /**
+         * Where to place the quad inside the overlay's box, as box fractions
+         * (left, top, right, bottom), or null to contain-fit the whole box —
+         * which is what every image and video overlay does.
+         *
+         * For a glyph this is the **full padded cell**, not the glyph's box
+         * rect: the cell is drawn whole so its bleed spills past the placement,
+         * and the caller has already positioned the cell so that its `src`
+         * sub-rect lands exactly on the box rect.
+         */
+        val boxRect: FloatArray? = null,
     )
 
     /** A video overlay's decoder target: its own OES texture and surface. */
@@ -114,6 +130,10 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
     private val videoLanes = mutableMapOf<String, VideoLane>()
 
     private val positions: FloatBuffer =
+        ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+
+    /** Rewritten per glyph; the draw consumes it before the next one is built. */
+    private val glyphTexCoords: FloatBuffer =
         ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
 
     // v=0 at the top for bitmaps (top-left origin), at the bottom for video
@@ -232,7 +252,9 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, draw.textureId)
                 GLES20.glUniform1f(uAlpha2d, draw.opacity.toFloat())
-                drawQuad(aPosition2d, aTexCoord2d, texCoordsTopDown)
+                val texCoords = draw.srcRect?.let { writeGlyphTexCoords(it) }
+                    ?: texCoordsTopDown
+                drawQuad(aPosition2d, aTexCoord2d, texCoords)
             }
         }
 
@@ -244,13 +266,33 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
      * space so a rotated overlay keeps its shape on a non-square canvas.
      */
     private fun writeCorners(draw: Draw, canvasAspect: Double) {
-        // Content fitted inside the box, preserving its own shape — the same
-        // contain-fit `ConstrainedBox` + `Image` produce in the preview.
-        val fitW = if (draw.contentAspect >= 1.0) 1.0 else draw.contentAspect
-        val fitH = if (draw.contentAspect >= 1.0) 1.0 / draw.contentAspect else 1.0
+        val halfW: Double
+        val halfH: Double
+        var offsetX = 0.0
+        var offsetY = 0.0
 
-        val halfW = 0.5 * draw.boxWidth * fitW * draw.scale
-        val halfH = 0.5 * draw.boxHeight * fitH * draw.scale
+        val boxRect = draw.boxRect
+        if (boxRect != null) {
+            // An exact placement inside the box: the quad covers this rect, no
+            // contain-fit. A glyph's cell already has the right shape, so
+            // fitting it again would letterbox a letter.
+            val left = boxRect[0].toDouble()
+            val top = boxRect[1].toDouble()
+            val right = boxRect[2].toDouble()
+            val bottom = boxRect[3].toDouble()
+            halfW = 0.5 * draw.boxWidth * (right - left) * draw.scale
+            halfH = 0.5 * draw.boxHeight * (bottom - top) * draw.scale
+            // The rect's centre relative to the box's centre.
+            offsetX = draw.boxWidth * ((left + right) / 2.0 - 0.5) * draw.scale
+            offsetY = draw.boxHeight * ((top + bottom) / 2.0 - 0.5) * draw.scale
+        } else {
+            // Content fitted inside the box, preserving its own shape — the same
+            // contain-fit `ConstrainedBox` + `Image` produce in the preview.
+            val fitW = if (draw.contentAspect >= 1.0) 1.0 else draw.contentAspect
+            val fitH = if (draw.contentAspect >= 1.0) 1.0 / draw.contentAspect else 1.0
+            halfW = 0.5 * draw.boxWidth * fitW * draw.scale
+            halfH = 0.5 * draw.boxHeight * fitH * draw.scale
+        }
 
         // Clockwise rotation with y-down, in height units so x and y rotate
         // through the same metric.
@@ -263,8 +305,10 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
 
         positions.clear()
         for (i in 0 until 4) {
-            val px = cornersX[i] * canvasAspect
-            val py = cornersY[i]
+            // The glyph's own offset rotates with the box, so a rotated text
+            // keeps its letters in line rather than each spinning in place.
+            val px = (cornersX[i] + offsetX) * canvasAspect
+            val py = cornersY[i] + offsetY
             val rx = (px * cosR - py * sinR) / canvasAspect
             val ry = px * sinR + py * cosR
 
@@ -274,6 +318,30 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
             positions.put((1.0 - yFrac * 2.0).toFloat())
         }
         positions.flip()
+    }
+
+    /**
+     * Texcoords for one atlas cell, in the TL, TR, BL, BR order the quad uses.
+     *
+     * v grows downward, matching [texCoordsTopDown] — an atlas is a bitmap, so
+     * its origin is top-left and the rect arrives in that same sense.
+     */
+    private fun writeGlyphTexCoords(srcRect: FloatArray): FloatBuffer {
+        val u0 = srcRect[0]
+        val v0 = srcRect[1]
+        val u1 = srcRect[2]
+        val v1 = srcRect[3]
+        glyphTexCoords.clear()
+        glyphTexCoords.put(u0)
+        glyphTexCoords.put(v0)
+        glyphTexCoords.put(u1)
+        glyphTexCoords.put(v0)
+        glyphTexCoords.put(u0)
+        glyphTexCoords.put(v1)
+        glyphTexCoords.put(u1)
+        glyphTexCoords.put(v1)
+        glyphTexCoords.flip()
+        return glyphTexCoords
     }
 
     private fun drawQuad(aPosition: Int, aTexCoord: Int, texCoords: FloatBuffer) {
