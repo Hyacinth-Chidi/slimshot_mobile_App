@@ -832,6 +832,78 @@ including ones that already passed. It cannot be caught at the call site or thro
 `FlutterError.onError`, so the fix is a bundled family, not a try/catch. Production
 `font_utils.dart` is deliberately unchanged.
 
+**Text animates per character** (Stage 2; **awaiting device verification**). Every animation —
+typing, wave, bounce, the legacy fades and slides — is defined once in
+`logic/text_animation_catalog.dart` as a **pure function** `stateAt(p, i, n)` returning a
+`TextGlyphState` (opacity, offsetX/Y, scale, rotation, fillProgress). Three consumers read it:
+the preview painter, the Kotlin port `TextAnimationCurves.kt` that the export uses, and later
+the animation tab's preview tiles. Nothing else may describe what an animation does.
+
+**`test/fixtures/text_animation_fixture.json` pins Dart and Kotlin together.** It is sampled
+curve values both sides assert against (`dart run tool/generate_animation_fixture.dart`
+regenerates it, and the copy under `android/app/src/test/resources/` must be regenerated with
+it). A deliberate curve change means regenerating **and** re-running the Kotlin test; otherwise
+a drifted port fails the build instead of silently shipping a file that differs from the
+preview. Note what it does **not** do: it is generated from the same code it pins, so it
+catches *divergence tomorrow*, never a wrong curve today. A green fixture test is not "the
+animations are right".
+
+**The Kotlin `_hashUnit` port must use `Long` + `ushr`.** `shake_loop`/`wiggle_loop` derive
+jitter from a hash of the glyph index — deterministic on purpose, because `Random()` would
+differ between preview and export. A literal `Int` + `>>` translation of that hash diverges on
+**1425 of 1600** samples (the multipliers exceed `Int.MAX_VALUE`, and `>>` sign-propagates
+where a logical shift is needed); `Long` + `ushr` gives zero divergence. This was caught by
+simulating the port during review, before it was written — exactly what the fixture exists for.
+
+**Legacy animation ids resolve by SLOT, not by id.** Drafts store `fade`, `scale` and bare
+slide names, and the old `flutter_animate` layer read the same string differently per field:
+`'fade'` meant fadeIn in `inAnimation` and fadeOut in `outAnimation`. So `resolveTextAnimation(id,
+slot)` consults per-slot tables. Two rules that look like oversights and are not: bare in-only
+ids (`slide_up`, `zoom_in`, `zoom_out`) resolve to **nothing** in the out slot, because the old
+layer had no arm for them and resolving them would add an animation the user never had; and the
+legacy slides and zooms carry **no opacity ramp**, because the old arms were pure
+`scaleXY`/`slideX/Y` with no `fadeIn()`. New animations may fade; legacy ones must not. Both
+are bug-for-bug fidelity to what saved projects already look like.
+
+**In the preview painter, the clip must travel with the glyph transform.** Apply the transform
+first, then `clipRect` — clipping in the resting position while the letter moves through it
+means a slide (1.5 glyph heights) leaves its own clip and **draws nothing at all**; `zoom_out`
+showed a letter's middle, `bounce_in` was cut off at its overshoot. GL has no such trap because
+the cell *is* the quad, which is why `writeCorners` never had this bug and the Dart painter did.
+A painter test pins it — verified by reintroducing the bug and watching two tests fail.
+
+`textGlyphBleedPadding` is one definition the painter and the rasteriser both call: the preview
+clips the rect the export samples, so two copies of that arithmetic drift into a silent
+preview/export mismatch.
+
+**Per-glyph transforms apply about the glyph's own centre, before the overlay's.** Scale and
+rotation happen in glyph space, then the displacement moves that centre, then the overlay's own
+scale/rotation apply about the overlay centre. Reversed, a bouncing letter swings around the
+whole caption instead of hopping where it sits.
+
+**Speed is a multiplier, not a duration.** Each animation declares a *natural* duration that may
+depend on content length (typing is `0.04s × chars`, clamped 0.4–2.5s; a fade is a flat 0.5s),
+and the slider scales it 0.5×–3×. `animationInDuration`/`animationOutDuration` were repurposed
+to hold that multiplier, so drafts carry `animationSchema`: 0 (pre-Stage-2, any stored duration
+reads as speed 1.0) or 1 (the value is a speed). The old range 0.1–2.0s and the speed range
+0.5–3.0 overlap, so guessing from the value alone is not possible — the marker is what makes
+the migration safe. When `in + out` exceed the overlay's span both are **compressed
+proportionally**, never dropped: a dropped animation is a silent preview/export mismatch, a
+fast one is self-explanatory.
+
+**`colour_fill` and `colour_cycle_loop` exist but are not selectable** (`isSelectable: false`).
+Their curves resolve and time correctly but nothing draws `fillProgress` yet, so offering them
+would show an animation that does nothing *and* raise a fallback warning about it. They become
+selectable when the colour-fill draw pass lands. **Blur and Neon Flicker are absent entirely** —
+both need multi-pass rendering (render to texture, blur each axis, composite) and there is no
+FBO framework; they belong to the effects pipeline, with the background `blur` option that
+falls back to black for the same reason.
+
+**Both flat-raster fallbacks now warn.** In Stage 1 they were silent because output was
+identical either way; that stopped being true the moment animation landed, since a fallback now
+means "this text does not animate per character". Text over the 4096px atlas limit and text with
+a background box each raise an `exportWarning` naming the overlay.
+
 If the layout, the layer's drawing or the animation curves change, the rasteriser must change
 with them. `needsLegacyExport` is deleted and **every project routes to
 native export** (except reversed clips without proxies, which fail `_canUseNativeTimelinePreview`
