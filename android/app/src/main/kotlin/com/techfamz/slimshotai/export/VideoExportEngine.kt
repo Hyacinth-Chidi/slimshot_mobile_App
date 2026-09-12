@@ -826,19 +826,68 @@ internal class VideoExportEngine(
             val draws = mutableListOf<OverlayRenderer.Draw>()
             for (overlay in overlays) {
                 if (!overlay.contains(t)) continue
-                val state = overlay.stateAt(t)
+
+                // Text with live glyph curves is the one overlay whose box-level
+                // state is **not** what gets drawn, so it must not be what the
+                // early-out consults either. `timing` is resolved here rather
+                // than inside `textDraws` precisely so that the gate below and
+                // the draw itself read the same value; see `textState`.
+                val timing = if (overlay.isText) {
+                    TextAnimationTiming.of(overlay, overlay.glyphs.size)
+                } else {
+                    null
+                }
+                val state = textState(overlay, t, timing)
+
+                // The gate now tests the state that will actually be used.
+                // For an image overlay, a video overlay, and text with no live
+                // glyph curve that is `stateAt(t)` exactly as before; for text
+                // whose glyphs animate it is the resting state, whose opacity
+                // and scale are the overlay's authored values and so can only be
+                // zero if the user authored them zero. A glyph animated to
+                // nothing still drops itself inside `textDraws`, one glyph at a
+                // time — which is the only place with the information to do it.
                 if (state.opacity <= 0.0 || state.scale <= 0.0) continue
 
                 val resolved = if (overlay.isVideo) {
                     listOfNotNull(videoDraw(overlay, t, state))
                 } else if (overlay.isText) {
-                    textDraws(overlay, t, state)
+                    textDraws(overlay, t, state, timing!!)
                 } else {
                     listOfNotNull(imageDraw(overlay, state))
                 }
                 draws.addAll(resolved)
             }
             return draws
+        }
+
+        /**
+         * The box-level state an overlay will actually be drawn with.
+         *
+         * **Exactly one pass may animate the text.** `stateAt` is the image
+         * overlay's whole-box animation and it switches on the *same*
+         * `animationIn`/`animationOut` strings the per-glyph catalog reads, so
+         * once a glyph resolves a curve, letting the box-level state through as
+         * well would fade the text twice (opacity squared) and slide it twice.
+         * When the glyph pass owns the animation the box rests; when it owns
+         * nothing — no animation, or ids that resolve to no slot — the box-level
+         * state is used untouched, which is what keeps an unanimated text
+         * overlay producing exactly the draws it does today.
+         *
+         * This is also why it is a gate as well as a value. A loop animation
+         * with no in-animation is the case that makes the difference load
+         * bearing: `stateAt` would leave a text overlay's box at whatever the
+         * legacy arms compute — potentially zero opacity at an endpoint — while
+         * every glyph curve is perfectly alive, and gating on it would drop
+         * whole frames of text out of the file.
+         */
+        private fun textState(
+            overlay: NativeTimelineOverlay,
+            t: Double,
+            timing: TextAnimationTiming?,
+        ): NativeTimelineOverlay.FrameState {
+            if (timing != null && timing.isActive) return overlay.restingState()
+            return overlay.stateAt(t)
         }
 
         private fun imageDraw(
@@ -885,7 +934,9 @@ internal class VideoExportEngine(
         private fun textDraws(
             overlay: NativeTimelineOverlay,
             t: Double,
+            /** Already resolved by [textState]'s rule — never `stateAt` raw. */
             state: NativeTimelineOverlay.FrameState,
+            timing: TextAnimationTiming,
         ): List<OverlayRenderer.Draw> {
             val cached = renderer.overlays.cachedImageTexture(overlay.path)
             val (textureId, _) = cached ?: run {
@@ -904,22 +955,10 @@ internal class VideoExportEngine(
             }
 
             val glyphCount = overlay.glyphs.size
-            val timing = TextAnimationTiming.of(overlay, glyphCount)
-
-            // **Exactly one pass may animate the text.** `stateAt` is the image
-            // overlay's box-level animation and it switches on the *same*
-            // `animationIn`/`animationOut` strings the per-glyph catalog reads,
-            // so once a glyph resolves a curve, leaving the box-level state in
-            // would fade the text twice (opacity squared) and slide it twice.
-            // When the glyph pass owns the animation the box rests; when it owns
-            // nothing — no animation, or ids that resolve to no slot — the
-            // box-level state is used untouched, which is what keeps an
-            // unanimated text overlay producing exactly the draws it does today.
-            val boxState = if (timing.isActive) overlay.restingState() else state
 
             val base = draw(
                 overlay,
-                boxState,
+                state,
                 textureId,
                 isExternal = false,
                 contentAspect = 1.0,
@@ -1186,12 +1225,21 @@ private class TextAnimationTiming(
 
             val span = overlay.endSeconds - overlay.startSeconds
 
-            // `resolveDurations` is the port of the Dart's compression rule, so
-            // the two sides squeeze a short overlay's windows identically. It
-            // takes **one** speed, as the Dart's `resolveTextAnimationDurations`
-            // does; the in-slot's rate is what is passed, and when the two
-            // differ the out window is re-derived below rather than silently
-            // taking the in-slot's rate.
+            // **One speed drives both the in and the out window**, and
+            // `resolveDurations` — the port of the Dart's compression rule — is
+            // the only thing that resolves them, so a short overlay's windows
+            // squeeze identically on both sides of the boundary.
+            //
+            // `NativeTimelineOverlay` carries `speedIn` and `speedOut`
+            // separately because that is the shape of the JSON, but **they are
+            // expected to be equal**: the animation tab is a single Speed
+            // slider. Honouring a divergence would mean a second copy of the
+            // compression rule living here, kept in sync with the Dart across a
+            // boundary nothing type-checks — the exact drift this whole file is
+            // built to prevent — for a control the UI does not offer. If the two
+            // ever genuinely need to differ, widen `resolveDurations` to take
+            // both on *both* sides of the port and regenerate the fixture; do
+            // not re-add a local re-derivation here.
             val durations = TextAnimationCurves.resolveDurations(
                 spanSeconds = span,
                 inAnimationId = overlay.animationIn,
@@ -1200,32 +1248,8 @@ private class TextAnimationTiming(
                 speed = overlay.speedIn,
             )
 
-            var inSeconds = durations.inSeconds
-            var outSeconds = durations.outSeconds
-
-            if (overlay.speedOut != overlay.speedIn && outId != null) {
-                // Undo the in-slot rate the shared call applied to the out
-                // window and re-apply the out slot's own, then re-run the same
-                // proportional squeeze so the pair still fits the span. The
-                // squeeze is repeated rather than reached for a second time
-                // through `resolveDurations`, which cannot express two rates.
-                val natural = TextAnimationCurves.naturalDuration(outId, glyphCount)
-                outSeconds = natural / overlay.speedOut
-                // The in window may have been squeezed against the wrong out
-                // length, so start from its unsqueezed value too.
-                inSeconds = if (inId == null) {
-                    0.0
-                } else {
-                    TextAnimationCurves.naturalDuration(inId, glyphCount) / overlay.speedIn
-                }
-                val fit = if (span > 0.0) span else 0.0
-                val total = inSeconds + outSeconds
-                if (total > fit && total > 0.0) {
-                    val squeeze = fit / total
-                    inSeconds *= squeeze
-                    outSeconds *= squeeze
-                }
-            }
+            val inSeconds = durations.inSeconds
+            val outSeconds = durations.outSeconds
 
             val loopPeriod = if (loopId == null) {
                 0.0

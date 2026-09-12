@@ -80,13 +80,28 @@ internal data class NativeTimelineOverlay(
      */
     val animationLoop: String?,
     /**
-     * Per-slot speed multipliers for the per-glyph text animations. Higher is
-     * faster: the catalog's natural duration is **divided** by these.
+     * Speed multipliers for the per-glyph text animations. Higher is faster: the
+     * catalog's natural duration is **divided** by these.
      *
      * Defaulted to 1.0 so an overlay from a composer that does not send them
      * animates at its natural speed rather than at zero (which would divide to
-     * infinity) — see [TextAnimationCurves.resolveDurations], which guards the
+     * infinity) — see `TextAnimationCurves.resolveDurations`, which guards the
      * same way for the same reason.
+     *
+     * **[speedIn] and [speedOut] are expected to be equal**, and the resolution
+     * path deliberately uses one of them for both windows. The animation tab is
+     * a single Speed slider; the two fields exist only because the JSON names
+     * them separately. `resolveDurations` — the port of the Dart's proportional
+     * compression — takes **one** speed, exactly as
+     * `resolveTextAnimationDurations` does, so honouring a divergence would
+     * require a second copy of that compression rule on this side of the
+     * boundary, kept in sync by nothing. Do not "fix" the single-speed call by
+     * re-deriving the out window locally; if the slots must genuinely differ,
+     * widen `resolveDurations` on both sides of the port and regenerate the
+     * shared fixture.
+     *
+     * [speedLoop] is independent and genuinely its own: a loop's period is not
+     * part of the in/out compression at all.
      */
     val speedIn: Double,
     val speedOut: Double,
