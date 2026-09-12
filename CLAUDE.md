@@ -899,6 +899,40 @@ both need multi-pass rendering (render to texture, blur each axis, composite) an
 FBO framework; they belong to the effects pipeline, with the background `blur` option that
 falls back to black for the same reason.
 
+**The animation tab reads the catalog** (`text_animation_panel.dart`, **awaiting device
+verification**). Three categories — In / Out / Loop — each listing
+`selectableTextAnimations(category)` with a leading None tile. There is no hardcoded list: the
+old `_animationsList` of seven names is deleted, so a new catalog entry reaches the UI with no
+edit, and a panel test counts the grid's `itemCount` against the catalog so one cannot silently
+miss the tab. Selection highlights through `textAnimationSlotValue`, which returns the
+**resolved** id — a draft storing `'fade'` highlights "Fade out" in the Out tab and "Fade in" in
+the In tab.
+
+**A tile is the canvas painter, not a picture of it.** `TextAnimationTile` builds a synthetic
+overlay (the user's styling, their text cut to 8 **grapheme clusters** — `substring` would split
+an emoji), measures it with `TextOverlayLayout.measure`, and sweeps `positionSeconds` through
+`TextOverlayPainter`. A tile that drew its own approximation would promise an animation the
+export does not deliver, which is the failure the three-consumer architecture exists to prevent;
+the tile tests pull the real painter out of the widget tree and fail without it. The animation
+must be placed in the slot its `category` names, or `resolveTextAnimation` refuses the
+cross-slot id and the tile shows a still frame.
+
+**One clock drives every tile.** A repeating `AnimationController` on the panel, passed to each
+visible tile as its `clock`; only the active category is built, so switching tabs does not leave
+twenty animations running. A `Ticker` per tile would mean twenty tickers.
+
+**The slider is Speed, not seconds.** It writes the multiplier the model has held since Stage 2
+(`animationInDuration`/`animationOutDuration`, and `loopSpeed` for the Loop tab), labelled `1.4×`.
+`saveStateForUndo()` fires on drag start and `updateTextOverlayLive` per change, so a drag is one
+undo step.
+
+**Only a per-glyph animation triggers the fallback warning.** Reported from a device: text with a
+background box warned that its animation could not export character by character, while the
+export was identical to the preview. It was identical — the animation was a fade, which is
+`isPerGlyph: false`, so the flat path animates the whole quad and draws the same picture. The
+gate requires `isSelectable` **and** `isPerGlyph`: only typing, wave, bounce and the like
+genuinely collapse into a whole-block effect.
+
 **Both flat-raster fallbacks now warn.** In Stage 1 they were silent because output was
 identical either way; that stopped being true the moment animation landed, since a fallback now
 means "this text does not animate per character". Text over the 4096px atlas limit and text with
