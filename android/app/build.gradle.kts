@@ -80,4 +80,23 @@ dependencies {
     // Deliberately absent: media3-ui (the preview is a Flutter texture, not a
     // PlayerView), media3-effect and media3-transformer (nothing references
     // them now that the Transformer export route is ruled out).
+
+    // Local JVM unit tests. These run on the host, not a device, so they can
+    // only cover pure arithmetic — which is exactly what they are here for:
+    // the text animation curves exist twice, once in Dart for the preview and
+    // once in Kotlin for the export, and a shared fixture asserts the two
+    // produce identical values. Nothing that touches the Android framework
+    // belongs in this source set.
+    testImplementation("junit:junit:4.13.2")
+
+    // Deliberately *not* here: `org.json:json`. The framework's
+    // `android.util.JSONObject` is stubbed to throw "not mocked" in local unit
+    // tests, so the obvious fix is the real org.json artifact — but that is one
+    // more thing to download, and the fixture is a flat, generated file with a
+    // known shape. The test parses it with a few lines of its own instead
+    // (`FixtureJson` in TextAnimationCurvesTest), so the only unit-test
+    // dependency is JUnit and the suite runs with no network at all.
+    // `testOptions { unitTests.isReturnDefaultValues = true }` is also avoided:
+    // it would silence every other framework stub as well, turning a missing
+    // call into a silently wrong value rather than a loud failure.
 }
