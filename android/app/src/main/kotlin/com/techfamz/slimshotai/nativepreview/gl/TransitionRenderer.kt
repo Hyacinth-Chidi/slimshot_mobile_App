@@ -48,6 +48,17 @@ internal data class TransitionDraw(
 internal class TransitionRenderer(
     private val onLaneSurfaceReady: (Int, Surface) -> Unit,
     private val onError: (String) -> Unit,
+    /**
+     * Something rendered, but not the way the project asks for.
+     *
+     * Deliberately separate from [onError]: an effect the device refused is not
+     * a playback failure — the picture is still there, just unprocessed — and
+     * reporting it as an error would put a failure toast over a working preview.
+     * Without this the chain's warnings reached logcat only, which breaks the
+     * degrade-loudly rule: a device that would not allocate the effect buffers
+     * rendered the plain picture with nothing telling the user why.
+     */
+    private val onWarning: (String) -> Unit = {},
 ) {
 
     /** One decoder's output: an external texture plus its surface plumbing. */
@@ -320,13 +331,15 @@ internal class TransitionRenderer(
     /**
      * Ping-pong buffers for the passes themselves.
      *
-     * Warnings are logged rather than raised to Dart: nothing can put a pass in
-     * the list yet, so no user can reach this, and the renderer has no route to
-     * the event channel — only [onError], which would report a missing effect as
-     * a playback failure. The task that makes an effect selectable gives this a
-     * real destination.
+     * Warnings go to logcat **and** to [onWarning], which the manager turns into
+     * a channel event. The chain already de-duplicates by cause, so this cannot
+     * become a toast at 60Hz; what it does mean is that a device refusing the
+     * effect buffers says so instead of quietly rendering the plain picture.
      */
-    private val effectChain = EffectPassChain { message -> Log.w(TAG, message) }
+    private val effectChain = EffectPassChain { message ->
+        Log.w(TAG, message)
+        onWarning(message)
+    }
 
     // ------------------------------------------------------------------ export
 
