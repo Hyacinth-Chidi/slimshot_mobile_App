@@ -90,6 +90,14 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
         previewCanvasSize: widget.previewCanvasSize,
         frameRate: widget.targetFps,
         targetShortSidePx: widget.targetHeight,
+        // The Dart-side half of the same rule the `exportWarning` listener
+        // above serves: a compromise decided before the platform call has no
+        // event channel to arrive on, so it comes back through here and lands
+        // in the same toast.
+        onWarning: (message) {
+          if (!mounted) return;
+          ToastUtils.show(context, message, isWarning: true);
+        },
       );
 
       if (!mounted) return;

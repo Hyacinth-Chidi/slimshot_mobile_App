@@ -314,6 +314,179 @@ double _staggered(int glyphCount, {double base = 0.35, double perGlyph = 0.05}) 
 }
 
 // ---------------------------------------------------------------------------
+// Timing
+// ---------------------------------------------------------------------------
+
+/// One text overlay's animation windows, resolved once for a whole frame.
+///
+/// **This is the Dart half of a pair.** `TextAnimationTiming` in
+/// `VideoExportEngine.kt` is the same class, field for field and rule for
+/// rule, and the preview and the export each drive their own copy from their
+/// own clock. Anything added here — a window, a composition rule, a guard —
+/// has to be added there too, or the canvas and the file animate differently
+/// with nothing on screen explaining why. That is the whole reason this lives
+/// in the catalog rather than inside the painter: the painter is one consumer
+/// of the rule, not its owner.
+///
+/// Ids resolve **by slot** ([resolveTextAnimation]), never by name alone: a
+/// legacy `'fade'` means `fade_in` in the in-slot and `fade_out` in the out
+/// slot, and a bare in-only id sitting in the out-slot resolves to nothing at
+/// all, because the old widget layer played no out-animation for one.
+class TextAnimationTiming {
+  const TextAnimationTiming({
+    required this.inAnim,
+    required this.outAnim,
+    required this.loopAnim,
+    required this.startSeconds,
+    required this.endSeconds,
+    required this.inSeconds,
+    required this.outSeconds,
+    required this.loopPeriod,
+  });
+
+  final TextAnimation? inAnim;
+  final TextAnimation? outAnim;
+  final TextAnimation? loopAnim;
+
+  final double startSeconds;
+  final double endSeconds;
+
+  final double inSeconds;
+  final double outSeconds;
+
+  /// One cycle of the loop, in seconds. Zero for no loop.
+  final double loopPeriod;
+
+  /// Whether any per-glyph curve will actually run.
+  ///
+  /// False means the glyph pass contributes nothing and the text is drawn
+  /// exactly as static text — the path an unanimated overlay takes, and the
+  /// regression bar for this stage.
+  bool get isActive =>
+      (inAnim != null && inSeconds > 0) ||
+      (outAnim != null && outSeconds > 0) ||
+      (loopAnim != null && loopPeriod > 0);
+
+  /// The glyph's state at [t] (timeline seconds), composed from whichever
+  /// windows are live.
+  ///
+  /// The three windows compose by **multiplication**, not by precedence. In
+  /// and out can both be live on a very short overlay — the durations are
+  /// compressed to fit but never separated — and a loop runs underneath both,
+  /// so an entrance into a continuous wave does not stutter at the handover.
+  /// A window that is not live contributes its resting state, which is the
+  /// identity for every channel.
+  TextGlyphState stateAt(double t, int index, int glyphCount) {
+    var opacity = 1.0;
+    var offsetX = 0.0;
+    var offsetY = 0.0;
+    var scale = 1.0;
+    var rotation = 0.0;
+
+    void apply(TextGlyphState state) {
+      opacity *= state.opacity;
+      offsetX += state.offsetX;
+      offsetY += state.offsetY;
+      scale *= state.scale;
+      rotation += state.rotation;
+    }
+
+    final elapsed = t - startSeconds;
+    final remaining = endSeconds - t;
+
+    if (inAnim != null && inSeconds > 0 && elapsed < inSeconds) {
+      apply(inAnim!.stateAt(elapsed / inSeconds, index, glyphCount));
+    }
+    if (outAnim != null && outSeconds > 0 && remaining < outSeconds) {
+      // `p` runs 0 at the window's start to 1 at the overlay's end, which is
+      // the sense every out-curve is written in: it rests at `p == 0`.
+      apply(
+        outAnim!.stateAt(
+          _clamp01(1.0 - remaining / outSeconds),
+          index,
+          glyphCount,
+        ),
+      );
+    }
+    if (loopAnim != null && loopPeriod > 0) {
+      // The loop's phase is its own, measured from the overlay's start and
+      // wrapped by one cycle — not by the overlay's span. Every loop curve is
+      // a whole number of cycles in `p`, so `p == 0` and `p == 1` are the same
+      // instant of the motion and the wrap is invisible; deriving the phase
+      // from the span would put the seam at an arbitrary point of the wave and
+      // make it jump once per loop.
+      var phase = (elapsed / loopPeriod) % 1.0;
+      // `%` keeps the sign of the dividend, and `elapsed` can be a hair
+      // negative on the overlay's very first frame from float rounding.
+      if (phase < 0) phase += 1.0;
+      apply(loopAnim!.stateAt(phase, index, glyphCount));
+    }
+
+    return TextGlyphState(
+      opacity: _clamp01(opacity),
+      offsetX: offsetX,
+      offsetY: offsetY,
+      scale: scale < 0 ? 0 : scale,
+      rotation: rotation,
+      // `fillProgress` is deliberately dropped: neither the preview painter
+      // nor the native renderer has a colour-fill pass, and composing a value
+      // nothing draws would make `colour_fill` look resolved when it is not.
+    );
+  }
+
+  /// Resolves the windows for one overlay.
+  ///
+  /// [speed] drives **both** the in and the out window, and
+  /// [resolveTextAnimationDurations] is the only thing that resolves them, so
+  /// a short overlay's windows squeeze identically on both sides of the
+  /// platform boundary. The model carries `animationInDuration` and
+  /// `animationOutDuration` separately because that is the shape of the
+  /// persisted JSON, but they are **expected to be equal** — the animation tab
+  /// is a single Speed slider — and honouring a divergence would mean a second
+  /// copy of the compression rule for a control the UI does not offer.
+  static TextAnimationTiming resolve({
+    required String? inAnimationId,
+    required String? outAnimationId,
+    required String? loopAnimationId,
+    required double startSeconds,
+    required double endSeconds,
+    required int glyphCount,
+    required double speed,
+    required double loopSpeed,
+  }) {
+    final inAnim =
+        resolveTextAnimation(inAnimationId, TextAnimationCategory.inAnim);
+    final outAnim =
+        resolveTextAnimation(outAnimationId, TextAnimationCategory.outAnim);
+    final loopAnim =
+        resolveTextAnimation(loopAnimationId, TextAnimationCategory.loop);
+
+    final durations = resolveTextAnimationDurations(
+      spanSeconds: endSeconds - startSeconds,
+      inAnim: inAnim,
+      outAnim: outAnim,
+      glyphCount: glyphCount,
+      speed: speed,
+    );
+
+    final rate = loopSpeed > 0 ? loopSpeed : 1.0;
+    final loopPeriod =
+        loopAnim == null ? 0.0 : loopAnim.naturalDuration(glyphCount) / rate;
+
+    return TextAnimationTiming(
+      inAnim: inAnim,
+      outAnim: outAnim,
+      loopAnim: loopAnim,
+      startSeconds: startSeconds,
+      endSeconds: endSeconds,
+      inSeconds: durations.inSeconds,
+      outSeconds: durations.outSeconds,
+      loopPeriod: loopPeriod,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Curve bodies
 // ---------------------------------------------------------------------------
 

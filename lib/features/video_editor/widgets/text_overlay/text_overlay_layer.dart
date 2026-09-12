@@ -1,13 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../logic/text_overlay_geometry.dart';
 import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
+import 'text_overlay_painter.dart';
 
 /// Text overlays on the preview canvas, with their selection frame.
 ///
@@ -92,7 +92,15 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
       final center = textOverlayCenter(overlay, canvasSize, layout.renderScale);
       final isSelected = overlay.id == editorState.selectedTextId;
 
-      children.add(_buildBody(overlay, layout, center, isSelected));
+      children.add(
+        _buildBody(
+          overlay,
+          layout,
+          center,
+          isSelected,
+          editorState.currentPlaybackPosition,
+        ),
+      );
       if (isSelected) {
         // Built after the loop so it paints above every body, whichever lane
         // the selected text is on.
@@ -111,6 +119,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
     TextOverlayLayout layout,
     Offset center,
     bool isSelected,
+    double positionSeconds,
   ) {
     final box = layout.boxSize;
     final scale = overlay.scale;
@@ -120,8 +129,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
     // what the inverse transforms hand the hit test on the way in.
     final side = math.max(scaledDiagonal, math.max(box.width, box.height));
 
-    Widget content = _textBox(overlay, layout);
-    content = _animated(overlay, content);
+    final content = _textBox(overlay, layout, positionSeconds);
 
     return Positioned(
       left: center.dx - side / 2,
@@ -190,92 +198,31 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
     );
   }
 
-  /// The box exactly as [TextOverlayLayout] measured it: outer padding, the
-  /// background's insets, then the text laid out at [TextOverlayLayout.textWidth]
-  /// so a widened box aligns its lines the way the raster will.
-  Widget _textBox(TextOverlayModel overlay, TextOverlayLayout layout) {
-    final renderScale = layout.renderScale;
-    final textAlign = TextOverlayLayout.textAlignFor(overlay);
-
-    Widget text = Text(
-      overlay.text,
-      style: TextOverlayLayout.fillStyleFor(overlay, renderScale),
-      textAlign: textAlign,
-      textScaler: TextScaler.noScaling,
-    );
-    if (TextOverlayLayout.hasStroke(overlay)) {
-      text = Stack(
-        alignment: Alignment.center,
-        children: [
-          Text(
-            overlay.text,
-            style: TextOverlayLayout.strokeStyleFor(overlay, renderScale),
-            textAlign: textAlign,
-            textScaler: TextScaler.noScaling,
-          ),
-          text,
-        ],
-      );
-    }
-    text = SizedBox(width: layout.textWidth, height: layout.textHeight, child: text);
-
-    if (layout.hasBackground) {
-      text = Container(
-        decoration: BoxDecoration(
-          color: overlay.backgroundColor,
-          borderRadius: BorderRadius.circular(overlay.borderRadius * renderScale),
-        ),
-        padding: EdgeInsets.symmetric(
-          horizontal: layout.backgroundPaddingH,
-          vertical: layout.backgroundPaddingV,
-        ),
-        child: text,
-      );
-    }
-
-    return Padding(
-      padding: EdgeInsets.all(layout.outerPadding),
-      child: text,
-    );
-  }
-
-  Widget _animated(TextOverlayModel overlay, Widget child) {
-    var widget = child;
-    if (overlay.inAnimation != 'none') {
-      final anim = widget.animate();
-      widget = switch (overlay.inAnimation) {
-        'fade_in' || 'fade' => anim.fadeIn(),
-        'zoom_in' || 'scale' => anim.scaleXY(begin: 0),
-        'zoom_out' => anim.scaleXY(begin: 2.0, end: 1.0),
-        'slide_up' => anim.slideY(begin: 1),
-        'slide_down' => anim.slideY(begin: -1),
-        'slide_left' => anim.slideX(begin: 1),
-        'slide_right' => anim.slideX(begin: -1),
-        _ => widget,
-      };
-    }
-    if (overlay.outAnimation != 'none') {
-      final outDelay = overlay.endTime - overlay.startTime - const Duration(milliseconds: 500);
-      if (!outDelay.isNegative) {
-        final anim = widget.animate(delay: outDelay);
-        widget = switch (overlay.outAnimation) {
-          'fade_out' || 'fade' => anim.fadeOut(),
-          'zoom_in_out' => anim.scaleXY(end: 0),
-          'scale' => anim.scaleXY(end: 0),
-          'zoom_out_out' => anim.scaleXY(end: 2.0),
-          'slide_up_out' => anim.slideY(end: -1),
-          'slide_down_out' => anim.slideY(end: 1),
-          'slide_left_out' => anim.slideX(end: -1),
-          'slide_right_out' => anim.slideX(end: 1),
-          _ => widget,
-        };
-      }
-    }
-    // Keyed on the animation pair so changing it tears the Animate
-    // controller down and starts the new one from its beginning.
-    return KeyedSubtree(
-      key: ValueKey('${overlay.id}_${overlay.inAnimation}_${overlay.outAnimation}'),
-      child: widget,
+  /// The box exactly as [TextOverlayLayout] measured it, painted per glyph by
+  /// [TextOverlayPainter] at [positionSeconds].
+  ///
+  /// **It is a painter and not a widget tree on purpose.** It used to be a
+  /// `Text` (optionally under a stroking `Text`, optionally in a background
+  /// `Container`) wrapped in a `flutter_animate` chain — which can only animate
+  /// the whole box, on a fixed half second, from its own controller's clock.
+  /// The export animates each character from the catalog on the playhead, so
+  /// the two drew different pictures. The painter reads the same glyph boxes,
+  /// the same windows and the same curves the export does, which makes them
+  /// agree by construction rather than by two implementations happening to land
+  /// on the same motion.
+  Widget _textBox(
+    TextOverlayModel overlay,
+    TextOverlayLayout layout,
+    double positionSeconds,
+  ) {
+    return CustomPaint(
+      size: layout.boxSize,
+      painter: TextOverlayPainter(
+        overlay: overlay,
+        layout: layout,
+        canvasSize: widget.videoCanvasSize,
+        positionSeconds: positionSeconds,
+      ),
     );
   }
 

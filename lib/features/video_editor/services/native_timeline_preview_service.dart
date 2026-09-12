@@ -3,11 +3,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:characters/characters.dart';
 import 'package:flutter/services.dart';
 
+import '../logic/text_animation_catalog.dart';
 import '../logic/text_overlay_geometry.dart';
 import '../logic/timeline/video_editor_timeline_composer.dart';
 import '../models/editor_timeline.dart';
+import '../models/text_overlay_model.dart';
 import '../models/video_editor_state.dart';
 import 'text_atlas_overlay.dart';
 import 'text_overlay_rasterizer.dart';
@@ -173,12 +176,21 @@ class NativeTimelinePreviewService {
   /// Progress arrives as `exportProgress` events, and a device that forces a
   /// compromise — a transition it could not run two decoders for — reports it
   /// as an `exportWarning` rather than silently producing a different file.
+  ///
+  /// [onWarning] carries the **Dart-side** half of that rule. The native
+  /// warnings travel up the event channel, which only Kotlin can write to; a
+  /// compromise decided here — a text overlay that could not take the
+  /// animation-capable glyph path — has no such route, so it is handed to the
+  /// caller directly. Same contract, same destination (a toast over the export
+  /// screen), just the only direction that exists for a decision made before
+  /// the platform call.
   Future<NativeExportResult> exportVideo(
     VideoEditorState state, {
     required String outputPath,
     Size? previewCanvasSize,
     int frameRate = 30,
     int targetShortSidePx = 1080,
+    void Function(String message)? onWarning,
   }) async {
     // Text is rasterised by Flutter's own text engine and handed to the
     // native overlay pass as images — reimplementing text layout in Android
@@ -190,6 +202,9 @@ class NativeTimelinePreviewService {
       previewCanvasSize,
       targetShortSidePx,
     );
+    for (final warning in textRasters.warnings) {
+      onWarning?.call(warning);
+    }
 
     final timeline = _timelineComposer.compose(
       state,
@@ -227,10 +242,15 @@ class NativeTimelinePreviewService {
     }
   }
 
-  /// Rasterised text overlays as native image-overlay entries, plus the temp
-  /// files to delete once the export is done with them.
-  Future<({List<EditorTimelineOverlay> overlays, List<String> tempFiles})>
-      _rasterizeTextOverlays(
+  /// Rasterised text overlays as native image-overlay entries, the temp files
+  /// to delete once the export is done with them, and any degradation the user
+  /// has to be told about.
+  Future<
+      ({
+        List<EditorTimelineOverlay> overlays,
+        List<String> tempFiles,
+        List<String> warnings,
+      })> _rasterizeTextOverlays(
     VideoEditorState state,
     Size? previewCanvasSize,
     int targetShortSidePx,
@@ -240,7 +260,11 @@ class NativeTimelinePreviewService {
         canvas == null ||
         canvas.width <= 0 ||
         canvas.height <= 0) {
-      return (overlays: <EditorTimelineOverlay>[], tempFiles: <String>[]);
+      return (
+        overlays: <EditorTimelineOverlay>[],
+        tempFiles: <String>[],
+        warnings: <String>[],
+      );
     }
 
     // Raster at export density, not preview density: the canvas is preview
@@ -251,6 +275,7 @@ class NativeTimelinePreviewService {
 
     final overlays = <EditorTimelineOverlay>[];
     final tempFiles = <String>[];
+    final warnings = <String>[];
 
     for (final text in state.textOverlays) {
       final atlas = await TextOverlayRasterizer.rasterizeAtlas(
@@ -269,15 +294,24 @@ class NativeTimelinePreviewService {
       //    only, so a background would simply vanish; backgrounds keep the
       //    flat raster until the background quad lands.
       //
-      // Both are silent on purpose at this stage: the flat path produces the
-      // same file it produces today, so there is nothing to warn about. That
-      // changes once per-character animation ships, where a fallback means
-      // "no animation" and must be surfaced.
+      // Both used to be silent, because the flat path produced the same file
+      // the atlas did. **That is no longer true**: the preview now animates
+      // per character from the catalog, and the flat raster can only carry the
+      // image overlay's whole-box animation. So a fallback is a real
+      // divergence between the canvas and the file, and the degrade-loudly
+      // rule applies — see [textFallbackWarning].
       final RasterizedTextAtlas? usableAtlas = atlas != null &&
               atlas.glyphs.isNotEmpty &&
               atlas.backgroundRect == null
           ? atlas
           : null;
+      if (usableAtlas == null) {
+        final warning = textFallbackWarning(
+          text,
+          hasBackground: atlas?.backgroundRect != null,
+        );
+        if (warning != null) warnings.add(warning);
+      }
 
       final String pngPath;
       final Size boxPxSize;
@@ -383,7 +417,7 @@ class NativeTimelinePreviewService {
         ),
       );
     }
-    return (overlays: overlays, tempFiles: tempFiles);
+    return (overlays: overlays, tempFiles: tempFiles, warnings: warnings);
   }
 
   /// A stored animation id on its way to the **glyph** path, which resolves it
@@ -484,6 +518,68 @@ class NativeTimelinePreviewService {
     return _methodChannel.invokeMethod<void>('dispose');
   }
 
+}
+
+/// What to tell the user when [overlay] could not take the glyph-atlas path,
+/// or null when there is nothing to tell them.
+///
+/// **The warning is about the animation, not about the fallback.** The flat
+/// raster draws the same letters in the same place; what it cannot do is move
+/// them one at a time, because it is a single image and the native pass only
+/// knows how to animate a whole quad. So a text with no animation set is not
+/// degraded at all and must stay silent — warning there would train the user to
+/// dismiss a message that usually means nothing.
+///
+/// "Has an animation" is decided by **slot resolution**, not by the strings
+/// being non-`'none'`. A legacy in-only id sitting in `outAnimation` resolves to
+/// nothing at all (the old widget layer played no out-animation for one), so
+/// such an overlay animates in neither path and has lost nothing. Reading the
+/// raw fields would warn about it every export.
+///
+/// [hasBackground] separates the two fallback causes so the message names the
+/// one the user can actually act on — removing a background box is a choice they
+/// can make; an atlas overflowing the texture limit is not.
+String? textFallbackWarning(
+  TextOverlayModel overlay, {
+  required bool hasBackground,
+}) {
+  final animates = resolveTextAnimation(
+            overlay.inAnimation,
+            TextAnimationCategory.inAnim,
+          ) !=
+          null ||
+      resolveTextAnimation(
+            overlay.outAnimation,
+            TextAnimationCategory.outAnim,
+          ) !=
+          null ||
+      resolveTextAnimation(
+            overlay.loopAnimation,
+            TextAnimationCategory.loop,
+          ) !=
+          null;
+  if (!animates) return null;
+
+  // A short label rather than the whole string: a caption can be a paragraph,
+  // and a toast that runs off the screen tells the user less than one that
+  // fits.
+  final label = _textOverlayLabel(overlay);
+  return hasBackground
+      ? 'Text "$label" has a background box, so its animation exports as a '
+          'whole-block effect rather than character by character.'
+      : 'Text "$label" is too large to animate character by character; it '
+          'exports as a whole-block effect.';
+}
+
+/// The first few characters of an overlay's text, for a message the user has
+/// to match against something on their timeline.
+String _textOverlayLabel(TextOverlayModel overlay) {
+  final trimmed = overlay.text.trim();
+  if (trimmed.isEmpty) return overlay.id;
+  final firstLine = trimmed.split('\n').first;
+  return firstLine.characters.length <= 24
+      ? firstLine
+      : '${firstLine.characters.take(24)}…';
 }
 
 /// What a finished native export produced.
