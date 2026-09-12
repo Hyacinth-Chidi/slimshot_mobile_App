@@ -61,6 +61,19 @@ on-device ML model — the C++/TFLite conversation — or a different engine cla
 and they are genuinely part of why it feels magical. They are a later project with a real
 dependency, not something to approximate.
 
+**But this stage is their groundwork, and that is deliberate.** The app is SlimShot *AI*, so the
+segmentation features are a stated destination rather than a maybe. Every one of them reduces to
+the same shape: a model produces a **per-frame mask**, and the renderer composites through it —
+background removal is a mask between the clip and a replacement, sky replacement is a mask
+between two sources, face beauty is a blur applied *through* a mask. All three need exactly what
+Stage 1 builds: render-to-texture, a pass chain, and a shader that can sample a second texture
+alongside the frame.
+
+So the multi-pass framework should be designed with a mask input in mind — not implemented, and
+not carrying speculative parameters, but shaped so that adding "sample a mask texture" later is
+one more pass rather than a re-architecture. The ML model, its threading, and where the mask is
+produced are all out of scope here; the **place it plugs into** is what this stage creates.
+
 ## Approach
 
 ### One effect per clip
