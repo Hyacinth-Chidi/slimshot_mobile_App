@@ -454,6 +454,13 @@ class VideoEditorTimelineComposer {
       overrideVideoPath: segment.overrideVideoPath,
       // Graded before the shader blends this clip with its neighbour, so two
       // clips with different filters cross-fade between their looks.
+      colorMatrix: segment.filterMatrix,
+      // The effect is a separate thing applied at a separate moment — the
+      // grade runs per lane before the blend, the effect whole-frame after
+      // compositing — so it sits *beside* the matrix and never replaces it.
+      // It was once added in its place, and every clip silently lost its
+      // filter.
+      //
       // Resolved through the catalog, not copied raw: an id this build does
       // not know (a newer draft, an unmigrated rename) must reach the renderer
       // as "no effect" rather than as a name it has no shader for. The draft

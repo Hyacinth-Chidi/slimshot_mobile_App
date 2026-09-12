@@ -473,4 +473,55 @@ void main() {
       expect(timeline.videoClips.single.playbackVideoPath, '/cache/reverse.mp4');
     });
   });
+
+  // A per-clip filter reaches the renderer as `colorMatrix` on the clip, and
+  // nothing pinned that until a per-clip effect was added *in its place* rather
+  // than beside it — every clip then arrived ungraded and filters silently did
+  // nothing, through a green suite of 293 tests and onto a device.
+  group('per-clip look', () {
+    test('a clip filter travels as the clip colour matrix', () {
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4, filterId: 'neon'),
+        ]),
+      );
+
+      final matrix = timeline.videoClips.single.colorMatrix;
+      expect(
+        matrix,
+        isNotNull,
+        reason: 'a filtered clip must carry its grade to the renderer',
+      );
+      // Flutter's ColorFilter.matrix layout: 4 rows of 5.
+      expect(matrix, hasLength(20));
+    });
+
+    test('an unfiltered clip carries no matrix', () {
+      final timeline = composer.compose(
+        stateWith([VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4)]),
+      );
+      expect(timeline.videoClips.single.colorMatrix, isNull);
+    });
+
+    test('the grade and the effect are independent per clip', () {
+      // They apply at different moments — the grade per lane before the blend,
+      // the effect whole-frame after compositing — so carrying one must never
+      // cost the other.
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(
+            id: 'a',
+            sourceStart: 0,
+            sourceEnd: 4,
+            filterId: 'neon',
+            effectId: 'vignette',
+          ),
+        ]),
+      );
+
+      final clip = timeline.videoClips.single;
+      expect(clip.colorMatrix, isNotNull);
+      expect(clip.effectId, 'vignette');
+    });
+  });
 }
