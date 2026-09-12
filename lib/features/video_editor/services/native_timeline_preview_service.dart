@@ -433,8 +433,14 @@ class NativeTimelinePreviewService {
     }
     return switch (name) {
       'fade' || 'fade_out' => 'fade_out',
-      'scale' || 'zoom_out_out' => 'zoom_out_out',
-      'zoom_in_out' => 'zoom_in_out',
+      // `'scale'` in the out slot is `scaleXY(end: 0)` in the preview layer —
+      // shrink away to nothing, which is `zoom_in_out`. It mapped to
+      // `zoom_out_out` here, the opposite motion (grow to 2×), so a legacy
+      // draft's exit played backwards on this path. The catalog resolves the
+      // same id correctly; this is the flat-raster path's own copy of the
+      // legacy table, and it was wrong.
+      'scale' || 'zoom_in_out' => 'zoom_in_out',
+      'zoom_out_out' => 'zoom_out_out',
       'slide_up_out' ||
       'slide_down_out' ||
       'slide_left_out' ||
