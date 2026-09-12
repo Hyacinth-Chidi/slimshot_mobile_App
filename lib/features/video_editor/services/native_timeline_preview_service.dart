@@ -433,14 +433,19 @@ class NativeTimelinePreviewService {
     }
     return switch (name) {
       'fade' || 'fade_out' => 'fade_out',
-      // `'scale'` in the out slot is `scaleXY(end: 0)` in the preview layer —
-      // shrink away to nothing, which is `zoom_in_out`. It mapped to
-      // `zoom_out_out` here, the opposite motion (grow to 2×), so a legacy
-      // draft's exit played backwards on this path. The catalog resolves the
-      // same id correctly; this is the flat-raster path's own copy of the
-      // legacy table, and it was wrong.
-      'scale' || 'zoom_in_out' => 'zoom_in_out',
-      'zoom_out_out' => 'zoom_out_out',
+      // **These names mean the opposite of what the catalog's do**, and the
+      // collision is a live trap: this function targets the *image overlay*
+      // vocabulary in `NativeTimelineOverlay.stateAt`, where `zoom_in_out`
+      // scales by `(1 + p)` — it **grows** — and `zoom_out_out` by `(1 - p)`,
+      // which **shrinks**. The text catalog reads them the other way round.
+      //
+      // So `'scale'` belongs on `zoom_out_out` here: the preview layer draws
+      // it as `scaleXY(end: 0)`, shrinking away, and on this path only
+      // `zoom_out_out` shrinks. Checking the name against the text layer or
+      // the catalog and "correcting" it inverts the animation — a mistake
+      // already made once against this exact line.
+      'scale' || 'zoom_out_out' => 'zoom_out_out',
+      'zoom_in_out' => 'zoom_in_out',
       'slide_up_out' ||
       'slide_down_out' ||
       'slide_left_out' ||
