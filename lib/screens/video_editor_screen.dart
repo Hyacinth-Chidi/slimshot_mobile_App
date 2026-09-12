@@ -449,6 +449,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         event.message ?? 'Native preview error',
         isError: true,
       );
+    } else if (event.type == 'warning') {
+      // A compromise the engine made, not a failure: the second decoder a
+      // transition wanted, or the buffers an effect needed. The picture is
+      // still playing, so this is not `isError` — but it must be *said*, or
+      // the preview quietly differs from what the project describes and
+      // nothing explains why. The export screen has always surfaced its own
+      // `exportWarning`; the preview dropped these on the floor until now.
+      ToastUtils.show(context, event.message ?? 'Preview compromise');
     } else if (event.type == 'position' && event.positionSeconds != null) {
       final state = ref.read(videoEditorProvider);
       if (!_canUseNativeTimelinePreview(state) || !state.isPlaying) return;
