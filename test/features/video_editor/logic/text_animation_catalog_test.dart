@@ -38,6 +38,27 @@ void main() {
         expect(textAnimationById(id), isNotNull, reason: '$id must survive');
       }
     });
+
+    // The two `fillProgress` animations have curves and no renderer on either
+    // side, so offering one gives the user a control that does nothing.
+    test('the fill animations are not offered until something draws them', () {
+      final selectable = kSelectableTextAnimations.map((a) => a.id).toSet();
+      expect(selectable, isNot(contains('colour_fill')));
+      expect(selectable, isNot(contains('colour_cycle_loop')));
+      // Gated from *selection* only: a draft carrying one still resolves, so
+      // an existing project opens unchanged rather than losing its animation.
+      expect(textAnimationById('colour_fill'), isNotNull);
+    });
+
+    test('everything else is offered', () {
+      final gated = kTextAnimations
+          .where((a) => !a.isSelectable)
+          .map((a) => a.id)
+          .toSet();
+      // A growing exclusion list means rendering work has stalled; this is
+      // here to make that visible rather than to be relaxed when it trips.
+      expect(gated, {'colour_fill', 'colour_cycle_loop'});
+    });
   });
 
   group('curve boundaries', () {

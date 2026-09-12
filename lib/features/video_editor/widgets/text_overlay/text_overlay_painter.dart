@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../logic/text_animation_catalog.dart';
@@ -150,7 +148,16 @@ class TextOverlayPainter extends CustomPainter {
         final metric = glyph.inkRect.height;
 
         canvas.save();
-        canvas.clipRect(cell);
+        // **The transform comes first and the clip travels with it.** In GL the
+        // clip is not a separate thing: the cell *is* the quad, so moving the
+        // quad moves what is drawn. Here they are two calls, and clipping in
+        // the resting position while the letter moves through the clip is a
+        // real, severe bug rather than a subtlety — a slide travels 1.5 glyph
+        // heights against a few pixels of bleed padding, so the letter leaves
+        // its own clip entirely and nothing is drawn at all. Ordering the calls
+        // this way means the clip is expressed in the *glyph's* space, which is
+        // the space the run is painted in, so the two move together.
+        //
         // Scale and rotation are about the **cell's own centre**, so a bouncing
         // letter hops where it sits instead of swinging around the caption.
         // The displacement is applied after, moving that centre — scaling the
@@ -164,11 +171,17 @@ class TextOverlayPainter extends CustomPainter {
         if (state.rotation != 0) canvas.rotate(state.rotation);
         if (state.scale != 1) canvas.scale(state.scale);
         canvas.translate(-centre.dx, -centre.dy);
+        canvas.clipRect(cell);
 
         // Opacity multiplies the whole glyph — stroke, fill and shadow — so a
         // fading letter fades as one thing. A layer is what makes that true:
         // painting stroke and fill each at the same alpha would show the
         // stroke through the half-transparent fill.
+        //
+        // Its bounds are `cell` for the same reason the clip is: both are read
+        // in the current (already transformed) space, so a layer bounded in
+        // resting coordinates would re-clip precisely what the clip above no
+        // longer does.
         final fading = state.opacity < 1;
         if (fading) {
           canvas.saveLayer(
@@ -202,31 +215,13 @@ class TextOverlayPainter extends CustomPainter {
     return layoutTextGlyphs(
       overlay: overlay,
       canvasSize: canvasSize,
-      shadowPadding: bleedPadding(
+      // The same padding the rasteriser pads its atlas cells by — one
+      // definition, so the preview clips exactly what the export samples.
+      shadowPadding: textGlyphBleedPadding(
         overlay,
         textOverlayRenderScale(overlay, canvasSize),
       ),
     );
-  }
-
-  /// How far ink can extend past a glyph's box: the shadow's blur and its
-  /// offset, plus half the stroke width, which straddles the glyph's edge.
-  ///
-  /// The same formula `TextOverlayRasterizer` pads its atlas cells by. It is
-  /// duplicated rather than shared only because the rasteriser's copy is
-  /// private to a service this widget must not import; if a third caller ever
-  /// needs it, move it to `text_glyph_layout.dart` and delete both.
-  static double bleedPadding(TextOverlayModel overlay, double renderScale) {
-    var padding = 0.0;
-    if (overlay.shadowColor != Colors.transparent &&
-        overlay.shadowBlurRadius > 0) {
-      final blur = overlay.shadowBlurRadius * renderScale;
-      padding = math.max(padding, blur + blur / 2);
-    }
-    if (TextOverlayLayout.hasStroke(overlay)) {
-      padding = math.max(padding, overlay.strokeWidth * renderScale / 2);
-    }
-    return padding;
   }
 
   /// The animation windows for [overlay] across [glyphCount] characters.

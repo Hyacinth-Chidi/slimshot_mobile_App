@@ -536,6 +536,13 @@ class NativeTimelinePreviewService {
 /// such an overlay animates in neither path and has lost nothing. Reading the
 /// raw fields would warn about it every export.
 ///
+/// An animation that **nothing draws** does not count either. The two
+/// `fillProgress` entries resolve and time correctly but have no rendering pass
+/// on either side, so the glyph path and the flat path show the same picture
+/// for them — nothing is lost, and warning would apologise for an effect the
+/// user never saw. [TextAnimation.isSelectable] is the one flag that says so,
+/// which is also what keeps them out of the animation tab.
+///
 /// [hasBackground] separates the two fallback causes so the message names the
 /// one the user can actually act on — removing a background box is a choice they
 /// can make; an atlas overflowing the texture limit is not.
@@ -543,21 +550,14 @@ String? textFallbackWarning(
   TextOverlayModel overlay, {
   required bool hasBackground,
 }) {
-  final animates = resolveTextAnimation(
-            overlay.inAnimation,
-            TextAnimationCategory.inAnim,
-          ) !=
-          null ||
-      resolveTextAnimation(
-            overlay.outAnimation,
-            TextAnimationCategory.outAnim,
-          ) !=
-          null ||
-      resolveTextAnimation(
-            overlay.loopAnimation,
-            TextAnimationCategory.loop,
-          ) !=
-          null;
+  bool draws(String? id, TextAnimationCategory slot) {
+    final anim = resolveTextAnimation(id, slot);
+    return anim != null && anim.isSelectable;
+  }
+
+  final animates = draws(overlay.inAnimation, TextAnimationCategory.inAnim) ||
+      draws(overlay.outAnimation, TextAnimationCategory.outAnim) ||
+      draws(overlay.loopAnimation, TextAnimationCategory.loop);
   if (!animates) return null;
 
   // A short label rather than the whole string: a caption can be a paragraph,

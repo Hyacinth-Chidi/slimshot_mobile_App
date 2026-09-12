@@ -83,6 +83,37 @@ void main() {
     );
   });
 
+  // `colour_fill` and `colour_cycle_loop` resolve and time correctly but no
+  // renderer draws `fillProgress` on either side, so the glyph path and the
+  // flat path show the same picture for them. Nothing was lost, and warning
+  // would apologise for an effect the user never saw.
+  test('an animation nothing draws is not a degradation', () {
+    expect(
+      textFallbackWarning(
+        textWith(inAnimation: 'colour_fill'),
+        hasBackground: true,
+      ),
+      isNull,
+    );
+    expect(
+      textFallbackWarning(
+        textWith(loopAnimation: 'colour_cycle_loop'),
+        hasBackground: true,
+      ),
+      isNull,
+    );
+  });
+
+  test('a drawable animation alongside an undrawable one still warns', () {
+    expect(
+      textFallbackWarning(
+        textWith(inAnimation: 'colour_fill', outAnimation: 'fade_out'),
+        hasBackground: true,
+      ),
+      isNotNull,
+    );
+  });
+
   test('an unknown id from an old draft does not warn', () {
     expect(
       textFallbackWarning(

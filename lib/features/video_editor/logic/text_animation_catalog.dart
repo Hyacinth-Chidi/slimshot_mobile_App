@@ -92,6 +92,7 @@ class TextAnimation {
     required this.isPerGlyph,
     required this.naturalDuration,
     required this.stateAt,
+    this.isSelectable = true,
   });
 
   /// Persisted into drafts and sent over the channel to Kotlin. **Renaming one
@@ -115,6 +116,22 @@ class TextAnimation {
 
   /// The curve itself. Pure: same inputs, same outputs, on both platforms.
   final TextGlyphState Function(double p, int i, int n) stateAt;
+
+  /// Whether a user may **choose** this animation yet.
+  ///
+  /// False for an entry whose curve is defined and pinned by tests but whose
+  /// *rendering* does not exist. Today that is the two `fillProgress`
+  /// animations: neither the preview painter nor `OverlayRenderer` has a
+  /// colour-fill pass, so they resolve, time correctly and draw absolutely
+  /// nothing — and on the flat-raster path they would additionally raise a
+  /// warning about an animation that was never visible. A control that does
+  /// nothing and then apologises for it is worse than one not offered yet.
+  ///
+  /// The flag lives here rather than as an exclusion list in the animation tab
+  /// because the tab is not the only consumer — the fallback warning reads it
+  /// too, and a second list to keep in step is how the two would drift. Flip it
+  /// to true in the same change that lands the pass.
+  final bool isSelectable;
 }
 
 // ---------------------------------------------------------------------------
@@ -827,6 +844,8 @@ const List<TextAnimation> kTextAnimations = [
     isPerGlyph: true,
     naturalDuration: _staggered,
     stateAt: _colourFill,
+    // Nothing draws `fillProgress` yet — see [TextAnimation.isSelectable].
+    isSelectable: false,
   ),
   TextAnimation(
     id: 'rise_in',
@@ -970,6 +989,8 @@ const List<TextAnimation> kTextAnimations = [
     isPerGlyph: true,
     naturalDuration: _loopCycleSlow,
     stateAt: _colourCycleLoop,
+    // Nothing draws `fillProgress` yet — see [TextAnimation.isSelectable].
+    isSelectable: false,
   ),
   TextAnimation(
     id: 'wiggle_loop',
@@ -1030,6 +1051,16 @@ const Map<String, String> _kLegacyOutIds = {
   'fade': 'fade_out',
   'scale': 'zoom_in_out',
 };
+
+/// The animations a user may actually pick, in the order the tab shows them.
+///
+/// **Every selection surface must build from this, not from [kTextAnimations].**
+/// The full table also holds entries whose curve exists but whose rendering
+/// does not, and offering one of those gives the user a control that quietly
+/// does nothing. A draft that somehow carries such an id still *resolves* — it
+/// is only the offering that is gated — so nothing breaks on open.
+final List<TextAnimation> kSelectableTextAnimations =
+    kTextAnimations.where((a) => a.isSelectable).toList(growable: false);
 
 final Map<String, TextAnimation> _byId = {
   for (final a in kTextAnimations) a.id: a,

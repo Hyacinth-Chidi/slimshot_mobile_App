@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 // Explicit rather than leaning on `material.dart`'s re-export: cluster
 // iteration is load-bearing here, not incidental.
 // ignore: unnecessary_import
@@ -37,6 +39,28 @@ class TextGlyphBox {
   /// actually stores. Shadows extend past a glyph's ink and would otherwise
   /// contaminate the neighbouring atlas cell.
   final Rect paddedRect;
+}
+
+/// How far a glyph's ink can extend past its box: the shadow's blur and its
+/// offset, plus half the stroke width, which straddles the glyph's edge.
+///
+/// **One definition, two consumers, and they must not drift.**
+/// `TextOverlayRasterizer` pads the atlas cells it *writes* by this, and
+/// `TextOverlayPainter` clips the preview glyphs it *draws* to the same rect —
+/// so the preview is showing exactly what the export samples. Two copies of
+/// this arithmetic (which is what there were) desync silently: the file and the
+/// canvas would clip a shadow differently with nothing failing anywhere.
+double textGlyphBleedPadding(TextOverlayModel overlay, double renderScale) {
+  var padding = 0.0;
+  if (overlay.shadowColor != Colors.transparent &&
+      overlay.shadowBlurRadius > 0) {
+    final blur = overlay.shadowBlurRadius * renderScale;
+    padding = math.max(padding, blur + blur / 2);
+  }
+  if (TextOverlayLayout.hasStroke(overlay)) {
+    padding = math.max(padding, overlay.strokeWidth * renderScale / 2);
+  }
+  return padding;
 }
 
 /// Where every character of [overlay] sits, using Flutter's own text layout.

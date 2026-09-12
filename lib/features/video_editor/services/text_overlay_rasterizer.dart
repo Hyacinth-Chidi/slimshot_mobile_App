@@ -254,7 +254,9 @@ class TextOverlayRasterizer {
       if (boxSize.width <= 0 || boxSize.height <= 0) return null;
       final renderScale = layout.renderScale;
 
-      final shadowPadding = _bleedPadding(overlay, renderScale);
+      // The same padding `TextOverlayPainter` clips its preview glyphs to —
+      // one definition, so the canvas shows exactly what this atlas stores.
+      final shadowPadding = textGlyphBleedPadding(overlay, renderScale);
       final glyphBoxes = layoutTextGlyphs(
         overlay: overlay,
         canvasSize: canvasSize,
@@ -429,18 +431,4 @@ class TextOverlayRasterizer {
     return _Packing(cells: cells, atlasWidth: atlasWidth, atlasHeight: penY + rowHeight);
   }
 
-  /// How far ink can extend past a glyph's box: the shadow's blur and its
-  /// offset, plus half the stroke width, which straddles the glyph's edge.
-  static double _bleedPadding(TextOverlayModel overlay, double renderScale) {
-    var padding = 0.0;
-    if (overlay.shadowColor != Colors.transparent &&
-        overlay.shadowBlurRadius > 0) {
-      final blur = overlay.shadowBlurRadius * renderScale;
-      padding = math.max(padding, blur + blur / 2);
-    }
-    if (TextOverlayLayout.hasStroke(overlay)) {
-      padding = math.max(padding, overlay.strokeWidth * renderScale / 2);
-    }
-    return padding;
-  }
 }

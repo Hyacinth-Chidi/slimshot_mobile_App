@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -238,6 +239,101 @@ void main() {
       }
       return inked;
     }
+
+    /// Paints into a canvas [pad] pixels larger on every side than the box,
+    /// so a glyph displaced outside its resting box is still captured.
+    ///
+    /// Returns the ink's bounding box in **box coordinates** (the pad is
+    /// subtracted back off), or null when nothing was drawn at all.
+    Future<Rect?> inkBounds(
+      TextOverlayPainter painter,
+      Size box, {
+      double pad = 120,
+    }) async {
+      final width = (box.width + pad * 2).ceil();
+      final height = (box.height + pad * 2).ceil();
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.translate(pad, pad);
+      painter.paint(canvas, box);
+      final image = await recorder.endRecording().toImage(width, height);
+      final bytes = (await image.toByteData())!;
+      image.dispose();
+
+      double? left, top, right, bottom;
+      for (var y = 0; y < height; y++) {
+        for (var x = 0; x < width; x++) {
+          if (bytes.getUint8((y * width + x) * 4 + 3) <= 8) continue;
+          final bx = x - pad;
+          final by = y - pad;
+          left = left == null ? bx : math.min(left, bx);
+          right = right == null ? bx : math.max(right, bx);
+          top = top == null ? by : math.min(top, by);
+          bottom = bottom == null ? by : math.max(bottom, by);
+        }
+      }
+      if (left == null) return null;
+      return Rect.fromLTRB(left, top!, right! + 1, bottom! + 1);
+    }
+
+    // **The clip has to travel with the letter.** In GL the cell *is* the quad,
+    // so the two cannot come apart; here they are two canvas calls, and
+    // clipping in the resting position while the glyph moves through the clip
+    // means the letter is cut away by its own clip. A slide travels 1.5 glyph
+    // heights against a few pixels of bleed padding, so under that bug the
+    // glyph is not merely cropped — nothing is drawn at all.
+    //
+    // `fade_in` past its window cannot expose this: offset and scale are both
+    // at rest there, which is exactly the case where a resting clip is the
+    // right clip.
+    test('a mid-slide glyph is drawn, displaced, not clipped away', () async {
+      final overlay = textWith(text: 'abcd', inAnimation: 'slide_down');
+      final layout = TextOverlayLayout.measure(overlay, canvas);
+      final timing = TextOverlayPainter.timingFor(
+        overlay,
+        glyphCountOf(overlay),
+      );
+
+      final resting = await inkBounds(painterFor(overlay, 4.0), layout.boxSize);
+      // A quarter through the window: `slide_down` comes from above, so the
+      // text is still well short of its resting place.
+      final mid = await inkBounds(
+        painterFor(overlay, timing.inSeconds * 0.25),
+        layout.boxSize,
+      );
+
+      expect(resting, isNotNull);
+      expect(mid, isNotNull, reason: 'the glyph was clipped away entirely');
+
+      // It has actually moved — and upward, which is where `slide_down` starts.
+      expect(mid!.top, lessThan(resting!.top - 1));
+      // And it is the whole letter that moved, not a sliver surviving a stale
+      // clip: the displaced ink is about as tall as the resting ink.
+      expect(mid.height, closeTo(resting.height, resting.height * 0.25));
+    });
+
+    // Scale has the same failure with a different shape: a resting clip crops
+    // a grown letter to its original box, so only the middle survives.
+    test('a glyph scaled past its cell is not cropped to the cell', () async {
+      final overlay = textWith(text: 'abcd', inAnimation: 'zoom_out');
+      final layout = TextOverlayLayout.measure(overlay, canvas);
+      final timing = TextOverlayPainter.timingFor(
+        overlay,
+        glyphCountOf(overlay),
+      );
+
+      final resting = await inkBounds(painterFor(overlay, 4.0), layout.boxSize);
+      // `zoom_out` begins at 2x and settles to 1x, so early in the window every
+      // glyph is larger than the cell that will hold it at rest.
+      final big = await inkBounds(
+        painterFor(overlay, timing.inSeconds * 0.05),
+        layout.boxSize,
+      );
+
+      expect(resting, isNotNull);
+      expect(big, isNotNull);
+      expect(big!.height, greaterThan(resting!.height * 1.3));
+    });
 
     test('a static text paints ink and does not throw', () async {
       final overlay = textWith();
