@@ -416,8 +416,12 @@ class EditorTimelineOverlay {
     required this.slideOffsetY,
     this.animationIn,
     this.animationOut,
+    this.animationLoop,
     this.animationInSeconds = 0.5,
     this.animationOutSeconds = 0.5,
+    this.speedIn = 1.0,
+    this.speedOut = 1.0,
+    this.speedLoop = 1.0,
     this.sourceStart = 0,
     this.sourceEnd = 0,
     this.volume = 1.0,
@@ -460,8 +464,38 @@ class EditorTimelineOverlay {
 
   final String? animationIn;
   final String? animationOut;
+
+  /// Text overlays only: an animation that repeats for the whole span. Image
+  /// and video overlays have no loop slot, so null here is the ordinary case.
+  final String? animationLoop;
+
+  /// The in/out window lengths, in seconds.
+  ///
+  /// **Image and video overlays only.** Native times a *text* overlay's
+  /// animations itself — `TextAnimationCurves.resolveDurations`, from the
+  /// catalog's natural duration, the glyph count and [speedIn] — because a
+  /// staggered animation's length depends on how many characters there are,
+  /// which is a fact the renderer holds and the composer would have to
+  /// duplicate. These two are left at their defaults on a text overlay and are
+  /// not read for one.
   final double animationInSeconds;
   final double animationOutSeconds;
+
+  /// Text overlays only: dimensionless speed multipliers that **divide** the
+  /// catalog's natural durations. 1.0 is natural; higher is faster.
+  ///
+  /// A speed rather than a duration precisely because the duration is not the
+  /// composer's to know — see [animationInSeconds]. Being dimensionless, they
+  /// also carry no device pixel or canvas size across the boundary.
+  ///
+  /// [speedIn] and [speedOut] are expected to be **equal** — the animation tab
+  /// is one Speed slider — and the Kotlin side resolves both windows from
+  /// [speedIn], so that the proportional compression which fits them into a
+  /// short span exists exactly once. [speedLoop] is independent: a cycle length
+  /// is no part of that compression.
+  final double speedIn;
+  final double speedOut;
+  final double speedLoop;
 
   /// Video overlays only: the range of the source to play, and its audio.
   final double sourceStart;
@@ -501,8 +535,12 @@ class EditorTimelineOverlay {
       'slideOffsetY': slideOffsetY,
       'animationIn': animationIn,
       'animationOut': animationOut,
+      'animationLoop': animationLoop,
       'animationInSeconds': animationInSeconds,
       'animationOutSeconds': animationOutSeconds,
+      'speedIn': speedIn,
+      'speedOut': speedOut,
+      'speedLoop': speedLoop,
       'sourceStart': sourceStart,
       'sourceEnd': sourceEnd,
       'volume': volume,

@@ -346,11 +346,38 @@ class NativeTimelinePreviewService {
           // overlays' fixed 200px, so the travel is the raster's own box.
           slideOffsetX: boxPxSize.width / canvas.width,
           slideOffsetY: boxPxSize.height / canvas.height,
-          animationIn: _mapTextAnimation(text.inAnimation, isOut: false),
-          animationOut: _mapTextAnimation(text.outAnimation, isOut: true),
-          // The preview animates text with flutter_animate's stock 0.5s and
-          // ignores the stored durations; export matches what plays, not what
-          // is stored.
+          // **Two different vocabularies, chosen by which path draws.**
+          //
+          // The glyph path resolves ids through the catalog
+          // (`TextAnimationCurves.resolveAnimationId`), which knows the legacy
+          // names and resolves them *by slot*; it must receive the id as the
+          // model stores it. The flat-raster fallback draws through the image
+          // overlay's own `stateAt`, whose arms are the older vocabulary with
+          // no legacy names in them at all — so that path still needs the
+          // translation. Sending either one down the other's route is a
+          // silently wrong animation, not a missing one.
+          animationIn: glyphs == null
+              ? _mapTextAnimation(text.inAnimation, isOut: false)
+              : _catalogTextAnimation(text.inAnimation),
+          animationOut: glyphs == null
+              ? _mapTextAnimation(text.outAnimation, isOut: true)
+              : _catalogTextAnimation(text.outAnimation),
+          // A loop has no image-overlay equivalent, so the fallback cannot draw
+          // one; sending it anyway would be read by `stateAt`'s default arm as
+          // nothing, but stating the asymmetry is clearer than relying on that.
+          animationLoop:
+              glyphs == null ? null : _catalogTextAnimation(text.loopAnimation),
+          // Speeds, not durations. Native resolves the window lengths itself
+          // from the catalog, the glyph count and the speed — a staggered
+          // animation's length depends on how many characters there are, which
+          // the composer would otherwise have to recompute and keep in step
+          // across the boundary.
+          speedIn: text.animationInDuration,
+          speedOut: text.animationOutDuration,
+          speedLoop: text.loopSpeed,
+          // The flat path is still timed here, because the image-overlay
+          // animation it takes has no catalog duration to resolve. 0.5s is what
+          // the preview's flutter_animate chain actually plays.
           animationInSeconds: 0.5,
           animationOutSeconds: 0.5,
         ),
@@ -359,10 +386,40 @@ class NativeTimelinePreviewService {
     return (overlays: overlays, tempFiles: tempFiles);
   }
 
-  /// Text animation names → the native overlay names, mapping exactly what
-  /// `text_overlay_layer.dart` actually plays. The layer has no out-variant
-  /// for the bare slide names, so those export as no animation — parity with
-  /// the preview, not with what the name suggests.
+  /// A stored animation id on its way to the **glyph** path, which resolves it
+  /// through the catalog on the Kotlin side.
+  ///
+  /// Deliberately no translation: `TextAnimationCurves.resolveAnimationId`
+  /// holds the legacy tables and applies them **by slot**, which is the only
+  /// place that mapping may live — a second copy here would be one more thing
+  /// to keep in step across a boundary nothing type-checks. All this does is
+  /// spell `'none'` as null, which is what the contract's nullable field means.
+  String? _catalogTextAnimation(String name) {
+    if (name.isEmpty || name == 'none') return null;
+    return name;
+  }
+
+  /// Text animation names → the **image overlay's** animation names, for the
+  /// flat-raster fallback only.
+  ///
+  /// That path is drawn by `NativeTimelineOverlay.stateAt`, whose arms are the
+  /// older, smaller vocabulary — it has no `'fade'` or `'scale'` arm, so a
+  /// legacy id must be translated before it arrives or it silently animates
+  /// nothing. The glyph path goes through [_catalogTextAnimation] instead.
+  ///
+  /// It maps exactly what `text_overlay_layer.dart` actually plays. The layer
+  /// has no out-variant for the bare slide names, so those export as no
+  /// animation — parity with the preview, not with what the name suggests.
+  ///
+  /// **Its `'scale'` out-mapping does not match the catalog's**, and the
+  /// difference is real rather than cosmetic: this sends `'scale'` to
+  /// `zoom_out_out` (swell to 2×) where the catalog resolves it to
+  /// `zoom_in_out` (shrink to nothing), which is what the layer's
+  /// `scaleXY(end: 0)` arm draws. The catalog is right. This is left as it is
+  /// because it is the behaviour the flat path has shipped, and the flat path
+  /// is scheduled to start warning and then to go away; changing it here would
+  /// alter existing exports for the one case in the one path that is on its way
+  /// out. Fix it by deleting the fallback, not by editing this table.
   String? _mapTextAnimation(String name, {required bool isOut}) {
     if (name == 'none' || name.isEmpty) return null;
     if (!isOut) {

@@ -717,7 +717,7 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                const Icon(LucideIcons.timer, color: Colors.white54, size: 16),
+                const Icon(LucideIcons.gauge, color: Colors.white54, size: 16),
                 Expanded(
                   child: SliderTheme(
                     data: const SliderThemeData(
@@ -727,19 +727,31 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
                       trackHeight: 2,
                       overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
                     ),
+                    // Speed, not seconds. The field behind it changed meaning
+                    // when the catalog took over timing — an animation's
+                    // natural length now depends on which animation it is and
+                    // how many characters there are — so this control had to
+                    // stop presenting itself as a duration. Its full form (with
+                    // live preview tiles) is a later stage; the range and the
+                    // unit are what make it honest now.
                     child: Slider(
                       value: _animationTabIndex == 0
                           ? _inAnimationDuration
                           : _outAnimationDuration,
-                      min: 0.1,
-                      max: 2.0,
+                      min: kMinTextAnimationSpeed,
+                      max: kMaxTextAnimationSpeed,
                       onChanged: (val) {
                         setState(() {
-                          if (_animationTabIndex == 0) {
-                            _inAnimationDuration = val;
-                          } else {
-                            _outAnimationDuration = val;
-                          }
+                          // **Both, always.** The two speeds are expected to be
+                          // equal: the renderer resolves the in and the out
+                          // window from one of them, because the proportional
+                          // compression that fits both into a short overlay is
+                          // a single rule that must not exist twice across the
+                          // Dart/Kotlin boundary. Writing only the tab's own
+                          // field would let them diverge, and the out window
+                          // would then quietly follow the in slider.
+                          _inAnimationDuration = val;
+                          _outAnimationDuration = val;
                         });
                         _updateOverlay();
                       },
@@ -749,7 +761,7 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
                 SizedBox(
                   width: 40,
                   child: Text(
-                    '${(_animationTabIndex == 0 ? _inAnimationDuration : _outAnimationDuration).toStringAsFixed(1)}s',
+                    '${(_animationTabIndex == 0 ? _inAnimationDuration : _outAnimationDuration).toStringAsFixed(1)}×',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
