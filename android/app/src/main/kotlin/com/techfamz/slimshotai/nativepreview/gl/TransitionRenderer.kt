@@ -298,6 +298,36 @@ internal class TransitionRenderer(
      */
     val overlays: OverlayRenderer by lazy { OverlayRenderer(frameHandler) }
 
+    /**
+     * Full-frame effect passes run over the composite, in order. Empty is the
+     * default and the case every project takes today.
+     *
+     * `@Volatile` because it is written from the main thread and read on the GL
+     * thread, like the rest of the per-frame state above. The list itself is
+     * replaced wholesale, never mutated, so the GL thread always reads a
+     * complete one.
+     */
+    @Volatile
+    private var effectPasses: List<EffectPass> = emptyList()
+
+    /**
+     * Where the lanes are drawn when [effectPasses] is non-empty, so the passes
+     * have something to sample. Null until the first effected frame: a project
+     * without effects must never pay for the allocation.
+     */
+    private var sceneTarget: RenderTarget? = null
+
+    /**
+     * Ping-pong buffers for the passes themselves.
+     *
+     * Warnings are logged rather than raised to Dart: nothing can put a pass in
+     * the list yet, so no user can reach this, and the renderer has no route to
+     * the event channel — only [onError], which would report a missing effect as
+     * a playback failure. The task that makes an effect selectable gives this a
+     * real destination.
+     */
+    private val effectChain = EffectPassChain { message -> Log.w(TAG, message) }
+
     // ------------------------------------------------------------------ export
 
     /**
@@ -421,6 +451,12 @@ internal class TransitionRenderer(
         // Overlay textures and decode targets are export-scoped; the next
         // export re-uploads what it needs.
         overlays.releaseAll()
+        // The effect buffers are export-*sized* — up to three full frames at the
+        // encode resolution, which is larger than the preview canvas. They would
+        // be reallocated at the preview's size on the next effected frame
+        // anyway, so dropping them here just avoids holding that memory over an
+        // editing session that may never ask for an effect again.
+        releaseEffectTargets()
         egl.releaseSurface(surface)
         makeRenderTargetCurrent()
         requestRender()
@@ -519,6 +555,7 @@ internal class TransitionRenderer(
         val posted = handler.post {
             programs.values.forEach { it.release() }
             programs.clear()
+            releaseEffectTargets()
             releaseWindowSurface()
             lanes.forEach { it.release() }
             egl.releaseSurface(offscreenSurface)
@@ -542,6 +579,21 @@ internal class TransitionRenderer(
     fun setActiveLane(laneIndex: Int) {
         if (released || activeLane == laneIndex) return
         activeLane = laneIndex
+        requestRender()
+    }
+
+    /**
+     * Sets the full-frame effect passes, replacing whatever was there.
+     *
+     * An empty list — the default, and every project today — puts [composite]
+     * back on its single-pass path: no scene target, no chain, the same draw
+     * straight to the output.
+     */
+    fun setEffectPasses(passes: List<EffectPass>) {
+        if (released) return
+        // Copied because the caller may keep mutating its own list, and the GL
+        // thread reads this one between frames.
+        effectPasses = passes.toList()
         requestRender()
     }
 
@@ -837,10 +889,127 @@ internal class TransitionRenderer(
      * previewed frame rather than a second interpretation of the timeline.
      */
     private fun composite(viewportWidth: Int, viewportHeight: Int) {
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
-        GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
+        // **Set before anything branches.** The image-lane contain fit reads it
+        // at draw time, so a path that skips the assignment letterboxes photos
+        // against a stale viewport — the bug CLAUDE.md's batch items 4 and 10
+        // are both about. The scene target is the output's size, so the value is
+        // the same either way; what matters is that it is always written.
         viewportAspect =
             if (viewportHeight > 0) viewportWidth.toFloat() / viewportHeight else 0f
+
+        val passes = effectPasses
+        val scene = if (passes.isEmpty()) {
+            null
+        } else {
+            // Null here means the device refused the buffers. The chain has
+            // already warned; drawing straight to the output loses the effect
+            // and keeps the picture, which is the right trade on the GL thread.
+            prepareEffectTargets(viewportWidth, viewportHeight)
+        }
+
+        if (scene == null) {
+            // The single-pass path, unchanged: framebuffer 0, one clear, one
+            // draw. Every project without an effect is this one.
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
+            drawScene()
+            return
+        }
+
+        // Lanes into the scene texture, then the passes over it. `bind` sets the
+        // viewport to the target's own size, which is the output's size here.
+        scene.bind()
+        drawScene()
+
+        // Every pass `run` executes writes to one of its own targets — it has to
+        // return a sampleable texture, so it cannot use the interface's null
+        // target for the last one. The result therefore still has to be brought
+        // to the output here, and this bind is what puts it there: every target
+        // `bind` left both the framebuffer and the viewport pointing at an FBO.
+        val result = effectChain.run(scene.textureId, passes, viewportWidth, viewportHeight)
+        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+        GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
+        // When the chain hands back the scene texture unchanged — an unavailable
+        // chain, or a list it capped — this presents the unprocessed frame,
+        // which is the missing effect degrading to the plain picture rather than
+        // to black.
+        presentTexture(result)
+    }
+
+    /**
+     * Allocates the scene target and the chain's buffers for a
+     * [width] x [height] frame, or null if the device refused either.
+     *
+     * **Reallocation is guarded on the size**, not done per frame: these are
+     * three full-frame RGBA textures — around 24MB at 1080x1920 — and churning
+     * them every frame is exactly what turns a working effect into a stutter on
+     * the low-end target.
+     */
+    private fun prepareEffectTargets(width: Int, height: Int): RenderTarget? {
+        if (width <= 0 || height <= 0) return null
+
+        val existing = sceneTarget
+        val scene = if (existing != null && existing.width == width && existing.height == height) {
+            existing
+        } else {
+            existing?.release()
+            sceneTarget = null
+            val created = createRenderTarget(width, height) ?: return null
+            sceneTarget = created
+            created
+        }
+
+        // `resize` no-ops on an unchanged size, so this is cheap per frame; it
+        // returns false when the device refused, which latches the chain off.
+        if (!effectChain.resize(width, height)) return null
+        return scene
+    }
+
+    /**
+     * Drops the scene target and the chain's buffers. **GL thread only** —
+     * every caller is already on it (teardown and [endExport]).
+     */
+    private fun releaseEffectTargets() {
+        sceneTarget?.release()
+        sceneTarget = null
+        effectChain.release()
+    }
+
+    /**
+     * Draws [textureId] over the bound framebuffer.
+     *
+     * Used only to present an effect chain's result. The passthrough program's
+     * canvas uniforms are neutralised — no crop, no grade, a full fit — because
+     * the scene texture already carries all of that: applying them a second time
+     * would crop a cropped frame and grade a graded one.
+     */
+    private fun presentTexture(textureId: Int) {
+        val program = programFor(PASSTHROUGH, incomingIsImage = true, outgoingIsImage = true)
+            ?: return
+        program.use()
+        program.bindCanvas(FULL_FRAME_RECT, null, NO_COLOR_OFFSET, backgroundColor)
+        program.bindIncoming(
+            textureId,
+            GLES20.GL_TEXTURE_2D,
+            IDENTITY_MATRIX,
+            1f,
+            1f,
+            0f,
+            0f,
+        )
+        program.bindIncomingGrade(null, NO_COLOR_OFFSET)
+        drawQuad(program)
+    }
+
+    /**
+     * Clears to the background and draws the lanes into the bound framebuffer.
+     *
+     * Split out of [composite] so the lane draw can land either on the output or
+     * on a scene texture the effect passes read. **The body is unchanged from
+     * when this was inline** — one clear, one program, one quad — which is what
+     * keeps a project without effects rendering exactly as it did.
+     */
+    private fun drawScene() {
         GLES20.glClearColor(backgroundColor[0], backgroundColor[1], backgroundColor[2], 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
@@ -1058,6 +1227,15 @@ internal class TransitionRenderer(
         private const val PASSTHROUGH = "__passthrough"
         private const val FRAME_INTERVAL_MS = 16L
         private const val SURFACE_TEARDOWN_TIMEOUT_MS = 250L
+
+        /**
+         * Neutral canvas state for [presentTexture]: the whole source, no grade,
+         * no texture transform. Shared and never written — the bind calls only
+         * read them — so one copy each is enough.
+         */
+        private val FULL_FRAME_RECT = floatArrayOf(0f, 0f, 1f, 1f)
+        private val NO_COLOR_OFFSET = floatArrayOf(0f, 0f, 0f, 0f)
+        private val IDENTITY_MATRIX = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
     }
 }
 
