@@ -13,26 +13,41 @@ import kotlin.math.abs
  * differ from the previewed one, which is the failure the shared `composite`
  * exists to prevent.
  *
- * **The change guard is the point.** `setEffectPasses` with an equivalent list
- * every tick would link a fresh program 30-60 times a second and leak the
- * previous one each time — a `glLinkProgram` in the render path is a visible
- * stall, and it is the cost `TransitionShaders.warmUpShaders` exists to keep
- * out of it. The renderer already ignores an unchanged colour matrix; this is
- * the same pattern one level up, where the work is expensive enough that the
- * guard has to sit on the *caller's* side.
+ * **The change guard is the point, and it guards two different costs.**
+ * `setEffectPasses` with an equivalent list every tick would link a fresh
+ * program 30-60 times a second and leak the previous one each time — a
+ * `glLinkProgram` in the render path is a visible stall, and it is the cost
+ * `TransitionShaders.warmUpShaders` exists to keep out of it. The renderer
+ * already ignores an unchanged colour matrix; this is the same pattern one
+ * level up, where the work is expensive enough that the guard has to sit on the
+ * *caller's* side.
  *
- * Callers are on the main thread (playback's ticker) or the export loop; the
- * program work is posted onto the GL thread, where an EGL context is current.
+ * But the two things a clip can change are not equally expensive, and treating
+ * them as if they were is the trap this class exists to avoid: a **new id**
+ * needs new programs, while a **new intensity** needs a float written onto the
+ * passes already built. Rebuilding on intensity would mean a slider drag
+ * re-linking a program on every frame of the drag.
+ *
+ * ### Threading
+ *
+ * Callers are on the main thread (playback's ticker) or the export loop's
+ * thread. Only the *program* work is posted onto the GL thread, where an EGL
+ * context is current, and only that work blocks. An intensity change is a
+ * `@Volatile Float` write on the calling thread, read by the GL thread at its
+ * next draw — no context needed, and the worst a race can do is show one frame
+ * of the previous strength.
  */
 internal class ClipEffectController(private val renderer: TransitionRenderer) {
 
     /**
-     * The effect currently linked, or null when none is.
+     * The effect whose programs are currently linked, or null when none is.
      *
-     * Compared against, never rebuilt from — an effect whose id and intensity
-     * both match is already drawing the right picture.
+     * **This alone decides whether a rebuild happens.** The intensity below is
+     * tracked separately because it does not imply one.
      */
     private var appliedId: String? = null
+
+    /** The strength last pushed onto [passes]. Never a reason to rebuild. */
     private var appliedIntensity: Double = 0.0
 
     /**
@@ -43,19 +58,36 @@ internal class ClipEffectController(private val renderer: TransitionRenderer) {
     private var passes: List<EffectPass> = emptyList()
 
     /**
-     * Applies [effectId] at [intensity], rebuilding only when it has changed.
+     * Applies [effectId] at [intensity].
      *
-     * Intensity is compared with a tolerance because it arrives as a Double
-     * that has been through JSON: an exact comparison would rebuild the chain
-     * on a value that round-tripped a hair differently, which is a link in the
-     * render path for a picture nobody could tell apart. The threshold is far
-     * below what a slider can express.
+     * **Only a change of *id* rebuilds anything.** An intensity change writes a
+     * float onto the passes that are already built — no GL context, no thread
+     * hop, no link — because each pass uploads its strength as a uniform when it
+     * next draws (see [IntensityControlled]). That distinction is the whole
+     * design: dragging the intensity slider moves it once per frame, and
+     * rebuilding there would re-link a GL program on every frame of the drag,
+     * each one blocking the caller on [TransitionRenderer.callOnGlThread]. It is
+     * also what lets a later stage vary intensity per frame at all.
+     *
+     * An id change still hops to the GL thread and still blocks, which is
+     * accepted: it happens on a cut between differently-effected clips or a tap
+     * on a tile, not per frame.
+     *
+     * Intensity is compared with a tolerance because it arrives as a Double that
+     * has been through JSON, so an exact comparison would churn the uniform on a
+     * value that round-tripped a hair differently. The cost of that churn is now
+     * negligible — the guard is kept because a write nobody asked for is still a
+     * write, not because it is expensive.
      */
     fun apply(effectId: String?, intensity: Double) {
         val id = effectId?.takeIf { it.isNotBlank() && it != "none" }
-        if (id == appliedId &&
-            (id == null || abs(intensity - appliedIntensity) <= INTENSITY_EPSILON)
-        ) {
+
+        if (id == appliedId) {
+            // Same effect. Nothing to build; at most a number to update, and
+            // only if it actually moved.
+            if (id == null || abs(intensity - appliedIntensity) <= INTENSITY_EPSILON) return
+            appliedIntensity = intensity
+            EffectShaders.applyIntensity(passes, intensity)
             return
         }
 
@@ -83,8 +115,12 @@ internal class ClipEffectController(private val renderer: TransitionRenderer) {
         // programs alive at a time.
         val built = renderer.callOnGlThread {
             EffectShaders.releasePasses(previous)
-            EffectShaders.passesFor(id, intensity)
+            EffectShaders.passesFor(id)
         }
+        // Before `setEffectPasses`, so the first frame drawn with these passes
+        // already carries the right strength: handing them over at their default
+        // and setting it after would show one frame at full intensity.
+        EffectShaders.applyIntensity(built, intensity)
         passes = built
         renderer.setEffectPasses(built)
     }

@@ -4,7 +4,7 @@ import android.opengl.GLES20
 import com.techfamz.slimshotai.nativepreview.gl.EffectPass
 import com.techfamz.slimshotai.nativepreview.gl.RenderTarget
 
-/**
+/*
  * A soft bloom: the frame's highlights, blurred, laid back over the frame.
  *
  * The catalog calls it "Dreamy" and it is the most expensive entry there —
@@ -38,6 +38,55 @@ import com.techfamz.slimshotai.nativepreview.gl.RenderTarget
  *
  * GL thread only — every one of these links or draws.
  */
+
+/**
+ * One half of glow's blur, with the intensity mapped onto its radius.
+ *
+ * The bloom's radius scales with the intensity because that is what a user
+ * dragging the slider means by "more dreamy" — a brighter bloom at a fixed
+ * radius just looks overexposed. So glow's intensity has to reach [BlurPass],
+ * and it has to reach it **without a rebuild**: the radius is a `@Volatile var`
+ * on the pass precisely so it can be retuned between frames, and baking it in
+ * at construction would put a `glLinkProgram` on every frame of a slider drag.
+ *
+ * A thin wrapper rather than making [BlurPass] itself [IntensityControlled]:
+ * the standalone `blur` effect maps intensity onto a radius differently — it is
+ * the whole effect there, not a bloom's supporting act — and one class cannot
+ * hold two mappings without a mode flag deciding which is in force.
+ *
+ * Delegates everything else, so the chain sees an ordinary pass.
+ */
+internal class GlowBlurPass(
+    private val blur: BlurPass,
+) : EffectPass by blur, IntensityControlled {
+
+    override fun applyIntensity(intensity: Float) {
+        val clamped = intensity.coerceIn(0f, 1f)
+        blur.radiusFraction = (
+            MIN_RADIUS_FRACTION + (MAX_RADIUS_FRACTION - MIN_RADIUS_FRACTION) * clamped
+            ).toDouble()
+    }
+
+    /** Deletes the shared program. Idempotent — both halves hold the same one. */
+    fun release() {
+        blur.release()
+    }
+
+    internal companion object {
+        /** Bloom radius at intensity 0, as a fraction of the frame's short side. */
+        const val MIN_RADIUS_FRACTION = 0.003f
+
+        /**
+         * Bloom radius at intensity 1.
+         *
+         * Kept inside [BlurPass.MAX_RADIUS_FRACTION], which is where the 16-tap
+         * kernel starts to band as the stride widens. A bloom wider than this
+         * wants a downsampled pass, not a coarser one.
+         */
+        const val MAX_RADIUS_FRACTION = 0.012f
+    }
+}
+
 /**
  * Where the bright pass leaves the scene texture for the composite pass.
  *
@@ -134,15 +183,23 @@ void main() {
 internal class GlowCompositePass(
     private val program: FullFrameProgram,
     private val source: GlowSource,
-) : EffectPass {
+) : EffectPass, IntensityControlled {
 
     override val id: String = "glow.composite"
 
+    /**
+     * Uploaded as a uniform on every draw, never baked in — see
+     * [IntensityControlled] for why that distinction is the whole point.
+     */
     @Volatile
     var intensity: Float = 1f
         set(value) {
             field = value.coerceIn(0f, 1f)
         }
+
+    override fun applyIntensity(intensity: Float) {
+        this.intensity = intensity
+    }
 
     private val uBloom = program.location("uBloom")
     private val uScene = program.location("uScene")

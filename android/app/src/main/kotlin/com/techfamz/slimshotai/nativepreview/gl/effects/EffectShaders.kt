@@ -26,7 +26,13 @@ import com.techfamz.slimshotai.nativepreview.gl.EffectPass
  * thread with the context current, and never in the render path: a
  * `glLinkProgram` mid-frame is a visible stall, which is the whole reason
  * `TransitionShaders.warmUpShaders` exists. The engines call it only when a
- * clip's `(id, intensity)` actually changes, and release the previous list.
+ * clip's effect **id** changes, and release the previous list.
+ *
+ * **An intensity change is not a rebuild.** It goes through [applyIntensity],
+ * which writes a float onto passes that already exist — no context, no thread
+ * hop. Building a pass per intensity would put a link on every frame of a
+ * slider drag, and would make the per-frame intensity that envelopes and
+ * keyframes need impossible.
  *
  * The returned passes are the caller's to own: hold them, hand them to
  * `TransitionRenderer.setEffectPasses`, and [releasePasses] them when they are
@@ -38,38 +44,34 @@ internal object EffectShaders {
     private const val TAG = "SlimshotGl"
 
     /**
-     * The passes drawing [id] at [intensity], or an empty list for no effect.
+     * The passes drawing [id], or an empty list for no effect.
      *
-     * [intensity] is the catalog's normalised 0..1 strength — **never pixels**.
-     * Each shader converts it into whatever units it needs against the viewport
-     * it is actually drawing, so one stored value looks the same in the capped
-     * preview canvas and in a 1080p export. A pixel parameter here would be the
-     * preview/export mismatch this codebase has already hit twice.
+     * **Takes no intensity, deliberately.** A pass is built once per effect
+     * *id* and carries its strength as a uniform it uploads on every draw, so
+     * retuning it is [applyIntensity] — a float write on whatever thread is
+     * driving — and never a rebuild. Baking the strength in here would mean
+     * every frame of a slider drag re-linked a GL program through a blocking
+     * thread hop, which is the cost `TransitionShaders.warmUpShaders` exists to
+     * keep out of the render path. `BlurPass` established the pattern with its
+     * settable `radiusFraction`; see [IntensityControlled].
+     *
+     * Callers set the initial strength with [applyIntensity] immediately after
+     * building, which is the same call a later change makes.
      *
      * GL thread only.
      */
-    fun passesFor(id: String?, intensity: Double): List<EffectPass> {
+    fun passesFor(id: String?): List<EffectPass> {
         // Null, blank and the cleared-selection sentinels, all meaning the same
         // thing to a renderer: draw the clip unaffected. `videoEffectById` in
         // the Dart catalog takes exactly these three.
         if (id.isNullOrBlank() || id == "none") return emptyList()
 
-        val strength = intensity.coerceIn(0.0, 1.0).toFloat()
-
         return when (id) {
-            "vignette" -> listOf(
-                VignettePass(FullFrameProgram(VignettePass.FRAGMENT)).apply {
-                    this.intensity = strength
-                },
-            )
+            "vignette" -> listOf(VignettePass(FullFrameProgram(VignettePass.FRAGMENT)))
 
-            "fisheye" -> listOf(
-                FisheyePass(FullFrameProgram(FisheyePass.FRAGMENT)).apply {
-                    this.intensity = strength
-                },
-            )
+            "fisheye" -> listOf(FisheyePass(FullFrameProgram(FisheyePass.FRAGMENT)))
 
-            "glow" -> glowPasses(strength)
+            "glow" -> glowPasses()
 
             else -> {
                 // Two cases land here and both are correct as no effect: an id
@@ -86,6 +88,27 @@ internal object EffectShaders {
     }
 
     /**
+     * Sets the strength of every pass in [passes] that has one.
+     *
+     * **No GL context, no thread hop, no link** — each pass holds its strength
+     * in a `@Volatile` field and uploads it as a uniform when it next draws. So
+     * this is safe to call from whichever thread drives the timeline (playback's
+     * main-thread ticker, or the export loop), and cheap enough that varying
+     * intensity per frame — which is what Stage 3's envelopes and Stage 4's
+     * keyframes do by design — costs nothing but the write.
+     *
+     * A pass with no strength to set is skipped silently: glow's bright pass has
+     * one, its blur halves map it onto a radius, and a future pass may have
+     * nothing to vary at all. None of that is the caller's business.
+     */
+    fun applyIntensity(passes: List<EffectPass>, intensity: Double) {
+        val strength = intensity.coerceIn(0.0, 1.0).toFloat()
+        for (pass in passes) {
+            (pass as? IntensityControlled)?.applyIntensity(strength)
+        }
+    }
+
+    /**
      * Bright-pass, separable blur, composite.
      *
      * **Four passes for a `passCount: 3` catalog entry.** The catalog counts the
@@ -96,27 +119,22 @@ internal object EffectShaders {
      * The blur is [BlurPass], not a second blur shader: one gaussian, written
      * once, used by both the `blur` effect and this one. A copy would drift, and
      * the two would then blur differently for no reason a reader could find.
-     *
-     * The bloom's radius scales with the intensity because that is what a user
-     * dragging the slider means by "more dreamy" — a brighter bloom at a fixed
-     * radius just looks overexposed. The floor keeps a low intensity as a soft
-     * halo rather than a sharp copy of the highlights laid over the frame.
+     * Each half is wrapped in a [GlowBlurPass] so the intensity reaches its
+     * radius without a rebuild.
      */
-    private fun glowPasses(intensity: Float): List<EffectPass> {
+    private fun glowPasses(): List<EffectPass> {
         val source = GlowSource()
 
         val bright = GlowBrightPass(FullFrameProgram(GlowBrightPass.FRAGMENT), source)
-        bright.intensity = intensity
-
-        val radius = GLOW_MIN_RADIUS_FRACTION +
-            (GLOW_MAX_RADIUS_FRACTION - GLOW_MIN_RADIUS_FRACTION) * intensity
-        val blur = BlurPass.chain(radius.toDouble())
-
+        // The radius is set by the caller's `applyIntensity`; this is only the
+        // pair's starting value, and the two halves must share it — a radius
+        // that differed between the axes would be a directional smear, not a
+        // gaussian.
+        val blur = BlurPass.chain().map { GlowBlurPass(it) }
         val composite = GlowCompositePass(
             FullFrameProgram(GlowCompositePass.FRAGMENT),
             source,
         )
-        composite.intensity = intensity
 
         return listOf(bright) + blur + composite
     }
@@ -136,22 +154,11 @@ internal object EffectShaders {
         for (pass in passes) {
             when (pass) {
                 is SingleFramePass -> pass.release()
+                is GlowBlurPass -> pass.release()
                 is BlurPass -> pass.release()
                 is GlowCompositePass -> pass.release()
                 else -> Log.w(TAG, "Effect pass '${pass.id}' has no release path")
             }
         }
     }
-
-    /** Bloom radius at intensity 0, as a fraction of the frame's short side. */
-    private const val GLOW_MIN_RADIUS_FRACTION = 0.003f
-
-    /**
-     * Bloom radius at intensity 1.
-     *
-     * Kept inside [BlurPass.MAX_RADIUS_FRACTION], which is where the 16-tap
-     * kernel starts to band as the stride widens. A bloom wider than this wants
-     * a downsampled pass, not a coarser one.
-     */
-    private const val GLOW_MAX_RADIUS_FRACTION = 0.012f
 }

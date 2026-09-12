@@ -22,20 +22,26 @@ import com.techfamz.slimshotai.nativepreview.gl.RenderTarget
 internal open class SingleFramePass(
     override val id: String,
     protected val program: FullFrameProgram,
-) : EffectPass {
+) : EffectPass, IntensityControlled {
 
     /**
-     * The effect's strength, normalised 0..1.
+     * The effect's strength, normalised 0..1, uploaded as a uniform on every
+     * draw rather than compiled into the shader.
      *
-     * `@Volatile` because the engines write it from the main thread while the
-     * GL thread reads it mid-frame, like every other piece of per-frame
-     * renderer state.
+     * `@Volatile` because the timeline thread writes it while the GL thread
+     * reads it mid-frame, like every other piece of per-frame renderer state.
+     * A slider drag is then a float write — no link, no thread hop, nothing to
+     * block on.
      */
     @Volatile
     var intensity: Float = 1f
         set(value) {
             field = value.coerceIn(0f, 1f)
         }
+
+    override fun applyIntensity(intensity: Float) {
+        this.intensity = intensity
+    }
 
     override fun render(
         sourceTextureId: Int,
