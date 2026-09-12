@@ -46,6 +46,16 @@ enum EffectCategory {
   motion,
 }
 
+/// What a clip's effect intensity reads as when nothing has set one.
+///
+/// A clip with no effect still has to store *some* intensity, and this is that
+/// resting value — including for a draft written before effects existed, which
+/// has no field to read. It is deliberately the neutral full strength rather
+/// than zero: the moment an effect is applied without an explicit intensity,
+/// the user must see it. A zero default would apply an effect that draws
+/// nothing and read as the feature being broken.
+const double defaultEffectIntensity = 1.0;
+
 /// One effect the user can apply to a clip.
 class VideoEffect {
   const VideoEffect({

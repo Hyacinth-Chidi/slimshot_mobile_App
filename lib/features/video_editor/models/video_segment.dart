@@ -1,3 +1,4 @@
+import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 
 class VideoSegment {
@@ -43,6 +44,28 @@ class VideoSegment {
   final String? filterId;
   final double filterIntensity;
 
+  /// Visual effect on this clip alone, as a [VideoEffect] id.
+  ///
+  /// Null means the clip is unaffected. Distinct from [filterId]: a filter is a
+  /// colour matrix applied to the texels as the clip is sampled, while an
+  /// effect is a shader pass (or a chain of them) over the whole clip — grain,
+  /// glitch, blur. The two compose, so a clip may carry both.
+  ///
+  /// **The stored string is kept verbatim even when this build does not know
+  /// it.** An id from a newer build must survive a round trip through an older
+  /// one's drafts rather than being silently erased on save; it simply resolves
+  /// to null and draws nothing meanwhile. Resolve it through [effect], never by
+  /// assuming the catalog contains it.
+  final String? effectId;
+
+  /// How strongly [effectId] is applied, **normalised 0..1**.
+  ///
+  /// Never a pixel radius: the same clip is drawn into a ~400px preview and a
+  /// 1080p export, and a pixel parameter would make those two different
+  /// pictures. The shader scales this into whatever units it needs against the
+  /// frame it is actually drawing.
+  final double effectIntensity;
+
   VideoSegment({
     required this.id,
     this.assetId = '',
@@ -56,6 +79,8 @@ class VideoSegment {
     this.isReversed = false,
     this.filterId,
     this.filterIntensity = 1.0,
+    this.effectId,
+    this.effectIntensity = defaultEffectIntensity,
     this.canvasScale = 1.0,
     this.canvasOffsetX = 0.0,
     this.canvasOffsetY = 0.0,
@@ -92,6 +117,9 @@ class VideoSegment {
     String? filterId,
     bool clearFilterId = false,
     double? filterIntensity,
+    String? effectId,
+    bool clearEffectId = false,
+    double? effectIntensity,
     double? canvasScale,
     double? canvasOffsetX,
     double? canvasOffsetY,
@@ -109,6 +137,8 @@ class VideoSegment {
       isReversed: isReversed ?? this.isReversed,
       filterId: clearFilterId ? null : (filterId ?? this.filterId),
       filterIntensity: filterIntensity ?? this.filterIntensity,
+      effectId: clearEffectId ? null : (effectId ?? this.effectId),
+      effectIntensity: effectIntensity ?? this.effectIntensity,
       canvasScale: canvasScale ?? this.canvasScale,
       canvasOffsetX: canvasOffsetX ?? this.canvasOffsetX,
       canvasOffsetY: canvasOffsetY ?? this.canvasOffsetY,
@@ -121,6 +151,14 @@ class VideoSegment {
     if (preset == null) return null;
     return preset.getInterpolatedMatrix(filterIntensity);
   }
+
+  /// This clip's effect resolved against the catalog, or null when it has none
+  /// — including when it stores an id this build does not know.
+  ///
+  /// Every consumer goes through this rather than reading [effectId] directly,
+  /// which is what makes an unrecognised id degrade to an unaffected clip
+  /// instead of reaching a renderer with no shader for it.
+  VideoEffect? get effect => videoEffectById(effectId);
 
   Map<String, dynamic> toJson() {
     return {
@@ -136,6 +174,8 @@ class VideoSegment {
       'isReversed': isReversed,
       'filterId': filterId,
       'filterIntensity': filterIntensity,
+      'effectId': effectId,
+      'effectIntensity': effectIntensity,
       'canvasScale': canvasScale,
       'canvasOffsetX': canvasOffsetX,
       'canvasOffsetY': canvasOffsetY,
@@ -159,6 +199,12 @@ class VideoSegment {
       // Absent in drafts saved before clips could carry their own filter.
       filterId: json['filterId'] as String?,
       filterIntensity: (json['filterIntensity'] as num?)?.toDouble() ?? 1.0,
+      // Absent in every draft written before clips could carry an effect, so
+      // both reads fall back rather than throwing — a saved project must open
+      // in a build that added fields under it.
+      effectId: json['effectId'] as String?,
+      effectIntensity: (json['effectIntensity'] as num?)?.toDouble() ??
+          defaultEffectIntensity,
       canvasScale: (json['canvasScale'] as num?)?.toDouble() ?? 1.0,
       canvasOffsetX: (json['canvasOffsetX'] as num?)?.toDouble() ?? 0.0,
       canvasOffsetY: (json['canvasOffsetY'] as num?)?.toDouble() ?? 0.0,

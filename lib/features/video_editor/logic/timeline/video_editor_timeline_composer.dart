@@ -347,6 +347,8 @@ class VideoEditorTimelineComposer {
       transitionDuration: next.transitionDuration,
       overrideVideoPath: previous.overrideVideoPath,
       colorMatrix: previous.colorMatrix,
+      effectId: previous.effectId,
+      effectIntensity: previous.effectIntensity,
       canvasScale: previous.canvasScale,
       canvasOffsetX: previous.canvasOffsetX,
       canvasOffsetY: previous.canvasOffsetY,
@@ -370,6 +372,17 @@ class VideoEditorTimelineComposer {
     // Two clips graded differently must stay separate media items, or the
     // merged one would take the first clip's look for both.
     if (!_sameMatrix(previous.colorMatrix, next.colorMatrix)) return false;
+
+    // Same for an effect, for the same reason: the merged item is drawn
+    // through one shader chain at one strength, so it would run the first
+    // clip's effect over both. Intensity counts as much as the id — the same
+    // effect at two strengths is two looks.
+    const intensityEpsilon = 0.001;
+    if (previous.effectId != next.effectId ||
+        (previous.effectIntensity - next.effectIntensity).abs() >
+            intensityEpsilon) {
+      return false;
+    }
 
     // Same for the canvas transform: a merged item can only carry one.
     const transformEpsilon = 0.001;
@@ -441,7 +454,12 @@ class VideoEditorTimelineComposer {
       overrideVideoPath: segment.overrideVideoPath,
       // Graded before the shader blends this clip with its neighbour, so two
       // clips with different filters cross-fade between their looks.
-      colorMatrix: segment.filterMatrix,
+      // Resolved through the catalog, not copied raw: an id this build does
+      // not know (a newer draft, an unmigrated rename) must reach the renderer
+      // as "no effect" rather than as a name it has no shader for. The draft
+      // keeps the original string either way.
+      effectId: segment.effect?.id,
+      effectIntensity: segment.effectIntensity,
       canvasScale: segment.canvasScale,
       canvasOffsetX: segment.canvasOffsetX,
       canvasOffsetY: segment.canvasOffsetY,

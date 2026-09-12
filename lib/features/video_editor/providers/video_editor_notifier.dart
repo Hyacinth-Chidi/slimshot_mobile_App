@@ -702,6 +702,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       // placement; a split is a cut, not a reason to lose either.
       filterId: segment.filterId,
       filterIntensity: segment.filterIntensity,
+      effectId: segment.effectId,
+      effectIntensity: segment.effectIntensity,
       canvasScale: segment.canvasScale,
       canvasOffsetX: segment.canvasOffsetX,
       canvasOffsetY: segment.canvasOffsetY,

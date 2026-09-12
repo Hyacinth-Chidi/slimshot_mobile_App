@@ -213,6 +213,8 @@ class EditorTimelineVideoClip {
     this.transitionDuration,
     this.overrideVideoPath,
     this.colorMatrix,
+    this.effectId,
+    this.effectIntensity = 1.0,
     this.canvasScale = 1.0,
     this.canvasOffsetX = 0.0,
     this.canvasOffsetY = 0.0,
@@ -266,6 +268,21 @@ class EditorTimelineVideoClip {
   /// finished frame.
   final List<double>? colorMatrix;
 
+  /// The shader effect this clip is drawn through, as a catalog id, or null
+  /// when the clip is unaffected.
+  ///
+  /// Already resolved against the catalog by the composer: an id this build
+  /// does not know arrives here as null rather than as a string the renderer
+  /// has no shader for. A clip's effect is applied per lane, like
+  /// [colorMatrix], so two clips carrying different effects cross-fade between
+  /// them rather than the blend being drawn through one of the two.
+  final String? effectId;
+
+  /// How strongly [effectId] is applied, **normalised 0..1, never pixels** —
+  /// preview and export draw the same clip at different resolutions and a
+  /// pixel parameter would give them different pictures.
+  final double effectIntensity;
+
   /// The user's pinch scale on top of the contain fit (1.0 = plain fit), and
   /// where the clip's centre is dragged to, in canvas fractions.
   final double canvasScale;
@@ -310,6 +327,8 @@ class EditorTimelineVideoClip {
       'transitionDuration': transitionDuration,
       'overrideVideoPath': overrideVideoPath,
       'colorMatrix': colorMatrix,
+      'effectId': effectId,
+      'effectIntensity': effectIntensity,
       'canvasScale': canvasScale,
       'canvasOffsetX': canvasOffsetX,
       'canvasOffsetY': canvasOffsetY,
