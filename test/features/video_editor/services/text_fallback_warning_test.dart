@@ -54,9 +54,11 @@ void main() {
   });
 
   test('an out-only and a loop-only animation each warn', () {
+    // Per-glyph on both ends: a whole-box out-animation loses nothing on the
+    // flat path, so it would correctly stay silent and prove nothing here.
     expect(
       textFallbackWarning(
-        textWith(outAnimation: 'fade_out'),
+        textWith(outAnimation: 'untyping'),
         hasBackground: true,
       ),
       isNotNull,
@@ -104,10 +106,54 @@ void main() {
     );
   });
 
-  test('a drawable animation alongside an undrawable one still warns', () {
+  // Reported from a device: a text with a background box warned, and the
+  // export was identical to the preview. It was — the animation was a fade,
+  // which is `isPerGlyph: false`, so the flat path animates the whole quad and
+  // produces the same picture the glyph path would. Only a per-glyph animation
+  // genuinely degrades into a whole-block effect.
+  test('a whole-box animation loses nothing on the flat path', () {
+    for (final id in ['fade_in', 'zoom_in', 'slide_up']) {
+      expect(
+        textFallbackWarning(textWith(inAnimation: id), hasBackground: true),
+        isNull,
+        reason: '$id is a whole-box animation and the flat path draws it',
+      );
+    }
     expect(
       textFallbackWarning(
-        textWith(inAnimation: 'colour_fill', outAnimation: 'fade_out'),
+        textWith(outAnimation: 'fade_out'),
+        hasBackground: true,
+      ),
+      isNull,
+    );
+  });
+
+  test('a per-glyph animation is what actually degrades', () {
+    for (final id in ['typing', 'wave_in', 'bounce_in']) {
+      expect(
+        textFallbackWarning(textWith(inAnimation: id), hasBackground: true),
+        isNotNull,
+        reason: '$id animates character by character and the flat path cannot',
+      );
+    }
+  });
+
+  test('a per-glyph loop beside a whole-box in-animation still warns', () {
+    expect(
+      textFallbackWarning(
+        textWith(inAnimation: 'fade_in', loopAnimation: 'wave_loop'),
+        hasBackground: true,
+      ),
+      isNotNull,
+    );
+  });
+
+  test('a drawable animation alongside an undrawable one still warns', () {
+    // `colour_fill` draws nothing and `untyping` is per-glyph: one real
+    // degradation is enough, whatever it is paired with.
+    expect(
+      textFallbackWarning(
+        textWith(inAnimation: 'colour_fill', outAnimation: 'untyping'),
         hasBackground: true,
       ),
       isNotNull,

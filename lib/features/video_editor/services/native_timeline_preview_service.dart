@@ -543,6 +543,14 @@ class NativeTimelinePreviewService {
 /// user never saw. [TextAnimation.isSelectable] is the one flag that says so,
 /// which is also what keeps them out of the animation tab.
 ///
+/// Neither does a **whole-box** animation, and this is the one that actually
+/// fired in testing. A fade or a slide is `isPerGlyph: false`: the flat path
+/// animates the whole quad and produces the *same picture* the glyph path
+/// would. The user saw the warning, compared canvas to file, found them
+/// identical, and correctly concluded the message was wrong. Only a per-glyph
+/// animation — typing, wave, bounce — genuinely degrades into a whole-block
+/// effect on the flat path, so only that is worth interrupting someone over.
+///
 /// [hasBackground] separates the two fallback causes so the message names the
 /// one the user can actually act on — removing a background box is a choice they
 /// can make; an atlas overflowing the texture limit is not.
@@ -552,7 +560,7 @@ String? textFallbackWarning(
 }) {
   bool draws(String? id, TextAnimationCategory slot) {
     final anim = resolveTextAnimation(id, slot);
-    return anim != null && anim.isSelectable;
+    return anim != null && anim.isSelectable && anim.isPerGlyph;
   }
 
   final animates = draws(overlay.inAnimation, TextAnimationCategory.inAnim) ||
