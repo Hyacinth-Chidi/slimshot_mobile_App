@@ -72,6 +72,25 @@ internal data class NativeTimelineOverlay(
     val animationOut: String?,
     val animationInSeconds: Double,
     val animationOutSeconds: Double,
+    /**
+     * Text overlays only: an animation that repeats for the whole span.
+     *
+     * There is no image-overlay equivalent — [stateAt] never reads it — so a
+     * null here is not a missing feature, it is the ordinary case.
+     */
+    val animationLoop: String?,
+    /**
+     * Per-slot speed multipliers for the per-glyph text animations. Higher is
+     * faster: the catalog's natural duration is **divided** by these.
+     *
+     * Defaulted to 1.0 so an overlay from a composer that does not send them
+     * animates at its natural speed rather than at zero (which would divide to
+     * infinity) — see [TextAnimationCurves.resolveDurations], which guards the
+     * same way for the same reason.
+     */
+    val speedIn: Double,
+    val speedOut: Double,
+    val speedLoop: Double,
     /** Video overlays only. */
     val sourceStart: Double,
     val sourceEnd: Double,
@@ -115,6 +134,21 @@ internal data class NativeTimelineOverlay(
         /** Canvas-fraction displacement of the centre. */
         val offsetX: Double,
         val offsetY: Double,
+    )
+
+    /**
+     * The overlay with **no animation applied** — its authored opacity, scale
+     * and position.
+     *
+     * A text overlay whose glyphs carry their own animated state uses this
+     * instead of [stateAt]: both read the same `animationIn`/`animationOut`
+     * ids, so applying the box-level curve as well would animate the text twice.
+     */
+    fun restingState(): FrameState = FrameState(
+        opacity = opacity.coerceIn(0.0, 1.0),
+        scale = scale.coerceAtLeast(0.0),
+        offsetX = 0.0,
+        offsetY = 0.0,
     )
 
     /**
@@ -224,6 +258,13 @@ internal data class NativeTimelineOverlay(
                 animationOut = map["animationOut"] as? String,
                 animationInSeconds = map.number("animationInSeconds") ?: 0.5,
                 animationOutSeconds = map.number("animationOutSeconds") ?: 0.5,
+                // Absent until the composer sends them; the defaults are
+                // deliberately the no-op ones, so a timeline written by today's
+                // Dart animates exactly as it does now.
+                animationLoop = map["animationLoop"] as? String,
+                speedIn = map.positiveRate("speedIn"),
+                speedOut = map.positiveRate("speedOut"),
+                speedLoop = map.positiveRate("speedLoop"),
                 sourceStart = map.number("sourceStart") ?: 0.0,
                 sourceEnd = map.number("sourceEnd") ?: 0.0,
                 volume = (map.number("volume") ?: 1.0).coerceIn(0.0, 1.0),
@@ -239,6 +280,18 @@ internal data class NativeTimelineOverlay(
 
         private fun Map<*, *>.number(key: String): Double? {
             return (this[key] as? Number)?.toDouble()
+        }
+
+        /**
+         * A speed multiplier, never zero or negative.
+         *
+         * A speed divides a duration, so a zero from a half-initialised model
+         * would make a window infinitely long — the animation would freeze on
+         * its first frame for the whole overlay rather than fail visibly.
+         */
+        private fun Map<*, *>.positiveRate(key: String): Double {
+            val value = number(key) ?: return 1.0
+            return if (value > 0.0) value else 1.0
         }
     }
 }

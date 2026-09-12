@@ -6,6 +6,9 @@ import com.techfamz.slimshotai.nativepreview.LaneFit
 import com.techfamz.slimshotai.nativepreview.NativeTimelineClip
 import com.techfamz.slimshotai.nativepreview.NativeTimelineOverlay
 import com.techfamz.slimshotai.nativepreview.NativeTimelineTransitionIntent
+import com.techfamz.slimshotai.nativepreview.TextAnimationCategory
+import com.techfamz.slimshotai.nativepreview.TextAnimationCurves
+import com.techfamz.slimshotai.nativepreview.TextGlyphState
 import com.techfamz.slimshotai.nativepreview.gl.OverlayRenderer
 import com.techfamz.slimshotai.nativepreview.gl.TransitionDraw
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
@@ -829,7 +832,7 @@ internal class VideoExportEngine(
                 val resolved = if (overlay.isVideo) {
                     listOfNotNull(videoDraw(overlay, t, state))
                 } else if (overlay.isText) {
-                    textDraws(overlay, state)
+                    textDraws(overlay, t, state)
                 } else {
                     listOfNotNull(imageDraw(overlay, state))
                 }
@@ -881,6 +884,7 @@ internal class VideoExportEngine(
          */
         private fun textDraws(
             overlay: NativeTimelineOverlay,
+            t: Double,
             state: NativeTimelineOverlay.FrameState,
         ): List<OverlayRenderer.Draw> {
             val cached = renderer.overlays.cachedImageTexture(overlay.path)
@@ -899,22 +903,36 @@ internal class VideoExportEngine(
                 uploaded
             }
 
+            val glyphCount = overlay.glyphs.size
+            val timing = TextAnimationTiming.of(overlay, glyphCount)
+
+            // **Exactly one pass may animate the text.** `stateAt` is the image
+            // overlay's box-level animation and it switches on the *same*
+            // `animationIn`/`animationOut` strings the per-glyph catalog reads,
+            // so once a glyph resolves a curve, leaving the box-level state in
+            // would fade the text twice (opacity squared) and slide it twice.
+            // When the glyph pass owns the animation the box rests; when it owns
+            // nothing — no animation, or ids that resolve to no slot — the
+            // box-level state is used untouched, which is what keeps an
+            // unanimated text overlay producing exactly the draws it does today.
+            val boxState = if (timing.isActive) overlay.restingState() else state
+
             val base = draw(
                 overlay,
-                state,
+                boxState,
                 textureId,
                 isExternal = false,
                 contentAspect = 1.0,
                 texMatrix = null,
             )
 
-            return overlay.glyphs.mapNotNull { glyph ->
+            return overlay.glyphs.mapIndexedNotNull { index, glyph ->
                 val srcW = glyph.srcRight - glyph.srcLeft
                 val srcH = glyph.srcBottom - glyph.srcTop
                 // A degenerate sub-rect has no scale to solve for; skipping the
                 // glyph loses one letter, dividing by it would place every quad
                 // at infinity and lose the whole text.
-                if (srcW <= 0.0 || srcH <= 0.0) return@mapNotNull null
+                if (srcW <= 0.0 || srcH <= 0.0) return@mapIndexedNotNull null
 
                 // The cell's `src` sub-rect must cover the box rect, so the full
                 // cell is that much larger, and its origin sits back by the
@@ -924,7 +942,26 @@ internal class VideoExportEngine(
                 val cellLeft = glyph.boxLeft - glyph.srcLeft * cellWidth
                 val cellTop = glyph.boxTop - glyph.srcTop * cellHeight
 
+                val glyphState = timing.stateAt(t, index, glyphCount)
+                // A glyph animated to nothing is dropped rather than drawn at
+                // zero: a zero-area quad is wasted state changes, and a negative
+                // scale would turn the letter inside out.
+                if (glyphState.opacity <= 0.0 || glyphState.scale <= 0.0) {
+                    return@mapIndexedNotNull null
+                }
+
+                // The catalog measures displacement in **glyph heights**, on
+                // both axes — that is what keeps a diagonal slide diagonal and
+                // makes the travel scale with the type size rather than with the
+                // box. `Draw` wants box-height fractions, so the conversion is
+                // the glyph's own height as a fraction of the box, applied to x
+                // and y alike. Using the glyph's *width* for x would make a
+                // narrow letter like "i" slide a fraction of the distance a "W"
+                // does, and the word would come apart mid-animation.
+                val glyphHeightInBox = glyph.boxBottom - glyph.boxTop
+
                 base.copy(
+                    opacity = base.opacity * glyphState.opacity,
                     srcRect = floatArrayOf(
                         glyph.atlasLeft.toFloat(),
                         glyph.atlasTop.toFloat(),
@@ -937,7 +974,14 @@ internal class VideoExportEngine(
                         (cellLeft + cellWidth).toFloat(),
                         (cellTop + cellHeight).toFloat(),
                     ),
+                    glyphScale = glyphState.scale,
+                    glyphRotation = glyphState.rotation,
+                    glyphOffsetX = glyphState.offsetX * glyphHeightInBox,
+                    glyphOffsetY = glyphState.offsetY * glyphHeightInBox,
                 )
+                // `fillProgress` is deliberately dropped: the renderer has no
+                // colour-fill pass yet, and inventing one here would make
+                // `colour_fill` export as something the preview does not play.
             }
         }
 
@@ -1025,6 +1069,180 @@ internal class VideoExportEngine(
                 renderer.overlays.releaseVideoLane(id)
             }
             videoStates.clear()
+        }
+    }
+}
+
+/**
+ * One text overlay's animation windows, resolved once per overlay per frame.
+ *
+ * Splitting this out of the per-glyph loop is not only a saving: the in/out
+ * durations are a property of the *overlay* (they depend on the glyph count, not
+ * on which glyph), and computing them per glyph would invite a future edit that
+ * made one letter's window differ from its neighbour's.
+ */
+private class TextAnimationTiming(
+    private val inId: String?,
+    private val outId: String?,
+    private val loopId: String?,
+    private val startSeconds: Double,
+    private val endSeconds: Double,
+    private val inSeconds: Double,
+    private val outSeconds: Double,
+    private val loopPeriod: Double,
+) {
+
+    /**
+     * Whether any per-glyph curve will actually run.
+     *
+     * False means the glyph pass contributes nothing, and the caller keeps the
+     * box-level animation — the path an unanimated text overlay takes today.
+     */
+    val isActive: Boolean
+        get() = (inId != null && inSeconds > 0.0) ||
+            (outId != null && outSeconds > 0.0) ||
+            (loopId != null && loopPeriod > 0.0)
+
+    /**
+     * The glyph's state at [t], composed from whichever windows are live.
+     *
+     * The three windows compose by multiplication rather than by precedence.
+     * In and out can both be live on a very short overlay — `resolveDurations`
+     * compresses them to fit but does not separate them — and a loop runs
+     * underneath both, so an entrance into a continuous wave does not stutter at
+     * the handover. Each window that is *not* live contributes its resting
+     * state, which is identity for all five channels.
+     */
+    fun stateAt(t: Double, index: Int, glyphCount: Int): TextGlyphState {
+        var opacity = 1.0
+        var offsetX = 0.0
+        var offsetY = 0.0
+        var scale = 1.0
+        var rotation = 0.0
+
+        fun apply(state: TextGlyphState) {
+            opacity *= state.opacity
+            offsetX += state.offsetX
+            offsetY += state.offsetY
+            scale *= state.scale
+            rotation += state.rotation
+        }
+
+        val elapsed = t - startSeconds
+        val remaining = endSeconds - t
+
+        if (inId != null && inSeconds > 0.0 && elapsed < inSeconds) {
+            apply(TextAnimationCurves.stateAt(inId, elapsed / inSeconds, index, glyphCount))
+        }
+        if (outId != null && outSeconds > 0.0 && remaining < outSeconds) {
+            // `p` runs 0 at the window's start to 1 at the overlay's end, which
+            // is the sense every out-curve is written in: it rests at `p == 0`.
+            apply(
+                TextAnimationCurves.stateAt(
+                    outId,
+                    (1.0 - remaining / outSeconds).coerceIn(0.0, 1.0),
+                    index,
+                    glyphCount,
+                ),
+            )
+        }
+        if (loopId != null && loopPeriod > 0.0) {
+            // The loop's phase is its own, measured from the overlay's start and
+            // wrapped by one cycle — not by the overlay's span. Every loop curve
+            // is a whole number of cycles in `p`, so `p == 0` and `p == 1` are
+            // the same instant of the motion and the wrap is invisible; deriving
+            // the phase from the span instead would put the seam at an arbitrary
+            // point of the wave and make it jump once per loop.
+            var phase = (elapsed / loopPeriod) % 1.0
+            // `%` keeps the sign of the dividend, and `elapsed` can be a hair
+            // negative on the overlay's very first frame from float rounding.
+            if (phase < 0.0) phase += 1.0
+            apply(TextAnimationCurves.stateAt(loopId, phase, index, glyphCount))
+        }
+
+        return TextGlyphState(
+            opacity = opacity.coerceIn(0.0, 1.0),
+            offsetX = offsetX,
+            offsetY = offsetY,
+            scale = scale.coerceAtLeast(0.0),
+            rotation = rotation,
+        )
+    }
+
+    companion object {
+        fun of(overlay: NativeTimelineOverlay, glyphCount: Int): TextAnimationTiming {
+            // Ids resolve **by slot**, never by name alone. A legacy `'fade'`
+            // means `fade_in` in the in-slot and `fade_out` in the out-slot, and
+            // a bare in-only id sitting in the out-slot resolves to nothing at
+            // all — the old widget layer played no out-animation for one, so
+            // inventing one here would add an exit to saved drafts that never
+            // had one.
+            val inId = overlay.animationIn
+                ?.let { TextAnimationCurves.resolveAnimationId(it, TextAnimationCategory.IN) }
+            val outId = overlay.animationOut
+                ?.let { TextAnimationCurves.resolveAnimationId(it, TextAnimationCategory.OUT) }
+            val loopId = overlay.animationLoop
+                ?.let { TextAnimationCurves.resolveAnimationId(it, TextAnimationCategory.LOOP) }
+
+            val span = overlay.endSeconds - overlay.startSeconds
+
+            // `resolveDurations` is the port of the Dart's compression rule, so
+            // the two sides squeeze a short overlay's windows identically. It
+            // takes **one** speed, as the Dart's `resolveTextAnimationDurations`
+            // does; the in-slot's rate is what is passed, and when the two
+            // differ the out window is re-derived below rather than silently
+            // taking the in-slot's rate.
+            val durations = TextAnimationCurves.resolveDurations(
+                spanSeconds = span,
+                inAnimationId = overlay.animationIn,
+                outAnimationId = overlay.animationOut,
+                glyphCount = glyphCount,
+                speed = overlay.speedIn,
+            )
+
+            var inSeconds = durations.inSeconds
+            var outSeconds = durations.outSeconds
+
+            if (overlay.speedOut != overlay.speedIn && outId != null) {
+                // Undo the in-slot rate the shared call applied to the out
+                // window and re-apply the out slot's own, then re-run the same
+                // proportional squeeze so the pair still fits the span. The
+                // squeeze is repeated rather than reached for a second time
+                // through `resolveDurations`, which cannot express two rates.
+                val natural = TextAnimationCurves.naturalDuration(outId, glyphCount)
+                outSeconds = natural / overlay.speedOut
+                // The in window may have been squeezed against the wrong out
+                // length, so start from its unsqueezed value too.
+                inSeconds = if (inId == null) {
+                    0.0
+                } else {
+                    TextAnimationCurves.naturalDuration(inId, glyphCount) / overlay.speedIn
+                }
+                val fit = if (span > 0.0) span else 0.0
+                val total = inSeconds + outSeconds
+                if (total > fit && total > 0.0) {
+                    val squeeze = fit / total
+                    inSeconds *= squeeze
+                    outSeconds *= squeeze
+                }
+            }
+
+            val loopPeriod = if (loopId == null) {
+                0.0
+            } else {
+                TextAnimationCurves.naturalDuration(loopId, glyphCount) / overlay.speedLoop
+            }
+
+            return TextAnimationTiming(
+                inId = inId,
+                outId = outId,
+                loopId = loopId,
+                startSeconds = overlay.startSeconds,
+                endSeconds = overlay.endSeconds,
+                inSeconds = inSeconds,
+                outSeconds = outSeconds,
+                loopPeriod = loopPeriod,
+            )
         }
     }
 }

@@ -66,6 +66,23 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
          * sub-rect lands exactly on the box rect.
          */
         val boxRect: FloatArray? = null,
+        /**
+         * Per-glyph scale about the **glyph's own centre**, not the overlay's.
+         *
+         * Only meaningful with [boxRect] set; the defaults below are the
+         * resting state, so an image or video overlay — which never sets
+         * [boxRect] — is untouched by all four.
+         */
+        val glyphScale: Double = 1.0,
+        /** Per-glyph rotation in radians, clockwise, about the glyph's centre. */
+        val glyphRotation: Double = 0.0,
+        /**
+         * Per-glyph displacement of the glyph's centre, in **box-height
+         * fractions** on both axes — a height metric for x as well as y, so a
+         * diagonal move stays diagonal on a non-square box.
+         */
+        val glyphOffsetX: Double = 0.0,
+        val glyphOffsetY: Double = 0.0,
     )
 
     /** A video overlay's decoder target: its own OES texture and surface. */
@@ -270,6 +287,10 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
         val halfH: Double
         var offsetX = 0.0
         var offsetY = 0.0
+        // The glyph's own rotation, applied to its corners about its own centre
+        // before the placement offset is added. Zero for every non-glyph draw.
+        var glyphCos = 1.0
+        var glyphSin = 0.0
 
         val boxRect = draw.boxRect
         if (boxRect != null) {
@@ -280,11 +301,24 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
             val top = boxRect[1].toDouble()
             val right = boxRect[2].toDouble()
             val bottom = boxRect[3].toDouble()
-            halfW = 0.5 * draw.boxWidth * (right - left) * draw.scale
-            halfH = 0.5 * draw.boxHeight * (bottom - top) * draw.scale
-            // The rect's centre relative to the box's centre.
-            offsetX = draw.boxWidth * ((left + right) / 2.0 - 0.5) * draw.scale
-            offsetY = draw.boxHeight * ((top + bottom) / 2.0 - 0.5) * draw.scale
+            // The glyph's own scale multiplies its half-extents, so it grows
+            // about its own centre — `cornersX/Y` below are measured from that
+            // centre, and `offsetX/Y` place the centre afterwards. Scaling the
+            // offset too would push the letter away from the text block instead
+            // of swelling it in place.
+            halfW = 0.5 * draw.boxWidth * (right - left) * draw.scale * draw.glyphScale
+            halfH = 0.5 * draw.boxHeight * (bottom - top) * draw.scale * draw.glyphScale
+            // The rect's centre relative to the box's centre, displaced by the
+            // glyph's own animated offset. That offset arrives in box-**height**
+            // fractions on both axes (the catalog measures in glyph heights), so
+            // both are scaled by `boxHeight`: converting x through `boxWidth`
+            // would shear a diagonal slide on a non-square box.
+            offsetX = draw.boxWidth * ((left + right) / 2.0 - 0.5) * draw.scale +
+                draw.glyphOffsetX * draw.boxHeight * draw.scale
+            offsetY = draw.boxHeight * ((top + bottom) / 2.0 - 0.5) * draw.scale +
+                draw.glyphOffsetY * draw.boxHeight * draw.scale
+            glyphCos = cos(draw.glyphRotation)
+            glyphSin = sin(draw.glyphRotation)
         } else {
             // Content fitted inside the box, preserving its own shape — the same
             // contain-fit `ConstrainedBox` + `Image` produce in the preview.
@@ -305,10 +339,38 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
 
         positions.clear()
         for (i in 0 until 4) {
+            // **Glyph transform first, in glyph space; overlay transform after,
+            // in box space.** `cornersX/Y` are half-extents about the glyph's
+            // own centre, so rotating them here spins the letter in place. Doing
+            // it after `offsetX/Y` were added would rotate the letter about the
+            // *text block's* centre instead — a bouncing letter swinging around
+            // the whole caption rather than hopping where it sits.
+            //
+            // Rotation happens in the same aspect-true space the overlay's does:
+            // x scaled up by `canvasAspect`, rotated, scaled back. Rotating in
+            // raw normalised coordinates on a non-square canvas shears.
+            //
+            // The `glyphSin == 0` shortcut is not an optimisation: it keeps the
+            // unrotated path — every image and video overlay, and any unrotated
+            // glyph — on exactly the arithmetic it had before, rather than
+            // through a multiply-by-`canvasAspect`-then-divide round trip that
+            // is only *almost* the identity in floating point.
+            val glyphX: Double
+            val glyphY: Double
+            if (glyphSin == 0.0 && glyphCos == 1.0) {
+                glyphX = cornersX[i]
+                glyphY = cornersY[i]
+            } else {
+                val gx = cornersX[i] * canvasAspect
+                val gy = cornersY[i]
+                glyphX = (gx * glyphCos - gy * glyphSin) / canvasAspect
+                glyphY = gx * glyphSin + gy * glyphCos
+            }
+
             // The glyph's own offset rotates with the box, so a rotated text
             // keeps its letters in line rather than each spinning in place.
-            val px = (cornersX[i] + offsetX) * canvasAspect
-            val py = cornersY[i] + offsetY
+            val px = (glyphX + offsetX) * canvasAspect
+            val py = glyphY + offsetY
             val rx = (px * cosR - py * sinR) / canvasAspect
             val ry = px * sinR + py * cosR
 
