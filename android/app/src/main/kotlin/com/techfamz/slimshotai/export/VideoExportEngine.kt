@@ -12,6 +12,7 @@ import com.techfamz.slimshotai.nativepreview.TextGlyphState
 import com.techfamz.slimshotai.nativepreview.gl.OverlayRenderer
 import com.techfamz.slimshotai.nativepreview.gl.TransitionDraw
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
+import com.techfamz.slimshotai.nativepreview.gl.effects.ClipEffectController
 import com.techfamz.slimshotai.thumbnails.StillImageDecoder
 import java.io.File
 
@@ -305,6 +306,13 @@ internal class VideoExportEngine(
         // clip correctly inside the frame it really produces.
         val renderAspect = encodeWidth.toDouble() / encodeHeight
 
+        // Outside the try so the finally can clear it. The renderer's EGL
+        // context **survives** an export — it is the preview's — so these
+        // programs have to be deleted and the pass list emptied explicitly, or
+        // the last exported frame's effect stays on the canvas when playback
+        // comes back.
+        val clipEffects = ClipEffectController(renderer)
+
         try {
             encoder = VideoFrameEncoder(
                 encodeWidth,
@@ -331,6 +339,34 @@ internal class VideoExportEngine(
                 val window = request.transitions.firstOrNull { it.contains(t) }
                 val outgoing = window?.let { request.clips.getOrNull(it.leftClipIndex) }
                 val incoming = window?.let { request.clips.getOrNull(it.rightClipIndex) }
+
+                // Which clip's effect is drawn on this frame.
+                //
+                // **In a transition the outgoing clip wins for the whole
+                // window.** The two overlapping clips may carry different
+                // effects, but a pass runs on the *finished composited frame* —
+                // one frame, two answers — and the outgoing clip is already the
+                // window's master everywhere else: its clock drives the blend
+                // and mastership hands over at the window's end. Effecting each
+                // lane into its own target before the blend would be more
+                // correct and doubles the offscreen targets and the pass count
+                // on exactly the hardware two live decoders already strain. It
+                // is a decision, not an oversight, and the preview engine makes
+                // the same one so the two still agree.
+                //
+                // Past the video end there is no clip at all, and no effect: the
+                // tail is bare background plus live overlays, and overlays are
+                // deliberately painted outside the effect chain.
+                // The conditions mirror the draw branches below exactly, so the
+                // effect always follows the clip actually on the frame — a
+                // half-resolved window (one of the two clips missing) draws
+                // through the plain path, and so must its effect.
+                val effectClip = when {
+                    t >= videoEndSeconds - EDGE_EPSILON -> null
+                    window != null && outgoing != null && incoming != null -> outgoing
+                    else -> clipAt(request.clips, t) ?: request.clips.firstOrNull()
+                }
+                clipEffects.apply(effectClip?.effectId, effectClip?.effectIntensity ?: 0.0)
 
                 if (t >= videoEndSeconds - EDGE_EPSILON) {
                     // The audio/overlay tail: no lane is drawn, so the frame is
@@ -400,6 +436,11 @@ internal class VideoExportEngine(
             lanes.forEach { it.release() }
             // Decoders before endExport, which frees the GL-side overlay lanes.
             overlayPass.release()
+            // Before endExport, while the GL thread is still ours to post onto:
+            // this deletes the effect programs and empties the renderer's pass
+            // list, so playback resumes on its single-pass path instead of
+            // inheriting whatever the last exported frame carried.
+            clipEffects.apply(null, 0.0)
             renderer.endExport()
             encoder?.release()
         }

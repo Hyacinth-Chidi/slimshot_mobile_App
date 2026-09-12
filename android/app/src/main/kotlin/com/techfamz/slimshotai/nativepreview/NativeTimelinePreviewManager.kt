@@ -9,7 +9,6 @@ import com.techfamz.slimshotai.export.AudioExportMixer
 import com.techfamz.slimshotai.export.ExportCapabilities
 import com.techfamz.slimshotai.export.VideoExportEngine
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
-import com.techfamz.slimshotai.nativepreview.gl.effects.BlurPass
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -47,13 +46,6 @@ class NativeTimelinePreviewManager(
     private var canvasHeight = 0
 
     private var exportEngine: VideoExportEngine? = null
-
-    /**
-     * The debug blur's passes, held only so their GL program can be deleted
-     * when the blur is replaced or the preview torn down. See [setDebugBlur] —
-     * this is scaffolding for device verification, not part of the effect model.
-     */
-    private var debugBlurPasses: List<BlurPass> = emptyList()
 
     /**
      * Renders the timeline to a file.
@@ -277,50 +269,6 @@ class NativeTimelinePreviewManager(
         sendEvent(mapOf("type" to type, "message" to message))
     }
 
-    /**
-     * **Debug only. Not a feature, and it must never reach the UI.**
-     *
-     * The effect framework — the offscreen targets, the ping-pong chain, the
-     * hook in `composite` — has no way to be exercised until something can put a
-     * pass in the list, so none of it has ever run on a device. This is that
-     * something, and nothing more: a radius in, a blur on the canvas, so the
-     * whole path can be verified before there is an effect model to verify it
-     * through.
-     *
-     * The next stage replaces it with the real per-clip effect contract, at
-     * which point this goes. Do not build anything on it.
-     *
-     * A radius of 0 clears the passes, which puts [TransitionRenderer.composite]
-     * back on its single-pass path.
-     */
-    private fun setDebugBlur(radiusFraction: Double) {
-        val activeRenderer = renderer ?: return
-
-        // The old chain's program is a GL object and can only be deleted on the
-        // GL thread with the context current — and it has to be deleted, because
-        // `setEffectPasses` only drops the renderer's reference to the list.
-        val previous = debugBlurPasses
-        debugBlurPasses = emptyList()
-
-        if (radiusFraction <= 0.0) {
-            activeRenderer.setEffectPasses(emptyList())
-            if (previous.isNotEmpty()) {
-                activeRenderer.callOnGlThread { previous.forEach { it.release() } }
-            }
-            return
-        }
-
-        // Linking happens on the GL thread for the same reason: `chain` builds a
-        // program, and a program built without a current context is a crash, not
-        // a failed link.
-        val passes = activeRenderer.callOnGlThread {
-            previous.forEach { it.release() }
-            BlurPass.chain(radiusFraction)
-        }
-        debugBlurPasses = passes
-        activeRenderer.setEffectPasses(passes)
-    }
-
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "initialize" -> {
@@ -437,14 +385,6 @@ class NativeTimelinePreviewManager(
                 result.success(null)
             }
 
-            // Debug scaffolding, not a feature — see [setDebugBlur]. Nothing in
-            // the UI calls this; it exists so the effect framework can be
-            // verified on a device before the effect model exists.
-            "setDebugBlur" -> {
-                setDebugBlur((call.argument<Number>("radiusFraction") ?: 0.0).toDouble())
-                result.success(null)
-            }
-
             "setScrubbing" -> {
                 engine?.setScrubbing(call.argument<Boolean>("enabled") ?: false)
                 result.success(null)
@@ -557,11 +497,6 @@ class NativeTimelinePreviewManager(
         pendingTimeline = null
         engine?.release()
         engine = null
-        // Dropped rather than released: `renderer.release()` tears down the EGL
-        // context, which takes the blur's program with it. Holding the objects
-        // past that would leave a re-initialised preview with passes naming a
-        // program id in a context that no longer exists.
-        debugBlurPasses = emptyList()
         renderer?.release()
         renderer = null
         textureEntry?.release()

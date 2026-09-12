@@ -41,6 +41,27 @@ internal data class NativeTimelineClip(
     /** Where the clip's centre is dragged to, offset from canvas centre. */
     val canvasOffsetX: Double,
     val canvasOffsetY: Double,
+    /**
+     * This clip's visual effect, as an id from `effect_catalog.dart`, or null
+     * for an unaffected clip — which is every project written before effects
+     * existed and every clip the user has not touched.
+     *
+     * **An id this build does not know degrades to no effect**, the same rule
+     * unknown transition names already follow: `EffectShaders.passesFor`
+     * returns an empty list, so a draft from a newer build opens and plays
+     * rather than crashing. Nothing is validated here.
+     */
+    val effectId: String?,
+    /**
+     * How strongly [effectId] is applied, **normalised 0..1, never pixels**.
+     *
+     * A pixel parameter renders differently in the capped preview canvas and in
+     * a 1080p export, so the file would not match the canvas the user approved
+     * — the mismatch this codebase has already hit with overlay geometry and
+     * with text raster density. Each shader turns this fraction into whatever
+     * units it needs, against the viewport it is actually drawing.
+     */
+    val effectIntensity: Double,
 ) {
     /** Shape of this clip's own frame, or zero when it could not be probed. */
     val sourceAspect: Double
@@ -134,6 +155,12 @@ internal data class NativeTimelineClip(
                 canvasScale = (map.number("canvasScale") ?: 1.0).coerceIn(0.05, 16.0),
                 canvasOffsetX = map.number("canvasOffsetX") ?: 0.0,
                 canvasOffsetY = map.number("canvasOffsetY") ?: 0.0,
+                effectId = (map["effectId"] as? String)?.takeIf { it.isNotBlank() },
+                // Clamped rather than trusted: a shader turning an out-of-range
+                // fraction into a sampling offset would read off the frame, and
+                // the default is the catalog's neutral full strength so a clip
+                // carrying an id but no intensity still shows its effect.
+                effectIntensity = (map.number("effectIntensity") ?: 1.0).coerceIn(0.0, 1.0),
             )
         }
 

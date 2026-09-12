@@ -510,29 +510,6 @@ class NativeTimelinePreviewService {
     );
   }
 
-  /// **Debug only. Not a feature, and it must not be called from any UI.**
-  ///
-  /// The multi-pass effect framework — the offscreen render targets, the
-  /// ping-pong chain, the hook in the renderer's `composite` — cannot run until
-  /// something puts a pass in the list, so none of it has executed on a device.
-  /// This is the one thing that can, and it exists for exactly that: set a
-  /// radius, look at the canvas, and the whole path is verified before there is
-  /// an effect model to verify it through.
-  ///
-  /// The next stage replaces this with the real per-clip effect contract and
-  /// deletes it. Do not build on it.
-  ///
-  /// [radiusFraction] is a fraction of the frame's **short side**, not pixels,
-  /// so the same value blurs identically in the ~400px preview canvas and in a
-  /// 1080p export. Zero clears the passes and puts the renderer back on its
-  /// single-pass path.
-  Future<void> setDebugBlur(double radiusFraction) {
-    return _methodChannel.invokeMethod<void>(
-      'setDebugBlur',
-      {'radiusFraction': radiusFraction},
-    );
-  }
-
   Future<void> setVolume(double volume) {
     return _methodChannel.invokeMethod<void>('setVolume', {'volume': volume});
   }

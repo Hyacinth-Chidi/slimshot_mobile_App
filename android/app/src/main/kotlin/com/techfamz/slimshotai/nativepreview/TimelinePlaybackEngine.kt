@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.image.ImageOutput
 import com.techfamz.slimshotai.nativepreview.gl.TransitionDraw
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
+import com.techfamz.slimshotai.nativepreview.gl.effects.ClipEffectController
 import java.io.File
 import kotlin.math.PI
 import kotlin.math.abs
@@ -125,6 +126,15 @@ internal class TimelinePlaybackEngine(
 
     private var clips: List<NativeTimelineClip> = emptyList()
     private var transitions: List<NativeTimelineTransitionIntent> = emptyList()
+
+    /**
+     * The renderer's effect passes, kept matched to the clip on screen.
+     *
+     * Change-guarded inside: the ticker runs at ~60Hz and building a pass list
+     * links a GL program, so an unguarded call would link and leak one per
+     * frame. See [applyClipEffect] for which clip is resolved and why.
+     */
+    private val clipEffects = ClipEffectController(renderer)
 
     /**
      * Shape of the output frame, chosen in Dart from the tallest imported clip.
@@ -814,6 +824,10 @@ internal class TimelinePlaybackEngine(
         activeWindowKey = null
         prerolledWindowKey = null
         renderer.clearTransition()
+        // `tick` returns early on an empty clip list, so an effect left set here
+        // would outlive the timeline that asked for it and be drawn over
+        // whatever loads next.
+        clipEffects.apply(null, 0.0)
         for (lane in lanes) {
             lane.player?.stop()
             lane.player?.clearMediaItems()
@@ -825,6 +839,11 @@ internal class TimelinePlaybackEngine(
     fun release() {
         released = true
         mainHandler.removeCallbacks(ticker)
+        // Dropped rather than released: the manager tears the renderer — and
+        // with it the EGL context — down immediately after this, which takes
+        // every effect program with it. Holding the objects past that would
+        // leave passes naming program ids in a context that no longer exists.
+        clipEffects.forget()
         for (lane in lanes) {
             lane.player?.setVideoSurface(null)
             lane.player?.release()
@@ -877,6 +896,7 @@ internal class TimelinePlaybackEngine(
         driveTransitions(position)
         applyLaneFits(position)
         applyLaneGrades(position)
+        applyClipEffect(position)
         applyClipSpeeds()
         applyAudio(position)
         sendPositionEventIfDue(position)
@@ -935,6 +955,46 @@ internal class TimelinePlaybackEngine(
             val clip = laneClipFor(lane, position) ?: continue
             renderer.setLaneColorMatrix(lane.index, clip.colorMatrix)
         }
+    }
+
+    /**
+     * Keeps the renderer's effect passes matched to the clip on screen.
+     *
+     * Resolved from the **timeline clock** through [laneClipFor], exactly as
+     * [applyLaneGrades] does: `lane.currentClip()` reads the player's media item
+     * index, which trails the boundary by a beat and by much more mid-seek, so
+     * every cut would draw a frame or two of the previous clip's effect. The
+     * timeline is the authority on what is on screen (dead-ends entry 19).
+     *
+     * ### During a transition, the outgoing clip's effect owns the whole window
+     *
+     * Two overlapping clips may carry different effects, but a pass runs on the
+     * **finished composited frame** — one frame, and two answers to what should
+     * be drawn on it. The outgoing clip wins, which matches the rule the rest of
+     * the window already follows: the outgoing lane is the transition master,
+     * its clock drives the blend and it hands over at the window's end.
+     *
+     * The more correct alternative — render each lane into its own target and
+     * effect them separately before the blend, the way per-clip *grades* are
+     * applied — was rejected on cost, not on taste: it doubles the offscreen
+     * targets and the pass count on exactly the hardware two live decoders
+     * already strain. This looks like an oversight otherwise, so: it is a
+     * decision, and the seam is where the effect changes, not where the picture
+     * does.
+     */
+    private fun applyClipEffect(position: Double) {
+        // Inside a window the outgoing clip is the one whose effect is drawn,
+        // whichever lane happens to be master or active.
+        val window = transitions.firstOrNull { it.contains(position) }
+        val clip = if (window != null) {
+            clips.getOrNull(window.leftClipIndex)
+        } else {
+            // Outside a window the master lane is the one on screen, so its clip
+            // is the one whose effect applies.
+            lanes.getOrNull(masterLane)?.let { laneClipFor(it, position) }
+        } ?: return
+
+        clipEffects.apply(clip.effectId, clip.effectIntensity)
     }
 
     private fun applyClipSpeeds() {
