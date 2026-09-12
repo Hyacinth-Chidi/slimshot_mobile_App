@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/text_animation_catalog.dart';
+import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 
 /// `(glyphIndex, glyphCount)` pairs the boundary tests sweep.
 ///
@@ -397,6 +398,87 @@ void main() {
       expect(textAnimationById('zoom_out')!.stateAt(0, 0, 3).scale, greaterThan(1.5));
       expect(textAnimationById('zoom_in_out')!.stateAt(1, 0, 3).scale, closeTo(0, 1e-9));
       expect(textAnimationById('zoom_out_out')!.stateAt(1, 0, 3).scale, closeTo(2, 1e-9));
+    });
+  });
+
+  group('selectableTextAnimations', () {
+    test('returns only selectable entries, in catalog order', () {
+      for (final category in TextAnimationCategory.values) {
+        final list = selectableTextAnimations(category);
+        expect(list, isNotEmpty, reason: '$category must offer something');
+        expect(
+          list.every((a) => a.category == category && a.isSelectable),
+          isTrue,
+        );
+        final catalogOrder = kTextAnimations
+            .where((a) => a.category == category && a.isSelectable)
+            .map((a) => a.id)
+            .toList();
+        expect(list.map((a) => a.id).toList(), catalogOrder);
+      }
+    });
+
+    test('excludes the animations nothing draws', () {
+      final ids = [
+        for (final category in TextAnimationCategory.values)
+          ...selectableTextAnimations(category).map((a) => a.id),
+      ];
+      expect(ids, isNot(contains('colour_fill')));
+      expect(ids, isNot(contains('colour_cycle_loop')));
+    });
+
+    test('offers the per-glyph animations this stage exists to expose', () {
+      final inIds =
+          selectableTextAnimations(TextAnimationCategory.inAnim).map((a) => a.id);
+      expect(inIds, containsAll(['typing', 'wave_in', 'bounce_in']));
+    });
+  });
+
+  group('textAnimationSlotValue', () {
+    TextOverlayModel overlay({
+      String inAnim = 'none',
+      String outAnim = 'none',
+      String loop = 'none',
+    }) =>
+        TextOverlayModel(
+          id: 't',
+          text: 'hi',
+          inAnimation: inAnim,
+          outAnimation: outAnim,
+          loopAnimation: loop,
+        );
+
+    test('reads the field belonging to each slot', () {
+      final o = overlay(inAnim: 'typing', outAnim: 'fade_out', loop: 'wave_loop');
+      expect(textAnimationSlotValue(o, TextAnimationCategory.inAnim), 'typing');
+      expect(textAnimationSlotValue(o, TextAnimationCategory.outAnim), 'fade_out');
+      expect(textAnimationSlotValue(o, TextAnimationCategory.loop), 'wave_loop');
+    });
+
+    test('a legacy id resolves to its slot variant', () {
+      // 'fade' meant fadeIn in the in slot and fadeOut in the out slot, so the
+      // tab must highlight a different tile for the same stored string.
+      expect(
+        textAnimationSlotValue(overlay(inAnim: 'fade'), TextAnimationCategory.inAnim),
+        'fade_in',
+      );
+      expect(
+        textAnimationSlotValue(overlay(outAnim: 'fade'), TextAnimationCategory.outAnim),
+        'fade_out',
+      );
+    });
+
+    test('an id that resolves to nothing reads as no selection', () {
+      // A bare in-only id in the out slot played nothing in the old layer, so
+      // no tile should look selected for it.
+      expect(
+        textAnimationSlotValue(overlay(outAnim: 'slide_up'), TextAnimationCategory.outAnim),
+        isNull,
+      );
+      expect(
+        textAnimationSlotValue(overlay(), TextAnimationCategory.inAnim),
+        isNull,
+      );
     });
   });
 }

@@ -22,6 +22,8 @@ library;
 
 import 'dart:math' as math;
 
+import '../models/text_overlay_model.dart';
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -1115,4 +1117,40 @@ TextAnimation? resolveTextAnimation(String? id, TextAnimationCategory slot) {
   final anim = _byId[legacy[id] ?? id];
   if (anim == null) return null;
   return anim.category == slot ? anim : null;
+}
+
+// ---------------------------------------------------------------------------
+// Animation tab queries
+// ---------------------------------------------------------------------------
+
+/// Every animation the tab may offer for [category], in catalog order.
+///
+/// This is [kSelectableTextAnimations] filtered by category rather than a
+/// second table: the tab has three tiles-lists (in/out/loop) but there is
+/// still exactly one place that decides what is selectable, which is what
+/// keeps `colour_fill`/`colour_cycle_loop` gated everywhere at once instead
+/// of needing to be excluded again per surface.
+List<TextAnimation> selectableTextAnimations(TextAnimationCategory category) =>
+    kSelectableTextAnimations.where((a) => a.category == category).toList(
+          growable: false,
+        );
+
+/// What the animation tab should show as selected for [slot], or null for no
+/// selection.
+///
+/// Goes through [resolveTextAnimation], not a bare field read: the stored id
+/// is only meaningful once resolved by slot, and returning the raw string
+/// would highlight the wrong tile (or none) for a legacy `'fade'`/`'scale'`
+/// pair, and would highlight a tile for a bare in-only id sitting in
+/// `outAnimation` when the project actually plays no out-animation at all.
+String? textAnimationSlotValue(
+  TextOverlayModel overlay,
+  TextAnimationCategory slot,
+) {
+  final id = switch (slot) {
+    TextAnimationCategory.inAnim => overlay.inAnimation,
+    TextAnimationCategory.outAnim => overlay.outAnimation,
+    TextAnimationCategory.loop => overlay.loopAnimation,
+  };
+  return resolveTextAnimation(id, slot)?.id;
 }
