@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/text_animation_catalog.dart';
 import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../../utils/font_utils.dart';
+import 'text_animation_panel.dart';
 
 /// Opens the text editor sheet for [overlay].
 ///
@@ -156,11 +158,16 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
   late double _borderRadius;
   late double _backgroundPadding;
 
-  int _animationTabIndex = 0;
+  // The animation slots and their speeds. Held here, like every other styling
+  // field, because `_updateOverlay` rewrites the whole overlay from these
+  // caches — a panel writing straight to the notifier would have its change
+  // undone by the next keystroke in the Keyboard tab.
   late String _inAnimation;
   late String _outAnimation;
-  late double _inAnimationDuration;
-  late double _outAnimationDuration;
+  late String _loopAnimation;
+  late double _inAnimationSpeed;
+  late double _outAnimationSpeed;
+  late double _loopSpeed;
 
   /// Which preset was last applied, cleared the moment any individual style
   /// property is changed by hand — a tweaked preset is no longer that preset.
@@ -207,35 +214,54 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     _backgroundPadding = widget.overlay.backgroundPadding;
     _inAnimation = widget.overlay.inAnimation;
     _outAnimation = widget.overlay.outAnimation;
-    _inAnimationDuration = widget.overlay.animationInDuration;
-    _outAnimationDuration = widget.overlay.animationOutDuration;
+    _loopAnimation = widget.overlay.loopAnimation;
+    _inAnimationSpeed = widget.overlay.animationInDuration;
+    _outAnimationSpeed = widget.overlay.animationOutDuration;
+    _loopSpeed = widget.overlay.loopSpeed;
 
     if (_activeTool == TextEditorTool.keyboard) {
       _focusNode.requestFocus();
     }
   }
 
+  TextOverlayModel _applyEdits(TextOverlayModel current) => current.copyWith(
+        text: _textController.text,
+        fontFamily: _fontFamily,
+        color: _textColor,
+        strokeColor: _strokeColor,
+        strokeWidth: _strokeWidth,
+        backgroundColor: _backgroundColor,
+        shadowColor: _shadowColor,
+        shadowBlurRadius: _shadowColor != Colors.transparent ? 8.0 : 0.0,
+        textAlign: _textAlign,
+        borderRadius: _borderRadius,
+        backgroundPadding: _backgroundPadding,
+        inAnimation: _inAnimation,
+        outAnimation: _outAnimation,
+        loopAnimation: _loopAnimation,
+        // Speeds, despite the field names — see `TextOverlayModel`.
+        animationInDuration: _inAnimationSpeed,
+        animationOutDuration: _outAnimationSpeed,
+        loopSpeed: _loopSpeed,
+      );
+
   void _updateOverlay() {
-    widget.ref.read(videoEditorProvider.notifier).updateTextOverlay(
-          widget.overlay.id,
-          (current) => current.copyWith(
-            text: _textController.text,
-            fontFamily: _fontFamily,
-            color: _textColor,
-            strokeColor: _strokeColor,
-            strokeWidth: _strokeWidth,
-            backgroundColor: _backgroundColor,
-            shadowColor: _shadowColor,
-            shadowBlurRadius: _shadowColor != Colors.transparent ? 8.0 : 0.0,
-            textAlign: _textAlign,
-            borderRadius: _borderRadius,
-            backgroundPadding: _backgroundPadding,
-            inAnimation: _inAnimation,
-            outAnimation: _outAnimation,
-            animationInDuration: _inAnimationDuration,
-            animationOutDuration: _outAnimationDuration,
-          ),
-        );
+    widget.ref
+        .read(videoEditorProvider.notifier)
+        .updateTextOverlay(widget.overlay.id, _applyEdits);
+  }
+
+  /// One frame of a continuous gesture — the speed slider — with **no undo
+  /// snapshot**.
+  ///
+  /// Going through [_updateOverlay] per frame pushes an entry per pixel of the
+  /// drag, so "undo" walks the slider back rather than putting it where it
+  /// was. The snapshot is taken once when the drag starts, the same split the
+  /// canvas handles use.
+  void _updateOverlayLive() {
+    widget.ref
+        .read(videoEditorProvider.notifier)
+        .updateTextOverlayLive(widget.overlay.id, _applyEdits);
   }
 
   @override
@@ -687,168 +713,77 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
 
   // ------------------------------------------------------------ animation
 
-  static const _animationsList = [
-    'none',
-    'fade',
-    'scale',
-    'slide_up',
-    'slide_down',
-    'slide_left',
-    'slide_right',
-  ];
-
+  /// The Animation tab, delegated to [TextAnimationPanel].
+  ///
+  /// The panel lists the animation catalog — **no list lives here**. The tab
+  /// used to hold a hardcoded seven names, which is how the engine came to
+  /// play thirty animations while the user could only pick from seven.
   Widget _buildAnimationPanel() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Expanded(child: _buildAnimTargetBtn('In Animation', 0)),
-              const SizedBox(width: 12),
-              Expanded(child: _buildAnimTargetBtn('Out Animation', 1)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        if ((_animationTabIndex == 0 && _inAnimation != 'none') ||
-            (_animationTabIndex == 1 && _outAnimation != 'none'))
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                const Icon(LucideIcons.gauge, color: Colors.white54, size: 16),
-                Expanded(
-                  child: SliderTheme(
-                    data: const SliderThemeData(
-                      activeTrackColor: AppColors.primaryStart,
-                      inactiveTrackColor: Colors.white12,
-                      thumbColor: Colors.white,
-                      trackHeight: 2,
-                      overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
-                    ),
-                    // Speed, not seconds. The field behind it changed meaning
-                    // when the catalog took over timing — an animation's
-                    // natural length now depends on which animation it is and
-                    // how many characters there are — so this control had to
-                    // stop presenting itself as a duration. Its full form (with
-                    // live preview tiles) is a later stage; the range and the
-                    // unit are what make it honest now.
-                    child: Slider(
-                      value: _animationTabIndex == 0
-                          ? _inAnimationDuration
-                          : _outAnimationDuration,
-                      min: kMinTextAnimationSpeed,
-                      max: kMaxTextAnimationSpeed,
-                      onChanged: (val) {
-                        setState(() {
-                          // **Both, always.** The two speeds are expected to be
-                          // equal: the renderer resolves the in and the out
-                          // window from one of them, because the proportional
-                          // compression that fits both into a short overlay is
-                          // a single rule that must not exist twice across the
-                          // Dart/Kotlin boundary. Writing only the tab's own
-                          // field would let them diverge, and the out window
-                          // would then quietly follow the in slider.
-                          _inAnimationDuration = val;
-                          _outAnimationDuration = val;
-                        });
-                        _updateOverlay();
-                      },
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: 40,
-                  child: Text(
-                    '${(_animationTabIndex == 0 ? _inAnimationDuration : _outAnimationDuration).toStringAsFixed(1)}×',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            physics: const BouncingScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 2.5,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: _animationsList.length,
-            itemBuilder: (context, idx) {
-              final anim = _animationsList[idx];
-              final currentAnim =
-                  _animationTabIndex == 0 ? _inAnimation : _outAnimation;
-              final isSelected = currentAnim == anim;
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    if (_animationTabIndex == 0) {
-                      _inAnimation = anim;
-                    } else {
-                      _outAnimation = anim;
-                    }
-                  });
-                  _updateOverlay();
-                },
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    anim.toUpperCase().replaceAll('_', ' '),
-                    style: TextStyle(
-                      color: isSelected ? Colors.black : Colors.white70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+    return TextAnimationPanel(
+      // The panel previews the user's *current* styling and highlights the
+      // slot as it stands now, so it reads the live overlay from the notifier
+      // rather than the one the sheet opened on.
+      overlay: _currentOverlay(),
+      onSelect: _selectAnimation,
+      // One snapshot per drag, then live writes — see [_updateOverlayLive].
+      onSpeedChangeStart: () =>
+          widget.ref.read(videoEditorProvider.notifier).saveStateForUndo(),
+      onSpeedChanged: _setAnimationSpeed,
     );
   }
 
-  Widget _buildAnimTargetBtn(String label, int index) {
-    final isActive = _animationTabIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _animationTabIndex = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive
-              ? Colors.white.withValues(alpha: 0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isActive ? Colors.white : Colors.white54,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
+  /// The overlay as the notifier currently holds it, falling back to the one
+  /// the sheet was opened with if it has since been deleted.
+  TextOverlayModel _currentOverlay() {
+    final overlays = widget.ref.read(videoEditorProvider).textOverlays;
+    for (final t in overlays) {
+      if (t.id == widget.overlay.id) return t;
+    }
+    return widget.overlay;
+  }
+
+  /// Writes a catalog id (or null, for None) into [category]'s slot.
+  ///
+  /// `'none'` rather than an empty string, because that is the sentinel every
+  /// reader of these fields — the catalog's resolver, the composer and the
+  /// Kotlin port — already recognises.
+  void _selectAnimation(TextAnimationCategory category, String? id) {
+    final value = id ?? 'none';
+    setState(() {
+      switch (category) {
+        case TextAnimationCategory.inAnim:
+          _inAnimation = value;
+        case TextAnimationCategory.outAnim:
+          _outAnimation = value;
+        case TextAnimationCategory.loop:
+          _loopAnimation = value;
+      }
+    });
+    // One tap, one undo entry.
+    _updateOverlay();
+  }
+
+  /// A frame of the Speed slider: a **multiplier**, not seconds.
+  void _setAnimationSpeed(TextAnimationCategory category, double speed) {
+    setState(() {
+      switch (category) {
+        // **Both in and out, always.** The two are expected to be equal: the
+        // renderer resolves both windows from one of them, because the
+        // proportional compression that fits them into a short overlay is a
+        // single rule that must not exist twice across the Dart/Kotlin
+        // boundary. Writing only the active tab's field would let them
+        // diverge, and the out window would then quietly follow the in slider.
+        case TextAnimationCategory.inAnim:
+        case TextAnimationCategory.outAnim:
+          _inAnimationSpeed = speed;
+          _outAnimationSpeed = speed;
+        // A loop's cycle length is no part of that compression, so its speed
+        // is genuinely its own.
+        case TextAnimationCategory.loop:
+          _loopSpeed = speed;
+      }
+    });
+    _updateOverlayLive();
   }
 
   // -------------------------------------------------------------- shared
