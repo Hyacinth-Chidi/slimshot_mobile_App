@@ -9,6 +9,7 @@ import android.opengl.GLES20
 import android.opengl.Matrix
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import com.techfamz.slimshotai.nativepreview.LaneFit
@@ -350,6 +351,20 @@ internal class TransitionRenderer(
      * and export composites through exactly the same code the preview does.
      */
     fun <T> callOnGlThread(block: () -> T): T {
+        // Already on the GL thread: run it here. Posting would queue the block
+        // behind the very call that is waiting for it, and the thread would
+        // block on itself forever.
+        //
+        // Export is exactly that shape and hit it: `runVideo` runs *inside* a
+        // `callOnGlThread`, and per output frame it resolves the clip's effect,
+        // which hops to the GL thread to link or release shader programs. The
+        // export froze at the first frame whose clip carried an effect — around
+        // 15% of a short clip — with no error, because a deadlock is not a
+        // failure anything can report.
+        if (Looper.myLooper() === thread.looper) {
+            return block()
+        }
+
         val result = java.util.concurrent.SynchronousQueue<Result<T>>()
         handler.post {
             result.put(runCatching(block))

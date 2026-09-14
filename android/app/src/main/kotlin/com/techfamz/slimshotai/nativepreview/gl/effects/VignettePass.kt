@@ -20,16 +20,20 @@ internal class VignettePass(program: FullFrameProgram) :
         /**
          * How far from the centre the darkening begins, at full intensity.
          *
-         * Distance is measured in the aspect-corrected space the shader builds,
-         * where the frame's **short** half-axis is 0.5, so the corners of a 9:16
-         * frame sit near 0.95. Starting at 0.25 leaves the subject — which on a
-         * short-form video is centred by construction — untouched while the
-         * edges fall away.
+         * Distance is normalised to the half-diagonal, so **a corner is 1.0 and
+         * an edge midpoint is 0.707 on any canvas shape**. Starting at 0.45
+         * leaves the subject — centred by construction on a short-form video —
+         * untouched while the corners fall away.
+         *
+         * It began at 0.25 against an aspect-corrected distance, which put the
+         * corners of a 9:16 frame at only ~0.57 of the falloff range: the
+         * device report was that the effect was there but "user will hardly
+         * know if vignette is active".
          */
-        const val INNER_RADIUS = 0.25f
+        const val INNER_RADIUS = 0.45f
 
-        /** Where the darkening reaches its full depth. Past the corners, so the corners are not flat black. */
-        const val OUTER_RADIUS = 0.95f
+        /** Full depth exactly at the corners, which [MAX_DARKEN] keeps off black. */
+        const val OUTER_RADIUS = 1.0f
 
         /**
          * How dark the corners go at intensity 1.
@@ -52,13 +56,16 @@ internal class VignettePass(program: FullFrameProgram) :
          *   `float` precision in a fragment shader.
          * * No loops at all, so no constant-bound question arises.
          *
-         * **The distance is aspect-corrected.** Measuring straight in texture
-         * coordinates measures a space where one unit across is not one unit
-         * down, so on a 9:16 canvas the vignette would be a tall ellipse hugging
-         * the sides — visibly not a vignette. Dividing the shorter axis by the
-         * aspect puts both axes in the same units, which also makes the shape
-         * identical in a 400px preview and a 1080p export: the correction is a
-         * ratio, not a pixel count.
+         * **The distance is deliberately NOT aspect-corrected**, and `uAspect`
+         * is left declared only because [FullFrameProgram] supplies it to every
+         * effect. A vignette follows the frame's own shape — a lens darkens
+         * toward its corners — so a circle in UV space, which is an ellipse on
+         * screen, is the correct figure. Correcting for aspect moved the
+         * farthest points onto the long edges and the effect read as a band
+         * across the top and bottom of a 9:16 clip.
+         *
+         * The shape is identical in a 400px preview and a 1080p export either
+         * way: everything here is a ratio, never a pixel count.
          *
          * Alpha is carried through untouched. The lanes composite a letterboxed
          * frame, and multiplying alpha here would make the bars translucent
@@ -73,14 +80,19 @@ uniform float uAspect;
 void main() {
     vec4 color = texture2D(uTexture, vTexCoord);
     vec2 centred = vTexCoord - vec2(0.5);
-    // Both axes into the short side's units, so the falloff is a circle on the
-    // canvas rather than an ellipse stretched by the frame's shape.
-    if (uAspect > 1.0) {
-        centred.y /= uAspect;
-    } else if (uAspect > 0.0) {
-        centred.x *= uAspect;
-    }
-    float dist = length(centred);
+    // **No aspect correction.** A circle in UV space is an ellipse on a
+    // non-square frame, and that ellipse *is* what a vignette looks like — a
+    // lens darkens toward its own corners, not in a circle inscribed in them.
+    //
+    // Correcting for aspect was the bug: dividing the long axis put the
+    // farthest points on the long *edges* rather than the corners, so on a
+    // 9:16 frame the darkening read as a band across the top and bottom. In UV
+    // space every corner is equidistant and every edge midpoint is 0.707 of
+    // that, on any canvas shape, which is exactly the falloff wanted.
+    //
+    // Normalised to the half-diagonal so a corner is 1.0 and the radii below
+    // mean the same thing whatever the frame's shape.
+    float dist = length(centred) / length(vec2(0.5));
     float falloff = smoothstep($INNER_RADIUS, $OUTER_RADIUS, dist);
     float darken = 1.0 - falloff * uIntensity * $MAX_DARKEN;
     gl_FragColor = vec4(color.rgb * darken, color.a);
