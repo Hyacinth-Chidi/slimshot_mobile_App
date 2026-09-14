@@ -30,6 +30,7 @@ import '../features/video_editor/widgets/timeline/scrollable_timeline.dart';
 import 'package:flutter/scheduler.dart';
 import '../features/video_editor/widgets/video_editor_top_bar.dart';
 import '../features/video_editor/widgets/panels/audio_drawer.dart';
+import '../features/video_editor/widgets/panels/effects_panel.dart';
 import '../features/video_editor/widgets/panels/filters_drawer.dart';
 import '../features/video_editor/widgets/panels/stickers_drawer.dart';
 import '../features/video_editor/services/audio_player_manager.dart';
@@ -123,6 +124,10 @@ const EditorMenu _editMenu = EditorMenu(
     // Same tool as the root menu, but reached with a clip selected — opening it
     // from here grades that clip rather than the whole project.
     EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
+    // Beside Filters because a clip's effect and its look are siblings: both
+    // change how this one clip is drawn. **Only here, never on the root menu**
+    // — an effect belongs to a clip, and the root menu has none selected.
+    EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
     EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
   ],
 );
@@ -1500,6 +1505,18 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       isScrollControlled: true,
                       backgroundColor: Colors.transparent,
                       builder: (context) => const FiltersDrawer(),
+                    );
+                  } else if (tool.id == 'effects' &&
+                      editorState.currentMenuId == 'edit') {
+                    // Gated on the clip menu: the root and audio menus carry an
+                    // `effects` tool of their own (unbuilt, and deliberately
+                    // left visible), and an effect without a clip has no
+                    // target.
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const EffectsPanel(),
                     );
                   } else if (tool.id == 'stickers') {
                     showModalBottomSheet(

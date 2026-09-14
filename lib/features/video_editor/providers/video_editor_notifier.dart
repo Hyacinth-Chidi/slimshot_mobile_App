@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../core/models/draft_project.dart';
 import '../../../core/services/draft_service.dart';
 import '../../../core/utils/file_utils.dart';
+import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 import '../logic/timeline/timeline_geometry.dart';
 import '../models/filter_preset.dart';
@@ -1128,6 +1129,58 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         for (final segment in state.segments)
           if (segment.id == targetId)
             segment.copyWith(filterIntensity: intensity)
+          else
+            segment,
+      ],
+    );
+  }
+
+  /// Applies an effect to the **selected** clip, or clears it when [effectId]
+  /// is null.
+  ///
+  /// An effect belongs to a clip, never to the project: unlike a filter there
+  /// is no "apply to all" mode, because a multi-pass effect on every clip is a
+  /// cost the user did not ask for. With no clip selected this does nothing
+  /// rather than guessing at a target.
+  ///
+  /// [intensity] defaults to the catalog's own [VideoEffect.defaultIntensity]
+  /// for [effectId], so tapping a tile is the whole interaction — the slider
+  /// is there for anyone who wants to retune it, not a step on the way to
+  /// seeing the effect at all.
+  ///
+  /// **Clearing goes through `clearEffectId`.** A bare `effectId: null` is
+  /// ignored by `copyWith` for every nullable field in this codebase, so it
+  /// would leave the old effect in place and read as a dead None tile.
+  ///
+  /// [takeUndoSnapshot] is false only for the slider's live frames: the
+  /// gesture takes one snapshot on drag start, so a drag undoes as one step
+  /// rather than a pixel at a time.
+  void setClipEffect(
+    String? effectId, {
+    double? intensity,
+    bool takeUndoSnapshot = true,
+  }) {
+    final targetId = state.selectedSegmentId;
+    if (targetId == null) return;
+
+    final effect = videoEffectById(effectId);
+    // An id the catalog does not know draws nothing, so storing it would be a
+    // tile that appears to work and does not. Treated as a clear.
+    final resolvedId = effect?.id;
+    final resolvedIntensity =
+        intensity ?? effect?.defaultIntensity ?? defaultEffectIntensity;
+
+    if (takeUndoSnapshot) saveStateForUndo();
+
+    state = state.copyWith(
+      segments: [
+        for (final segment in state.segments)
+          if (segment.id == targetId)
+            segment.copyWith(
+              effectId: resolvedId,
+              clearEffectId: resolvedId == null,
+              effectIntensity: resolvedIntensity.clamp(0.0, 1.0),
+            )
           else
             segment,
       ],
