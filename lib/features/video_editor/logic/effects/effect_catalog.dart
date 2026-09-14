@@ -44,6 +44,16 @@ enum EffectCategory {
   /// mood it produces, because the cost is what a user picking several of them
   /// on a low-end device will feel.
   motion,
+
+  /// Plays once over the clip's opening and settles — a cinema zoom, a shutter,
+  /// a fade up from black.
+  ///
+  /// The category exists because these are the only effects that are a function
+  /// of *time* rather than of the pixel: everything else here renders the same
+  /// picture whenever it is sampled, and an intro renders a different one every
+  /// frame. That is also why [VideoEffect.introSeconds] exists — an intro
+  /// occupies the clip's opening, not the whole clip.
+  intro,
 }
 
 /// What a clip's effect intensity reads as when nothing has set one.
@@ -64,6 +74,7 @@ class VideoEffect {
     required this.category,
     required this.defaultIntensity,
     this.passCount = 1,
+    this.introSeconds,
   });
 
   /// Persisted into drafts and sent over the channel. **Renaming needs a
@@ -96,6 +107,50 @@ class VideoEffect {
   /// truncates and warns past it, so a fifth pass would silently render a
   /// different picture than the one declared here.
   final int passCount;
+
+  /// How long this effect's animation runs from the clip's first frame, in
+  /// **seconds**, or null for a static look that has no animation at all.
+  ///
+  /// This is the *window the shader's progress is measured across*, and it is
+  /// the whole reason the concept lives here rather than in each shader. A
+  /// cinema zoom is 0.8s whether the clip is 2s or 90s long, so a shader
+  /// hardcoding "the first 10% of the clip" would play a lazy drift on a long
+  /// clip and a snap on a short one. Declaring the seconds once, in the table
+  /// every consumer already reads, is how the renderer draws the same opening
+  /// on both.
+  ///
+  /// Named after `TextAnimation.naturalDuration`, which solves the same problem
+  /// for text and is the precedent this follows — a flat number here where that
+  /// is a function of the glyph count, because an intro's length depends on
+  /// nothing but itself.
+  ///
+  /// **Null and a number mean two different things to the renderer**, not one
+  /// thing with a default:
+  ///
+  /// * **null** — a static look. `uProgress` still arrives, measured across the
+  ///   whole clip, and the shader ignores it. This is every existing entry, and
+  ///   it is why adding the clock changes nothing about how `vignette` and
+  ///   `fisheye` draw.
+  /// * **a number** — an intro. `uProgress` runs 0 to 1 across exactly this many
+  ///   seconds from the clip's start and then **stays at 1** for the rest of
+  ///   the clip, which is what "plays once and settles" means: the shader's
+  ///   `p == 1` state is its resting state, so the clip is left looking
+  ///   untouched without the effect having to be removed.
+  ///
+  /// A clip shorter than the window is not a special case — progress simply
+  /// does not reach 1 before the clip ends, so the intro is cut off with the
+  /// clip. Compressing it to fit would make the same effect play at a different
+  /// speed on a short clip, which is the `TextAnimation` mistake the speed
+  /// multiplier exists to avoid.
+  final double? introSeconds;
+
+  /// Whether this effect animates over time rather than rendering one fixed
+  /// look.
+  ///
+  /// Derived from [introSeconds] rather than stored beside it: two fields that
+  /// can disagree is one field too many, and here the disagreement would be an
+  /// effect declared as animated that never moves.
+  bool get isTimed => introSeconds != null;
 
   /// Whether this effect needs the ping-pong chain rather than a single draw.
   ///
@@ -221,7 +276,32 @@ const List<VideoEffect> kVideoEffects = [
     passCount: 2,
     defaultIntensity: 0.4,
   ),
+
+  // -- intro ---------------------------------------------------------------
+  VideoEffect(
+    id: 'fade_in',
+    label: 'Fade In',
+    category: EffectCategory.intro,
+    // The simplest possible consumer of the clock, and deliberately so: one
+    // multiply by `uProgress`, so a picture that rises from black and settles
+    // is proof the progress reaching the shader is the clip's own position —
+    // in a way no more elaborate intro could be, where a wrong clock and a
+    // right one look alike for the first few frames.
+    introSeconds: 0.8,
+    // An intro's strength is how far down it starts, not how much of the
+    // picture it occupies; full is the fade people mean — up from true black.
+    defaultIntensity: 1.0,
+  ),
 ];
+
+/// How long [id]'s animation runs from its clip's first frame, or null when it
+/// is a static look measured across the whole clip.
+///
+/// The one place a consumer asks the question, so the renderer, the composer
+/// and the panel cannot each answer it differently. Returns null for an unknown
+/// id for the same reason [videoEffectById] does: a draft from a newer build
+/// must open.
+double? effectIntroSecondsFor(String? id) => videoEffectById(id)?.introSeconds;
 
 final Map<String, VideoEffect> _byId = {
   for (final effect in kVideoEffects) effect.id: effect,

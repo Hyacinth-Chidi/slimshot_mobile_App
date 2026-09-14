@@ -22,11 +22,18 @@ import kotlin.math.abs
  * level up, where the work is expensive enough that the guard has to sit on the
  * *caller's* side.
  *
- * But the two things a clip can change are not equally expensive, and treating
- * them as if they were is the trap this class exists to avoid: a **new id**
- * needs new programs, while a **new intensity** needs a float written onto the
- * passes already built. Rebuilding on intensity would mean a slider drag
- * re-linking a program on every frame of the drag.
+ * But the three things a clip can change are not equally expensive, and
+ * treating them as if they were is the trap this class exists to avoid:
+ *
+ * | What moved | Cost | How often |
+ * | :--- | :--- | :--- |
+ * | the **id** | new programs, a blocking GL hop | a cut, or a tap on a tile |
+ * | the **intensity** | a float onto passes already built | a slider drag |
+ * | the **progress** | a float onto passes already built | **every frame** |
+ *
+ * Rebuilding on intensity would mean a slider drag re-linking a program on
+ * every frame of the drag; rebuilding on progress would mean re-linking on
+ * every frame of *playback*, forever. Both are uniforms for that reason.
  *
  * ### Threading
  *
@@ -79,13 +86,24 @@ internal class ClipEffectController(private val renderer: TransitionRenderer) {
      * negligible — the guard is kept because a write nobody asked for is still a
      * write, not because it is expensive.
      */
-    fun apply(effectId: String?, intensity: Double) {
+    fun apply(effectId: String?, intensity: Double, progress: Double = 0.0) {
         val id = effectId?.takeIf { it.isNotBlank() && it != "none" }
 
         if (id == appliedId) {
-            // Same effect. Nothing to build; at most a number to update, and
-            // only if it actually moved.
-            if (id == null || abs(intensity - appliedIntensity) <= INTENSITY_EPSILON) return
+            if (id == null) return
+
+            // **Progress is pushed every frame, before the intensity guard and
+            // never behind one.** It moves continuously by definition, so a
+            // change guard would compare two values that are almost always
+            // different and cost more than the write it was protecting — and an
+            // early return on an unchanged *intensity* would drop it on exactly
+            // the ticks where nothing else moved, which is most of them. That
+            // is a timed effect freezing mid-animation whenever the slider is
+            // still: the one bug this ordering exists to prevent.
+            EffectShaders.applyProgress(passes, progress)
+
+            // The intensity is the occasional one, and still guarded.
+            if (abs(intensity - appliedIntensity) <= INTENSITY_EPSILON) return
             appliedIntensity = intensity
             EffectShaders.applyIntensity(passes, intensity)
             return
@@ -121,6 +139,12 @@ internal class ClipEffectController(private val renderer: TransitionRenderer) {
         // already carries the right strength: handing them over at their default
         // and setting it after would show one frame at full intensity.
         EffectShaders.applyIntensity(built, intensity)
+        // And the right point in its animation, for the same reason and one
+        // more: a clip is not always entered at its first frame. Seeking into
+        // the middle of a clip that carries an intro must draw the settled
+        // picture, not restart the fade — the passes are new, but the clip's
+        // position through them is wherever the playhead is.
+        EffectShaders.applyProgress(built, progress)
         passes = built
         renderer.setEffectPasses(built)
     }

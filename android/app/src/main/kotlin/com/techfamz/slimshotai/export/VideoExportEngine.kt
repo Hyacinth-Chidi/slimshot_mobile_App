@@ -366,7 +366,19 @@ internal class VideoExportEngine(
                     window != null && outgoing != null && incoming != null -> outgoing
                     else -> clipAt(request.clips, t) ?: request.clips.firstOrNull()
                 }
-                clipEffects.apply(effectClip?.effectId, effectClip?.effectIntensity ?: 0.0)
+                // **The effect clock is `t`, the export's own timeline
+                // position** — never the frame index and never wall clock
+                // time. This loop runs as fast as the codecs allow, so a
+                // self-timed effect would play at the export's speed rather
+                // than the project's and the file would not match the canvas.
+                // `t` is the same quantity the preview engine's ticker passes,
+                // so both reach the identical progress at the identical instant
+                // of a clip whatever rate either is running at.
+                clipEffects.apply(
+                    effectClip?.effectId,
+                    effectClip?.effectIntensity ?: 0.0,
+                    effectClip?.effectProgressAt(t) ?: 0.0,
+                )
 
                 if (t >= videoEndSeconds - EDGE_EPSILON) {
                     // The audio/overlay tail: no lane is drawn, so the frame is

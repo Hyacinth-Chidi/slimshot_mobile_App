@@ -73,6 +73,12 @@ internal object EffectShaders {
 
             "glow" -> glowPasses()
 
+            // The first timed effect. Structurally an ordinary single-frame
+            // pass — the clock is a uniform every pass already carries, so
+            // nothing about the registry, the chain or the release path had to
+            // learn what an intro is.
+            "fade_in" -> listOf(FadeInPass(FullFrameProgram(FadeInPass.FRAGMENT)))
+
             else -> {
                 // Two cases land here and both are correct as no effect: an id
                 // this build has never heard of, and a catalog id whose shader
@@ -105,6 +111,26 @@ internal object EffectShaders {
         val strength = intensity.coerceIn(0.0, 1.0).toFloat()
         for (pass in passes) {
             (pass as? IntensityControlled)?.applyIntensity(strength)
+        }
+    }
+
+    /**
+     * Tells every pass in [passes] that has a clock how far its effect has
+     * played, 0..1.
+     *
+     * The twin of [applyIntensity], and cheap for the same reasons: a
+     * `@Volatile Float` write, no GL context, no thread hop, no link. That it
+     * costs nothing is not an optimisation here but the feature — this is
+     * called on **every frame**, where an intensity change is occasional, so
+     * anything more expensive would put that cost squarely in the render path.
+     *
+     * A pass with no clock is skipped silently. Most of the catalog is static
+     * and will never read it.
+     */
+    fun applyProgress(passes: List<EffectPass>, progress: Double) {
+        val value = progress.coerceIn(0.0, 1.0).toFloat()
+        for (pass in passes) {
+            (pass as? ProgressControlled)?.applyProgress(value)
         }
     }
 

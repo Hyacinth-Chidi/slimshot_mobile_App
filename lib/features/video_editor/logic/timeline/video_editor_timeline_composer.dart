@@ -349,6 +349,7 @@ class VideoEditorTimelineComposer {
       colorMatrix: previous.colorMatrix,
       effectId: previous.effectId,
       effectIntensity: previous.effectIntensity,
+      effectIntroSeconds: previous.effectIntroSeconds,
       canvasScale: previous.canvasScale,
       canvasOffsetX: previous.canvasOffsetX,
       canvasOffsetY: previous.canvasOffsetY,
@@ -381,6 +382,19 @@ class VideoEditorTimelineComposer {
     if (previous.effectId != next.effectId ||
         (previous.effectIntensity - next.effectIntensity).abs() >
             intensityEpsilon) {
+      return false;
+    }
+
+    // **A timed effect can never merge, even with an identical one.** The
+    // checks above pass when both clips carry the same intro at the same
+    // strength — and merging them is exactly wrong: progress is measured from
+    // the *merged* clip's start, so the second clip's intro would never play.
+    // The picture would open with one fade and then run straight through a cut
+    // the user put an intro on. Unlike the checks above this is not about the
+    // two looks disagreeing; it is that an intro belongs to a clip's opening
+    // and a merge destroys the opening.
+    if (previous.effectIntroSeconds != null ||
+        next.effectIntroSeconds != null) {
       return false;
     }
 
@@ -467,6 +481,12 @@ class VideoEditorTimelineComposer {
       // keeps the original string either way.
       effectId: segment.effect?.id,
       effectIntensity: segment.effectIntensity,
+      // The window the effect's progress is measured across, read from the
+      // catalog at compose time rather than stored on the segment: an intro's
+      // length is a property of the effect, so retuning it must reach every
+      // saved project without a draft migration. Null for a static look, which
+      // is every effect that existed before the clock.
+      effectIntroSeconds: segment.effect?.introSeconds,
       canvasScale: segment.canvasScale,
       canvasOffsetX: segment.canvasOffsetX,
       canvasOffsetY: segment.canvasOffsetY,

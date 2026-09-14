@@ -994,7 +994,19 @@ internal class TimelinePlaybackEngine(
             lanes.getOrNull(masterLane)?.let { laneClipFor(it, position) }
         } ?: return
 
-        clipEffects.apply(clip.effectId, clip.effectIntensity)
+        // **The effect clock is the timeline clock.** `position` is the same
+        // value that drove the clip resolution two lines up, so the shader's
+        // progress and the picture it is drawn over can never disagree — and
+        // because it is a position rather than a frame count, the export loop
+        // running faster than realtime reaches the identical value at the
+        // identical instant of the clip. A counter or `System.nanoTime` here
+        // would make the file differ from the canvas, which is the failure the
+        // shared `composite` exists to prevent.
+        clipEffects.apply(
+            clip.effectId,
+            clip.effectIntensity,
+            clip.effectProgressAt(position),
+        )
     }
 
     private fun applyClipSpeeds() {

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/logic/effects/effect_catalog.dart';
 import 'package:slimshotai/features/video_editor/logic/timeline/video_editor_timeline_composer.dart';
 import 'package:slimshotai/features/video_editor/models/audio_track_model.dart';
 import 'package:slimshotai/features/video_editor/models/image_overlay_model.dart';
@@ -522,6 +523,70 @@ void main() {
       final clip = timeline.videoClips.single;
       expect(clip.colorMatrix, isNotNull);
       expect(clip.effectId, 'vignette');
+    });
+
+    test('a static effect carries no animation window', () {
+      // Null is what tells the renderer to measure progress across the whole
+      // clip and expect the shader to ignore it — which is every effect
+      // written before the clock existed.
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4,
+              effectId: 'vignette'),
+        ]),
+      );
+      expect(timeline.videoClips.single.effectIntroSeconds, isNull);
+    });
+
+    test('an intro carries the catalog window, not a stored one', () {
+      // Read from the catalog at compose time so retuning an intro's length
+      // reaches saved projects without a draft migration.
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4,
+              effectId: 'fade_in'),
+        ]),
+      );
+
+      final clip = timeline.videoClips.single;
+      expect(clip.effectId, 'fade_in');
+      expect(clip.effectIntroSeconds, videoEffectById('fade_in')!.introSeconds);
+      expect(clip.toJson()['effectIntroSeconds'], clip.effectIntroSeconds);
+    });
+
+    test('two clips carrying the same intro are never merged', () {
+      // The id and intensity guards both pass here — the effects are
+      // identical — and merging would still be wrong: progress is measured
+      // from the merged clip's start, so the second clip's fade would never
+      // play and the cut the user put an intro on would run straight through.
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(id: 'left', sourceStart: 0, sourceEnd: 2,
+              effectId: 'fade_in'),
+          VideoSegment(id: 'right', sourceStart: 2, sourceEnd: 5,
+              effectId: 'fade_in'),
+        ]),
+      );
+
+      expect(timeline.videoClips, hasLength(2));
+      expect(timeline.playbackClips, hasLength(2),
+          reason: 'a merged item would swallow the second intro');
+    });
+
+    test('two clips carrying the same static effect still merge', () {
+      // The counterpart of the test above: the refusal must be about the
+      // *clock*, not about effects in general, or every effected project
+      // would lose gapless playback across a plain split.
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(id: 'left', sourceStart: 0, sourceEnd: 2,
+              effectId: 'vignette'),
+          VideoSegment(id: 'right', sourceStart: 2, sourceEnd: 5,
+              effectId: 'vignette'),
+        ]),
+      );
+
+      expect(timeline.playbackClips, hasLength(1));
     });
   });
 }

@@ -87,6 +87,46 @@ void main() {
       }
     });
 
+    test('an intro declares its window; a static look declares none', () {
+      // The two states are what the renderer branches on, and conflating them
+      // is the bug this pins: a static look with a window would be told its
+      // progress runs out part-way through the clip, and an intro without one
+      // would stretch its animation across a 90s clip.
+      for (final effect in kVideoEffects) {
+        if (effect.category == EffectCategory.intro) {
+          expect(effect.introSeconds, isNotNull,
+              reason: '${effect.id} is an intro with no window');
+          expect(effect.introSeconds, greaterThan(0),
+              reason: '${effect.id} has a window that ends before it starts');
+          expect(effect.isTimed, isTrue, reason: effect.id);
+        } else {
+          expect(effect.introSeconds, isNull,
+              reason: '${effect.id} is a static look and must ignore the clock');
+          expect(effect.isTimed, isFalse, reason: effect.id);
+        }
+      }
+    });
+
+    test('fade_in is the timed effect the clock is proven with', () {
+      final fade = videoEffectById('fade_in');
+      expect(fade, isNotNull);
+      expect(fade!.category, EffectCategory.intro);
+      expect(fade.introSeconds, isNotNull);
+      // One pass: the whole point of it is that there is nowhere for a bug to
+      // hide between the clock and the picture.
+      expect(fade.passCount, 1);
+      expect(effectIntroSecondsFor('fade_in'), fade.introSeconds);
+    });
+
+    test('the intro window is only ever asked for through the catalog', () {
+      // Null for a static look and for an id this build does not know, which
+      // are the same answer to a renderer: measure progress across the clip.
+      expect(effectIntroSecondsFor('vignette'), isNull);
+      expect(effectIntroSecondsFor('no_such_effect'), isNull);
+      expect(effectIntroSecondsFor(null), isNull);
+      expect(effectIntroSecondsFor('none'), isNull);
+    });
+
     test('blur and glow declare the pass counts the chain will run', () {
       expect(videoEffectById('blur')!.passCount, 2);
       expect(videoEffectById('glow')!.passCount, 3);

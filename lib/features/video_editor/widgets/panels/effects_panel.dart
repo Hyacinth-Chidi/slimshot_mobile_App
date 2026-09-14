@@ -51,6 +51,7 @@ String effectCategoryLabel(EffectCategory category) => switch (category) {
       EffectCategory.distort => 'Distort',
       EffectCategory.light => 'Light',
       EffectCategory.motion => 'Focus',
+      EffectCategory.intro => 'Intro',
     };
 
 /// A tile's glyph.
@@ -78,6 +79,7 @@ const Map<String, IconData> _kEffectIcons = {
   'glow': LucideIcons.sparkle,
   'sharpen': LucideIcons.focus,
   'blur': LucideIcons.droplet,
+  'fade_in': LucideIcons.sunrise,
 };
 
 IconData _iconForCategory(EffectCategory category) => switch (category) {
@@ -87,6 +89,7 @@ IconData _iconForCategory(EffectCategory category) => switch (category) {
       EffectCategory.distort => LucideIcons.waves,
       EffectCategory.light => LucideIcons.sun,
       EffectCategory.motion => LucideIcons.aperture,
+      EffectCategory.intro => LucideIcons.play,
     };
 
 /// The glyph for [effect], falling back to its category's.

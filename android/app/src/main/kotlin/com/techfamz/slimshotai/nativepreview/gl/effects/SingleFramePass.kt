@@ -22,7 +22,7 @@ import com.techfamz.slimshotai.nativepreview.gl.RenderTarget
 internal open class SingleFramePass(
     override val id: String,
     protected val program: FullFrameProgram,
-) : EffectPass, IntensityControlled {
+) : EffectPass, IntensityControlled, ProgressControlled {
 
     /**
      * The effect's strength, normalised 0..1, uploaded as a uniform on every
@@ -41,6 +41,27 @@ internal open class SingleFramePass(
 
     override fun applyIntensity(intensity: Float) {
         this.intensity = intensity
+    }
+
+    /**
+     * How far the clip has played through this effect's window, 0..1.
+     *
+     * `@Volatile` for the same reason [intensity] is — written by the timeline's
+     * thread, read by the GL thread mid-frame — but it moves on **every** frame
+     * rather than only when a slider does, which is precisely why it is a
+     * uniform and not a constructor argument.
+     *
+     * Every pass carries it whether its shader reads it or not: a static look's
+     * program has no `uProgress`, the location is -1, and the upload is a no-op.
+     */
+    @Volatile
+    var progress: Float = 0f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+        }
+
+    override fun applyProgress(progress: Float) {
+        this.progress = progress
     }
 
     override fun render(
@@ -69,6 +90,10 @@ internal open class SingleFramePass(
 
         program.use()
         program.setIntensity(intensity)
+        // A no-op for every shader that declares no `uProgress`, which is all of
+        // the static looks — the location is -1. So the clock reaching every
+        // pass costs one ignored uniform write and changes no existing picture.
+        program.setProgress(progress)
         program.setAspect(viewportWidth.toFloat() / viewportHeight.toFloat())
         bindExtraUniforms(viewportWidth, viewportHeight)
         program.bindSource(sourceTextureId)

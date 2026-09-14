@@ -33,6 +33,7 @@ internal class FullFrameProgram(fragmentSource: String) {
     private val aTexCoord = GLES20.glGetAttribLocation(handle, "aTexCoord")
     private val uTexture = GLES20.glGetUniformLocation(handle, "uTexture")
     private val uIntensity = GLES20.glGetUniformLocation(handle, "uIntensity")
+    private val uProgress = GLES20.glGetUniformLocation(handle, "uProgress")
     private val uAspect = GLES20.glGetUniformLocation(handle, "uAspect")
 
     fun use() = GLES20.glUseProgram(handle)
@@ -47,6 +48,25 @@ internal class FullFrameProgram(fragmentSource: String) {
      */
     fun setIntensity(value: Float) {
         GLES20.glUniform1f(uIntensity, value)
+    }
+
+    /**
+     * How far the clip has played through this effect's window, 0..1.
+     *
+     * **The effect clock**, and the one thing that makes a timed effect — an
+     * intro zoom, a shutter, a fade up — possible at all: every shader here is
+     * otherwise a pure function of the pixel and cannot know when it is.
+     *
+     * Uploaded on every draw exactly as the intensity is, never compiled in: it
+     * changes every frame by definition, so a program rebuild per change would
+     * be a `glLinkProgram` in the render path at 30-60Hz.
+     *
+     * Silently ignored by a shader that declares no `uProgress` — the location
+     * is -1 and `glUniform1f` treats that as a no-op — so this arriving for
+     * every effect leaves the static ones drawing exactly as they did.
+     */
+    fun setProgress(value: Float) {
+        GLES20.glUniform1f(uProgress, value)
     }
 
     /** Width over height of the frame being drawn, for distance correction. */

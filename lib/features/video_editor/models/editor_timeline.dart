@@ -215,6 +215,7 @@ class EditorTimelineVideoClip {
     this.colorMatrix,
     this.effectId,
     this.effectIntensity = 1.0,
+    this.effectIntroSeconds,
     this.canvasScale = 1.0,
     this.canvasOffsetX = 0.0,
     this.canvasOffsetY = 0.0,
@@ -283,6 +284,21 @@ class EditorTimelineVideoClip {
   /// pixel parameter would give them different pictures.
   final double effectIntensity;
 
+  /// The window [effectId]'s animation plays across, in **seconds from this
+  /// clip's first frame**, or null when the effect is a static look.
+  ///
+  /// Resolved by the composer from the catalog rather than stored on the clip:
+  /// it is a property of the *effect*, not of the user's edit, so a retuned
+  /// intro length reaches every existing project on the next compose instead of
+  /// needing a draft migration. That also keeps the renderer from holding a
+  /// second copy of the catalog — it is told the window and never has to know
+  /// which ids are intros.
+  ///
+  /// Null means the shader receives progress across the whole clip and is
+  /// expected to ignore it, which is every effect written before the clock
+  /// existed.
+  final double? effectIntroSeconds;
+
   /// The user's pinch scale on top of the contain fit (1.0 = plain fit), and
   /// where the clip's centre is dragged to, in canvas fractions.
   final double canvasScale;
@@ -329,6 +345,7 @@ class EditorTimelineVideoClip {
       'colorMatrix': colorMatrix,
       'effectId': effectId,
       'effectIntensity': effectIntensity,
+      'effectIntroSeconds': effectIntroSeconds,
       'canvasScale': canvasScale,
       'canvasOffsetX': canvasOffsetX,
       'canvasOffsetY': canvasOffsetY,
