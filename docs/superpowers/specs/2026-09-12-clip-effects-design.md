@@ -156,6 +156,52 @@ row, and effects as its first consumer.
 - **Texture memory.** Two full-size FBO targets at export resolution are not free on a 2015
   device; they must be allocated once and reused, never per frame.
 
+## Effects come in two kinds, and the difference is a clock
+
+The catalog's first sixteen are **continuous looks**: vignette, VHS, grain, fisheye. They are a
+function of the pixel, and a still frame from the middle of the clip shows the whole effect.
+
+The set requested after the first device run is mostly the other kind — **intro effects** that
+play once at the clip's start and settle: cinema zoom, camera pan, shutter, circle in, zoom,
+blur in, super zoom, handheld, steady in, super shake, fade in, hue shift, B&W fade, echo,
+pulse zoom, pixel in, spin, grid, super cut, horizontal opening, roll, bounce, grid collage,
+roulette, tilt.
+
+A continuous look needs no clock. An intro effect is **nothing but** a clock: it is a function of
+how far through the clip the playhead is. Effects as first built carry no time at all, so none of
+these could work, and adding a progress uniform is a contract change rather than another shader.
+
+**The clock is built before any more shaders**, because it is also what Stage 3's envelopes and
+Stage 4's keyframes need. Built once, three features use it; built per feature, it is built
+three times and they disagree.
+
+`uProgress` is the clip's own 0..1 position, resolved from the **timeline clock** exactly as
+per-clip grades are (`laneClipFor(lane, position)`), not from a wall-clock or a frame counter:
+export runs faster than realtime, and anything that counts frames or reads the system clock
+renders differently in the file than on the canvas. That is the single most repeated bug class
+in this codebase.
+
+An intro effect also needs a **duration** — how much of the clip it occupies before settling.
+That is a per-effect natural duration scaled by the existing intensity control, the same shape
+`naturalDuration` already has in the text animation catalog, so the two read alike.
+
+## Reveals are clip effects, not transitions
+
+Shutter, circle in, horizontal opening, grid collage and roulette all *reveal* a clip from black.
+That is nearly a transition, and the app has eleven of those with their own catalog and drawer.
+
+They are built as **clip effects** anyway, deliberately:
+
+- A transition needs two clips. A reveal must work on the **first clip of a project**, which by
+  definition has no predecessor.
+- The user described them as "black overlay reveals", which is what a clip effect does natively —
+  the effect composites the clip against black over its own opening.
+- One panel holds every effect, rather than a user hunting two menus for the same visual idea.
+
+A true two-clip wipe remains a transition, and the transition catalog stays where it is. If a
+shutter *between shots* is wanted later, that is a transition entry sharing this shader — not a
+reason to move the reveal.
+
 ## Out of scope
 
 Effect stacking, audio effects, AI-dependent effects, and keyframes on transform/opacity/volume
