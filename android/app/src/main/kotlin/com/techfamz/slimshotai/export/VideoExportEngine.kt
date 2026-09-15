@@ -516,6 +516,13 @@ internal class VideoExportEngine(
         // fitting against the request would letterbox every clip wrongly inside
         // the real viewport — clips shrank exactly this way when a per-axis
         // clamp turned a portrait request into a square.
+        //
+        // The clip's own progress, so a keyframed transform moves across the
+        // clip in the file exactly as it does on the canvas. `t` is the
+        // timeline position, never a frame index — this loop runs as fast as
+        // the codecs allow, so anything self-timed would render differently.
+        val clipProgress = clip.clipProgressAt(t)
+
         if (clip.isImage) {
             // A photo's contain fit is derived by the renderer from the
             // decoded bitmap at draw time, against the viewport actually being
@@ -523,18 +530,18 @@ internal class VideoExportEngine(
             // transform is pushed from here.
             renderer.setLaneImageTransform(
                 clip.laneIndex,
-                clip.canvasScale.toFloat(),
-                clip.canvasOffsetX.toFloat(),
-                clip.canvasOffsetY.toFloat(),
+                clip.canvasScaleAt(clipProgress).toFloat(),
+                clip.canvasOffsetXAt(clipProgress).toFloat(),
+                clip.canvasOffsetYAt(clipProgress).toFloat(),
             )
         } else {
             val (fitX, fitY) = LaneFit.of(clip.sourceAspect, renderAspect)
             renderer.setLaneFit(
                 clip.laneIndex,
-                fitX * clip.canvasScale.toFloat(),
-                fitY * clip.canvasScale.toFloat(),
-                clip.canvasOffsetX.toFloat(),
-                clip.canvasOffsetY.toFloat(),
+                fitX * clip.canvasScaleAt(clipProgress).toFloat(),
+                fitY * clip.canvasScaleAt(clipProgress).toFloat(),
+                clip.canvasOffsetXAt(clipProgress).toFloat(),
+                clip.canvasOffsetYAt(clipProgress).toFloat(),
             )
         }
         renderer.setLaneColorMatrix(clip.laneIndex, clip.colorMatrix)

@@ -63,6 +63,30 @@ const List<double> _progressSamples = [0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0];
 /// guard is pinned rather than assumed.
 const List<double> _clampSamples = [-1.0, -0.0001, 1.0001, 2.0, double.nan];
 
+/// Progress samples for the easing curves.
+///
+/// Denser than [_progressSamples], and deliberately so: the bounce family is
+/// piecewise with boundaries at `1/2.75`, `2/2.75` and `2.5/2.75`, and a port
+/// that got one comparison wrong would sail through samples that all landed in
+/// the same segment. The boundaries themselves are included, where the curve
+/// reaches exactly 1.0 and an off-by-one `<` versus `<=` shows up.
+const List<double> _easingSamples = [
+  0.0,
+  0.05,
+  0.1,
+  0.25,
+  1 / 2.75,
+  0.4,
+  0.5,
+  0.6,
+  2 / 2.75,
+  0.75,
+  2.5 / 2.75,
+  0.9,
+  0.95,
+  1.0,
+];
+
 /// Six decimal places: far below the `1e-5` the tests compare at, but coarse
 /// enough that the last bits of a `double` cannot make a regenerated fixture
 /// churn in the diff for no reason.
@@ -286,6 +310,83 @@ final List<_KeyframeCase> _keyframeCases = [
         'consistently on both sides of the pair, and the zero-span guard stops '
         'the divide producing NaN',
   ),
+  const _KeyframeCase(
+    'eased_pair_bounce_out',
+    AnimatableDouble(
+      baseValue: 0.0,
+      keyframes: [
+        Keyframe(
+          progress: 0.0,
+          value: 0.0,
+          interpolation: KeyframeInterpolation.bounceOut,
+        ),
+        Keyframe(progress: 1.0, value: 1.0),
+      ],
+    ),
+    comment:
+        'a bounce across the whole clip. The interpolation belongs to the '
+        'keyframe the segment *starts* at, so every sample rides bounceOut — '
+        'and a port that collapsed the family into a plain ease would match '
+        'at the ends and nowhere between',
+  ),
+  const _KeyframeCase(
+    'eased_pair_quad_in',
+    AnimatableDouble(
+      baseValue: 0.0,
+      keyframes: [
+        Keyframe(
+          progress: 0.0,
+          value: 0.0,
+          interpolation: KeyframeInterpolation.quadIn,
+        ),
+        Keyframe(progress: 1.0, value: 1.0),
+      ],
+    ),
+    comment: 'quadIn(0.5) is exactly 0.25, which no other family gives',
+  ),
+  const _KeyframeCase(
+    'mixed_easings_per_segment',
+    AnimatableDouble(
+      baseValue: 0.0,
+      keyframes: [
+        Keyframe(
+          progress: 0.0,
+          value: 0.0,
+          interpolation: KeyframeInterpolation.sineInOut,
+        ),
+        Keyframe(
+          progress: 0.5,
+          value: 1.0,
+          interpolation: KeyframeInterpolation.cubicOut,
+        ),
+        Keyframe(progress: 1.0, value: 0.25),
+      ],
+    ),
+    comment:
+        'each segment reads its own outgoing flag, so the two halves travel '
+        'on different curves — a port reading the *arriving* flag instead of '
+        'the outgoing one would swap them and still land on every keyframe '
+        'exactly',
+  ),
+  const _KeyframeCase(
+    'legacy_ease_name',
+    AnimatableDouble(
+      baseValue: 0.0,
+      keyframes: [
+        Keyframe(
+          progress: 0.0,
+          value: 0.0,
+          interpolation: kDefaultKeyframeInterpolation,
+        ),
+        Keyframe(progress: 1.0, value: 1.0),
+      ],
+    ),
+    comment:
+        'the migration: every draft written before the easing families holds '
+        'the string `ease`, which both sides must read as cubicInOut. The '
+        'fixture records the resolved name, and the Kotlin test separately '
+        'asserts that `ease` itself still resolves here',
+  ),
   _KeyframeCase(
     'out_of_range_progress',
     AnimatableDouble.sorted(
@@ -378,7 +479,30 @@ void main() {
       },
   ];
 
+  // Every easing curve, at every progress sample. `KeyframeInterpolation.values`
+  // is walked rather than a hand-written list, so a curve added to the enum
+  // reaches the fixture — and therefore the Kotlin test — with no edit here.
+  //
+  // `hold` is included even though `resolveAt` returns before easing it: the
+  // port's `when` has to stay exhaustive, and a Kotlin branch that fell through
+  // to something else for `hold` would otherwise never be exercised.
+  final easings = <Map<String, dynamic>>[
+    for (final e in KeyframeInterpolation.values)
+      {
+        // The enum's `.name`, which is the `wireName` the Kotlin enum declares.
+        // A typo on either side shows up here as an unknown name rather than as
+        // a value mismatch, which is why the Kotlin test asserts the name is
+        // one it knows before asserting what it evaluates to.
+        'interpolation': e.name,
+        'samples': [
+          for (final t in _easingSamples)
+            {'t': t, 'value': _round(applyKeyframeEasing(e, t))},
+        ],
+      },
+  ];
+
   final payload = <String, dynamic>{
+    'easings': easings,
     'envelopes': envelopes,
     'unknownEnvelopes': unknownEnvelopes,
     'clampedEnvelopes': clamped,

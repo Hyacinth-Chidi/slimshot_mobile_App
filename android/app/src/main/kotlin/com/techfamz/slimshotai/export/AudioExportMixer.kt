@@ -356,7 +356,12 @@ internal class AudioExportMixer(
                 skipped += "muted"
                 continue
             }
-            if (clip.volume <= 0.0) {
+            // **A clip keyframed up from silence is not a silent clip.** The
+            // old check read a plain number; on a fade-in from 0 the base value
+            // *is* 0, so reading `baseValue` here would skip the whole clip and
+            // export it with no sound at all. Only a flat, genuinely silent
+            // parameter is worth skipping — the saving is one decoder.
+            if (!clip.volume.isAnimated && clip.volume.baseValue <= 0.0) {
                 skipped += "${clip.id}:vol0"
                 continue
             }
@@ -377,7 +382,15 @@ internal class AudioExportMixer(
                     reader = reader,
                     timelineStart = clip.timelineStart,
                     timelineEnd = clip.timelineEnd,
-                    gainAt = { t -> masterVolume * clip.volume * crossfadeGain(clip, t) },
+                    // Resolved per block at the clip's own progress, so a
+                    // keyframed fade lands in the file where it does on the
+                    // canvas. The equal-power transition crossfade rides on top
+                    // rather than replacing it.
+                    gainAt = { t ->
+                        masterVolume *
+                            clip.volumeAt(clip.clipProgressAt(t)) *
+                            crossfadeGain(clip, t)
+                    },
                 ),
             )
         }

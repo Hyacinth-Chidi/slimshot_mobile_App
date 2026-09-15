@@ -16,7 +16,14 @@ internal data class NativeTimelineClip(
     val timelineStart: Double,
     val timelineEnd: Double,
     val speed: Double,
-    val volume: Double,
+    /**
+     * This clip's own gain, and how it varies across the clip.
+     *
+     * An [AnimatableDouble] so a diamond can fade a clip without touching the
+     * project master. **Resolve it through [volumeAt] against [clipProgressAt],
+     * per frame** — reading it flat would play a keyframed fade at one level.
+     */
+    val volume: AnimatableDouble,
     val isReversed: Boolean,
     val hasPreparedProxy: Boolean,
     val needsReverseProxy: Boolean,
@@ -37,10 +44,10 @@ internal data class NativeTimelineClip(
      * The user's pinch scale on top of the contain fit — 1.0 is the plain fit,
      * above it crops toward fill, below it shrinks into the background.
      */
-    val canvasScale: Double,
+    val canvasScale: AnimatableDouble,
     /** Where the clip's centre is dragged to, offset from canvas centre. */
-    val canvasOffsetX: Double,
-    val canvasOffsetY: Double,
+    val canvasOffsetX: AnimatableDouble,
+    val canvasOffsetY: AnimatableDouble,
     /**
      * This clip's visual effect, as an id from `effect_catalog.dart`, or null
      * for an unaffected clip — which is every project written before effects
@@ -93,6 +100,38 @@ internal data class NativeTimelineClip(
 
     val timelineDuration: Double
         get() = timelineEnd - timelineStart
+
+    /**
+     * This clip's 0..1 position at [timelineSeconds] — **whole-clip, and the
+     * same for every keyframable property**.
+     *
+     * A diamond is one instant of the *clip*, so every property has to measure
+     * progress the same way; otherwise one diamond would sit at two different
+     * places depending on which property was asked.
+     *
+     * Distinct from [effectProgressAt], which measures across an effect's intro
+     * window. Both exist on purpose: that is the *effect's* clock, a different
+     * quantity that happens to share a range.
+     *
+     * A zero-length clip is 0, not a division by zero.
+     */
+    fun clipProgressAt(timelineSeconds: Double): Double {
+        val d = timelineDuration
+        if (d <= 0.0) return 0.0
+        return ((timelineSeconds - timelineStart) / d).coerceIn(0.0, 1.0)
+    }
+
+    /** This clip's gain at [progress], clamped to what a player will accept. */
+    fun volumeAt(progress: Double): Double = volume.resolveAt(progress).coerceIn(0.0, 1.0)
+
+    /** The pinch scale at [progress], clamped to the range the gesture allows. */
+    fun canvasScaleAt(progress: Double): Double =
+        canvasScale.resolveAt(progress).coerceIn(0.05, 16.0)
+
+    /** The drag offsets at [progress]. */
+    fun canvasOffsetXAt(progress: Double): Double = canvasOffsetX.resolveAt(progress)
+
+    fun canvasOffsetYAt(progress: Double): Double = canvasOffsetY.resolveAt(progress)
 
     /**
      * How far this clip's effect has played at [timelineSeconds], 0 at the
@@ -207,7 +246,12 @@ internal data class NativeTimelineClip(
             } else {
                 sourceStart + ((timelineEnd - timelineStart) * speed).coerceAtLeast(MIN_SOURCE_SPAN)
             }
-            val volume = (map.number("volume") ?: 1.0).coerceIn(0.0, 1.0)
+            // Either shape the composer writes: a bare number while flat — which
+            // is what every clip nobody has keyframed sends — or a map once a
+            // diamond exists. The 0..1 clamp moved to [volumeAt]: a keyframe
+            // changes the value after parsing, so clamping here would clamp the
+            // wrong number.
+            val volume = AnimatableDouble.fromWire(map["volume"], fallback = 1.0)
             val isReversed = map["isReversed"] as? Boolean ?: false
             val hasPreparedProxy = map["hasPreparedProxy"] as? Boolean
                 ?: (playbackVideoPath != sourceVideoPath)
@@ -231,9 +275,12 @@ internal data class NativeTimelineClip(
                 sourceWidth = map.number("sourceWidth") ?: 0.0,
                 sourceHeight = map.number("sourceHeight") ?: 0.0,
                 colorMatrix = map.matrix("colorMatrix"),
-                canvasScale = (map.number("canvasScale") ?: 1.0).coerceIn(0.05, 16.0),
-                canvasOffsetX = map.number("canvasOffsetX") ?: 0.0,
-                canvasOffsetY = map.number("canvasOffsetY") ?: 0.0,
+                // The scale clamp moved to [canvasScaleAt] for the same reason
+                // the intensity clamp did: a keyframe moves the value after
+                // parsing.
+                canvasScale = AnimatableDouble.fromWire(map["canvasScale"], fallback = 1.0),
+                canvasOffsetX = AnimatableDouble.fromWire(map["canvasOffsetX"], fallback = 0.0),
+                canvasOffsetY = AnimatableDouble.fromWire(map["canvasOffsetY"], fallback = 0.0),
                 effectId = (map["effectId"] as? String)?.takeIf { it.isNotBlank() },
                 // Either shape the composer writes: a **bare number** while the
                 // intensity is flat — which is what every clip sends and what

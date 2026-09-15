@@ -1082,10 +1082,15 @@ internal class TimelinePlaybackEngine(
             // contain fit — the fit is where the clip *starts*, the transform
             // is what the user did to it. A live gesture's override wins over
             // the committed value until the release lands in the timeline.
+            //
+            // Resolved at this clip's own progress, so a keyframed transform
+            // moves across the clip. The renderer ignores an unchanged value,
+            // so a clip carrying no keyframes costs exactly what it did before.
+            val clipProgress = clip.clipProgressAt(position)
             val override = transformOverrides[clip.id]
-            val scale = override?.get(0) ?: clip.canvasScale
-            val panX = override?.get(1) ?: clip.canvasOffsetX
-            val panY = override?.get(2) ?: clip.canvasOffsetY
+            val scale = override?.get(0) ?: clip.canvasScaleAt(clipProgress)
+            val panX = override?.get(1) ?: clip.canvasOffsetXAt(clipProgress)
+            val panY = override?.get(2) ?: clip.canvasOffsetYAt(clipProgress)
 
             if (renderer.laneShowingImage(lane.index)) {
                 // A photo's contain fit is derived by the renderer from the
@@ -1291,7 +1296,13 @@ internal class TimelinePlaybackEngine(
                 val clip = lane.currentClip()
                 lane.applyVolume(
                     if (lane.index == masterLane && clip != null) {
-                        (volume * clip.volume).toFloat()
+                        // **`applyVolume` change-guards on VOLUME_EPSILON**, and
+                        // that guard is what makes a keyframed fade safe here:
+                        // setting an unchanged volume every tick makes ExoPlayer
+                        // rebuild its AudioTrack, which is fault 10 in this
+                        // engine's own history. A fade only pushes when the
+                        // value has actually moved.
+                        (volume * clip.volumeAt(clip.clipProgressAt(position))).toFloat()
                     } else {
                         0f
                     },
@@ -1304,10 +1315,15 @@ internal class TimelinePlaybackEngine(
         val incoming = clips.getOrNull(window.rightClipIndex) ?: return
         val progress = window.progressAt(position).toDouble()
 
+        // Each clip's own keyframed gain rides underneath the equal-power
+        // crossfade rather than replacing it: a clip fading out by keyframes
+        // that also transitions must do both.
+        val outGain = outgoing.volumeAt(outgoing.clipProgressAt(position))
+        val inGain = incoming.volumeAt(incoming.clipProgressAt(position))
         lanes[outgoing.laneIndex]
-            .applyVolume((volume * outgoing.volume * cos(progress * PI / 2.0)).toFloat())
+            .applyVolume((volume * outGain * cos(progress * PI / 2.0)).toFloat())
         lanes[incoming.laneIndex]
-            .applyVolume((volume * incoming.volume * sin(progress * PI / 2.0)).toFloat())
+            .applyVolume((volume * inGain * sin(progress * PI / 2.0)).toFloat())
     }
 
     private fun sendPositionEventIfDue(position: Double) {

@@ -44,26 +44,141 @@ import kotlin.math.sin
  * is a migration, not an edit.**
  */
 internal enum class KeyframeInterpolation(val wireName: String) {
-    /** A straight line. */
+    /**
+     * A straight line, and what a freshly placed keyframe carries — so the
+     * easing sheet's "None" cell tells the truth about a diamond nobody has
+     * shaped yet.
+     */
     LINEAR("linear"),
-
-    /** Slow at both ends, quick through the middle. The default. */
-    EASE("ease"),
 
     /** No travel at all: the value stays put until the next keyframe, then jumps. */
     HOLD("hold"),
+
+    SINE_IN("sineIn"),
+    SINE_OUT("sineOut"),
+    SINE_IN_OUT("sineInOut"),
+    QUAD_IN("quadIn"),
+    QUAD_OUT("quadOut"),
+    QUAD_IN_OUT("quadInOut"),
+    CUBIC_IN("cubicIn"),
+    CUBIC_OUT("cubicOut"),
+    CUBIC_IN_OUT("cubicInOut"),
+    BOUNCE_IN("bounceIn"),
+    BOUNCE_OUT("bounceOut"),
+    BOUNCE_IN_OUT("bounceInOut"),
 }
+
+/**
+ * The curve the legacy wire name `ease` resolves to.
+ *
+ * `ease` was the standard cubic in-out and is no longer a value of the enum;
+ * every timeline composed from a draft written before the easing families
+ * carries the string, so [keyframeInterpolationByName] maps it here. The
+ * migration is exact — the curve is unchanged, only its name.
+ */
+internal val DEFAULT_KEYFRAME_INTERPOLATION = KeyframeInterpolation.CUBIC_IN_OUT
 
 /**
  * An interpolation name this build does not know degrades to the default rather
  * than throwing — a timeline from a newer build must still render.
  */
 internal fun keyframeInterpolationByName(name: String?): KeyframeInterpolation {
-    if (name == null) return KeyframeInterpolation.EASE
+    if (name == null) return KeyframeInterpolation.LINEAR
+    // The one legacy name. See [DEFAULT_KEYFRAME_INTERPOLATION].
+    if (name == "ease") return DEFAULT_KEYFRAME_INTERPOLATION
     for (value in KeyframeInterpolation.entries) {
         if (value.wireName == name) return value
     }
-    return KeyframeInterpolation.EASE
+    // **LINEAR, not the default curve.** A name this build cannot read is a
+    // shape it has no idea about, and guessing one would move the value along a
+    // path nobody chose.
+    return KeyframeInterpolation.LINEAR
+}
+
+/**
+ * The eased fraction for [t] (0..1) on [e].
+ *
+ * A function-for-function port of `applyKeyframeEasing` in
+ * `animatable_double.dart`. **Keep it structurally parallel**: same branch
+ * order, same constants, same arithmetic spelled the same way, so a future
+ * curve change can be applied to both by reading them side by side.
+ *
+ * Every curve lands on exactly 0 at `t == 0` and 1 at `t == 1` and stays inside
+ * that range throughout — the bounce family included, which is why it bounces
+ * *within* the range rather than overshooting the way an elastic ease would.
+ */
+internal fun applyKeyframeEasing(e: KeyframeInterpolation, t: Double): Double {
+    if (t <= 0) return 0.0
+    if (t >= 1) return 1.0
+    return when (e) {
+        // HOLD never actually reaches here — `resolveAt` returns the held value
+        // before easing — but the `when` must be exhaustive, and a straight line
+        // is the honest answer for a caller asking a hold for its *curve*.
+        KeyframeInterpolation.LINEAR, KeyframeInterpolation.HOLD -> t
+        KeyframeInterpolation.SINE_IN -> 1 - cos((t * PI) / 2)
+        KeyframeInterpolation.SINE_OUT -> sin((t * PI) / 2)
+        KeyframeInterpolation.SINE_IN_OUT -> -(cos(PI * t) - 1) / 2
+        KeyframeInterpolation.QUAD_IN -> t * t
+        KeyframeInterpolation.QUAD_OUT -> 1 - (1 - t) * (1 - t)
+        KeyframeInterpolation.QUAD_IN_OUT ->
+            if (t < 0.5) {
+                2 * t * t
+            } else {
+                val u = -2 * t + 2
+                1 - (u * u) / 2
+            }
+        KeyframeInterpolation.CUBIC_IN -> t * t * t
+        KeyframeInterpolation.CUBIC_OUT -> {
+            val u = 1 - t
+            1 - u * u * u
+        }
+        KeyframeInterpolation.CUBIC_IN_OUT ->
+            if (t < 0.5) {
+                4 * t * t * t
+            } else {
+                val u = -2 * t + 2
+                1 - (u * u * u) / 2
+            }
+        KeyframeInterpolation.BOUNCE_IN -> 1 - bounceOut(1 - t)
+        KeyframeInterpolation.BOUNCE_OUT -> bounceOut(t)
+        KeyframeInterpolation.BOUNCE_IN_OUT ->
+            if (t < 0.5) {
+                (1 - bounceOut(1 - 2 * t)) / 2
+            } else {
+                (1 + bounceOut(2 * t - 1)) / 2
+            }
+    }
+}
+
+/**
+ * The standard four-segment bounce — Penner's, the curve every toolkit ships.
+ *
+ * **The constants are exact and deliberately unrounded**, matching the Dart
+ * digit for digit. A "tidied" 0.98 on either side would be a divergence the
+ * fixture catches but nobody could explain.
+ *
+ * Note `1 / d1` and friends are `Double` division because `d1` is a `Double`;
+ * spelling any of these denominators as an integer would be the `1 / 3` trap
+ * this file already documents once.
+ */
+private fun bounceOut(t: Double): Double {
+    val n1 = 7.5625
+    val d1 = 2.75
+    return when {
+        t < 1 / d1 -> n1 * t * t
+        t < 2 / d1 -> {
+            val u = t - 1.5 / d1
+            n1 * u * u + 0.75
+        }
+        t < 2.5 / d1 -> {
+            val u = t - 2.25 / d1
+            n1 * u * u + 0.9375
+        }
+        else -> {
+            val u = t - 2.625 / d1
+            n1 * u * u + 0.984375
+        }
+    }
 }
 
 /** One value pinned at one moment of a clip. */
@@ -79,7 +194,7 @@ internal data class Keyframe(
      * not the one that ends at it — the convention every editor uses for a
      * hold.
      */
-    val interpolation: KeyframeInterpolation = KeyframeInterpolation.EASE,
+    val interpolation: KeyframeInterpolation = KeyframeInterpolation.LINEAR,
 )
 
 // ---------------------------------------------------------------------------
@@ -170,7 +285,7 @@ internal data class AnimatableDouble(
             if (span <= 0) return a.value
 
             val t = (p - b.progress) / span
-            val eased = if (b.interpolation == KeyframeInterpolation.LINEAR) t else easeInOut(t)
+            val eased = applyKeyframeEasing(b.interpolation, t)
             return b.value + (a.value - b.value) * eased
         }
 

@@ -52,6 +52,41 @@ void main() {
     );
   });
 
+  test('every easing curve still matches the committed fixture', () {
+    final rows = _loadFixture()['easings'] as List;
+    expect(rows, isNotEmpty);
+
+    for (final entry in rows.cast<Map<String, dynamic>>()) {
+      final name = entry['interpolation'] as String;
+      final easing = KeyframeInterpolation.values.firstWhere(
+        (e) => e.name == name,
+        orElse: () => throw StateError(
+            'the fixture names a curve this build does not have: $name'),
+      );
+      for (final sample in (entry['samples'] as List)
+          .cast<Map<String, dynamic>>()) {
+        final t = (sample['t'] as num).toDouble();
+        expect(
+          applyKeyframeEasing(easing, t),
+          closeTo((sample['value'] as num).toDouble(), 1e-6),
+          reason: '$name @ $t',
+        );
+      }
+    }
+  });
+
+  test('the fixture covers every curve this build knows', () {
+    // Without this, a curve added to the enum but missing from the fixture
+    // would leave the Kotlin port free to get it wrong — the samples test only
+    // checks the rows that are present.
+    final named = {
+      for (final row in (_loadFixture()['easings'] as List)
+          .cast<Map<String, dynamic>>())
+        row['interpolation'] as String,
+    };
+    expect(named, KeyframeInterpolation.values.map((e) => e.name).toSet());
+  });
+
   test('every envelope still matches the committed fixture', () {
     final rows = _loadFixture()['envelopes'] as List;
     expect(rows, isNotEmpty);

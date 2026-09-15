@@ -1,4 +1,860 @@
 {
+  "easings": [
+    {
+      "interpolation": "linear",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.05
+        },
+        {
+          "t": 0.1,
+          "value": 0.1
+        },
+        {
+          "t": 0.25,
+          "value": 0.25
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.363636
+        },
+        {
+          "t": 0.4,
+          "value": 0.4
+        },
+        {
+          "t": 0.5,
+          "value": 0.5
+        },
+        {
+          "t": 0.6,
+          "value": 0.6
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.727273
+        },
+        {
+          "t": 0.75,
+          "value": 0.75
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.909091
+        },
+        {
+          "t": 0.9,
+          "value": 0.9
+        },
+        {
+          "t": 0.95,
+          "value": 0.95
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "hold",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.05
+        },
+        {
+          "t": 0.1,
+          "value": 0.1
+        },
+        {
+          "t": 0.25,
+          "value": 0.25
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.363636
+        },
+        {
+          "t": 0.4,
+          "value": 0.4
+        },
+        {
+          "t": 0.5,
+          "value": 0.5
+        },
+        {
+          "t": 0.6,
+          "value": 0.6
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.727273
+        },
+        {
+          "t": 0.75,
+          "value": 0.75
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.909091
+        },
+        {
+          "t": 0.9,
+          "value": 0.9
+        },
+        {
+          "t": 0.95,
+          "value": 0.95
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "sineIn",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.003083
+        },
+        {
+          "t": 0.1,
+          "value": 0.012312
+        },
+        {
+          "t": 0.25,
+          "value": 0.07612
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.158746
+        },
+        {
+          "t": 0.4,
+          "value": 0.190983
+        },
+        {
+          "t": 0.5,
+          "value": 0.292893
+        },
+        {
+          "t": 0.6,
+          "value": 0.412215
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.584585
+        },
+        {
+          "t": 0.75,
+          "value": 0.617317
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.857685
+        },
+        {
+          "t": 0.9,
+          "value": 0.843566
+        },
+        {
+          "t": 0.95,
+          "value": 0.921541
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "sineOut",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.078459
+        },
+        {
+          "t": 0.1,
+          "value": 0.156434
+        },
+        {
+          "t": 0.25,
+          "value": 0.382683
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.540641
+        },
+        {
+          "t": 0.4,
+          "value": 0.587785
+        },
+        {
+          "t": 0.5,
+          "value": 0.707107
+        },
+        {
+          "t": 0.6,
+          "value": 0.809017
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.909632
+        },
+        {
+          "t": 0.75,
+          "value": 0.92388
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.989821
+        },
+        {
+          "t": 0.9,
+          "value": 0.987688
+        },
+        {
+          "t": 0.95,
+          "value": 0.996917
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "sineInOut",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.006156
+        },
+        {
+          "t": 0.1,
+          "value": 0.024472
+        },
+        {
+          "t": 0.25,
+          "value": 0.146447
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.292292
+        },
+        {
+          "t": 0.4,
+          "value": 0.345492
+        },
+        {
+          "t": 0.5,
+          "value": 0.5
+        },
+        {
+          "t": 0.6,
+          "value": 0.654508
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.82743
+        },
+        {
+          "t": 0.75,
+          "value": 0.853553
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.979746
+        },
+        {
+          "t": 0.9,
+          "value": 0.975528
+        },
+        {
+          "t": 0.95,
+          "value": 0.993844
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "quadIn",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.0025
+        },
+        {
+          "t": 0.1,
+          "value": 0.01
+        },
+        {
+          "t": 0.25,
+          "value": 0.0625
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.132231
+        },
+        {
+          "t": 0.4,
+          "value": 0.16
+        },
+        {
+          "t": 0.5,
+          "value": 0.25
+        },
+        {
+          "t": 0.6,
+          "value": 0.36
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.528926
+        },
+        {
+          "t": 0.75,
+          "value": 0.5625
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.826446
+        },
+        {
+          "t": 0.9,
+          "value": 0.81
+        },
+        {
+          "t": 0.95,
+          "value": 0.9025
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "quadOut",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.0975
+        },
+        {
+          "t": 0.1,
+          "value": 0.19
+        },
+        {
+          "t": 0.25,
+          "value": 0.4375
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.595041
+        },
+        {
+          "t": 0.4,
+          "value": 0.64
+        },
+        {
+          "t": 0.5,
+          "value": 0.75
+        },
+        {
+          "t": 0.6,
+          "value": 0.84
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.92562
+        },
+        {
+          "t": 0.75,
+          "value": 0.9375
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.991736
+        },
+        {
+          "t": 0.9,
+          "value": 0.99
+        },
+        {
+          "t": 0.95,
+          "value": 0.9975
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "quadInOut",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.005
+        },
+        {
+          "t": 0.1,
+          "value": 0.02
+        },
+        {
+          "t": 0.25,
+          "value": 0.125
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.264463
+        },
+        {
+          "t": 0.4,
+          "value": 0.32
+        },
+        {
+          "t": 0.5,
+          "value": 0.5
+        },
+        {
+          "t": 0.6,
+          "value": 0.68
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.85124
+        },
+        {
+          "t": 0.75,
+          "value": 0.875
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.983471
+        },
+        {
+          "t": 0.9,
+          "value": 0.98
+        },
+        {
+          "t": 0.95,
+          "value": 0.995
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "cubicIn",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.000125
+        },
+        {
+          "t": 0.1,
+          "value": 0.001
+        },
+        {
+          "t": 0.25,
+          "value": 0.015625
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.048084
+        },
+        {
+          "t": 0.4,
+          "value": 0.064
+        },
+        {
+          "t": 0.5,
+          "value": 0.125
+        },
+        {
+          "t": 0.6,
+          "value": 0.216
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.384673
+        },
+        {
+          "t": 0.75,
+          "value": 0.421875
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.751315
+        },
+        {
+          "t": 0.9,
+          "value": 0.729
+        },
+        {
+          "t": 0.95,
+          "value": 0.857375
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "cubicOut",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.142625
+        },
+        {
+          "t": 0.1,
+          "value": 0.271
+        },
+        {
+          "t": 0.25,
+          "value": 0.578125
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.742299
+        },
+        {
+          "t": 0.4,
+          "value": 0.784
+        },
+        {
+          "t": 0.5,
+          "value": 0.875
+        },
+        {
+          "t": 0.6,
+          "value": 0.936
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.979715
+        },
+        {
+          "t": 0.75,
+          "value": 0.984375
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.999249
+        },
+        {
+          "t": 0.9,
+          "value": 0.999
+        },
+        {
+          "t": 0.95,
+          "value": 0.999875
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "cubicInOut",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.0005
+        },
+        {
+          "t": 0.1,
+          "value": 0.004
+        },
+        {
+          "t": 0.25,
+          "value": 0.0625
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.192337
+        },
+        {
+          "t": 0.4,
+          "value": 0.256
+        },
+        {
+          "t": 0.5,
+          "value": 0.5
+        },
+        {
+          "t": 0.6,
+          "value": 0.744
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.918858
+        },
+        {
+          "t": 0.75,
+          "value": 0.9375
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.996995
+        },
+        {
+          "t": 0.9,
+          "value": 0.996
+        },
+        {
+          "t": 0.95,
+          "value": 0.9995
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "bounceIn",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.015469
+        },
+        {
+          "t": 0.1,
+          "value": 0.011875
+        },
+        {
+          "t": 0.25,
+          "value": 0.027344
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.1875
+        },
+        {
+          "t": 0.4,
+          "value": 0.2275
+        },
+        {
+          "t": 0.5,
+          "value": 0.234375
+        },
+        {
+          "t": 0.6,
+          "value": 0.09
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.4375
+        },
+        {
+          "t": 0.75,
+          "value": 0.527344
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.9375
+        },
+        {
+          "t": 0.9,
+          "value": 0.924375
+        },
+        {
+          "t": 0.95,
+          "value": 0.981094
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "bounceOut",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.018906
+        },
+        {
+          "t": 0.1,
+          "value": 0.075625
+        },
+        {
+          "t": 0.25,
+          "value": 0.472656
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 1.0
+        },
+        {
+          "t": 0.4,
+          "value": 0.91
+        },
+        {
+          "t": 0.5,
+          "value": 0.765625
+        },
+        {
+          "t": 0.6,
+          "value": 0.7725
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 1.0
+        },
+        {
+          "t": 0.75,
+          "value": 0.972656
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 1.0
+        },
+        {
+          "t": 0.9,
+          "value": 0.988125
+        },
+        {
+          "t": 0.95,
+          "value": 0.984531
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "interpolation": "bounceInOut",
+      "samples": [
+        {
+          "t": 0.0,
+          "value": 0.0
+        },
+        {
+          "t": 0.05,
+          "value": 0.005938
+        },
+        {
+          "t": 0.1,
+          "value": 0.03
+        },
+        {
+          "t": 0.25,
+          "value": 0.117188
+        },
+        {
+          "t": 0.36363636363636365,
+          "value": 0.21875
+        },
+        {
+          "t": 0.4,
+          "value": 0.34875
+        },
+        {
+          "t": 0.5,
+          "value": 0.5
+        },
+        {
+          "t": 0.6,
+          "value": 0.65125
+        },
+        {
+          "t": 0.7272727272727273,
+          "value": 0.90625
+        },
+        {
+          "t": 0.75,
+          "value": 0.882813
+        },
+        {
+          "t": 0.9090909090909091,
+          "value": 0.96875
+        },
+        {
+          "t": 0.9,
+          "value": 0.97
+        },
+        {
+          "t": 0.95,
+          "value": 0.994062
+        },
+        {
+          "t": 1.0,
+          "value": 1.0
+        }
+      ]
+    }
+  ],
   "envelopes": [
     {
       "envelope": "pulse",
@@ -630,7 +1486,7 @@
         {
           "progress": 0.5,
           "value": 0.2,
-          "interpolation": "ease"
+          "interpolation": "linear"
         }
       ],
       "samples": [
@@ -694,7 +1550,7 @@
         {
           "progress": 0.5,
           "value": 0.2,
-          "interpolation": "ease"
+          "interpolation": "linear"
         }
       ],
       "samples": [
@@ -827,12 +1683,12 @@
         {
           "progress": 0.2,
           "value": 0.1,
-          "interpolation": "ease"
+          "interpolation": "linear"
         },
         {
           "progress": 0.8,
           "value": 0.9,
-          "interpolation": "ease"
+          "interpolation": "linear"
         }
       ],
       "samples": [
@@ -846,7 +1702,7 @@
         },
         {
           "p": 0.25,
-          "value": 0.101852
+          "value": 0.166667
         },
         {
           "p": 0.5,
@@ -854,7 +1710,7 @@
         },
         {
           "p": 0.75,
-          "value": 0.898148
+          "value": 0.833333
         },
         {
           "p": 0.9,
@@ -901,7 +1757,7 @@
         {
           "progress": 0.75,
           "value": 0.9,
-          "interpolation": "ease"
+          "interpolation": "linear"
         }
       ],
       "samples": [
@@ -975,7 +1831,7 @@
         {
           "progress": 1.0,
           "value": 0.25,
-          "interpolation": "ease"
+          "interpolation": "linear"
         }
       ],
       "samples": [
@@ -1039,7 +1895,7 @@
         {
           "progress": 1.0,
           "value": 0.25,
-          "interpolation": "ease"
+          "interpolation": "linear"
         },
         {
           "progress": 0.0,
@@ -1123,7 +1979,7 @@
         {
           "progress": 1.0,
           "value": 0.25,
-          "interpolation": "ease"
+          "interpolation": "linear"
         }
       ],
       "samples": [
@@ -1197,7 +2053,7 @@
         {
           "progress": 1.0,
           "value": 1.0,
-          "interpolation": "ease"
+          "interpolation": "linear"
         }
       ],
       "samples": [
@@ -1252,6 +2108,287 @@
       ]
     },
     {
+      "name": "eased_pair_bounce_out",
+      "comment": "a bounce across the whole clip. The interpolation belongs to the keyframe the segment *starts* at, so every sample rides bounceOut — and a port that collapsed the family into a plain ease would match at the ends and nowhere between",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.0,
+          "value": 0.0,
+          "interpolation": "bounceOut"
+        },
+        {
+          "progress": 1.0,
+          "value": 1.0,
+          "interpolation": "linear"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.0
+        },
+        {
+          "p": 0.1,
+          "value": 0.075625
+        },
+        {
+          "p": 0.25,
+          "value": 0.472656
+        },
+        {
+          "p": 0.5,
+          "value": 0.765625
+        },
+        {
+          "p": 0.75,
+          "value": 0.972656
+        },
+        {
+          "p": 0.9,
+          "value": 0.988125
+        },
+        {
+          "p": 1.0,
+          "value": 1.0
+        },
+        {
+          "p": -1.0,
+          "value": 0.0
+        },
+        {
+          "p": -0.0001,
+          "value": 0.0
+        },
+        {
+          "p": 1.0001,
+          "value": 1.0
+        },
+        {
+          "p": 2.0,
+          "value": 1.0
+        },
+        {
+          "p": "nan",
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "name": "eased_pair_quad_in",
+      "comment": "quadIn(0.5) is exactly 0.25, which no other family gives",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.0,
+          "value": 0.0,
+          "interpolation": "quadIn"
+        },
+        {
+          "progress": 1.0,
+          "value": 1.0,
+          "interpolation": "linear"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.0
+        },
+        {
+          "p": 0.1,
+          "value": 0.01
+        },
+        {
+          "p": 0.25,
+          "value": 0.0625
+        },
+        {
+          "p": 0.5,
+          "value": 0.25
+        },
+        {
+          "p": 0.75,
+          "value": 0.5625
+        },
+        {
+          "p": 0.9,
+          "value": 0.81
+        },
+        {
+          "p": 1.0,
+          "value": 1.0
+        },
+        {
+          "p": -1.0,
+          "value": 0.0
+        },
+        {
+          "p": -0.0001,
+          "value": 0.0
+        },
+        {
+          "p": 1.0001,
+          "value": 1.0
+        },
+        {
+          "p": 2.0,
+          "value": 1.0
+        },
+        {
+          "p": "nan",
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "name": "mixed_easings_per_segment",
+      "comment": "each segment reads its own outgoing flag, so the two halves travel on different curves — a port reading the *arriving* flag instead of the outgoing one would swap them and still land on every keyframe exactly",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.0,
+          "value": 0.0,
+          "interpolation": "sineInOut"
+        },
+        {
+          "progress": 0.5,
+          "value": 1.0,
+          "interpolation": "cubicOut"
+        },
+        {
+          "progress": 1.0,
+          "value": 0.25,
+          "interpolation": "linear"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.0
+        },
+        {
+          "p": 0.1,
+          "value": 0.095492
+        },
+        {
+          "p": 0.25,
+          "value": 0.5
+        },
+        {
+          "p": 0.5,
+          "value": 1.0
+        },
+        {
+          "p": 0.75,
+          "value": 0.34375
+        },
+        {
+          "p": 0.9,
+          "value": 0.256
+        },
+        {
+          "p": 1.0,
+          "value": 0.25
+        },
+        {
+          "p": -1.0,
+          "value": 0.0
+        },
+        {
+          "p": -0.0001,
+          "value": 0.0
+        },
+        {
+          "p": 1.0001,
+          "value": 0.25
+        },
+        {
+          "p": 2.0,
+          "value": 0.25
+        },
+        {
+          "p": "nan",
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "name": "legacy_ease_name",
+      "comment": "the migration: every draft written before the easing families holds the string `ease`, which both sides must read as cubicInOut. The fixture records the resolved name, and the Kotlin test separately asserts that `ease` itself still resolves here",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.0,
+          "value": 0.0,
+          "interpolation": "cubicInOut"
+        },
+        {
+          "progress": 1.0,
+          "value": 1.0,
+          "interpolation": "linear"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.0
+        },
+        {
+          "p": 0.1,
+          "value": 0.004
+        },
+        {
+          "p": 0.25,
+          "value": 0.0625
+        },
+        {
+          "p": 0.5,
+          "value": 0.5
+        },
+        {
+          "p": 0.75,
+          "value": 0.9375
+        },
+        {
+          "p": 0.9,
+          "value": 0.996
+        },
+        {
+          "p": 1.0,
+          "value": 1.0
+        },
+        {
+          "p": -1.0,
+          "value": 0.0
+        },
+        {
+          "p": -0.0001,
+          "value": 0.0
+        },
+        {
+          "p": 1.0001,
+          "value": 1.0
+        },
+        {
+          "p": 2.0,
+          "value": 1.0
+        },
+        {
+          "p": "nan",
+          "value": 0.0
+        }
+      ]
+    },
+    {
       "name": "out_of_range_progress",
       "comment": "keyframes exactly on both ends, so every sample is interpolated and none of the holding arms can hide a broken ease",
       "baseValue": 0.0,
@@ -1261,12 +2398,12 @@
         {
           "progress": 0.0,
           "value": 0.4,
-          "interpolation": "ease"
+          "interpolation": "linear"
         },
         {
           "progress": 1.0,
           "value": 0.6,
-          "interpolation": "ease"
+          "interpolation": "linear"
         }
       ],
       "samples": [
@@ -1276,11 +2413,11 @@
         },
         {
           "p": 0.1,
-          "value": 0.4008
+          "value": 0.42
         },
         {
           "p": 0.25,
-          "value": 0.4125
+          "value": 0.45
         },
         {
           "p": 0.5,
@@ -1288,11 +2425,11 @@
         },
         {
           "p": 0.75,
-          "value": 0.5875
+          "value": 0.55
         },
         {
           "p": 0.9,
-          "value": 0.5992
+          "value": 0.58
         },
         {
           "p": 1.0,

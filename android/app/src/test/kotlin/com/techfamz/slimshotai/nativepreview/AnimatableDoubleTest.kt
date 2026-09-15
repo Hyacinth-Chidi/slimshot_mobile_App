@@ -62,7 +62,11 @@ class AnimatableDoubleTest {
      * tells you which curve, and which branch of it, drifted.
      */
     private fun assertClose(where: String, expected: Double, actual: Double) {
-        if (abs(expected - actual) > tolerance) {
+        // `!actual.isFinite()` first: **NaN fails every comparison**, so
+        // `abs(expected - actual) > tolerance` is false for it and a port
+        // returning NaN would pass silently. This guard has caught a real
+        // divergence in the sibling text-animation fixture test.
+        if (!actual.isFinite() || abs(expected - actual) > tolerance) {
             throw AssertionError(
                 "$where: expected $expected but was $actual " +
                     "(difference ${abs(expected - actual)}, tolerance $tolerance)"
@@ -88,6 +92,91 @@ class AnimatableDoubleTest {
 
     /** How a sampled progress reads in a failure message. */
     private fun show(p: Double): String = if (p.isNaN()) "nan" else p.toString()
+
+    @Test
+    fun `easing samples match the shared fixture`() {
+        val rows = fixture().array("easings")
+        assertTrue("fixture has no easing samples", rows.isNotEmpty())
+
+        for (row in rows) {
+            val name = row.string("interpolation")
+            val easing = keyframeInterpolationByName(name)
+            for (sample in row.array("samples")) {
+                val t = sample.double("t")
+                assertClose(
+                    "easing '$name' at t=$t",
+                    sample.double("value"),
+                    applyKeyframeEasing(easing, t),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `every interpolation name in the fixture is one this build knows`() {
+        // Without this, a `wireName` typo would make `keyframeInterpolationByName`
+        // fall through to LINEAR — and the samples test above would still pass
+        // for the linear row while every curve silently became a straight line.
+        for (row in fixture().array("easings")) {
+            val name = row.string("interpolation")
+            assertTrue(
+                "fixture names an interpolation this build does not have: $name",
+                KeyframeInterpolation.entries.any { it.wireName == name },
+            )
+        }
+    }
+
+    @Test
+    fun `the fixture covers every interpolation this build knows`() {
+        val sampled = fixture().array("easings").map { it.string("interpolation") }.toSet()
+        for (value in KeyframeInterpolation.entries) {
+            assertTrue(
+                "interpolation ${value.wireName} has no fixture rows — re-run " +
+                    "`dart run tool/generate_envelope_fixture.dart`",
+                sampled.contains(value.wireName),
+            )
+        }
+    }
+
+    @Test
+    fun `the legacy ease name still resolves to the cubic it always was`() {
+        // The migration. Every timeline composed from a draft written before the
+        // easing families carries this string, and both sides must read it the
+        // same way or an old project's keyframes would travel differently in the
+        // file than on the canvas.
+        assertTrue(
+            "'ease' must resolve to cubicInOut",
+            keyframeInterpolationByName("ease") == KeyframeInterpolation.CUBIC_IN_OUT,
+        )
+    }
+
+    @Test
+    fun `an unknown interpolation name resolves to linear, never a curve`() {
+        for (name in listOf("elasticOut", "Ease", "", "cubic_in_out")) {
+            assertTrue(
+                "unknown name '$name' must resolve to LINEAR",
+                keyframeInterpolationByName(name) == KeyframeInterpolation.LINEAR,
+            )
+        }
+    }
+
+    @Test
+    fun `bounce out reverses direction, rather than collapsing into an ease`() {
+        // The property the sampled values cannot state on their own: a bounce is
+        // deliberately not monotone. A port that quietly used a plain ease would
+        // still hit 0 and 1 at the ends.
+        var reversals = 0
+        var last = applyKeyframeEasing(KeyframeInterpolation.BOUNCE_OUT, 0.0)
+        var rising = true
+        for (i in 1..200) {
+            val v = applyKeyframeEasing(KeyframeInterpolation.BOUNCE_OUT, i / 200.0)
+            val nowRising = v >= last
+            if (nowRising != rising) reversals++
+            rising = nowRising
+            last = v
+        }
+        assertTrue("bounceOut reversed only $reversals times", reversals >= 4)
+    }
 
     @Test
     fun `envelope samples match the shared fixture`() {
@@ -328,13 +417,13 @@ class AnimatableDoubleTest {
         assertEquals("baseValue", 0.8, full.baseValue, 0.0)
         assertEquals("envelope", "pulse", full.envelope)
         assertEquals("keyframe count", 3, full.keyframes.size)
-        // The degenerate entry defaults to (0, 0, ease) and sorts to the front
-        // alongside the real 0.0 keyframe.
+        // The degenerate entry defaults to (0, 0, linear) and sorts to the
+        // front alongside the real 0.0 keyframe.
         assertEquals("sorted by progress", 0.0, full.keyframes.first().progress, 0.0)
         assertEquals("sorted by progress", 1.0, full.keyframes.last().progress, 0.0)
         assertEquals(
-            "an unknown interpolation name degrades to ease",
-            KeyframeInterpolation.EASE,
+            "an unknown interpolation name degrades to linear, not to a curve",
+            KeyframeInterpolation.LINEAR,
             keyframeInterpolationByName("not_a_real_interpolation"),
         )
     }
