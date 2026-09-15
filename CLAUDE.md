@@ -1077,6 +1077,81 @@ dispute between Dart and Kotlin shows up in one `SlimshotExport` line.
     metadata with the bitmap delivery would need mapping `presentationTimeUs` to a clip, which is
     unverified API territory and not worth the risk.
 
+### Per-clip effects — the multi-pass framework and 39 effects
+
+**Awaiting device verification** beyond the four already checked (`fisheye` perfect, `vignette`
+working after a reshape, `glow` and `blur` fixed but unseen). Spec:
+`docs/superpowers/specs/2026-09-12-clip-effects-design.md`.
+
+A clip carries **one** effect (`VideoSegment.effectId` + `effectIntensity`), chosen from the
+**clip's contextual menu** beside Filters, travelling the same route a per-clip filter does:
+`VideoSegment` → composer → clip JSON → `NativeTimelineClip` → `EffectShaders` → the pass chain.
+`logic/effects/effect_catalog.dart` is the single source of truth and the panel reads it — there
+is no second list, and a test counts the grid's `itemCount` against the catalog so a new entry
+cannot silently miss the UI.
+
+**The renderer was single-pass, and that is why blur never existed.** `composite()` bound
+framebuffer 0 and drew straight to the output, so any effect needing the frame *back* — blur,
+glow, bloom — was impossible; this is also why the background tool's `blur` option falls back to
+black. `gl/RenderTarget.kt` and `gl/EffectPassChain.kt` add render-to-texture and a ping-pong
+chain (`MAX_EFFECT_PASSES` 4, two targets allocated per size change and reused). **With no
+passes the frame takes exactly the old path** — the diff that introduced this removed two lines
+and both reappear in the no-passes branch.
+
+**The chain runs inside `composite`, before overlays.** That is what keeps text or a sticker on a
+blurred clip **sharp**: effects treat the clip picture, overlays sit above it. Do not move the
+chain out or the overlay draw in.
+
+**A grade is per-lane, an effect is whole-frame, and that asymmetry decides transitions.**
+`applyLaneGrades` sets a colour matrix per lane *before* the blend, so two clips can cross-fade
+between different looks. An effect pass runs *after* compositing, on the finished frame — so a
+transition between two differently-effected clips has one frame and two answers. **The outgoing
+clip's effect owns the whole window**, matching the existing rule that the outgoing lane is
+transition master. Rendering each lane into its own target would be more correct and doubles both
+targets and passes on exactly the hardware transitions already strain. Documented at the
+resolution site in both engines, because it reads as an oversight otherwise.
+
+**`uProgress` is the clip's own 0..1 position, from the timeline clock.** Effects began with no
+notion of time, which made every *intro* effect impossible — a cinema zoom or a shutter reveal is
+nothing but a function of time. It is resolved through `NativeTimelineClip.effectProgressAt` in
+both engines, never a frame counter or `System.nanoTime`: export runs faster than realtime, so
+anything self-timed renders differently in the file than on the canvas. `VideoEffect.introSeconds`
+makes an effect *timed* — progress runs over that opening window and then sits at 1 — while a
+static look gets whole-clip progress and ignores it. A zero-length window returns 1.0, not a
+division by zero, or a `fade_in` would park on black.
+
+**Intensity and progress are `@Volatile` uniforms uploaded per draw, never constructor
+arguments.** Baking intensity into a pass meant `passesFor` rebuilt and re-linked the programs on
+every change, so dragging the slider would have linked a program per frame. `IntensityControlled`
+and `ProgressControlled` are the interfaces; a pass that forgets one ships a slider that silently
+does nothing. `ClipEffectController` rebuilds on **id** change only.
+
+**`callOnGlThread` runs inline when already on the GL thread.** Export froze at ~15% with no
+error: `runVideo` already runs inside `callOnGlThread`, and per output frame it resolved the
+clip's effect, which hopped to the GL thread *again* — posting a block behind the call waiting
+for it. The thread blocked on itself at the first frame whose clip carried an effect. A deadlock
+is not a failure anything can report, which is why it presented as a frozen progress bar.
+
+**Two device-found shader lessons worth not repeating:**
+
+- **A vignette must not correct for aspect.** Correcting put the farthest points on the long
+  *edges*, so on a 9:16 clip the darkening read as a band across the top. A lens darkens toward
+  its own corners: plain UV distance normalised to the half-diagonal gives corner 1.0 and edge
+  midpoint 0.707 on any canvas shape.
+- **A bloom must be blurred at reduced resolution.** Glow was invisible because the halo was ~8px
+  at 1080p. The fix is a half-res bloom — the same 16 taps reaching twice as far — **not** a
+  raised radius cap, which trades invisibility for visible banding.
+
+**Randomness in a shader must be a deterministic hash**, of UV and of `uProgress` where it should
+move. Never `Random()`, never a frame counter. And **`mediump` overflows around n≈515** in
+`fract(sin(n*127.1)*…)`: hash seeds must be folded to 0..1 per term rather than summed and
+wrapped at the end, or grain bands flatly on some GPUs and not others.
+
+**`BlurPass` holds the only loop in the codebase** — 16 taps indexing `uWeights[i]`. Spec-legal on
+ES 2.0 (Appendix A constant-index-expression) but with no driver precedent here, so it is
+**unverified on hardware**. Every other shader deliberately avoids loops. If `blur` renders
+unchanged footage on a device, that loop is the first suspect and the fallback is unrolling it.
+
 ### 3. Then â€” timeline UX
 
 Zoom (`_pixelsPerSecond` is a `static const 50.0`; `ClipFilmstrip` already recomputes its grid from
