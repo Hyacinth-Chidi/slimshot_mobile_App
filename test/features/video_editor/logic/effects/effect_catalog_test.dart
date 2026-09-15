@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/logic/effects/effect_catalog.dart';
 
 void main() {
@@ -265,6 +266,128 @@ void main() {
       for (final effect in timed) {
         expect(registered, contains(effect.id),
             reason: '${effect.id} animates but has no shader registered');
+      }
+    });
+  });
+
+  group('default envelopes', () {
+    test('every declared envelope is one the evaluator knows', () {
+      // An unknown name degrades silently to the base value — on screen that
+      // is a preset that does nothing, which is worse than a build failure.
+      for (final effect in kVideoEffects) {
+        final envelope = effect.defaultEnvelope;
+        if (envelope == null) continue;
+        expect(
+          kEnvelopeNames,
+          contains(envelope),
+          reason: '${effect.id} declares an envelope nothing resolves',
+        );
+      }
+    });
+
+    test('nothing timed declares an envelope', () {
+      // **An intro or a reveal already animates through `uProgress` across its
+      // own window.** An envelope on top is a second animation fighting the
+      // first — a fade rising from black while its strength pulses is not a
+      // fade. This is the rule most likely to be broken by someone adding an
+      // entry, because a timed effect is exactly the kind that *looks* like it
+      // wants a curve.
+      for (final effect in kVideoEffects.where((e) => e.isTimed)) {
+        expect(
+          effect.defaultEnvelope,
+          isNull,
+          reason: '${effect.id} is timed and must not also carry an envelope',
+        );
+      }
+    });
+
+    test('no continuous effect declares an envelope', () {
+      // `motionLoop` entries read `uProgress` across the whole clip and are
+      // still moving at the last frame. Same reason as the timed ones.
+      for (final effect in kVideoEffects
+          .where((e) => e.category == EffectCategory.motionLoop)) {
+        expect(
+          effect.defaultEnvelope,
+          isNull,
+          reason: '${effect.id} already animates for the whole clip',
+        );
+      }
+    });
+
+    test('no static grade declares an envelope', () {
+      // A pulsing vignette or a throbbing duotone is a gimmick, not a look —
+      // the user would have to go and switch it off.
+      for (final effect
+          in kVideoEffects.where((e) => e.category == EffectCategory.grade)) {
+        expect(
+          effect.defaultEnvelope,
+          isNull,
+          reason: '${effect.id} is a static grade and must stay flat',
+        );
+      }
+    });
+
+    test('the set of enveloped effects is exactly what was intended', () {
+      // **Deliberately a hardcoded list.** Most of this catalog has never run
+      // on hardware, so an envelope arriving by accident — a copy-pasted entry,
+      // a default that drifted — would change how an effect draws with nothing
+      // saying so, and the report would be filed against the shader. Adding one
+      // has to be a decision someone makes here, on purpose, after watching it.
+      final enveloped = kVideoEffects
+          .where((e) => e.defaultEnvelope != null)
+          .map((e) => e.id)
+          .toSet();
+      expect(enveloped, {'blur', 'glow'});
+    });
+
+    test('an effect with no envelope resolves flat at its default intensity',
+        () {
+      // **The hard gate.** 37 of the 39 entries declare nothing, and each of
+      // them must apply exactly as it did before this model existed: one
+      // strength, the same at every progress.
+      for (final effect in kVideoEffects) {
+        if (effect.defaultEnvelope != null) continue;
+        final parameter = AnimatableDouble(
+          baseValue: effect.defaultIntensity,
+          envelope: effect.defaultEnvelope,
+        );
+        expect(parameter.isAnimated, isFalse, reason: effect.id);
+        for (final p in [0.0, 0.3, 0.5, 0.8, 1.0]) {
+          expect(
+            parameter.resolveAt(p),
+            effect.defaultIntensity,
+            reason: '${effect.id} at p=$p',
+          );
+        }
+      }
+    });
+
+    test('an enveloped effect still rests at full strength on the last frame',
+        () {
+      // The endpoint rule, checked where it actually matters: the last frame an
+      // envelope draws is the clip's own unmodulated intensity, so the handover
+      // to whatever follows the cut is continuous and nothing pops.
+      for (final effect in kVideoEffects) {
+        final envelope = effect.defaultEnvelope;
+        if (envelope == null) continue;
+        final parameter = AnimatableDouble(
+          baseValue: effect.defaultIntensity,
+          envelope: envelope,
+        );
+        expect(
+          parameter.resolveAt(1.0),
+          closeTo(effect.defaultIntensity, 1e-9),
+          reason: '${effect.id} must hand over at its own intensity',
+        );
+        // And it never exceeds what the slider set — an envelope shapes an
+        // intensity, it does not exceed one.
+        for (var i = 0; i <= 20; i++) {
+          expect(
+            parameter.resolveAt(i / 20),
+            lessThanOrEqualTo(effect.defaultIntensity + 1e-9),
+            reason: '${effect.id} at p=${i / 20}',
+          );
+        }
       }
     });
   });

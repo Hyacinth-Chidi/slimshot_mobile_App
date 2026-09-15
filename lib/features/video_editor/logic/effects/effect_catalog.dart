@@ -230,6 +230,33 @@ class VideoEffect {
 }
 
 /// Every effect, in panel order within each category.
+///
+/// **Only two entries declare a [VideoEffect.defaultEnvelope], and the
+/// emptiness of the rest is the decision, not an omission.** Three rules
+/// exclude almost everything, and each was checked against the shader rather
+/// than guessed at:
+///
+/// * **It already animates.** `grain`, `vhs`, `glitch`, `ripple`, `light_leak`
+///   and all three [EffectCategory.motionLoop] entries read `uProgress` and
+///   move on their own; every [EffectCategory.intro] and
+///   [EffectCategory.reveal] plays across its own window. An envelope on top
+///   of any of them is a second animation fighting the first — a glitch that
+///   bursts on its own schedule while its strength pulses on another is not a
+///   rhythm, it is noise.
+/// * **It is a static look.** `vignette`, `duotone`, `chromatic`, `rgb_split`,
+///   `scanlines`, `swirl`, `fisheye`, `mirror` and `sharpen` are grades and
+///   fixed geometry. A breathing vignette or a throbbing duotone is a gimmick
+///   the user then has to go and switch off, and `rgb_split` and `swirl` say
+///   in their own shader comments that they are static *deliberately*.
+/// * **It has not been seen on a device.** The decisive one. Most of this
+///   catalog has never run on hardware, and an envelope that reads badly will
+///   be reported as a broken shader — the one failure this stage must not
+///   cause. An envelope can be added the day after someone watches the effect;
+///   a wrong one shipped now costs an attributable bug report.
+///
+/// `blur` and `glow` are the two that survive all three: both read no clock of
+/// their own, both are a *strength* rather than a shape, and both are the
+/// examples the feature was described by.
 const List<VideoEffect> kVideoEffects = [
   // -- grade ---------------------------------------------------------------
   VideoEffect(
@@ -327,6 +354,15 @@ const List<VideoEffect> kVideoEffects = [
     // in the catalog and the reason the chain exists at all.
     passCount: 3,
     defaultIntensity: 0.5,
+    // **A bloom that breathes**, which is what the label already promises — a
+    // dreamy look that sits at one fixed weight reads as a lens filter left on
+    // by accident. `throb` rather than `pulse` because the effect must never
+    // leave: a bloom switching off and back on is a flicker, and the floor is
+    // the whole distinction between the two curves.
+    //
+    // Like `blur`, this shader reads no clock of its own, so the envelope is
+    // the only thing moving and there is nothing for it to fight.
+    defaultEnvelope: 'throb',
   ),
 
   // -- motion --------------------------------------------------------------
@@ -344,6 +380,16 @@ const List<VideoEffect> kVideoEffects = [
     // be O(n²) samples per pixel for the same picture.
     passCount: 2,
     defaultIntensity: 0.4,
+    // **The picture resolves.** A blur that clears is the one envelope this
+    // whole model was described by, and it is the safest possible case: the
+    // shader reads no clock of its own, so there is nothing for the curve to
+    // fight, and a blur radius is a quantity whose *strength* is obviously
+    // meaningful to vary — unlike a fold or a threshold.
+    //
+    // `ramp_out` rather than `ramp_in`: the shot arriving out of focus and
+    // settling is what a viewer reads as a camera finding its subject. The
+    // reverse reads as the clip being taken away.
+    defaultEnvelope: 'ramp_out',
   ),
 
   // -- intro ---------------------------------------------------------------
