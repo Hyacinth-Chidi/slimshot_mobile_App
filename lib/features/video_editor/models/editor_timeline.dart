@@ -218,9 +218,9 @@ class EditorTimelineVideoClip {
     this.effectId,
     this.effectIntensity = const AnimatableDouble(baseValue: 1.0),
     this.effectIntroSeconds,
-    this.canvasScale = 1.0,
-    this.canvasOffsetX = 0.0,
-    this.canvasOffsetY = 0.0,
+    this.canvasScale = const AnimatableDouble(baseValue: 1.0),
+    this.canvasOffsetX = const AnimatableDouble(baseValue: 0.0),
+    this.canvasOffsetY = const AnimatableDouble(baseValue: 0.0),
   });
 
   final String id;
@@ -231,7 +231,14 @@ class EditorTimelineVideoClip {
   final double timelineStart;
   final double timelineEnd;
   final double speed;
-  final double volume;
+
+  /// This clip's own gain, and how it varies across the clip.
+  ///
+  /// Resolved per frame by whichever engine is drawing — [volumeAt] against
+  /// [clipProgressAt] — never read flat, or a keyframed fade would play at one
+  /// level.
+  final AnimatableDouble volume;
+
   final bool isReversed;
   final bool hasPreparedProxy;
 
@@ -315,11 +322,36 @@ class EditorTimelineVideoClip {
 
   /// The user's pinch scale on top of the contain fit (1.0 = plain fit), and
   /// where the clip's centre is dragged to, in canvas fractions.
-  final double canvasScale;
-  final double canvasOffsetX;
-  final double canvasOffsetY;
+  final AnimatableDouble canvasScale;
+  final AnimatableDouble canvasOffsetX;
+  final AnimatableDouble canvasOffsetY;
 
   double get timelineDuration => timelineEnd - timelineStart;
+
+  /// This clip's 0..1 position at a timeline instant.
+  ///
+  /// **Whole-clip, and the same for every keyframable property** — a diamond is
+  /// one instant of the clip. Distinct from the effect clock, which runs over
+  /// [effectIntroSeconds] when an effect declares one. A zero-length clip is 0,
+  /// not a division by zero.
+  double clipProgressAt(double timelineSeconds) {
+    final d = timelineDuration;
+    if (d <= 0) return 0.0;
+    return ((timelineSeconds - timelineStart) / d).clamp(0.0, 1.0).toDouble();
+  }
+
+  double volumeAt(double progress) => volume.resolveAt(progress);
+  double canvasScaleAt(double progress) => canvasScale.resolveAt(progress);
+  double canvasOffsetXAt(double progress) => canvasOffsetX.resolveAt(progress);
+  double canvasOffsetYAt(double progress) => canvasOffsetY.resolveAt(progress);
+
+  /// Whether this clip carries any keyframe at all, on any property.
+  bool get hasKeyframes =>
+      canvasScale.keyframes.isNotEmpty ||
+      canvasOffsetX.keyframes.isNotEmpty ||
+      canvasOffsetY.keyframes.isNotEmpty ||
+      volume.keyframes.isNotEmpty ||
+      effectIntensity.keyframes.isNotEmpty;
 
   bool get needsReverseProxy {
     return isReversed && !hasPreparedProxy;
@@ -345,7 +377,10 @@ class EditorTimelineVideoClip {
       'timelineEnd': timelineEnd,
       'timelineDuration': timelineDuration,
       'speed': speed,
-      'volume': volume,
+      // A bare number while flat, a map once keyframed — so a clip nobody has
+      // animated crosses the channel exactly as it always has, and Kotlin's
+      // `AnimatableDouble.fromWire` reads either shape.
+      'volume': volume.toJson(),
       'isReversed': isReversed,
       'hasPreparedProxy': hasPreparedProxy,
       'needsReverseProxy': needsReverseProxy,
@@ -362,9 +397,9 @@ class EditorTimelineVideoClip {
       // `AnimatableDouble.fromWire` reads on the Kotlin side.
       'effectIntensity': effectIntensity.toJson(),
       'effectIntroSeconds': effectIntroSeconds,
-      'canvasScale': canvasScale,
-      'canvasOffsetX': canvasOffsetX,
-      'canvasOffsetY': canvasOffsetY,
+      'canvasScale': canvasScale.toJson(),
+      'canvasOffsetX': canvasOffsetX.toJson(),
+      'canvasOffsetY': canvasOffsetY.toJson(),
     };
   }
 }

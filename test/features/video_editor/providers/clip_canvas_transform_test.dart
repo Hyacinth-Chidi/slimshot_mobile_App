@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/timeline/video_editor_timeline_composer.dart';
 import 'package:slimshotai/features/video_editor/models/media_asset.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
+import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/models/video_segment.dart';
 import 'package:slimshotai/features/video_editor/providers/video_editor_notifier.dart';
 import 'package:slimshotai/features/video_editor/services/video_editor_service.dart';
@@ -12,8 +13,8 @@ void main() {
       id: id,
       sourceStart: 0,
       sourceEnd: 5,
-      canvasScale: scale,
-      canvasOffsetX: dx,
+      canvasScale: AnimatableDouble(baseValue: scale),
+      canvasOffsetX: AnimatableDouble(baseValue: dx),
     );
   }
 
@@ -41,10 +42,10 @@ void main() {
         offsetY: -0.1,
       );
 
-      expect(notifier.state.segments[0].canvasScale, 1.0);
-      expect(notifier.state.segments[1].canvasScale, kMaxClipCanvasScale);
-      expect(notifier.state.segments[1].canvasOffsetX, 0.25);
-      expect(notifier.state.segments[1].canvasOffsetY, -0.1);
+      expect(notifier.state.segments[0].canvasScale.baseValue, 1.0);
+      expect(notifier.state.segments[1].canvasScale.baseValue, kMaxClipCanvasScale);
+      expect(notifier.state.segments[1].canvasOffsetX.baseValue, 0.25);
+      expect(notifier.state.segments[1].canvasOffsetY.baseValue, -0.1);
     });
 
     test('a whole gesture undoes as one step', () {
@@ -55,10 +56,10 @@ void main() {
       notifier.updateClipCanvasTransform(scale: 2.5, offsetX: 0.2, offsetY: 0.0);
       notifier.endClipCanvasTransform();
 
-      expect(notifier.state.segments[0].canvasScale, 2.5);
+      expect(notifier.state.segments[0].canvasScale.baseValue, 2.5);
       notifier.undo();
-      expect(notifier.state.segments[0].canvasScale, 1.0);
-      expect(notifier.state.segments[0].canvasOffsetX, 0.0);
+      expect(notifier.state.segments[0].canvasScale.baseValue, 1.0);
+      expect(notifier.state.segments[0].canvasOffsetX.baseValue, 0.0);
     });
 
     test('reset returns the clip to the plain fit, undoably', () {
@@ -68,11 +69,11 @@ void main() {
       );
 
       notifier.resetClipCanvasTransform();
-      expect(notifier.state.segments[0].canvasScale, 1.0);
-      expect(notifier.state.segments[0].canvasOffsetX, 0.0);
+      expect(notifier.state.segments[0].canvasScale.baseValue, 1.0);
+      expect(notifier.state.segments[0].canvasOffsetX.baseValue, 0.0);
 
       notifier.undo();
-      expect(notifier.state.segments[0].canvasScale, 3.0);
+      expect(notifier.state.segments[0].canvasScale.baseValue, 3.0);
     });
 
     test('a split carries the transform to both halves', () {
@@ -85,8 +86,8 @@ void main() {
 
       expect(notifier.state.segments.length, 2);
       for (final half in notifier.state.segments) {
-        expect(half.canvasScale, 2.0);
-        expect(half.canvasOffsetX, 0.3);
+        expect(half.canvasScale.baseValue, 2.0);
+        expect(half.canvasOffsetX.baseValue, 0.3);
       }
     });
 
@@ -94,8 +95,8 @@ void main() {
       final original = clip('a', scale: 1.7, dx: -0.2);
       final restored = VideoSegment.fromJson(original.toJson());
 
-      expect(restored.canvasScale, 1.7);
-      expect(restored.canvasOffsetX, -0.2);
+      expect(restored.canvasScale.baseValue, 1.7);
+      expect(restored.canvasOffsetX.baseValue, -0.2);
     });
 
     test('clips with different transforms are not merged for playback', () {
@@ -118,7 +119,7 @@ void main() {
             assetId: 'asset',
             sourceStart: 0,
             sourceEnd: 5,
-            canvasScale: 2.0,
+            canvasScale: const AnimatableDouble(baseValue: 2.0),
           ),
           VideoSegment(
             id: 'b',

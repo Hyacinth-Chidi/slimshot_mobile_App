@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../logic/animation/animatable_double.dart';
+import '../logic/timeline/timeline_geometry.dart';
 import 'filter_preset.dart';
 import 'media_asset.dart';
 import 'image_overlay_model.dart';
@@ -249,6 +250,24 @@ class VideoEditorState {
       if (segment.id == id) return segment;
     }
     return null;
+  }
+
+  /// Where the playhead sits inside the selected clip, 0..1, or null when
+  /// nothing is selected or the playhead is outside it.
+  ///
+  /// **The one definition of "this instant of this clip".** The keyframe
+  /// controls, the diamonds on the filmstrip and every gesture that captures a
+  /// starting value all resolve through it, so they cannot disagree about which
+  /// moment the user is looking at. Resolved through
+  /// [segmentTimelineStarts] — the same geometry the filmstrip and playback use
+  /// — so it stays right through trims, speed and transition overlaps.
+  double? get selectedClipProgress {
+    final segment = selectedSegment;
+    if (segment == null) return null;
+    final starts = segmentTimelineStarts(segments);
+    final index = segments.indexWhere((s) => s.id == segment.id);
+    if (index < 0 || index >= starts.length) return null;
+    return segment.clipProgressAt(currentPlaybackPosition, starts[index]);
   }
 
   /// The asset a clip is cut from.

@@ -2,6 +2,16 @@ import '../logic/animation/animatable_double.dart';
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 
+/// A parameter resting at 1.0 — an ungained volume, an unpinched scale.
+///
+/// Shared `const` instances rather than a literal per default, so an
+/// unkeyframed clip's four parameters are the *same object* and the identity
+/// comparisons a `copyWith` chain performs stay cheap.
+const AnimatableDouble kUnitParameter = AnimatableDouble(baseValue: 1.0);
+
+/// A parameter resting at 0.0 — a centred clip's offsets.
+const AnimatableDouble kZeroParameter = AnimatableDouble(baseValue: 0.0);
+
 class VideoSegment {
   final String id;
 
@@ -15,7 +25,17 @@ class VideoSegment {
 
   final double sourceStart;
   final double sourceEnd;
-  final double volume;
+
+  /// This clip's own gain, and how it varies across the clip.
+  ///
+  /// An [AnimatableDouble] so a diamond can fade a clip down without touching
+  /// the project's master volume. Resolve it through [volumeAt] at a progress;
+  /// read [AnimatableDouble.baseValue] only where a *control* needs to know
+  /// what to show, since a slider tracking the resolved value would wander
+  /// while playing and write back whatever the curve happened to be at when the
+  /// user grabbed it.
+  final AnimatableDouble volume;
+
   final double speed;
   final String? transitionType;
   final double? transitionDuration;
@@ -28,12 +48,14 @@ class VideoSegment {
   /// below it shrinks into the background. Distinct from crop/zoom, which
   /// changes what part of the *source* is shown — this changes how the clip
   /// sits *on the canvas*.
-  final double canvasScale;
+  /// An [AnimatableDouble] so a clip can push in across its own length — the
+  /// Ken Burns move keyframes were always meant to serve.
+  final AnimatableDouble canvasScale;
 
   /// Where the clip's centre is dragged to, as offsets from the canvas centre
   /// in canvas fractions. Zero is centred.
-  final double canvasOffsetX;
-  final double canvasOffsetY;
+  final AnimatableDouble canvasOffsetX;
+  final AnimatableDouble canvasOffsetY;
 
   /// Colour filter on this clip alone, as a [FilterPresets] id.
   ///
@@ -92,7 +114,7 @@ class VideoSegment {
     this.assetId = '',
     required this.sourceStart,
     required this.sourceEnd,
-    this.volume = 1.0,
+    this.volume = kUnitParameter,
     this.speed = 1.0,
     this.transitionType,
     this.transitionDuration,
@@ -102,12 +124,65 @@ class VideoSegment {
     this.filterIntensity = 1.0,
     this.effectId,
     this.effectIntensity = kDefaultEffectIntensityParameter,
-    this.canvasScale = 1.0,
-    this.canvasOffsetX = 0.0,
-    this.canvasOffsetY = 0.0,
+    this.canvasScale = kUnitParameter,
+    this.canvasOffsetX = kZeroParameter,
+    this.canvasOffsetY = kZeroParameter,
   });
 
   double get duration => (sourceEnd - sourceStart) / speed;
+
+  /// This clip's 0..1 position at a timeline instant, given where it starts.
+  ///
+  /// **Whole-clip, and the same for every keyframable property.** A diamond is
+  /// one instant of the clip, so every property has to measure progress the
+  /// same way — otherwise one diamond would sit at two different places
+  /// depending on which property was asked.
+  ///
+  /// Distinct from the effect clock. [VideoEffect.introSeconds] makes an
+  /// effect's `uProgress` run over its opening window and then rest at 1; that
+  /// is the *effect's* clock, a different quantity that happens to share a
+  /// range. Resolving a keyframe against it would put a clip's diamonds
+  /// somewhere the timeline never drew them.
+  ///
+  /// [duration] already divides by speed, so a sped-up clip's keyframes stay
+  /// where they were placed on the timeline rather than sliding out from under
+  /// the edit.
+  ///
+  /// A zero-length clip is 0, not a division by zero: a clip with no length is
+  /// already over, and NaN here would reach a shader uniform.
+  double clipProgressAt(double timelineSeconds, double timelineStart) {
+    final d = duration;
+    if (d <= 0) return 0.0;
+    return ((timelineSeconds - timelineStart) / d).clamp(0.0, 1.0).toDouble();
+  }
+
+  /// This clip's gain at [progress] (0..1 through the clip).
+  double volumeAt(double progress) => volume.resolveAt(progress);
+
+  /// The pinch scale at [progress].
+  double canvasScaleAt(double progress) => canvasScale.resolveAt(progress);
+
+  /// The drag offsets at [progress].
+  double canvasOffsetXAt(double progress) => canvasOffsetX.resolveAt(progress);
+  double canvasOffsetYAt(double progress) => canvasOffsetY.resolveAt(progress);
+
+  /// Whether this clip carries any keyframe at all, on any property.
+  ///
+  /// Three things ask: the timeline, before drawing diamonds; the composer,
+  /// before allowing a merge (a curve is measured across *a clip*, so a merged
+  /// media item would resolve one curve over the pair); and the notifier's edit
+  /// rule, before deciding whether an edit writes a base value or a keyframe.
+  ///
+  /// **An envelope is not a keyframe.** A parameter can be `isAnimated` through
+  /// an envelope the catalog gave it while the user has placed nothing, and in
+  /// that state the plus button must still behave as though the clip were
+  /// untouched.
+  bool get hasKeyframes =>
+      canvasScale.keyframes.isNotEmpty ||
+      canvasOffsetX.keyframes.isNotEmpty ||
+      canvasOffsetY.keyframes.isNotEmpty ||
+      volume.keyframes.isNotEmpty ||
+      effectIntensity.keyframes.isNotEmpty;
 
   /// Source position [secondsIntoClip] seconds into this clip's span on the
   /// timeline.
@@ -126,7 +201,7 @@ class VideoSegment {
     String? assetId,
     double? sourceStart,
     double? sourceEnd,
-    double? volume,
+    AnimatableDouble? volume,
     double? speed,
     String? transitionType,
     bool clearTransitionType = false,
@@ -141,9 +216,9 @@ class VideoSegment {
     String? effectId,
     bool clearEffectId = false,
     AnimatableDouble? effectIntensity,
-    double? canvasScale,
-    double? canvasOffsetX,
-    double? canvasOffsetY,
+    AnimatableDouble? canvasScale,
+    AnimatableDouble? canvasOffsetX,
+    AnimatableDouble? canvasOffsetY,
   }) {
     return VideoSegment(
       id: id ?? this.id,
@@ -187,7 +262,10 @@ class VideoSegment {
       'assetId': assetId,
       'sourceStart': sourceStart,
       'sourceEnd': sourceEnd,
-      'volume': volume,
+      // Bare numbers while nothing animates them, maps once something does —
+      // see [AnimatableDouble.toJson]. So a clip nobody has keyframed writes
+      // these fields exactly as it always has.
+      'volume': volume.toJson(),
       'speed': speed,
       'transitionType': transitionType,
       'transitionDuration': transitionDuration,
@@ -201,9 +279,9 @@ class VideoSegment {
       // animation writes the field exactly as it always has, and a draft
       // written here still opens in a build that predates this model.
       'effectIntensity': effectIntensity.toJson(),
-      'canvasScale': canvasScale,
-      'canvasOffsetX': canvasOffsetX,
-      'canvasOffsetY': canvasOffsetY,
+      'canvasScale': canvasScale.toJson(),
+      'canvasOffsetX': canvasOffsetX.toJson(),
+      'canvasOffsetY': canvasOffsetY.toJson(),
     };
   }
 
@@ -215,7 +293,10 @@ class VideoSegment {
       assetId: json['assetId'] as String? ?? '',
       sourceStart: (json['sourceStart'] as num).toDouble(),
       sourceEnd: (json['sourceEnd'] as num).toDouble(),
-      volume: (json['volume'] as num?)?.toDouble() ?? 1.0,
+      // Every draft written before keyframes holds a bare number here.
+      // `fromJson` takes `dynamic` for exactly that: a number loads flat, a map
+      // loads fully, and anything else falls back rather than throwing.
+      volume: AnimatableDouble.fromJson(json['volume'], fallback: 1.0),
       speed: (json['speed'] as num?)?.toDouble() ?? 1.0,
       transitionType: json['transitionType'] as String?,
       transitionDuration: (json['transitionDuration'] as num?)?.toDouble(),
@@ -239,9 +320,11 @@ class VideoSegment {
         json['effectIntensity'],
         fallback: defaultEffectIntensity,
       ),
-      canvasScale: (json['canvasScale'] as num?)?.toDouble() ?? 1.0,
-      canvasOffsetX: (json['canvasOffsetX'] as num?)?.toDouble() ?? 0.0,
-      canvasOffsetY: (json['canvasOffsetY'] as num?)?.toDouble() ?? 0.0,
+      canvasScale: AnimatableDouble.fromJson(json['canvasScale'], fallback: 1.0),
+      canvasOffsetX:
+          AnimatableDouble.fromJson(json['canvasOffsetX'], fallback: 0.0),
+      canvasOffsetY:
+          AnimatableDouble.fromJson(json['canvasOffsetY'], fallback: 0.0),
     );
   }
 }

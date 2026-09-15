@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/logic/effects/effect_catalog.dart';
 import 'package:slimshotai/features/video_editor/logic/timeline/video_editor_timeline_composer.dart';
 import 'package:slimshotai/features/video_editor/models/audio_track_model.dart';
@@ -586,6 +587,125 @@ void main() {
         ]),
       );
 
+      expect(timeline.playbackClips, hasLength(1));
+    });
+  });
+
+  group('keyframed clips on the wire', () {
+    test('a keyframed transform reaches the timeline clip and resolves there',
+        () {
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(
+            id: 'a',
+            sourceStart: 0,
+            sourceEnd: 4,
+            canvasScale: const AnimatableDouble(baseValue: 1.0, keyframes: [
+              Keyframe(progress: 0.0, value: 1.0),
+              Keyframe(progress: 1.0, value: 3.0),
+            ]),
+          ),
+        ]),
+      );
+
+      final clip = timeline.videoClips.single;
+      expect(clip.hasKeyframes, isTrue);
+      // The composer must not flatten the curve on the way through: the clip
+      // resolves the same value the segment does, at the same instant.
+      expect(clip.canvasScaleAt(0.5), closeTo(2.0, 1e-9));
+      expect(clip.clipProgressAt(2.0), closeTo(0.5, 1e-9));
+    });
+
+    test('an unanimated clip composes bare numbers, not maps', () {
+      final timeline = composer.compose(
+        stateWith([VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4)]),
+      );
+      final wire = timeline.videoClips.single.toJson();
+
+      // The shape is the contract: a clip nobody keyframed crosses the channel
+      // exactly as it always has, so introducing this model changed nothing for
+      // every project already saved.
+      expect(wire['volume'], isA<num>());
+      expect(wire['canvasScale'], isA<num>());
+      expect(wire['canvasOffsetX'], isA<num>());
+      expect(wire['canvasOffsetY'], isA<num>());
+    });
+
+    test('a keyframed field crosses as a map Kotlin can read', () {
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(
+            id: 'a',
+            sourceStart: 0,
+            sourceEnd: 4,
+            volume: const AnimatableDouble(baseValue: 1.0, keyframes: [
+              Keyframe(progress: 0.0, value: 1.0),
+              Keyframe(
+                progress: 1.0,
+                value: 0.0,
+                interpolation: KeyframeInterpolation.quadOut,
+              ),
+            ]),
+          ),
+        ]),
+      );
+
+      final wire = timeline.videoClips.single.toJson()['volume'];
+      expect(wire, isA<Map>());
+      expect((wire as Map)['baseValue'], 1.0);
+      final keyframes = wire['keyframes'] as List;
+      expect(keyframes, hasLength(2));
+      // The enum's `.name`, which is the `wireName` Kotlin declares.
+      expect((keyframes.last as Map)['interpolation'], 'quadOut');
+    });
+
+    test('a keyframed clip is never merged for playback', () {
+      // Two adjacent cuts from one file that would otherwise collapse into a
+      // single media item. A curve is measured across *a clip*, so merging
+      // would resolve one curve over the pair and the second clip's diamonds
+      // would never land where the user put them.
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(
+            id: 'a',
+            sourceStart: 0,
+            sourceEnd: 4,
+            canvasScale: const AnimatableDouble(
+              baseValue: 1.0,
+              keyframes: [Keyframe(progress: 0.5, value: 2.0)],
+            ),
+          ),
+          VideoSegment(id: 'b', sourceStart: 4, sourceEnd: 8),
+        ]),
+      );
+      expect(timeline.playbackClips, hasLength(2));
+    });
+
+    test('two identically keyframed clips still do not merge', () {
+      // Not about the two values disagreeing — it is that the merge destroys
+      // the span each curve runs over.
+      const curve = AnimatableDouble(
+        baseValue: 1.0,
+        keyframes: [Keyframe(progress: 0.5, value: 2.0)],
+      );
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(
+              id: 'a', sourceStart: 0, sourceEnd: 4, canvasScale: curve),
+          VideoSegment(
+              id: 'b', sourceStart: 4, sourceEnd: 8, canvasScale: curve),
+        ]),
+      );
+      expect(timeline.playbackClips, hasLength(2));
+    });
+
+    test('unkeyframed neighbours still merge, so nothing regressed', () {
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4),
+          VideoSegment(id: 'b', sourceStart: 4, sourceEnd: 8),
+        ]),
+      );
       expect(timeline.playbackClips, hasLength(1));
     });
   });

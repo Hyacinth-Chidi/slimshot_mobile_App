@@ -1950,7 +1950,12 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
     final activeSegment = ref.watch(activeSegmentProvider);
     return VolumePanel(
-      displayVolume: editorState.previewVolume ?? activeSegment?.volume ?? 0,
+      // `baseValue`, not the value at the playhead: this is a *control*
+      // reading what to show. A slider tracking a keyframed curve would wander
+      // while playing and write back whatever the curve happened to be at when
+      // the user grabbed it, flattening the fade into one frame of itself.
+      displayVolume:
+          editorState.previewVolume ?? activeSegment?.volume.baseValue ?? 0,
       emptyMessage: activeSegment == null
           ? 'Select a clip to adjust volume'
           : null,

@@ -416,11 +416,25 @@ class VideoEditorTimelineComposer {
       return false;
     }
 
-    // Same for the canvas transform: a merged item can only carry one.
+    // **A keyframed clip never merges**, and this is the same rule the
+    // animated-intensity check above follows, for the same reason: a keyframe's
+    // progress is measured across *a clip*, so a merged media item would
+    // resolve one curve over the pair and the second clip's diamonds would
+    // never land where the user placed them. Two clips carrying byte-identical
+    // keyframes still must not merge — it is the *span* the curve runs over
+    // that the merge destroys.
+    if (previous.hasKeyframes || next.hasKeyframes) return false;
+
+    // Same for the canvas transform: a merged item can only carry one. Neither
+    // clip is keyframed by the time this runs, so comparing base values is
+    // comparing the whole parameter.
     const transformEpsilon = 0.001;
-    if ((previous.canvasScale - next.canvasScale).abs() > transformEpsilon ||
-        (previous.canvasOffsetX - next.canvasOffsetX).abs() > transformEpsilon ||
-        (previous.canvasOffsetY - next.canvasOffsetY).abs() > transformEpsilon) {
+    if ((previous.canvasScale.baseValue - next.canvasScale.baseValue).abs() >
+            transformEpsilon ||
+        (previous.canvasOffsetX.baseValue - next.canvasOffsetX.baseValue).abs() >
+            transformEpsilon ||
+        (previous.canvasOffsetY.baseValue - next.canvasOffsetY.baseValue).abs() >
+            transformEpsilon) {
       return false;
     }
 
@@ -435,7 +449,7 @@ class VideoEditorTimelineComposer {
         (previous.sourceEnd - next.sourceStart).abs() <= epsilon &&
         (previous.timelineEnd - next.timelineStart).abs() <= epsilon &&
         (previous.speed - next.speed).abs() <= epsilon &&
-        (previous.volume - next.volume).abs() <= epsilon;
+        (previous.volume.baseValue - next.volume.baseValue).abs() <= epsilon;
   }
 
   bool _sameMatrix(List<double>? a, List<double>? b) {

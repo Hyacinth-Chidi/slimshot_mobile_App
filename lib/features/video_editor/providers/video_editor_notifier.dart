@@ -763,10 +763,17 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       segments: [
         for (final segment in state.segments)
           if (segment.id == targetId)
+            // Writes the base value. Task 5 routes this through the edit
+            // rule, after which a clip carrying diamonds keyframes the
+            // gesture at the playhead instead.
             segment.copyWith(
-              canvasScale: scale.clamp(kMinClipCanvasScale, kMaxClipCanvasScale),
-              canvasOffsetX: offsetX.clamp(-1.5, 1.5),
-              canvasOffsetY: offsetY.clamp(-1.5, 1.5),
+              canvasScale: segment.canvasScale.copyWith(
+                baseValue: scale.clamp(kMinClipCanvasScale, kMaxClipCanvasScale),
+              ),
+              canvasOffsetX: segment.canvasOffsetX
+                  .copyWith(baseValue: offsetX.clamp(-1.5, 1.5)),
+              canvasOffsetY: segment.canvasOffsetY
+                  .copyWith(baseValue: offsetY.clamp(-1.5, 1.5)),
             )
           else
             segment,
@@ -788,10 +795,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       segments: [
         for (final segment in state.segments)
           if (segment.id == targetId)
+            // A reset puts the clip back to the plain fit outright, keyframes
+            // and all: "reset" that left a move running would not be one.
             segment.copyWith(
-              canvasScale: 1.0,
-              canvasOffsetX: 0.0,
-              canvasOffsetY: 0.0,
+              canvasScale: kUnitParameter,
+              canvasOffsetX: kZeroParameter,
+              canvasOffsetY: kZeroParameter,
             )
           else
             segment,
@@ -998,7 +1007,9 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     saveStateForUndo();
     final updatedSegments = [...state.segments];
     updatedSegments[index] = updatedSegments[index].copyWith(
-      volume: state.previewVolume!,
+      volume: updatedSegments[index]
+          .volume
+          .copyWith(baseValue: state.previewVolume!),
     );
     state = state.copyWith(segments: updatedSegments, clearPreviewVolume: true);
   }

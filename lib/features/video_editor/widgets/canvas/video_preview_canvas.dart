@@ -62,9 +62,14 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     final segment = state.selectedSegment;
     if (segment == null) return;
     _clipGestureSegmentId = segment.id;
-    _clipGestureStartScale = segment.canvasScale;
-    _clipGestureStartOffsetX = segment.canvasOffsetX;
-    _clipGestureStartOffsetY = segment.canvasOffsetY;
+    // **Anchored to the value at the playhead, not to the base.** A drag is
+    // `anchorValue + displacement`, and on a keyframed clip the value on screen
+    // is the resolved one — anchoring to the base would make the picture jump
+    // to a different scale the instant the finger moved.
+    final progress = state.selectedClipProgress ?? 0.0;
+    _clipGestureStartScale = segment.canvasScaleAt(progress);
+    _clipGestureStartOffsetX = segment.canvasOffsetXAt(progress);
+    _clipGestureStartOffsetY = segment.canvasOffsetYAt(progress);
     _clipGesturePanX = 0.0;
     _clipGesturePanY = 0.0;
     ref.read(videoEditorProvider.notifier).beginClipCanvasTransform();
