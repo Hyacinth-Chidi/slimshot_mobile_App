@@ -202,6 +202,39 @@ A true two-clip wipe remains a transition, and the transition catalog stays wher
 shutter *between shots* is wanted later, that is a transition entry sharing this shader — not a
 reason to move the reveal.
 
+## Deferred: animated effect tiles
+
+The panel's tiles are a label and an icon. The user asked for **live previews** — each tile
+playing its effect over a sample image, three to a row and taller, so an effect can be judged
+without applying it. Text animation tiles already work exactly that way and are the reason the
+feature is expected here.
+
+Deferred deliberately, not dropped, and the reason is worth keeping:
+
+**A tile must run the real shader.** Writing 39 Flutter shaders that imitate the Kotlin ones
+would be quick and would be a second implementation of every effect, drifting the moment either
+is tuned — the "tile that lies" failure the text animation tiles were designed to avoid, where
+the tile promises something the export does not deliver.
+
+**The honest route is one shader body, two wrappers.** Flutter's `FragmentProgram` compiles GLSL
+(460 down to 100), so a single `.frag` body can serve both sides: Kotlin wraps it for GLES 2.0,
+Flutter for `FragmentProgram`. Confirmed against the Flutter docs, with two constraints — the
+dialects differ (`texture()`/`fragColor`/`FlutterFragCoord()` against
+`texture2D()`/`gl_FragColor`/a `varying`), and **sampling in Flutter on OpenGLES needs the UV
+y-flipped**, which Kotlin does not.
+
+**The blocker is sequencing, not difficulty.** Each of the ~28 passes currently writes its own
+*complete* shader — its own precision declaration, its own `gl_FragColor`. Sharing bodies means
+restructuring all of them, and **35 of the 39 effects have never run on hardware**. Refactoring
+them first would mean a broken effect could be the refactor or the shader, with no way to tell
+which. Device-verify first, then refactor against known-good behaviour.
+
+**Sample media:** a bundled image, not a video. Each tile needs its own effect applied, so a
+video would add a decoder per tile — 13 visible tiles is 13 decoders, well past the low-end
+target. One image decoded once serves every tile, and because intros are driven by `uProgress`,
+a looping clock makes a still image genuinely animate. Only the pure grades (duotone, vignette,
+sharpen) stay still, and those look identical in motion anyway.
+
 ## Out of scope
 
 Effect stacking, audio effects, AI-dependent effects, and keyframes on transform/opacity/volume
