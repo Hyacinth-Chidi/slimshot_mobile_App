@@ -18,7 +18,7 @@
 ///
 /// ```
 /// flutter test test/features/video_editor/logic/text_animation_fixture_test.dart
-/// .\android\gradlew.bat -p android testDebugUnitTest --tests "*TextAnimationCurvesTest*"
+/// .\android\gradlew.bat -p android :app:testDebugUnitTest --tests "*TextAnimationCurvesTest*"
 /// ```
 ///
 /// Regenerating without running the Kotlin test moves the goalposts silently:

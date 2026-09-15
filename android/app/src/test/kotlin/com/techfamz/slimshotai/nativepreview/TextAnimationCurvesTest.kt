@@ -57,7 +57,13 @@ class TextAnimationCurvesTest {
         expected: Double,
         actual: Double,
     ) {
-        if (abs(expected - actual) > tolerance) {
+        // **NaN must fail, and a tolerance check alone lets it through.** Every
+        // comparison against NaN is false, so `abs(NaN - x) > tolerance` is
+        // false and a port that had started producing NaN — an integer
+        // division, a divide by zero, a `sqrt` of a negative — would pass this
+        // fixture silently while rendering nothing on a device. Found in the
+        // sibling `AnimatableDoubleTest` by deliberately injecting the bug.
+        if (!actual.isFinite() || abs(expected - actual) > tolerance) {
             throw AssertionError(
                 "$where $channel: expected $expected but was $actual " +
                     "(difference ${abs(expected - actual)}, tolerance $tolerance)"
