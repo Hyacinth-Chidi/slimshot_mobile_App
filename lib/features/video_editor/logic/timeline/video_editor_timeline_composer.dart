@@ -379,9 +379,27 @@ class VideoEditorTimelineComposer {
     // clip's effect over both. Intensity counts as much as the id — the same
     // effect at two strengths is two looks.
     const intensityEpsilon = 0.001;
-    if (previous.effectId != next.effectId ||
-        (previous.effectIntensity - next.effectIntensity).abs() >
-            intensityEpsilon) {
+    if (previous.effectId != next.effectId) return false;
+
+    // **An animated intensity can never merge, even with an identical one.**
+    // This is the same rule `effectIntroSeconds` follows two checks down, and
+    // for the same reason: an envelope and a keyframe row are both measured
+    // across *a clip*, so a merged item resolves one curve over the pair. The
+    // second clip's pulse would never land where the user put it, and a
+    // `ramp_in` would build across both clips instead of arriving twice.
+    // Unlike the intensity comparison below, this is not about the two values
+    // disagreeing — two clips carrying byte-identical parameters still must
+    // not merge, because it is the *span* the curve runs over that the merge
+    // destroys.
+    if (previous.effectIntensity.isAnimated || next.effectIntensity.isAnimated) {
+      return false;
+    }
+
+    // Neither animates, so comparing the base values is comparing the whole
+    // parameter.
+    if ((previous.effectIntensity.baseValue - next.effectIntensity.baseValue)
+            .abs() >
+        intensityEpsilon) {
       return false;
     }
 

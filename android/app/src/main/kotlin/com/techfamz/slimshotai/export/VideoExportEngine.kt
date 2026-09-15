@@ -374,10 +374,16 @@ internal class VideoExportEngine(
                 // `t` is the same quantity the preview engine's ticker passes,
                 // so both reach the identical progress at the identical instant
                 // of a clip whatever rate either is running at.
+                // One progress, used for both the shader's clock and the
+                // strength it is drawn at, so an envelope or a keyframe row can
+                // never be a frame out of step with the picture it shapes. A
+                // flat parameter resolves to its base value at every progress —
+                // exactly the scalar this replaced.
+                val effectProgress = effectClip?.effectProgressAt(t) ?: 0.0
                 clipEffects.apply(
                     effectClip?.effectId,
-                    effectClip?.effectIntensity ?: 0.0,
-                    effectClip?.effectProgressAt(t) ?: 0.0,
+                    effectClip?.effectIntensityAt(effectProgress) ?: 0.0,
+                    effectProgress,
                 )
 
                 if (t >= videoEndSeconds - EDGE_EPSILON) {

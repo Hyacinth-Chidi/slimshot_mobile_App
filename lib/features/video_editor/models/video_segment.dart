@@ -1,3 +1,4 @@
+import '../logic/animation/animatable_double.dart';
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 
@@ -58,13 +59,33 @@ class VideoSegment {
   /// assuming the catalog contains it.
   final String? effectId;
 
-  /// How strongly [effectId] is applied, **normalised 0..1**.
+  /// How strongly [effectId] is applied, **normalised 0..1**, and how that
+  /// strength varies across the clip.
   ///
   /// Never a pixel radius: the same clip is drawn into a ~400px preview and a
   /// 1080p export, and a pixel parameter would make those two different
   /// pictures. The shader scales this into whatever units it needs against the
   /// frame it is actually drawing.
-  final double effectIntensity;
+  ///
+  /// An [AnimatableDouble] rather than a plain double so an effect can *move*
+  /// over its clip — a glitch that pulses, a blur that clears — from a named
+  /// envelope the catalog declares or from keyframes the user places. **A
+  /// parameter carrying neither resolves flat to its base value at every
+  /// progress**, which is exactly what the scalar did, so a clip that has not
+  /// asked for animation renders identically to how it always has.
+  ///
+  /// The intensity slider writes [AnimatableDouble.baseValue] and leaves the
+  /// envelope and keyframes alone — retuning a strength must not silently
+  /// discard the shape the user (or the catalog) put on it.
+  final AnimatableDouble effectIntensity;
+
+  /// The effect strength at [progress] (0..1 through the clip's effect
+  /// window).
+  ///
+  /// Convenience for the Dart-side consumers that need a number rather than a
+  /// parameter. Both renderers resolve it themselves, on their own clock.
+  double effectIntensityAt(double progress) =>
+      effectIntensity.resolveAt(progress);
 
   VideoSegment({
     required this.id,
@@ -80,7 +101,7 @@ class VideoSegment {
     this.filterId,
     this.filterIntensity = 1.0,
     this.effectId,
-    this.effectIntensity = defaultEffectIntensity,
+    this.effectIntensity = kDefaultEffectIntensityParameter,
     this.canvasScale = 1.0,
     this.canvasOffsetX = 0.0,
     this.canvasOffsetY = 0.0,
@@ -119,7 +140,7 @@ class VideoSegment {
     double? filterIntensity,
     String? effectId,
     bool clearEffectId = false,
-    double? effectIntensity,
+    AnimatableDouble? effectIntensity,
     double? canvasScale,
     double? canvasOffsetX,
     double? canvasOffsetY,
@@ -175,7 +196,11 @@ class VideoSegment {
       'filterId': filterId,
       'filterIntensity': filterIntensity,
       'effectId': effectId,
-      'effectIntensity': effectIntensity,
+      // A bare number while nothing animates it, a map once something does —
+      // see [AnimatableDouble.toJson]. So a clip that has not asked for
+      // animation writes the field exactly as it always has, and a draft
+      // written here still opens in a build that predates this model.
+      'effectIntensity': effectIntensity.toJson(),
       'canvasScale': canvasScale,
       'canvasOffsetX': canvasOffsetX,
       'canvasOffsetY': canvasOffsetY,
@@ -203,8 +228,17 @@ class VideoSegment {
       // both reads fall back rather than throwing — a saved project must open
       // in a build that added fields under it.
       effectId: json['effectId'] as String?,
-      effectIntensity: (json['effectIntensity'] as num?)?.toDouble() ??
-          defaultEffectIntensity,
+      // **Every draft saved before this stage holds a bare number here**, and
+      // one written before effects existed holds nothing at all.
+      // `AnimatableDouble.fromJson` takes `dynamic` for exactly that: a number
+      // loads as a flat value with no envelope and no keyframes, a map loads
+      // fully, and anything else — absent, null, junk — falls back rather than
+      // throwing. A saved project turning into a crash on open is the worst
+      // failure this read could have.
+      effectIntensity: AnimatableDouble.fromJson(
+        json['effectIntensity'],
+        fallback: defaultEffectIntensity,
+      ),
       canvasScale: (json['canvasScale'] as num?)?.toDouble() ?? 1.0,
       canvasOffsetX: (json['canvasOffsetX'] as num?)?.toDouble() ?? 0.0,
       canvasOffsetY: (json['canvasOffsetY'] as num?)?.toDouble() ?? 0.0,

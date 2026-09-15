@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/logic/effects/effect_catalog.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_segment.dart';
@@ -31,7 +32,7 @@ void main() {
       sourceStart: 0,
       sourceEnd: 5,
       effectId: effectId,
-      effectIntensity: effectIntensity,
+      effectIntensity: AnimatableDouble(baseValue: effectIntensity),
     );
   }
 
@@ -210,7 +211,7 @@ void main() {
     // One tap is the whole interaction — the catalog's default intensity is
     // applied, so the effect is visibly itself without touching the slider.
     expect(
-      notifier.state.segments[1].effectIntensity,
+      notifier.state.segments[1].effectIntensity.baseValue,
       videoEffectById('vhs')!.defaultIntensity,
     );
   });
@@ -298,10 +299,107 @@ void main() {
     await tester.drag(find.byType(Slider), const Offset(80, 0));
     await tester.pump();
 
-    expect(notifier.state.segments[0].effectIntensity, greaterThan(0.4));
-    expect(notifier.state.segments[0].effectIntensity, lessThanOrEqualTo(1.0));
+    expect(notifier.state.segments[0].effectIntensity.baseValue, greaterThan(0.4));
+    expect(notifier.state.segments[0].effectIntensity.baseValue, lessThanOrEqualTo(1.0));
     // The effect itself is unchanged: only its strength moved.
     expect(notifier.state.segments[0].effectId, 'blur');
+  });
+
+  testWidgets('the slider writes the base value and keeps the envelope',
+      (tester) async {
+    // **The rule that makes an animated intensity survive being retuned.** The
+    // slider re-sends the effect id on every frame of a drag, so a setter that
+    // rebuilt the parameter from scratch would wipe the envelope on the first
+    // pixel of movement — and the user would watch their pulsing glitch go
+    // flat while adjusting its strength.
+    final notifier = notifierWith(
+      [clip('a', effectId: 'blur', effectIntensity: 0.4)],
+      selectedSegmentId: 'a',
+    );
+    notifier.state = notifier.state.copyWith(
+      segments: [
+        notifier.state.segments[0].copyWith(
+          effectIntensity: AnimatableDouble.sorted(
+            baseValue: 0.4,
+            envelope: 'pulse',
+            keyframes: const [Keyframe(progress: 0.5, value: 0.9)],
+          ),
+        ),
+      ],
+    );
+    await pumpPanel(tester, notifier);
+
+    // The slider shows the *base* value, not the parameter's value at some
+    // playhead: a slider tracking the resolved value would wander while
+    // playing and write back one frame of the curve when grabbed.
+    expect(tester.widget<Slider>(find.byType(Slider)).value, closeTo(0.4, 1e-9));
+
+    await tester.drag(find.byType(Slider), const Offset(80, 0));
+    await tester.pump();
+
+    final intensity = notifier.state.segments[0].effectIntensity;
+    expect(intensity.baseValue, greaterThan(0.4));
+    expect(intensity.envelope, 'pulse');
+    expect(intensity.keyframes, hasLength(1));
+    expect(intensity.keyframes.single.value, 0.9);
+  });
+
+  testWidgets('applying a different effect drops the old effect\'s shape',
+      (tester) async {
+    // An envelope belongs to the effect it was applied with — a glitch's pulse
+    // means nothing on a vignette — so switching effects rebuilds the
+    // parameter rather than inheriting a curve the new effect never asked for.
+    final notifier = notifierWith(
+      [clip('a', effectId: 'blur')],
+      selectedSegmentId: 'a',
+    );
+    notifier.state = notifier.state.copyWith(
+      segments: [
+        notifier.state.segments[0].copyWith(
+          effectIntensity: AnimatableDouble.sorted(
+            baseValue: 0.4,
+            envelope: 'throb',
+            keyframes: const [Keyframe(progress: 0.5, value: 0.9)],
+          ),
+        ),
+      ],
+    );
+    await pumpPanel(tester, notifier);
+    await openCategory(tester, EffectCategory.grade);
+
+    await tester.tap(find.text('Vignette'));
+    await tester.pump();
+
+    final intensity = notifier.state.segments[0].effectIntensity;
+    expect(notifier.state.segments[0].effectId, 'vignette');
+    expect(intensity.keyframes, isEmpty);
+    // Whatever the new effect declares — today `vignette` is a static grade
+    // and declares none.
+    expect(intensity.envelope, videoEffectById('vignette')!.defaultEnvelope);
+  });
+
+  testWidgets('clearing the effect leaves a flat parameter', (tester) async {
+    // A clip with no effect holding a pulse would put an envelope back the
+    // moment any effect was applied, which the user never asked for.
+    final notifier = notifierWith(
+      [clip('a', effectId: 'blur')],
+      selectedSegmentId: 'a',
+    );
+    notifier.state = notifier.state.copyWith(
+      segments: [
+        notifier.state.segments[0].copyWith(
+          effectIntensity:
+              const AnimatableDouble(baseValue: 0.4, envelope: 'pulse'),
+        ),
+      ],
+    );
+    await pumpPanel(tester, notifier);
+
+    await tester.tap(find.text('None'));
+    await tester.pump();
+
+    expect(notifier.state.segments[0].effectId, isNull);
+    expect(notifier.state.segments[0].effectIntensity.isAnimated, isFalse);
   });
 
   testWidgets('a whole slider drag is one undo step', (tester) async {
@@ -323,9 +421,9 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(notifier.state.segments[0].effectIntensity, greaterThan(0.4));
+    expect(notifier.state.segments[0].effectIntensity.baseValue, greaterThan(0.4));
     notifier.undo();
-    expect(notifier.state.segments[0].effectIntensity, closeTo(0.4, 1e-9));
+    expect(notifier.state.segments[0].effectIntensity.baseValue, closeTo(0.4, 1e-9));
   });
 
   testWidgets('a tap is its own undo step', (tester) async {

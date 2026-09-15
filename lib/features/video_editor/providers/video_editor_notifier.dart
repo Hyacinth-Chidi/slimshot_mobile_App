@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../core/models/draft_project.dart';
 import '../../../core/services/draft_service.dart';
 import '../../../core/utils/file_utils.dart';
+import '../logic/animation/animatable_double.dart';
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 import '../logic/timeline/timeline_geometry.dart';
@@ -1179,11 +1180,52 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
             segment.copyWith(
               effectId: resolvedId,
               clearEffectId: resolvedId == null,
-              effectIntensity: resolvedIntensity.clamp(0.0, 1.0),
+              effectIntensity: _nextEffectIntensity(
+                segment: segment,
+                resolvedId: resolvedId,
+                baseValue: resolvedIntensity.clamp(0.0, 1.0),
+              ),
             )
           else
             segment,
       ],
+    );
+  }
+
+  /// The intensity parameter a clip should hold once [resolvedId] is applied
+  /// at [baseValue].
+  ///
+  /// Two cases, and keeping them apart is what makes the slider safe:
+  ///
+  /// * **The effect is unchanged** — this is the slider moving, or the panel
+  ///   re-sending the same id. Only [AnimatableDouble.baseValue] is written;
+  ///   whatever envelope or keyframes the parameter carries survive untouched.
+  ///   Retuning a strength must never silently discard the shape on it, and
+  ///   the slider re-sends the id on every frame of a drag, so a rebuild-from-
+  ///   scratch here would wipe the animation on the first pixel of movement.
+  /// * **A different effect is applied** — the old effect's shape belongs to
+  ///   the old effect (a glitch's pulse means nothing on a vignette), so the
+  ///   parameter is rebuilt from the new effect's own
+  ///   [VideoEffect.defaultEnvelope] and any keyframes are dropped. That is
+  ///   also what makes one tap feel designed rather than static.
+  ///
+  /// Clearing the effect resets to a flat default: a clip with no effect
+  /// holding a pulse would put an envelope back the moment any effect was
+  /// applied, which the user never asked for.
+  AnimatableDouble _nextEffectIntensity({
+    required VideoSegment segment,
+    required String? resolvedId,
+    required double baseValue,
+  }) {
+    if (resolvedId == null) {
+      return AnimatableDouble(baseValue: baseValue);
+    }
+    if (segment.effectId == resolvedId) {
+      return segment.effectIntensity.copyWith(baseValue: baseValue);
+    }
+    return AnimatableDouble(
+      baseValue: baseValue,
+      envelope: videoEffectById(resolvedId)?.defaultEnvelope,
     );
   }
 

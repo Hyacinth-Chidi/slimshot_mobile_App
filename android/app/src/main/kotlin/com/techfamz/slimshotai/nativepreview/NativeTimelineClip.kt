@@ -53,15 +53,24 @@ internal data class NativeTimelineClip(
      */
     val effectId: String?,
     /**
-     * How strongly [effectId] is applied, **normalised 0..1, never pixels**.
+     * How strongly [effectId] is applied, **normalised 0..1, never pixels**,
+     * and how that strength varies across the clip.
      *
      * A pixel parameter renders differently in the capped preview canvas and in
      * a 1080p export, so the file would not match the canvas the user approved
      * — the mismatch this codebase has already hit with overlay geometry and
      * with text raster density. Each shader turns this fraction into whatever
      * units it needs, against the viewport it is actually drawing.
+     *
+     * An [AnimatableDouble] rather than a bare number, so the strength may be
+     * shaped by a named envelope or by keyframes. **Resolve it through
+     * [effectIntensityAt], per frame, against the same progress the shader is
+     * given** — there is no second uniform and no animation inside the shaders.
+     * A parameter carrying neither envelope nor keyframes resolves flat at
+     * every progress, which is exactly what the scalar this replaced did, so an
+     * unanimated clip draws byte for byte as it always has.
      */
-    val effectIntensity: Double,
+    val effectIntensity: AnimatableDouble,
     /**
      * The window [effectId]'s animation plays across, in seconds from this
      * clip's first frame, or null when the effect is a static look.
@@ -120,6 +129,29 @@ internal data class NativeTimelineClip(
         if (window <= 0.0) return 1.0
         return ((timelineSeconds - timelineStart) / window).coerceIn(0.0, 1.0)
     }
+
+    /**
+     * How strongly this clip's effect is drawn at [progress], clamped to the
+     * 0..1 every shader expects.
+     *
+     * **[progress] is the effect clock — the same value passed to the shader**
+     * — so the strength and the picture it shapes can never disagree, and the
+     * export reaches the identical value at the identical instant of a clip
+     * however fast it is running. Both engines call this with
+     * `effectProgressAt(position)`, which is the number they already had.
+     *
+     * The clamp is here rather than at parse time because an envelope or a
+     * keyframe moves the value after parsing: a keyframe row is deliberately
+     * unclamped in the model (a general parameter's range is its consumer's
+     * business), and a shader turning an out-of-range fraction into a sampling
+     * offset would read off the frame.
+     *
+     * A flat parameter returns its base value at every progress, so a clip that
+     * has not asked for animation is drawn exactly as it was before this
+     * existed.
+     */
+    fun effectIntensityAt(progress: Double): Double =
+        effectIntensity.resolveAt(progress).coerceIn(0.0, 1.0)
 
     /**
      * Source position for a given timeline instant.
@@ -203,11 +235,23 @@ internal data class NativeTimelineClip(
                 canvasOffsetX = map.number("canvasOffsetX") ?: 0.0,
                 canvasOffsetY = map.number("canvasOffsetY") ?: 0.0,
                 effectId = (map["effectId"] as? String)?.takeIf { it.isNotBlank() },
-                // Clamped rather than trusted: a shader turning an out-of-range
-                // fraction into a sampling offset would read off the frame, and
-                // the default is the catalog's neutral full strength so a clip
-                // carrying an id but no intensity still shows its effect.
-                effectIntensity = (map.number("effectIntensity") ?: 1.0).coerceIn(0.0, 1.0),
+                // Either shape the composer writes: a **bare number** while the
+                // intensity is flat — which is what every clip sends and what
+                // every timeline composed before this model sent — or a map of
+                // `baseValue` / `envelope` / `keyframes` once something animates
+                // it. `fromWire` reads both and falls back on anything else
+                // rather than throwing, so a malformed field costs the clip its
+                // intensity, never the whole timeline.
+                //
+                // The default is the catalog's neutral full strength, so a clip
+                // carrying an id but no intensity still shows its effect. The
+                // 0..1 clamp moved to [effectIntensityAt]: it has to be applied
+                // to the value a frame is actually drawn with, and an envelope
+                // or a keyframe can move that after this point.
+                effectIntensity = AnimatableDouble.fromWire(
+                    map["effectIntensity"],
+                    fallback = 1.0,
+                ),
                 // Absent for every clip composed before the clock existed, and
                 // for every static effect — both mean "measure progress across
                 // the whole clip". A non-positive window is dropped rather than

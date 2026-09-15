@@ -181,7 +181,14 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                 if (selected != null)
                   _intensityRow(
                     notifier: notifier,
-                    intensity: segment.effectIntensity,
+                    // **The slider shows and writes the base value**, not the
+                    // parameter's value at the playhead. An envelope shapes
+                    // that base across the clip, so a slider tracking the
+                    // resolved value would wander while playing and would
+                    // write back whatever the curve happened to be at when the
+                    // user grabbed it — quietly flattening the animation into
+                    // one frame of itself.
+                    intensity: segment.effectIntensity.baseValue,
                   ),
                 const SizedBox(height: 8),
                 Expanded(

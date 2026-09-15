@@ -1002,10 +1002,14 @@ internal class TimelinePlaybackEngine(
         // identical instant of the clip. A counter or `System.nanoTime` here
         // would make the file differ from the canvas, which is the failure the
         // shared `composite` exists to prevent.
+        // The intensity is resolved against that same progress, so an envelope
+        // or a keyframe row shapes the strength on exactly the clock the shader
+        // is drawn on. A flat parameter returns its base value, unchanged.
+        val progress = clip.effectProgressAt(position)
         clipEffects.apply(
             clip.effectId,
-            clip.effectIntensity,
-            clip.effectProgressAt(position),
+            clip.effectIntensityAt(progress),
+            progress,
         )
     }
 

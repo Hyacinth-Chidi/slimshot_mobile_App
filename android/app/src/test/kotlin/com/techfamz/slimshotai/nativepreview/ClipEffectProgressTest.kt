@@ -1,7 +1,10 @@
 package com.techfamz.slimshotai.nativepreview
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -47,7 +50,7 @@ class ClipEffectProgressTest {
         canvasOffsetX = 0.0,
         canvasOffsetY = 0.0,
         effectId = "fade_in",
-        effectIntensity = 1.0,
+        effectIntensity = AnimatableDouble(baseValue = 1.0),
         effectIntroSeconds = introSeconds,
     )
 
@@ -179,5 +182,131 @@ class ClipEffectProgressTest {
         )
         assertEquals(0.8, parsed!!.effectIntroSeconds!!, 1e-9)
         assertEquals(0.5, parsed.effectProgressAt(0.4), 1e-9)
+    }
+
+    // -----------------------------------------------------------------------
+    // The intensity's wire shape
+    // -----------------------------------------------------------------------
+    //
+    // **These maps are copied from what the Dart composer actually emits**, not
+    // from what `fromWire` happens to accept — the two are only the same thing
+    // if someone checks, and a wrong key here is silent: `fromWire` falls back
+    // rather than throwing, so a rename on either side would export a flat
+    // effect with nothing on screen explaining why. The Dart half of the pin is
+    // `video_segment_effect_test.dart`'s "the animated intensity reaches the
+    // wire" group, which asserts the composer writes exactly these keys.
+
+    private fun clipMap(intensity: Any?) = mapOf(
+        "id" to "c",
+        "sourceVideoPath" to "/v.mp4",
+        "sourceStart" to 0.0,
+        "sourceEnd" to 10.0,
+        "timelineStart" to 0.0,
+        "timelineEnd" to 10.0,
+        "effectId" to "vhs",
+        "effectIntensity" to intensity,
+    )
+
+    @Test
+    fun `a flat intensity arrives as a bare number and resolves flat`() {
+        // **The compatibility gate.** This is the shape every timeline composed
+        // before the animatable model sent, and the shape an unanimated clip
+        // still sends. It must resolve to the same value at every progress —
+        // which is byte for byte what the scalar did.
+        val parsed = NativeTimelineClip.fromMap(clipMap(0.6), "/v.mp4")!!
+        assertFalse(parsed.effectIntensity.isAnimated)
+        for (p in listOf(0.0, 0.25, 0.5, 0.75, 1.0)) {
+            assertEquals("at p=$p", 0.6, parsed.effectIntensityAt(p), 1e-9)
+        }
+    }
+
+    @Test
+    fun `an envelope arrives and shapes the strength`() {
+        val parsed = NativeTimelineClip.fromMap(
+            clipMap(mapOf("baseValue" to 0.8, "envelope" to "ramp_in")),
+            "/v.mp4",
+        )!!
+        assertTrue(parsed.effectIntensity.isAnimated)
+        assertEquals("ramp_in", parsed.effectIntensity.envelope)
+        // `ramp_in` opens at nothing and rests at full — the base value.
+        assertEquals(0.0, parsed.effectIntensityAt(0.0), 1e-9)
+        assertEquals(0.8, parsed.effectIntensityAt(1.0), 1e-9)
+    }
+
+    @Test
+    fun `keyframes arrive with the interpolation name the Dart enum writes`() {
+        // `interpolation` is the Dart enum's `.name`, lower case — not the
+        // Kotlin constant's name. An unknown one degrades to the default rather
+        // than throwing.
+        val parsed = NativeTimelineClip.fromMap(
+            clipMap(
+                mapOf(
+                    "baseValue" to 0.5,
+                    "keyframes" to listOf(
+                        mapOf(
+                            "progress" to 0.0,
+                            "value" to 0.2,
+                            "interpolation" to "linear",
+                        ),
+                        mapOf(
+                            "progress" to 1.0,
+                            "value" to 0.8,
+                            "interpolation" to "ease",
+                        ),
+                    ),
+                ),
+            ),
+            "/v.mp4",
+        )!!
+        assertEquals(2, parsed.effectIntensity.keyframes.size)
+        assertEquals(
+            KeyframeInterpolation.LINEAR,
+            parsed.effectIntensity.keyframes[0].interpolation,
+        )
+        assertEquals(0.2, parsed.effectIntensityAt(0.0), 1e-9)
+        assertEquals(0.5, parsed.effectIntensityAt(0.5), 1e-9)
+        assertEquals(0.8, parsed.effectIntensityAt(1.0), 1e-9)
+    }
+
+    @Test
+    fun `a missing intensity still shows the effect at full strength`() {
+        // A clip carrying an id but no intensity — the catalog's neutral full
+        // strength, not zero, or the effect would draw nothing and read as
+        // broken.
+        val parsed = NativeTimelineClip.fromMap(clipMap(null), "/v.mp4")!!
+        assertEquals(1.0, parsed.effectIntensityAt(0.5), 1e-9)
+    }
+
+    @Test
+    fun `the resolved intensity is clamped for the shader`() {
+        // Keyframe values are deliberately unclamped in the model — a general
+        // parameter's range is its consumer's business — so the clamp has to be
+        // on the value a frame is actually drawn with. A shader turning an
+        // out-of-range fraction into a sampling offset would read off the frame.
+        val parsed = NativeTimelineClip.fromMap(
+            clipMap(
+                mapOf(
+                    "baseValue" to 0.5,
+                    "keyframes" to listOf(
+                        mapOf("progress" to 0.0, "value" to -3.0),
+                        mapOf("progress" to 1.0, "value" to 40.0),
+                    ),
+                ),
+            ),
+            "/v.mp4",
+        )!!
+        assertEquals(0.0, parsed.effectIntensityAt(0.0), 1e-9)
+        assertEquals(1.0, parsed.effectIntensityAt(1.0), 1e-9)
+    }
+
+    @Test
+    fun `a junk intensity costs the clip its strength, never the timeline`() {
+        // A malformed field must not drop the clip: the engine would then play
+        // a shorter timeline than the editor is drawing.
+        for (junk in listOf<Any?>("loud", emptyList<Any>(), true)) {
+            val parsed = NativeTimelineClip.fromMap(clipMap(junk), "/v.mp4")
+            assertNotNull("junk: $junk", parsed)
+            assertEquals("junk: $junk", 1.0, parsed!!.effectIntensityAt(0.5), 1e-9)
+        }
     }
 }

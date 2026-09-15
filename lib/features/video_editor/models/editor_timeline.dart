@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../logic/animation/animatable_double.dart';
+
 /// A resolved editor timeline, ready to hand to the native preview engine.
 ///
 /// Two views of the same edit are carried deliberately:
@@ -214,7 +216,7 @@ class EditorTimelineVideoClip {
     this.overrideVideoPath,
     this.colorMatrix,
     this.effectId,
-    this.effectIntensity = 1.0,
+    this.effectIntensity = const AnimatableDouble(baseValue: 1.0),
     this.effectIntroSeconds,
     this.canvasScale = 1.0,
     this.canvasOffsetX = 0.0,
@@ -282,7 +284,19 @@ class EditorTimelineVideoClip {
   /// How strongly [effectId] is applied, **normalised 0..1, never pixels** —
   /// preview and export draw the same clip at different resolutions and a
   /// pixel parameter would give them different pictures.
-  final double effectIntensity;
+  ///
+  /// An [AnimatableDouble], so the strength may vary across the clip. **Both
+  /// renderers resolve it themselves, per frame, against the same progress
+  /// they already pass to the shader** — there is no second animation path and
+  /// no new uniform. A parameter with no envelope and no keyframes resolves
+  /// flat at every progress, which is byte for byte what the scalar did.
+  ///
+  /// Crosses the channel as [AnimatableDouble.toJson] writes it: a **bare
+  /// number** while nothing animates it, a map of `baseValue` / `envelope` /
+  /// `keyframes` once something does. Kotlin's `AnimatableDouble.fromWire`
+  /// reads both shapes and falls back rather than throwing on anything else,
+  /// so an older engine build still sees the number it expects.
+  final AnimatableDouble effectIntensity;
 
   /// The window [effectId]'s animation plays across, in **seconds from this
   /// clip's first frame**, or null when the effect is a static look.
@@ -344,7 +358,9 @@ class EditorTimelineVideoClip {
       'overrideVideoPath': overrideVideoPath,
       'colorMatrix': colorMatrix,
       'effectId': effectId,
-      'effectIntensity': effectIntensity,
+      // A bare number while flat, a map once animated — the shape
+      // `AnimatableDouble.fromWire` reads on the Kotlin side.
+      'effectIntensity': effectIntensity.toJson(),
       'effectIntroSeconds': effectIntroSeconds,
       'canvasScale': canvasScale,
       'canvasOffsetX': canvasOffsetX,

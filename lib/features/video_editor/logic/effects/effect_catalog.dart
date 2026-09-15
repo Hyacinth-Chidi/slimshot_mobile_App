@@ -20,6 +20,8 @@
 /// names already follow.
 library;
 
+import '../animation/animatable_double.dart';
+
 /// Which shelf of the effects panel an entry belongs to.
 enum EffectCategory {
   /// The absence of an effect. No catalog entry carries it — it exists so a
@@ -89,6 +91,16 @@ enum EffectCategory {
 /// nothing and read as the feature being broken.
 const double defaultEffectIntensity = 1.0;
 
+/// [defaultEffectIntensity] as the parameter a clip actually stores.
+///
+/// A clip's intensity is an [AnimatableDouble], so its resting value has to be
+/// one too. Flat — no envelope, no keyframes — which resolves to
+/// [defaultEffectIntensity] at every progress and is therefore exactly what the
+/// scalar it replaced did. `const`, so it can be a constructor default the way
+/// the bare number was.
+const AnimatableDouble kDefaultEffectIntensityParameter =
+    AnimatableDouble(baseValue: defaultEffectIntensity);
+
 /// One effect the user can apply to a clip.
 class VideoEffect {
   const VideoEffect({
@@ -98,6 +110,7 @@ class VideoEffect {
     required this.defaultIntensity,
     this.passCount = 1,
     this.introSeconds,
+    this.defaultEnvelope,
   });
 
   /// Persisted into drafts and sent over the channel. **Renaming needs a
@@ -166,6 +179,33 @@ class VideoEffect {
   /// speed on a short clip, which is the `TextAnimation` mistake the speed
   /// multiplier exists to avoid.
   final double? introSeconds;
+
+  /// The [kEnvelopeNames] curve a clip's intensity takes when this effect is
+  /// first applied, or null for an effect that rests at one strength.
+  ///
+  /// This is what makes one tap feel *designed* — a glitch that pulses on a
+  /// beat, a blur that clears — without the user placing a single keyframe.
+  /// The envelope is written onto the clip's [AnimatableDouble] at the moment
+  /// the effect is applied, so it is a **starting point, not a property of the
+  /// effect**: the user may keyframe over it, and a project already carrying
+  /// this effect is untouched when this table changes. That is the opposite of
+  /// [introSeconds], which is resolved from here on every compose precisely so
+  /// retuning reaches saved projects.
+  ///
+  /// **Null is the right answer more often than not, and the default for that
+  /// reason.** Three kinds of entry must declare none:
+  ///
+  /// * **A static grade** — the whole value of a vignette or a duotone is that
+  ///   it is a *look*, and a look that breathes is a gimmick the user has to
+  ///   go and switch off.
+  /// * **Anything timed** ([isTimed]) — an intro or a reveal already animates
+  ///   through `uProgress` across its own window, and an envelope on top would
+  ///   be a second animation fighting the first. A fade rising from black
+  ///   while its strength pulsed is not a fade.
+  /// * **Anything not yet seen on a device.** An envelope can be added after
+  ///   someone watches the effect; a wrong one shipped now will be read as a
+  ///   broken shader, and 35 of these have never run on hardware.
+  final String? defaultEnvelope;
 
   /// Whether this effect plays over a window at the clip's opening and then
   /// settles.
