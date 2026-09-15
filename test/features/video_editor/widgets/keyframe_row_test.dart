@@ -75,16 +75,21 @@ void main() {
   /// 400px wide starting at 0, so progress `p` sits at `400 * p` — which is
   /// what lets a drag assert on where the keyframe *landed* rather than merely
   /// that it moved.
+  ///
+  /// [selectedProgress] goes through `selectKeyframe` rather than into the
+  /// widgets: selection lives in `VideoEditorState`, and setting it the way the
+  /// app does is what makes the row, the controls and the panel's slider
+  /// provably agree about which diamond is chosen.
   Future<void> pumpRow(
     WidgetTester tester,
     VideoEditorNotifier notifier, {
     double? playheadProgress,
     double? selectedProgress,
-    void Function(double?)? onSelectionChanged,
   }) async {
     await tester.binding.setSurfaceSize(const Size(500, 300));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
+    if (selectedProgress != null) notifier.selectKeyframe(selectedProgress);
     final segment = notifier.state.selectedSegment!;
     await tester.pumpWidget(
       ProviderScope(
@@ -104,8 +109,6 @@ void main() {
                     widthPx: 400,
                     height: 26,
                     playheadProgress: playheadProgress,
-                    selectedProgress: selectedProgress,
-                    onSelectionChanged: onSelectionChanged ?? (_) {},
                   ),
                 ),
                 Positioned(
@@ -114,8 +117,6 @@ void main() {
                   child: KeyframeRowControls(
                     segment: segment,
                     playheadProgress: playheadProgress,
-                    selectedProgress: selectedProgress,
-                    onSelectionChanged: onSelectionChanged ?? (_) {},
                   ),
                 ),
               ],
@@ -639,7 +640,39 @@ void main() {
     });
 
     testWidgets('tapping a diamond selects it', (tester) async {
-      double? selected;
+      final notifier = notifierWith(
+        [
+          clip(
+            'a',
+            effectId: 'vignette',
+            intensity: const AnimatableDouble(
+              baseValue: 0.5,
+              keyframes: [Keyframe(progress: 0.25, value: 0.4)],
+            ),
+          ),
+        ],
+        selectedSegmentId: 'a',
+        // The row is genuinely open, because `selectedKeyframe` resolves
+        // through the clip that owns the row — a selection with no row behind
+        // it reads back as null, which is the guard against a stale one.
+        keyframeEditorSegmentId: 'a',
+      );
+      await pumpRow(tester, notifier);
+      expect(notifier.state.selectedKeyframeProgress, isNull);
+
+      await tester.tapAt(const Offset(100, 13));
+      await tester.pump();
+
+      // Written to shared state, not to a callback the widget owns — the row,
+      // the controls and the panel's slider all read it from there.
+      expect(notifier.state.selectedKeyframeProgress, closeTo(0.25, 1e-9));
+      expect(notifier.state.selectedKeyframe?.value, 0.4);
+    });
+
+    test('a selection with no open row reads back as nothing', () {
+      // The getter resolves through `keyframeEditorSegmentId`, so a progress
+      // left over from a closed row cannot point the panel's slider at a
+      // keyframe the user can no longer see.
       final notifier = notifierWith(
         [
           clip(
@@ -653,20 +686,14 @@ void main() {
         ],
         selectedSegmentId: 'a',
       );
-      await pumpRow(
-        tester,
-        notifier,
-        onSelectionChanged: (p) => selected = p,
-      );
 
-      await tester.tapAt(const Offset(100, 13));
-      await tester.pump();
+      notifier.selectKeyframe(0.25);
 
-      expect(selected, closeTo(0.25, 1e-9));
+      expect(notifier.state.selectedKeyframeProgress, 0.25);
+      expect(notifier.state.selectedKeyframe, isNull);
     });
 
     testWidgets('Delete removes the selected keyframe', (tester) async {
-      double? selected = 0.25;
       final notifier = notifierWith(
         [
           clip(
@@ -683,20 +710,18 @@ void main() {
         ],
         selectedSegmentId: 'a',
       );
-      await pumpRow(
-        tester,
-        notifier,
-        selectedProgress: 0.25,
-        onSelectionChanged: (p) => selected = p,
-      );
+      await pumpRow(tester, notifier, selectedProgress: 0.25);
 
       await tester.tap(find.text('Delete'));
       await tester.pump();
 
       expect(intensityOf(notifier).keyframes, hasLength(1));
       expect(intensityOf(notifier).keyframes.single.progress, 0.75);
-      // The selection goes with it, or Delete would stay lit over nothing.
-      expect(selected, isNull);
+      // The selection goes with it, or Delete would stay lit over nothing —
+      // and the panel's slider would show a deleted keyframe's last value
+      // while writing to nothing at all.
+      expect(notifier.state.selectedKeyframeProgress, isNull);
+      expect(notifier.state.selectedKeyframe, isNull);
     });
 
     testWidgets('Delete does nothing while no diamond is selected',
@@ -796,6 +821,215 @@ void main() {
       expect(keyframes[0].value, 0.9);
       expect(keyframes[1].progress, closeTo(0.9, 1e-9));
       expect(keyframes[1].value, 0.1);
+    });
+  });
+
+  group('the intensity slider follows the selection', () {
+    /// A clip with an effect, a row open on it, and three keyframes to prove
+    /// that editing one leaves its neighbours alone.
+    VideoEditorNotifier keyframedNotifier() {
+      return notifierWith(
+        [
+          clip(
+            'a',
+            effectId: 'vignette',
+            intensity: const AnimatableDouble(
+              baseValue: 0.5,
+              keyframes: [
+                Keyframe(progress: 0.2, value: 0.1),
+                Keyframe(
+                  progress: 0.5,
+                  value: 0.4,
+                  interpolation: KeyframeInterpolation.hold,
+                ),
+                Keyframe(
+                  progress: 0.8,
+                  value: 0.9,
+                  interpolation: KeyframeInterpolation.linear,
+                ),
+              ],
+            ),
+          ),
+        ],
+        selectedSegmentId: 'a',
+        keyframeEditorSegmentId: 'a',
+      );
+    }
+
+    Slider sliderOf(WidgetTester tester) =>
+        tester.widget<Slider>(find.byType(Slider));
+
+    testWidgets('with nothing selected it writes the base value',
+        (tester) async {
+      // Exactly the behaviour the panel has always had. The keyframe path is
+      // an addition, not a replacement — a clip with keyframes on it must
+      // still let its base be retuned.
+      final notifier = keyframedNotifier();
+      await pumpPanel(tester, notifier);
+
+      expect(find.text('Intensity'), findsOneWidget);
+      expect(find.textContaining('Keyframe at'), findsNothing);
+      expect(sliderOf(tester).value, closeTo(0.5, 1e-9));
+
+      await tester.drag(find.byType(Slider), const Offset(80, 0));
+      await tester.pump();
+
+      final parameter = intensityOf(notifier);
+      expect(parameter.baseValue, greaterThan(0.5));
+      // And not one keyframe moved.
+      expect(parameter.keyframes.map((k) => k.value), [0.1, 0.4, 0.9]);
+    });
+
+    testWidgets('with a keyframe selected it writes that keyframe\'s value',
+        (tester) async {
+      final notifier = keyframedNotifier();
+      notifier.selectKeyframe(0.5);
+      await pumpPanel(tester, notifier);
+
+      // **The label names the subject.** A slider that silently edited
+      // something other than what it said would be worse than no feature.
+      expect(find.text('Keyframe at 50%'), findsOneWidget);
+      expect(find.text('Intensity'), findsNothing);
+      // It reads the keyframe's own value, not the parameter's base.
+      expect(sliderOf(tester).value, closeTo(0.4, 1e-9));
+
+      await tester.drag(find.byType(Slider), const Offset(80, 0));
+      await tester.pump();
+
+      final parameter = intensityOf(notifier);
+      final edited = parameter.keyframes[1];
+      expect(edited.value, greaterThan(0.4));
+      expect(edited.value, lessThanOrEqualTo(1.0));
+      // The base is untouched: the slider moved one keyframe, not the clip's
+      // underlying strength.
+      expect(parameter.baseValue, closeTo(0.5, 1e-9));
+    });
+
+    testWidgets('editing one keyframe leaves every other one alone',
+        (tester) async {
+      final notifier = keyframedNotifier();
+      notifier.selectKeyframe(0.5);
+      await pumpPanel(tester, notifier);
+
+      await tester.drag(find.byType(Slider), const Offset(60, 0));
+      await tester.pump();
+
+      final keyframes = intensityOf(notifier).keyframes;
+      expect(keyframes, hasLength(3));
+
+      // Progress, value *and* interpolation, on both neighbours: a rebuild
+      // that recreated the list from values alone would silently reset every
+      // other keyframe's travel to the default ease.
+      expect(keyframes[0].progress, closeTo(0.2, 1e-9));
+      expect(keyframes[0].value, 0.1);
+      expect(keyframes[0].interpolation, KeyframeInterpolation.ease);
+      expect(keyframes[2].progress, closeTo(0.8, 1e-9));
+      expect(keyframes[2].value, 0.9);
+      expect(keyframes[2].interpolation, KeyframeInterpolation.linear);
+
+      // And the edited one kept everything except its value.
+      expect(keyframes[1].progress, closeTo(0.5, 1e-9));
+      expect(keyframes[1].interpolation, KeyframeInterpolation.hold);
+    });
+
+    testWidgets('a slider drag is one undo step', (tester) async {
+      final notifier = keyframedNotifier();
+      notifier.selectKeyframe(0.5);
+      await pumpPanel(tester, notifier);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(Slider)),
+      );
+      for (var i = 0; i < 6; i++) {
+        await gesture.moveBy(const Offset(12, 0));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+
+      expect(intensityOf(notifier).keyframes[1].value, greaterThan(0.4));
+
+      notifier.undo();
+
+      expect(
+        intensityOf(notifier).keyframes[1].value,
+        closeTo(0.4, 1e-9),
+        reason: 'one undo must return the whole drag, not one frame of it',
+      );
+      expect(notifier.state.canUndo, isFalse);
+    });
+
+    test('the selection survives a keyframe being added elsewhere', () {
+      // **The test that fails the moment selection is stored as an index.**
+      // Adding a keyframe before the selected one renumbers the list — the
+      // selected keyframe moves from index 1 to index 2 — so an index-based
+      // selection would silently begin editing its neighbour, and the slider
+      // would write to a diamond the user never pointed at.
+      final notifier = keyframedNotifier();
+      notifier.selectKeyframe(0.5);
+      expect(notifier.state.selectedKeyframe?.value, 0.4);
+
+      notifier.addEffectIntensityKeyframe(0.05, value: 0.7);
+
+      expect(notifier.state.selectedKeyframeProgress, closeTo(0.5, 1e-9));
+      expect(notifier.state.selectedKeyframe?.value, 0.4);
+      expect(
+        notifier.state.selectedKeyframe?.interpolation,
+        KeyframeInterpolation.hold,
+      );
+      // It really did renumber — index 1 is now somebody else.
+      expect(intensityOf(notifier).keyframes[1].progress, closeTo(0.2, 1e-9));
+    });
+
+    test('the selection clears when the row closes', () {
+      // Left behind, the panel's slider would still believe it was editing a
+      // keyframe — writing to a diamond nobody can see, on a row not drawn.
+      final notifier = keyframedNotifier();
+      notifier.selectKeyframe(0.5);
+
+      notifier.closeKeyframeEditor();
+
+      expect(notifier.state.selectedKeyframeProgress, isNull);
+      expect(notifier.state.selectedKeyframe, isNull);
+    });
+
+    test('the selection clears when the effect changes', () {
+      // A different effect rebuilds the parameter and drops its keyframes, so
+      // a held selection would point at a diamond that no longer exists.
+      final notifier = keyframedNotifier();
+      notifier.selectKeyframe(0.5);
+
+      notifier.setClipEffect('glitch');
+
+      expect(intensityOf(notifier).keyframes, isEmpty);
+      expect(notifier.state.selectedKeyframeProgress, isNull);
+    });
+
+    test('re-sending the same effect id keeps the selection', () {
+      // That is the slider moving, not an effect change — and the slider
+      // re-sends the id on every frame of a base-value drag, so disturbing the
+      // selection here would drop it on the first pixel of movement.
+      final notifier = keyframedNotifier();
+      notifier.selectKeyframe(0.5);
+
+      notifier.setClipEffect('vignette', intensity: 0.7);
+
+      expect(notifier.state.selectedKeyframeProgress, closeTo(0.5, 1e-9));
+      expect(intensityOf(notifier).keyframes, hasLength(3));
+    });
+
+    testWidgets('the slider returns to the base value once nothing is selected',
+        (tester) async {
+      final notifier = keyframedNotifier();
+      notifier.selectKeyframe(0.5);
+      await pumpPanel(tester, notifier);
+      expect(sliderOf(tester).value, closeTo(0.4, 1e-9));
+
+      notifier.selectKeyframe(null);
+      await tester.pump();
+
+      expect(find.text('Intensity'), findsOneWidget);
+      expect(sliderOf(tester).value, closeTo(0.5, 1e-9));
     });
   });
 }

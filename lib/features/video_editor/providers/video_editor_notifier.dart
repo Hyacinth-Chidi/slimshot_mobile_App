@@ -527,6 +527,9 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       isClipSelected: false,
       clearActiveToolId: true,
       clearSelectedTransitionSegmentId: true,
+      // The row belongs to a clip, so deselecting every clip takes the
+      // selected diamond with it — see [selectSegment].
+      clearSelectedKeyframeProgress: true,
       currentMenuId: 'root',
     );
   }
@@ -541,6 +544,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedVideoOverlayId: true,
       clearSelectedAudioId: true,
       clearSelectedTransitionSegmentId: true,
+      // **A diamond belongs to one clip's row.** `keyframeEditorSegmentId`
+      // already scopes the row to the clip that asked for it, so selecting a
+      // different clip closes the row — and a selection carried across would
+      // then light Delete, and point the panel's slider, at whatever keyframe
+      // happened to sit at the same instant on the next row that opened.
+      clearSelectedKeyframeProgress: true,
       trimRange: RangeValues(
         state.segments.firstWhere((s) => s.id == id).sourceStart,
         state.segments.firstWhere((s) => s.id == id).sourceEnd,
@@ -1181,6 +1190,13 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       // design rules out. Reapplying an effect is a fresh ask.
       clearKeyframeEditorSegmentId:
           resolvedId == null && state.keyframeEditorSegmentId == targetId,
+      // **A changed effect rebuilds the parameter and drops its keyframes**
+      // (see [_nextEffectIntensity]), so a selection held across that change
+      // would point at a diamond that no longer exists — and the panel's
+      // slider would then read as editing a keyframe while writing nothing.
+      // Re-sending the same id is the slider moving, and must not disturb it.
+      clearSelectedKeyframeProgress:
+          resolvedId != _segmentById(targetId)?.effectId,
       segments: [
         for (final segment in state.segments)
           if (segment.id == targetId)
@@ -1262,14 +1278,44 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     // and a row over a value nothing reads is exactly the unbidden control the
     // design rules out.
     if (targetId == null || _segmentById(targetId)?.effect == null) return;
-    state = state.copyWith(keyframeEditorSegmentId: targetId);
+    state = state.copyWith(
+      keyframeEditorSegmentId: targetId,
+      // A fresh row opens with nothing chosen, so the panel's slider goes back
+      // to the base value rather than silently resuming an edit of whatever
+      // diamond was selected the last time a row was open.
+      clearSelectedKeyframeProgress: true,
+    );
   }
 
   /// Hides the keyframe row. The keyframes themselves are untouched: closing
   /// the editor is putting the tool away, not discarding the work.
   void closeKeyframeEditor() {
-    if (state.keyframeEditorSegmentId == null) return;
-    state = state.copyWith(clearKeyframeEditorSegmentId: true);
+    if (state.keyframeEditorSegmentId == null &&
+        state.selectedKeyframeProgress == null) {
+      return;
+    }
+    state = state.copyWith(
+      clearKeyframeEditorSegmentId: true,
+      // **The selection goes with the row.** Left behind, the effects panel's
+      // slider would still believe it was editing a keyframe — writing to a
+      // diamond nobody can see, on a row that is not drawn.
+      clearSelectedKeyframeProgress: true,
+    );
+  }
+
+  /// Chooses the diamond the row highlights and the intensity slider edits, or
+  /// clears it with null.
+  ///
+  /// Not an undo step: which diamond is chosen is which tool is pointed at,
+  /// not a change to the project.
+  void selectKeyframe(double? progress) {
+    if (progress == null) {
+      if (state.selectedKeyframeProgress == null) return;
+      state = state.copyWith(clearSelectedKeyframeProgress: true);
+      return;
+    }
+    if (state.selectedKeyframeProgress == progress) return;
+    state = state.copyWith(selectedKeyframeProgress: progress);
   }
 
   void toggleKeyframeEditor() {
@@ -1416,6 +1462,16 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         ],
       );
     });
+    // **The selection cannot outlive the keyframe it names.** Left pointing at
+    // a deleted diamond, the effects panel's slider would show that keyframe's
+    // last value and write to nothing — live-looking and inert. Cleared here
+    // rather than at the caller so every route to a delete is covered by one
+    // rule.
+    if (state.selectedKeyframeProgress != null &&
+        (state.selectedKeyframeProgress! - progress).abs() <=
+            _kKeyframeSameInstant) {
+      state = state.copyWith(clearSelectedKeyframeProgress: true);
+    }
   }
 
   /// Sets how the keyframe at [progress] travels towards the next one.

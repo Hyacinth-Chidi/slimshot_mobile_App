@@ -25,6 +25,15 @@ import '../../providers/video_editor_notifier.dart';
 /// switch off, and the envelope is never stripped from the parameter: deleting
 /// the last diamond hands the clip back the shape its effect was applied with.
 ///
+/// **Selection lives in [VideoEditorState.selectedKeyframeProgress], not here.**
+/// Three widgets act on one selection and they do not share an ancestor that
+/// could own it: this row draws the chosen diamond, [KeyframeRowControls]
+/// deletes it and sets its interpolation, and the effects panel's intensity
+/// slider — a modal sheet, nowhere near the timeline in the tree — edits its
+/// value. It is addressed by **progress** rather than by list index, because
+/// adding, deleting or dragging a keyframe past a neighbour renumbers the rest
+/// and a stale index edits somebody else's keyframe in silence.
+///
 /// Geometry is the clip's **effect progress**, 0..1, not seconds and not the
 /// whole clip. For a timed effect (an intro) progress runs across
 /// [VideoEffect.introSeconds] and then sits at 1, so the row spans exactly the
@@ -40,8 +49,6 @@ class KeyframeRow extends ConsumerStatefulWidget {
     required this.widthPx,
     required this.height,
     required this.playheadProgress,
-    required this.selectedProgress,
-    required this.onSelectionChanged,
   });
 
   /// The clip whose effect intensity is being edited.
@@ -62,15 +69,6 @@ class KeyframeRow extends ConsumerStatefulWidget {
   /// be a second interpretation of the timeline, which is exactly what the
   /// deleted preview cache did.
   final double? playheadProgress;
-
-  /// Which diamond is selected, and how to change that.
-  ///
-  /// Selection is held by the timeline rather than by this row because the
-  /// controls that act on it ([KeyframeRowControls]) sit outside the scrolling
-  /// content — two widgets acting on one selection need one owner, or Delete
-  /// would be enabled while nothing on the row looked chosen.
-  final double? selectedProgress;
-  final ValueChanged<double?> onSelectionChanged;
 
   @override
   ConsumerState<KeyframeRow> createState() => _KeyframeRowState();
@@ -128,6 +126,8 @@ class _KeyframeRowState extends ConsumerState<KeyframeRow> {
   Widget build(BuildContext context) {
     final notifier = ref.read(videoEditorProvider.notifier);
     final keyframes = _watchParameter().keyframes;
+    final selectedProgress =
+        ref.watch(videoEditorProvider).selectedKeyframeProgress;
     final playhead = widget.playheadProgress;
 
     return SizedBox(
@@ -161,7 +161,12 @@ class _KeyframeRowState extends ConsumerState<KeyframeRow> {
             ),
 
           for (var i = 0; i < keyframes.length; i++)
-            _diamond(notifier: notifier, keyframe: keyframes[i], index: i),
+            _diamond(
+              notifier: notifier,
+              keyframe: keyframes[i],
+              index: i,
+              selectedProgress: selectedProgress,
+            ),
         ],
       ),
     );
@@ -171,6 +176,7 @@ class _KeyframeRowState extends ConsumerState<KeyframeRow> {
     required VideoEditorNotifier notifier,
     required Keyframe keyframe,
     required int index,
+    required double? selectedProgress,
   }) {
     // The keyframe is drawn from its **stored** progress even mid-drag: the
     // drag writes live on every frame, so the stored value already is where
@@ -179,8 +185,8 @@ class _KeyframeRowState extends ConsumerState<KeyframeRow> {
     final isDragging = _dragKeyframeProgress != null &&
         _isSame(_dragKeyframeProgress!, keyframe.progress);
     final drawnProgress = keyframe.progress;
-    final selected = widget.selectedProgress;
-    final isSelected = selected != null && _isSame(selected, keyframe.progress);
+    final isSelected = selectedProgress != null &&
+        _isSame(selectedProgress, keyframe.progress);
 
     return Positioned(
       // Keyed by **position in the row**, not by the keyframe's progress. A
@@ -227,7 +233,7 @@ class _KeyframeRowState extends ConsumerState<KeyframeRow> {
             (instance) {
               instance.onTap = () {
                 HapticFeedback.selectionClick();
-                widget.onSelectionChanged(keyframe.progress);
+                notifier.selectKeyframe(keyframe.progress);
               };
             },
           ),
@@ -250,7 +256,7 @@ class _KeyframeRowState extends ConsumerState<KeyframeRow> {
     // every frame after it writes live; going through the snapshotting setter
     // per pointer move makes undo walk the drag back a pixel at a time.
     notifier.saveStateForUndo();
-    widget.onSelectionChanged(keyframe.progress);
+    notifier.selectKeyframe(keyframe.progress);
     setState(() {
       _dragKeyframeProgress = keyframe.progress;
       _dragAnchorGlobalX = globalX;
@@ -273,7 +279,10 @@ class _KeyframeRowState extends ConsumerState<KeyframeRow> {
     if (_isSame(next, from)) return;
 
     notifier.moveEffectIntensityKeyframe(from, next, takeUndoSnapshot: false);
-    widget.onSelectionChanged(next);
+    // The selection travels with the diamond, so the panel's slider keeps
+    // editing the keyframe under the finger rather than losing it at the first
+    // pixel of the drag.
+    notifier.selectKeyframe(next);
     // The keyframe now lives at its new progress, so the address every later
     // frame of this drag uses has to move with it — otherwise the second frame
     // would look for a keyframe that is no longer where it was grabbed.
@@ -362,13 +371,17 @@ class _ImmediateHorizontalDragRecognizer
 /// paints but is never hit-tested (`RenderBox.hitTest` gates on `size.contains`
 /// even where painting does not), which is the trap the cover card already
 /// documents.
+///
+/// Which diamond these act on comes from
+/// [VideoEditorState.selectedKeyframeProgress], the same place [KeyframeRow]
+/// reads it and the effects panel's intensity slider reads it — see that
+/// field for why one owner outside all three is what keeps Delete, the
+/// highlight and the slider naming the same keyframe.
 class KeyframeRowControls extends ConsumerWidget {
   const KeyframeRowControls({
     super.key,
     required this.segment,
     required this.playheadProgress,
-    required this.selectedProgress,
-    required this.onSelectionChanged,
   });
 
   final VideoSegment segment;
@@ -376,9 +389,6 @@ class KeyframeRowControls extends ConsumerWidget {
   /// The playhead in the effect's progress space, or null when it is not over
   /// this clip — Add is disabled then rather than guessing at an instant.
   final double? playheadProgress;
-
-  final double? selectedProgress;
-  final ValueChanged<double?> onSelectionChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -389,7 +399,8 @@ class KeyframeRowControls extends ConsumerWidget {
     // these controls are on screen.
     final state = ref.watch(videoEditorProvider);
     final keyframes = _liveParameter(state).keyframes;
-    final selected = _selectedKeyframe(keyframes);
+    final selected =
+        _selectedKeyframe(keyframes, state.selectedKeyframeProgress);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -406,7 +417,7 @@ class KeyframeRowControls extends ConsumerWidget {
             // value at this instant, so placing one never changes the picture
             // — see [VideoEditorNotifier.addEffectIntensityKeyframe].
             notifier.addEffectIntensityKeyframe(at);
-            onSelectionChanged(at);
+            notifier.selectKeyframe(at);
           },
         ),
         const SizedBox(width: 8),
@@ -417,8 +428,10 @@ class KeyframeRowControls extends ConsumerWidget {
           onTap: () {
             if (selected == null) return;
             HapticFeedback.selectionClick();
+            // The notifier drops the selection with the keyframe — one rule
+            // for every route to a delete, rather than a caller each having to
+            // remember.
             notifier.removeEffectIntensityKeyframe(selected.progress);
-            onSelectionChanged(null);
           },
         ),
         const SizedBox(width: 8),
@@ -449,8 +462,7 @@ class KeyframeRowControls extends ConsumerWidget {
     return segment.effectIntensity;
   }
 
-  Keyframe? _selectedKeyframe(List<Keyframe> keyframes) {
-    final progress = selectedProgress;
+  Keyframe? _selectedKeyframe(List<Keyframe> keyframes, double? progress) {
     if (progress == null) return null;
     for (final keyframe in keyframes) {
       if ((keyframe.progress - progress).abs() <= 0.001) return keyframe;

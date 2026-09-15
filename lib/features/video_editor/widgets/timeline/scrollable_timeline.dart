@@ -248,17 +248,6 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   /// Height of the keyframe row, when there is one to draw.
   static const double _keyframeRowHeight = 26.0;
 
-  /// The selected diamond on the keyframe row, addressed by its progress.
-  ///
-  /// Held here rather than inside [KeyframeRow] because two widgets act on one
-  /// selection: the row draws it and the controls beside the timeline delete it
-  /// and set its interpolation. Two owners would let Delete light up while
-  /// nothing on the row looked chosen.
-  ///
-  /// Not in [VideoEditorState]: which diamond is highlighted is not part of the
-  /// edit, and putting it there would push a whole-editor rebuild per tap.
-  double? _selectedKeyframeProgress;
-
   /// Which trim handle is being held, so it can show it has been grabbed.
   _TrimHandle? _activeTrimHandle;
 
@@ -1299,29 +1288,19 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     VideoEditorState editorState,
   ) {
     final id = widget.selectedSegmentId;
-    if (!editorState.showsKeyframeRowFor(id)) {
-      // The row has gone — closed, the clip deselected, or its effect cleared.
-      // A selection left behind would follow the row to the *next* clip that
-      // opens one and light Delete over whatever keyframe happened to sit at
-      // the same instant. Dropped after the frame, because this runs during
-      // build.
-      _clearKeyframeSelectionLater();
-      return null;
-    }
+    // The row has gone — closed, the clip deselected, or its effect cleared.
+    // The selection that named a diamond on it is dropped by the notifier at
+    // each of those moments, so nothing has to be unwound here: a selection
+    // left behind would follow the row to the *next* clip that opens one and
+    // light Delete — and point the effects panel's slider — at whatever
+    // keyframe happened to sit at the same instant.
+    if (!editorState.showsKeyframeRowFor(id)) return null;
     for (final layout in layouts) {
       // Never over a clip being carried: its position is provisional, and a
       // diamond drag must not compete with the reorder.
       if (layout.segment.id == id && !layout.isDragged) return layout;
     }
     return null;
-  }
-
-  void _clearKeyframeSelectionLater() {
-    if (_selectedKeyframeProgress == null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _selectedKeyframeProgress == null) return;
-      setState(() => _selectedKeyframeProgress = null);
-    });
   }
 
   /// Where the playhead falls in the clip's **effect progress** space, or null
@@ -1909,10 +1888,6 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                                 height: _keyframeRowHeight,
                                 playheadProgress:
                                     _effectProgressAtPlayhead(keyframeLayout),
-                                selectedProgress: _selectedKeyframeProgress,
-                                onSelectionChanged: (progress) => setState(
-                                  () => _selectedKeyframeProgress = progress,
-                                ),
                               ),
                             ),
 
@@ -2079,9 +2054,6 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
               child: KeyframeRowControls(
                 segment: keyframeLayout.segment,
                 playheadProgress: _effectProgressAtPlayhead(keyframeLayout),
-                selectedProgress: _selectedKeyframeProgress,
-                onSelectionChanged: (progress) =>
-                    setState(() => _selectedKeyframeProgress = progress),
               ),
             ),
 

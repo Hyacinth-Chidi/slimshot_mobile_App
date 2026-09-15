@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/animation/animatable_double.dart';
 import '../../logic/effects/effect_catalog.dart';
 import '../../providers/video_editor_notifier.dart';
 
@@ -186,13 +187,22 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                     // responding once tapped.
                     keyframesOpen:
                         editorState.keyframeEditorSegmentId == segment.id,
-                    // **The slider shows and writes the base value**, not the
-                    // parameter's value at the playhead. An envelope shapes
-                    // that base across the clip, so a slider tracking the
-                    // resolved value would wander while playing and would
-                    // write back whatever the curve happened to be at when the
-                    // user grabbed it — quietly flattening the animation into
-                    // one frame of itself.
+                    // **One slider, two subjects, and the label says which.**
+                    //
+                    // With a diamond selected it edits *that keyframe's*
+                    // value; with nothing selected it edits the parameter's
+                    // base. A second slider would be the obvious alternative
+                    // and is worse: two controls for one quantity, one of them
+                    // inert most of the time, and nothing on screen explaining
+                    // which the picture is currently following.
+                    //
+                    // **Never the value at the playhead.** An envelope shapes
+                    // the base across the clip, so a slider tracking the
+                    // resolved value would wander while playing and would write
+                    // back whatever the curve happened to be at when the user
+                    // grabbed it — quietly flattening the animation into one
+                    // frame of itself.
+                    keyframe: editorState.selectedKeyframe,
                     intensity: segment.effectIntensity.baseValue,
                   ),
                 const SizedBox(height: 8),
@@ -295,70 +305,124 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
     );
   }
 
+  /// The intensity slider, and the label naming what it is pointed at.
+  ///
+  /// When [keyframe] is non-null the slider reads and writes **that
+  /// keyframe's** value; otherwise it reads and writes the parameter's base.
+  /// A slider that silently edited something other than what it said would be
+  /// worse than no feature at all — so the subject is stated on the row, not
+  /// left to be inferred from whether a diamond happens to look highlighted on
+  /// a timeline that may be scrolled out of view behind the sheet.
   Widget _intensityRow({
     required VideoEditorNotifier notifier,
     required double intensity,
     required bool keyframesOpen,
+    required Keyframe? keyframe,
   }) {
+    final editingKeyframe = keyframe != null;
+    final value = (editingKeyframe ? keyframe.value : intensity)
+        .clamp(0.0, 1.0)
+        .toDouble();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            LucideIcons.gauge,
-            color: AppColors.textSecondary,
-            size: 16,
-          ),
-          Expanded(
-            child: SliderTheme(
-              data: const SliderThemeData(
-                activeTrackColor: AppColors.primaryStart,
-                inactiveTrackColor: Colors.white12,
-                thumbColor: Colors.white,
-                trackHeight: 2,
-                overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              editingKeyframe
+                  // Named by where it sits, because that is how the user
+                  // picked it out on the row.
+                  ? 'Keyframe at ${(keyframe.progress * 100).round()}%'
+                  : 'Intensity',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: editingKeyframe
+                    ? AppColors.primaryStart
+                    : AppColors.textSecondary,
               ),
-              child: Slider(
-                // Normalised 0..1, never a pixel radius: the same clip is
-                // drawn into a ~400px preview and a 1080p export, and a pixel
-                // parameter would make those two different pictures.
-                value: intensity.clamp(0.0, 1.0),
-                onChangeStart: (_) {
-                  // **One undo entry for the whole drag.** The snapshot is
-                  // taken here and every frame after it writes live; going
-                  // through the snapshotting setter per frame makes undo walk
-                  // the drag back a pixel at a time.
-                  notifier.saveStateForUndo();
-                },
-                onChanged: (value) => notifier.setClipEffect(
-                  // The effect is unchanged — only its strength moves — so the
-                  // id is re-sent rather than cleared and reapplied.
-                  ref.read(videoEditorProvider).selectedSegment?.effectId,
-                  intensity: value,
-                  takeUndoSnapshot: false,
+            ),
+          ),
+          Row(
+            children: [
+              Icon(
+                editingKeyframe ? LucideIcons.diamond : LucideIcons.gauge,
+                color: editingKeyframe
+                    ? AppColors.primaryStart
+                    : AppColors.textSecondary,
+                size: 16,
+              ),
+              Expanded(
+                child: SliderTheme(
+                  data: const SliderThemeData(
+                    activeTrackColor: AppColors.primaryStart,
+                    inactiveTrackColor: Colors.white12,
+                    thumbColor: Colors.white,
+                    trackHeight: 2,
+                    overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
+                  ),
+                  child: Slider(
+                    // Normalised 0..1, never a pixel radius: the same clip is
+                    // drawn into a ~400px preview and a 1080p export, and a
+                    // pixel parameter would make those two different pictures.
+                    value: value,
+                    onChangeStart: (_) {
+                      // **One undo entry for the whole drag**, whichever
+                      // subject it is pointed at. The snapshot is taken here
+                      // and every frame after writes live; going through a
+                      // snapshotting setter per frame makes undo walk the drag
+                      // back a pixel at a time.
+                      notifier.saveStateForUndo();
+                    },
+                    onChanged: (next) {
+                      if (editingKeyframe) {
+                        // Addressed by the keyframe's **progress**, which is
+                        // also how the selection is stored — so a keyframe
+                        // added or removed elsewhere on the row cannot
+                        // renumber this drag onto a different diamond.
+                        notifier.setEffectIntensityKeyframeValue(
+                          keyframe.progress,
+                          next,
+                          takeUndoSnapshot: false,
+                        );
+                        return;
+                      }
+                      notifier.setClipEffect(
+                        // The effect is unchanged — only its strength moves —
+                        // so the id is re-sent rather than cleared and
+                        // reapplied.
+                        ref.read(videoEditorProvider).selectedSegment?.effectId,
+                        intensity: next,
+                        takeUndoSnapshot: false,
+                      );
+                    },
+                  ),
                 ),
               ),
-            ),
-          ),
-          SizedBox(
-            width: 44,
-            child: Text(
-              '${(intensity.clamp(0.0, 1.0) * 100).round()}%',
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+              SizedBox(
+                width: 44,
+                child: Text(
+                  '${(value * 100).round()}%',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
               ),
-              textAlign: TextAlign.right,
-            ),
-          ),
-          const SizedBox(width: 8),
-          KeyframeToggleButton(
-            isOpen: keyframesOpen,
-            onTap: () {
-              HapticFeedback.selectionClick();
-              notifier.toggleKeyframeEditor();
-            },
+              const SizedBox(width: 8),
+              KeyframeToggleButton(
+                isOpen: keyframesOpen,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  notifier.toggleKeyframeEditor();
+                },
+              ),
+            ],
           ),
         ],
       ),

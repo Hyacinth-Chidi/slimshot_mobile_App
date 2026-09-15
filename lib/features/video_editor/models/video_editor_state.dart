@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../logic/animation/animatable_double.dart';
 import 'filter_preset.dart';
 import 'media_asset.dart';
 import 'image_overlay_model.dart';
@@ -76,6 +77,7 @@ class VideoEditorState {
     this.backgroundBlurIntensity = 20.0,
     this.selectedTransitionSegmentId,
     this.keyframeEditorSegmentId,
+    this.selectedKeyframeProgress,
   });
 
   final String? draftId;
@@ -163,6 +165,51 @@ class VideoEditorState {
   /// closes it: the row draws one clip's parameter, and carrying it across a
   /// selection change would show the new clip a row it never asked for.
   final String? keyframeEditorSegmentId;
+
+  /// Which diamond on the open keyframe row is selected, addressed by its
+  /// **progress** — or null, which is every project until one is tapped.
+  ///
+  /// **Held here for the same reason [keyframeEditorSegmentId] is**: more than
+  /// one widget acts on this one selection and they do not share an ancestor
+  /// that could own it. The row draws the diamond, `KeyframeRowControls`
+  /// deletes it and sets its interpolation, and the **effects panel's intensity
+  /// slider edits its value** — and the panel is a modal sheet, nowhere near
+  /// the timeline in the tree. Two owners would let Delete light up while
+  /// nothing on the row looked chosen, or let the slider write to a keyframe
+  /// the user had already moved on from.
+  ///
+  /// **By progress, never by list index.** The keyframe list is kept sorted, so
+  /// adding a keyframe, deleting one, or dragging one past a neighbour
+  /// renumbers the rest — a stored index would then address somebody else's
+  /// keyframe and edit it silently. Progress is how every keyframe is addressed
+  /// in [VideoEditorNotifier] already (`_indexOfKeyframeAt`, matched within a
+  /// tolerance), so this is the same identity the notifier uses rather than a
+  /// second one.
+  ///
+  /// **Transient and never serialised**, like [keyframeEditorSegmentId] and
+  /// [isClipTransformActive]: which diamond is highlighted is which tool is
+  /// open, not part of the edit.
+  final double? selectedKeyframeProgress;
+
+  /// The selected keyframe on the open row, or null.
+  ///
+  /// Resolved against the clip that owns the row rather than the selected clip:
+  /// they are the same clip while the row is open (`showsKeyframeRowFor`
+  /// requires it) and resolving through the row's owner is what makes a stale
+  /// selection impossible to read back.
+  Keyframe? get selectedKeyframe {
+    final progress = selectedKeyframeProgress;
+    final ownerId = keyframeEditorSegmentId;
+    if (progress == null || ownerId == null) return null;
+    if (!showsKeyframeRowFor(ownerId)) return null;
+    for (final segment in segments) {
+      if (segment.id != ownerId) continue;
+      for (final keyframe in segment.effectIntensity.keyframes) {
+        if ((keyframe.progress - progress).abs() <= 0.001) return keyframe;
+      }
+    }
+    return null;
+  }
 
   /// Whether the keyframe row should be drawn for [segmentId].
   ///
@@ -311,6 +358,8 @@ class VideoEditorState {
     bool clearSelectedTransitionSegmentId = false,
     String? keyframeEditorSegmentId,
     bool clearKeyframeEditorSegmentId = false,
+    double? selectedKeyframeProgress,
+    bool clearSelectedKeyframeProgress = false,
   }) {
     return VideoEditorState(
       draftId: draftId ?? this.draftId,
@@ -380,6 +429,9 @@ class VideoEditorState {
       keyframeEditorSegmentId: clearKeyframeEditorSegmentId
           ? null
           : keyframeEditorSegmentId ?? this.keyframeEditorSegmentId,
+      selectedKeyframeProgress: clearSelectedKeyframeProgress
+          ? null
+          : selectedKeyframeProgress ?? this.selectedKeyframeProgress,
     );
   }
 }
