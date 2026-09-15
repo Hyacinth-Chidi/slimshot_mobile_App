@@ -1,0 +1,1393 @@
+{
+  "envelopes": [
+    {
+      "envelope": "pulse",
+      "p": 0.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "pulse",
+      "p": 0.1,
+      "value": 0.119364
+    },
+    {
+      "envelope": "pulse",
+      "p": 0.25,
+      "value": 0.25
+    },
+    {
+      "envelope": "pulse",
+      "p": 0.5,
+      "value": 0.0
+    },
+    {
+      "envelope": "pulse",
+      "p": 0.75,
+      "value": 0.25
+    },
+    {
+      "envelope": "pulse",
+      "p": 0.9,
+      "value": 0.119364
+    },
+    {
+      "envelope": "pulse",
+      "p": 1.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_in",
+      "p": 0.0,
+      "value": 0.0
+    },
+    {
+      "envelope": "ramp_in",
+      "p": 0.1,
+      "value": 0.004
+    },
+    {
+      "envelope": "ramp_in",
+      "p": 0.25,
+      "value": 0.0625
+    },
+    {
+      "envelope": "ramp_in",
+      "p": 0.5,
+      "value": 0.5
+    },
+    {
+      "envelope": "ramp_in",
+      "p": 0.75,
+      "value": 0.9375
+    },
+    {
+      "envelope": "ramp_in",
+      "p": 0.9,
+      "value": 0.996
+    },
+    {
+      "envelope": "ramp_in",
+      "p": 1.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_out",
+      "p": 0.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_out",
+      "p": 0.1,
+      "value": 0.892
+    },
+    {
+      "envelope": "ramp_out",
+      "p": 0.25,
+      "value": 0.0625
+    },
+    {
+      "envelope": "ramp_out",
+      "p": 0.5,
+      "value": 0.0
+    },
+    {
+      "envelope": "ramp_out",
+      "p": 0.75,
+      "value": 0.0
+    },
+    {
+      "envelope": "ramp_out",
+      "p": 0.9,
+      "value": 0.148148
+    },
+    {
+      "envelope": "ramp_out",
+      "p": 1.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": 0.0,
+      "value": 0.0
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": 0.1,
+      "value": 0.032
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": 0.25,
+      "value": 0.5
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": 0.5,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": 0.75,
+      "value": 0.05
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": 0.9,
+      "value": 0.441604
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": 1.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "throb",
+      "p": 0.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "throb",
+      "p": 0.1,
+      "value": 0.844529
+    },
+    {
+      "envelope": "throb",
+      "p": 0.25,
+      "value": 0.55
+    },
+    {
+      "envelope": "throb",
+      "p": 0.5,
+      "value": 1.0
+    },
+    {
+      "envelope": "throb",
+      "p": 0.75,
+      "value": 0.55
+    },
+    {
+      "envelope": "throb",
+      "p": 0.9,
+      "value": 0.844529
+    },
+    {
+      "envelope": "throb",
+      "p": 1.0,
+      "value": 1.0
+    }
+  ],
+  "unknownEnvelopes": [
+    {
+      "envelope": "",
+      "p": 0.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "",
+      "p": 0.1,
+      "value": 1.0
+    },
+    {
+      "envelope": "",
+      "p": 0.25,
+      "value": 1.0
+    },
+    {
+      "envelope": "",
+      "p": 0.5,
+      "value": 1.0
+    },
+    {
+      "envelope": "",
+      "p": 0.75,
+      "value": 1.0
+    },
+    {
+      "envelope": "",
+      "p": 0.9,
+      "value": 1.0
+    },
+    {
+      "envelope": "",
+      "p": 1.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "not_a_real_envelope",
+      "p": 0.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "not_a_real_envelope",
+      "p": 0.1,
+      "value": 1.0
+    },
+    {
+      "envelope": "not_a_real_envelope",
+      "p": 0.25,
+      "value": 1.0
+    },
+    {
+      "envelope": "not_a_real_envelope",
+      "p": 0.5,
+      "value": 1.0
+    },
+    {
+      "envelope": "not_a_real_envelope",
+      "p": 0.75,
+      "value": 1.0
+    },
+    {
+      "envelope": "not_a_real_envelope",
+      "p": 0.9,
+      "value": 1.0
+    },
+    {
+      "envelope": "not_a_real_envelope",
+      "p": 1.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "Pulse",
+      "p": 0.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "Pulse",
+      "p": 0.1,
+      "value": 1.0
+    },
+    {
+      "envelope": "Pulse",
+      "p": 0.25,
+      "value": 1.0
+    },
+    {
+      "envelope": "Pulse",
+      "p": 0.5,
+      "value": 1.0
+    },
+    {
+      "envelope": "Pulse",
+      "p": 0.75,
+      "value": 1.0
+    },
+    {
+      "envelope": "Pulse",
+      "p": 0.9,
+      "value": 1.0
+    },
+    {
+      "envelope": "Pulse",
+      "p": 1.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp",
+      "p": 0.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp",
+      "p": 0.1,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp",
+      "p": 0.25,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp",
+      "p": 0.5,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp",
+      "p": 0.75,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp",
+      "p": 0.9,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp",
+      "p": 1.0,
+      "value": 1.0
+    }
+  ],
+  "clampedEnvelopes": [
+    {
+      "envelope": "pulse",
+      "p": -1.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "pulse",
+      "p": -0.0001,
+      "value": 1.0
+    },
+    {
+      "envelope": "pulse",
+      "p": 1.0001,
+      "value": 1.0
+    },
+    {
+      "envelope": "pulse",
+      "p": 2.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "pulse",
+      "p": "nan",
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_in",
+      "p": -1.0,
+      "value": 0.0
+    },
+    {
+      "envelope": "ramp_in",
+      "p": -0.0001,
+      "value": 0.0
+    },
+    {
+      "envelope": "ramp_in",
+      "p": 1.0001,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_in",
+      "p": 2.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_in",
+      "p": "nan",
+      "value": 0.0
+    },
+    {
+      "envelope": "ramp_out",
+      "p": -1.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_out",
+      "p": -0.0001,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_out",
+      "p": 1.0001,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_out",
+      "p": 2.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_out",
+      "p": "nan",
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": -1.0,
+      "value": 0.0
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": -0.0001,
+      "value": 0.0
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": 1.0001,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": 2.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "ramp_in_out",
+      "p": "nan",
+      "value": 0.0
+    },
+    {
+      "envelope": "throb",
+      "p": -1.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "throb",
+      "p": -0.0001,
+      "value": 1.0
+    },
+    {
+      "envelope": "throb",
+      "p": 1.0001,
+      "value": 1.0
+    },
+    {
+      "envelope": "throb",
+      "p": 2.0,
+      "value": 1.0
+    },
+    {
+      "envelope": "throb",
+      "p": "nan",
+      "value": 1.0
+    }
+  ],
+  "keyframeCases": [
+    {
+      "name": "empty_no_envelope",
+      "comment": "nothing animates it: flat base value at every instant",
+      "baseValue": 0.75,
+      "envelope": null,
+      "isAnimated": false,
+      "keyframes": [],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.75
+        },
+        {
+          "p": 0.1,
+          "value": 0.75
+        },
+        {
+          "p": 0.25,
+          "value": 0.75
+        },
+        {
+          "p": 0.5,
+          "value": 0.75
+        },
+        {
+          "p": 0.75,
+          "value": 0.75
+        },
+        {
+          "p": 0.9,
+          "value": 0.75
+        },
+        {
+          "p": 1.0,
+          "value": 0.75
+        },
+        {
+          "p": -1.0,
+          "value": 0.75
+        },
+        {
+          "p": -0.0001,
+          "value": 0.75
+        },
+        {
+          "p": 1.0001,
+          "value": 0.75
+        },
+        {
+          "p": 2.0,
+          "value": 0.75
+        },
+        {
+          "p": "nan",
+          "value": 0.75
+        }
+      ]
+    },
+    {
+      "name": "empty_with_envelope",
+      "comment": "no keyframes, so the envelope scales the base value",
+      "baseValue": 0.8,
+      "envelope": "ramp_in",
+      "isAnimated": true,
+      "keyframes": [],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.0
+        },
+        {
+          "p": 0.1,
+          "value": 0.0032
+        },
+        {
+          "p": 0.25,
+          "value": 0.05
+        },
+        {
+          "p": 0.5,
+          "value": 0.4
+        },
+        {
+          "p": 0.75,
+          "value": 0.75
+        },
+        {
+          "p": 0.9,
+          "value": 0.7968
+        },
+        {
+          "p": 1.0,
+          "value": 0.8
+        },
+        {
+          "p": -1.0,
+          "value": 0.0
+        },
+        {
+          "p": -0.0001,
+          "value": 0.0
+        },
+        {
+          "p": 1.0001,
+          "value": 0.8
+        },
+        {
+          "p": 2.0,
+          "value": 0.8
+        },
+        {
+          "p": "nan",
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "name": "unknown_envelope",
+      "comment": "an envelope from a newer build degrades to the base value, never a throw",
+      "baseValue": 0.42,
+      "envelope": "not_a_real_envelope",
+      "isAnimated": true,
+      "keyframes": [],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.42
+        },
+        {
+          "p": 0.1,
+          "value": 0.42
+        },
+        {
+          "p": 0.25,
+          "value": 0.42
+        },
+        {
+          "p": 0.5,
+          "value": 0.42
+        },
+        {
+          "p": 0.75,
+          "value": 0.42
+        },
+        {
+          "p": 0.9,
+          "value": 0.42
+        },
+        {
+          "p": 1.0,
+          "value": 0.42
+        },
+        {
+          "p": -1.0,
+          "value": 0.42
+        },
+        {
+          "p": -0.0001,
+          "value": 0.42
+        },
+        {
+          "p": 1.0001,
+          "value": 0.42
+        },
+        {
+          "p": 2.0,
+          "value": 0.42
+        },
+        {
+          "p": "nan",
+          "value": 0.42
+        }
+      ]
+    },
+    {
+      "name": "single",
+      "comment": "one keyframe means \"this value, for the whole clip\" — it holds in both directions rather than extrapolating",
+      "baseValue": 0.5,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.5,
+          "value": 0.2,
+          "interpolation": "ease"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.2
+        },
+        {
+          "p": 0.1,
+          "value": 0.2
+        },
+        {
+          "p": 0.25,
+          "value": 0.2
+        },
+        {
+          "p": 0.5,
+          "value": 0.2
+        },
+        {
+          "p": 0.75,
+          "value": 0.2
+        },
+        {
+          "p": 0.9,
+          "value": 0.2
+        },
+        {
+          "p": 1.0,
+          "value": 0.2
+        },
+        {
+          "p": -1.0,
+          "value": 0.2
+        },
+        {
+          "p": -0.0001,
+          "value": 0.2
+        },
+        {
+          "p": 1.0001,
+          "value": 0.2
+        },
+        {
+          "p": 2.0,
+          "value": 0.2
+        },
+        {
+          "p": "nan",
+          "value": 0.2
+        }
+      ]
+    },
+    {
+      "name": "single_overrides_envelope",
+      "comment": "the rule of the feature: one keyframe and the envelope steps aside entirely, it does not blend in or scale the result",
+      "baseValue": 0.5,
+      "envelope": "pulse",
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.5,
+          "value": 0.2,
+          "interpolation": "ease"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.2
+        },
+        {
+          "p": 0.1,
+          "value": 0.2
+        },
+        {
+          "p": 0.25,
+          "value": 0.2
+        },
+        {
+          "p": 0.5,
+          "value": 0.2
+        },
+        {
+          "p": 0.75,
+          "value": 0.2
+        },
+        {
+          "p": 0.9,
+          "value": 0.2
+        },
+        {
+          "p": 1.0,
+          "value": 0.2
+        },
+        {
+          "p": -1.0,
+          "value": 0.2
+        },
+        {
+          "p": -0.0001,
+          "value": 0.2
+        },
+        {
+          "p": 1.0001,
+          "value": 0.2
+        },
+        {
+          "p": 2.0,
+          "value": 0.2
+        },
+        {
+          "p": "nan",
+          "value": 0.2
+        }
+      ]
+    },
+    {
+      "name": "two_linear",
+      "comment": "a straight line between two points, holding outside them",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.2,
+          "value": 0.1,
+          "interpolation": "linear"
+        },
+        {
+          "progress": 0.8,
+          "value": 0.9,
+          "interpolation": "linear"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.1
+        },
+        {
+          "p": 0.1,
+          "value": 0.1
+        },
+        {
+          "p": 0.25,
+          "value": 0.166667
+        },
+        {
+          "p": 0.5,
+          "value": 0.5
+        },
+        {
+          "p": 0.75,
+          "value": 0.833333
+        },
+        {
+          "p": 0.9,
+          "value": 0.9
+        },
+        {
+          "p": 1.0,
+          "value": 0.9
+        },
+        {
+          "p": -1.0,
+          "value": 0.1
+        },
+        {
+          "p": -0.0001,
+          "value": 0.1
+        },
+        {
+          "p": 1.0001,
+          "value": 0.9
+        },
+        {
+          "p": 2.0,
+          "value": 0.9
+        },
+        {
+          "p": "nan",
+          "value": 0.1
+        }
+      ]
+    },
+    {
+      "name": "two_ease",
+      "comment": "the default ease, which is where `_easeInOut` has to match — its two cubic arms meet at t == 0.5",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.2,
+          "value": 0.1,
+          "interpolation": "ease"
+        },
+        {
+          "progress": 0.8,
+          "value": 0.9,
+          "interpolation": "ease"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.1
+        },
+        {
+          "p": 0.1,
+          "value": 0.1
+        },
+        {
+          "p": 0.25,
+          "value": 0.101852
+        },
+        {
+          "p": 0.5,
+          "value": 0.5
+        },
+        {
+          "p": 0.75,
+          "value": 0.898148
+        },
+        {
+          "p": 0.9,
+          "value": 0.9
+        },
+        {
+          "p": 1.0,
+          "value": 0.9
+        },
+        {
+          "p": -1.0,
+          "value": 0.1
+        },
+        {
+          "p": -0.0001,
+          "value": 0.1
+        },
+        {
+          "p": 1.0001,
+          "value": 0.9
+        },
+        {
+          "p": 2.0,
+          "value": 0.9
+        },
+        {
+          "p": "nan",
+          "value": 0.1
+        }
+      ]
+    },
+    {
+      "name": "two_hold",
+      "comment": "the hold flag belongs to the segment that *starts* at the keyframe, so the value stays at 0.3 right up to 0.75 and jumps",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.25,
+          "value": 0.3,
+          "interpolation": "hold"
+        },
+        {
+          "progress": 0.75,
+          "value": 0.9,
+          "interpolation": "ease"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.3
+        },
+        {
+          "p": 0.1,
+          "value": 0.3
+        },
+        {
+          "p": 0.25,
+          "value": 0.3
+        },
+        {
+          "p": 0.5,
+          "value": 0.3
+        },
+        {
+          "p": 0.75,
+          "value": 0.9
+        },
+        {
+          "p": 0.9,
+          "value": 0.9
+        },
+        {
+          "p": 1.0,
+          "value": 0.9
+        },
+        {
+          "p": -1.0,
+          "value": 0.3
+        },
+        {
+          "p": -0.0001,
+          "value": 0.3
+        },
+        {
+          "p": 1.0001,
+          "value": 0.9
+        },
+        {
+          "p": 2.0,
+          "value": 0.9
+        },
+        {
+          "p": "nan",
+          "value": 0.3
+        }
+      ]
+    },
+    {
+      "name": "three_mixed",
+      "comment": "linear into a hold into the end — three segments, each reading its own outgoing flag",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.0,
+          "value": 0.0,
+          "interpolation": "linear"
+        },
+        {
+          "progress": 0.5,
+          "value": 1.0,
+          "interpolation": "hold"
+        },
+        {
+          "progress": 1.0,
+          "value": 0.25,
+          "interpolation": "ease"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.0
+        },
+        {
+          "p": 0.1,
+          "value": 0.2
+        },
+        {
+          "p": 0.25,
+          "value": 0.5
+        },
+        {
+          "p": 0.5,
+          "value": 1.0
+        },
+        {
+          "p": 0.75,
+          "value": 1.0
+        },
+        {
+          "p": 0.9,
+          "value": 1.0
+        },
+        {
+          "p": 1.0,
+          "value": 0.25
+        },
+        {
+          "p": -1.0,
+          "value": 0.0
+        },
+        {
+          "p": -0.0001,
+          "value": 0.0
+        },
+        {
+          "p": 1.0001,
+          "value": 0.25
+        },
+        {
+          "p": 2.0,
+          "value": 0.25
+        },
+        {
+          "p": "nan",
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "name": "three_mixed_unsorted",
+      "comment": "the same three points through the const constructor in scrambled order: the evaluator brackets by comparing progress, never by position, so this must sample identically to three_mixed",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 1.0,
+          "value": 0.25,
+          "interpolation": "ease"
+        },
+        {
+          "progress": 0.0,
+          "value": 0.0,
+          "interpolation": "linear"
+        },
+        {
+          "progress": 0.5,
+          "value": 1.0,
+          "interpolation": "hold"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.0
+        },
+        {
+          "p": 0.1,
+          "value": 0.2
+        },
+        {
+          "p": 0.25,
+          "value": 0.5
+        },
+        {
+          "p": 0.5,
+          "value": 1.0
+        },
+        {
+          "p": 0.75,
+          "value": 1.0
+        },
+        {
+          "p": 0.9,
+          "value": 1.0
+        },
+        {
+          "p": 1.0,
+          "value": 0.25
+        },
+        {
+          "p": -1.0,
+          "value": 0.0
+        },
+        {
+          "p": -0.0001,
+          "value": 0.0
+        },
+        {
+          "p": 1.0001,
+          "value": 0.25
+        },
+        {
+          "p": 2.0,
+          "value": 0.25
+        },
+        {
+          "p": "nan",
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "name": "unsorted_sorted_factory",
+      "comment": "and the same points through the sorting factory — three identical tables is the point",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.0,
+          "value": 0.0,
+          "interpolation": "linear"
+        },
+        {
+          "progress": 0.5,
+          "value": 1.0,
+          "interpolation": "hold"
+        },
+        {
+          "progress": 1.0,
+          "value": 0.25,
+          "interpolation": "ease"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.0
+        },
+        {
+          "p": 0.1,
+          "value": 0.2
+        },
+        {
+          "p": 0.25,
+          "value": 0.5
+        },
+        {
+          "p": 0.5,
+          "value": 1.0
+        },
+        {
+          "p": 0.75,
+          "value": 1.0
+        },
+        {
+          "p": 0.9,
+          "value": 1.0
+        },
+        {
+          "p": 1.0,
+          "value": 0.25
+        },
+        {
+          "p": -1.0,
+          "value": 0.0
+        },
+        {
+          "p": -0.0001,
+          "value": 0.0
+        },
+        {
+          "p": 1.0001,
+          "value": 0.25
+        },
+        {
+          "p": 2.0,
+          "value": 0.25
+        },
+        {
+          "p": "nan",
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "name": "duplicate_progress",
+      "comment": "two keyframes on one instant — a user can drag one onto another. The `>=`/`<=` in the bracketing scan makes the last one written win consistently on both sides of the pair, and the zero-span guard stops the divide producing NaN",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.5,
+          "value": 0.2,
+          "interpolation": "linear"
+        },
+        {
+          "progress": 0.5,
+          "value": 0.8,
+          "interpolation": "linear"
+        },
+        {
+          "progress": 1.0,
+          "value": 1.0,
+          "interpolation": "ease"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.8
+        },
+        {
+          "p": 0.1,
+          "value": 0.8
+        },
+        {
+          "p": 0.25,
+          "value": 0.8
+        },
+        {
+          "p": 0.5,
+          "value": 0.8
+        },
+        {
+          "p": 0.75,
+          "value": 0.9
+        },
+        {
+          "p": 0.9,
+          "value": 0.96
+        },
+        {
+          "p": 1.0,
+          "value": 1.0
+        },
+        {
+          "p": -1.0,
+          "value": 0.8
+        },
+        {
+          "p": -0.0001,
+          "value": 0.8
+        },
+        {
+          "p": 1.0001,
+          "value": 1.0
+        },
+        {
+          "p": 2.0,
+          "value": 1.0
+        },
+        {
+          "p": "nan",
+          "value": 0.8
+        }
+      ]
+    },
+    {
+      "name": "out_of_range_progress",
+      "comment": "keyframes exactly on both ends, so every sample is interpolated and none of the holding arms can hide a broken ease",
+      "baseValue": 0.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.0,
+          "value": 0.4,
+          "interpolation": "ease"
+        },
+        {
+          "progress": 1.0,
+          "value": 0.6,
+          "interpolation": "ease"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": 0.4
+        },
+        {
+          "p": 0.1,
+          "value": 0.4008
+        },
+        {
+          "p": 0.25,
+          "value": 0.4125
+        },
+        {
+          "p": 0.5,
+          "value": 0.5
+        },
+        {
+          "p": 0.75,
+          "value": 0.5875
+        },
+        {
+          "p": 0.9,
+          "value": 0.5992
+        },
+        {
+          "p": 1.0,
+          "value": 0.6
+        },
+        {
+          "p": -1.0,
+          "value": 0.4
+        },
+        {
+          "p": -0.0001,
+          "value": 0.4
+        },
+        {
+          "p": 1.0001,
+          "value": 0.6
+        },
+        {
+          "p": 2.0,
+          "value": 0.6
+        },
+        {
+          "p": "nan",
+          "value": 0.4
+        }
+      ]
+    },
+    {
+      "name": "negative_and_large_values",
+      "comment": "values are deliberately unclamped — a scale is not a volume — so a port that clamped to 0..1 somewhere would fail here and nowhere else",
+      "baseValue": 1.0,
+      "envelope": null,
+      "isAnimated": true,
+      "keyframes": [
+        {
+          "progress": 0.0,
+          "value": -2.5,
+          "interpolation": "linear"
+        },
+        {
+          "progress": 1.0,
+          "value": 40.0,
+          "interpolation": "linear"
+        }
+      ],
+      "samples": [
+        {
+          "p": 0.0,
+          "value": -2.5
+        },
+        {
+          "p": 0.1,
+          "value": 1.75
+        },
+        {
+          "p": 0.25,
+          "value": 8.125
+        },
+        {
+          "p": 0.5,
+          "value": 18.75
+        },
+        {
+          "p": 0.75,
+          "value": 29.375
+        },
+        {
+          "p": 0.9,
+          "value": 35.75
+        },
+        {
+          "p": 1.0,
+          "value": 40.0
+        },
+        {
+          "p": -1.0,
+          "value": -2.5
+        },
+        {
+          "p": -0.0001,
+          "value": -2.5
+        },
+        {
+          "p": 1.0001,
+          "value": 40.0
+        },
+        {
+          "p": 2.0,
+          "value": 40.0
+        },
+        {
+          "p": "nan",
+          "value": -2.5
+        }
+      ]
+    }
+  ]
+}

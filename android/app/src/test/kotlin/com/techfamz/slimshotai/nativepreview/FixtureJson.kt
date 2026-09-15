@@ -186,6 +186,9 @@ internal fun JsonValue.JsonObject.int(key: String): Int = double(key).toInt()
 internal fun JsonValue.JsonObject.string(key: String): String =
     (fields[key] as? JsonValue.JsonString)?.value ?: error("'$key' is not a string")
 
+internal fun JsonValue.JsonObject.bool(key: String): Boolean =
+    (fields[key] as? JsonValue.JsonBool)?.value ?: error("'$key' is not a boolean")
+
 /** A field that is legitimately `null` in the fixture, such as an unresolved id. */
 internal fun JsonValue.JsonObject.stringOrNull(key: String): String? =
     when (val v = fields[key]) {
