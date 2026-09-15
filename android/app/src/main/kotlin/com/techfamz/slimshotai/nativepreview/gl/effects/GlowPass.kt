@@ -3,6 +3,8 @@ package com.techfamz.slimshotai.nativepreview.gl.effects
 import android.opengl.GLES20
 import com.techfamz.slimshotai.nativepreview.gl.EffectPass
 import com.techfamz.slimshotai.nativepreview.gl.RenderTarget
+import com.techfamz.slimshotai.nativepreview.gl.createRenderTarget
+import kotlin.math.max
 
 /*
  * A soft bloom: the frame's highlights, blurred, laid back over the frame.
@@ -40,7 +42,12 @@ import com.techfamz.slimshotai.nativepreview.gl.RenderTarget
  */
 
 /**
- * One half of glow's blur, with the intensity mapped onto its radius.
+ * One half of glow's blur, run at a **fraction of the frame's resolution**, with
+ * the intensity mapped onto its radius.
+ *
+ * Two jobs, and the second one is the reason the bloom is visible at all.
+ *
+ * ### The radius, without a rebuild
  *
  * The bloom's radius scales with the intensity because that is what a user
  * dragging the slider means by "more dreamy" — a brighter bloom at a fixed
@@ -54,11 +61,88 @@ import com.techfamz.slimshotai.nativepreview.gl.RenderTarget
  * the whole effect there, not a bloom's supporting act — and one class cannot
  * hold two mappings without a mode flag deciding which is in force.
  *
- * Delegates everything else, so the chain sees an ordinary pass.
+ * ### The downsample, which is why the bloom can be seen
+ *
+ * **The bloom was invisible because it was too small, not because it was
+ * broken.** [BlurPass] is a fixed 16 taps and
+ * [BlurPass.MAX_RADIUS_FRACTION] caps the radius at 0.014 of the short side —
+ * about 15px at 1080 — because past that the strided taps start to band. That
+ * cap's reasoning is sound and raising it would trade an invisible bloom for a
+ * banded one, which is worse. A halo of 12px around a highlight simply is not a
+ * halo anybody notices.
+ *
+ * Blurring a **half-resolution copy** buys the radius back for nothing: the same
+ * 16 taps span twice as many full-resolution pixels, the bilinear downsample
+ * pre-smooths the picture so the taps have less high-frequency detail to alias
+ * against, and the two blur draws each cost a quarter of the fragments. A bloom
+ * is the one thing in the catalog that *can* be computed at a lower resolution
+ * without anyone seeing it: it is by definition the low-frequency part of the
+ * picture, and it is screened back over a full-resolution scene that keeps every
+ * detail.
+ *
+ * **The texel step follows the target, not the output frame.** [BlurPass]
+ * derives both its radius in pixels and its `1/width` step from the viewport it
+ * is handed, which is normally the output's size. Handing it the *downscaled*
+ * size instead is what makes the arithmetic self-consistent: at half resolution
+ * a 15px radius is 7.5 half-res pixels sampled across a half-res texture, which
+ * lands on exactly the same 15 full-res pixels — and then the scale factor is
+ * pure gain. Passing the full viewport while writing a half-size target would
+ * halve the step against the texture actually being sampled and give a bloom
+ * *smaller* than the undownsampled one, which is the failure mode worth naming
+ * because it looks like the downsample simply not working.
+ *
+ * ### Which half owns the scaling
+ *
+ * Pass `.h` allocates and writes the downscale target; pass `.v` reads it and
+ * writes the chain's own full-size target. So the horizontal half does the
+ * scaling down and the vertical half brings it back up — one resample each way,
+ * and the composite that follows samples an ordinary full-size texture with no
+ * idea any of this happened. The alternative, teaching
+ * [com.techfamz.slimshotai.nativepreview.gl.EffectPassChain] to hand out scaled
+ * targets, would put a concept into every single-pass effect that only a bloom
+ * has any use for.
  */
 internal class GlowBlurPass(
     private val blur: BlurPass,
-) : EffectPass by blur, IntensityControlled {
+    /**
+     * True for the half that renders *into* the downscaled target.
+     *
+     * Only one of the pair may own it: two passes each allocating a scratch
+     * buffer would double the memory for a picture that needs one.
+     */
+    private val ownsDownscale: Boolean,
+) : EffectPass, IntensityControlled {
+
+    override val id: String = blur.id
+
+    /**
+     * The half-resolution scratch buffer, allocated on first use at whatever
+     * size the frame turns out to be and reused until that changes.
+     *
+     * **Never per frame.** A 540x960 RGBA target is ~2MB; churning one every
+     * frame is exactly the allocation storm that turns a working effect into a
+     * stutter on the low-end target, which is the same rule
+     * `EffectPassChain.resize` follows.
+     */
+    private var downscale: RenderTarget? = null
+
+    /**
+     * Latched when the device refuses the scratch target.
+     *
+     * The bloom then runs at full resolution — smaller than intended, but a
+     * picture — rather than disappearing. Degrading to the previous behaviour is
+     * the right answer on a GL thread that cannot ask the user anything.
+     */
+    private var downscaleUnavailable = false
+
+    /**
+     * The pass that owns the scratch buffer, for the half that does not.
+     *
+     * Asked per frame rather than copied once, because the buffer is
+     * reallocated on a size change and a copy taken at construction would name a
+     * released target from then on.
+     */
+    private var downscaleProvider: GlowBlurPass? = null
 
     override fun applyIntensity(intensity: Float) {
         val clamped = intensity.coerceIn(0f, 1f)
@@ -67,9 +151,105 @@ internal class GlowBlurPass(
             ).toDouble()
     }
 
-    /** Deletes the shared program. Idempotent — both halves hold the same one. */
+    override fun render(
+        sourceTextureId: Int,
+        target: RenderTarget?,
+        viewportWidth: Int,
+        viewportHeight: Int,
+        passIndex: Int,
+    ) {
+        if (viewportWidth <= 0 || viewportHeight <= 0) return
+
+        // The owner allocates; the other half reads whatever the owner ended up
+        // with. Asking the owner rather than holding a copy is what keeps `.v`
+        // correct across a resize, which releases the old target and builds a
+        // new one.
+        val small = if (ownsDownscale) {
+            scratchFor(viewportWidth, viewportHeight)
+        } else {
+            downscaleProvider?.downscale
+        }
+
+        if (small == null) {
+            // No scratch buffer: the full-resolution blur, which is what this
+            // effect did before the downsample existed. Both halves take this
+            // path together, because `.v` only ever holds a target `.h` gave it.
+            blur.render(sourceTextureId, target, viewportWidth, viewportHeight, passIndex)
+            return
+        }
+
+        if (ownsDownscale) {
+            // Down: read the full-size bright pass, write the half-size buffer.
+            // The viewport handed on is the *target's* size, so the step and the
+            // radius are both measured against the texture being written.
+            blur.render(sourceTextureId, small, small.width, small.height, passIndex)
+        } else {
+            // Up: read the half-size buffer, write the chain's full-size target.
+            // The viewport is still the small one — the texture being *sampled*
+            // is what the step divides by — while `target.bind()` inside the
+            // blur sets the real viewport to the full-size target's own
+            // dimensions. `GL_LINEAR` on the scratch texture is what makes the
+            // magnification smooth rather than blocky.
+            blur.render(small.textureId, target, small.width, small.height, passIndex)
+        }
+    }
+
+    /**
+     * The scratch target for a [width] x [height] frame, or null if refused.
+     *
+     * Reallocated only when the frame's size changes — a canvas resize, or the
+     * switch from preview to export dimensions.
+     */
+    private fun scratchFor(width: Int, height: Int): RenderTarget? {
+        if (downscaleUnavailable) return null
+
+        val smallWidth = max(1, width / DOWNSCALE)
+        val smallHeight = max(1, height / DOWNSCALE)
+
+        val existing = downscale
+        if (existing != null && existing.width == smallWidth && existing.height == smallHeight) {
+            return existing
+        }
+
+        existing?.release()
+        downscale = null
+
+        val created = createRenderTarget(smallWidth, smallHeight)
+        if (created == null) {
+            // Latched: a device that refused this size will refuse it again, and
+            // retrying an allocation per frame is worse than the smaller bloom.
+            downscaleUnavailable = true
+            return null
+        }
+        downscale = created
+        return created
+    }
+
+    /**
+     * Hands [downscale] to the other half of the pair.
+     *
+     * The two halves are built together in [EffectShaders] and must agree on the
+     * buffer: `.v` reads exactly what `.h` wrote. Sharing the field rather than
+     * the object keeps `.v` from having to know whether `.h` succeeded — a null
+     * here means both fall back to the full-resolution blur, together.
+     */
+    fun shareDownscaleWith(other: GlowBlurPass) {
+        other.downscaleProvider = this
+    }
+
+    /**
+     * Deletes the shared program and this half's scratch buffer.
+     *
+     * Idempotent, and safe on both halves: they hold the same [BlurProgram] —
+     * whose `release` is idempotent — and only the owning half has a target to
+     * drop.
+     *
+     * GL thread only.
+     */
     fun release() {
         blur.release()
+        downscale?.release()
+        downscale = null
     }
 
     internal companion object {
@@ -77,13 +257,31 @@ internal class GlowBlurPass(
         const val MIN_RADIUS_FRACTION = 0.003f
 
         /**
-         * Bloom radius at intensity 1.
+         * Bloom radius at intensity 1, **measured against the downscaled
+         * target**.
          *
-         * Kept inside [BlurPass.MAX_RADIUS_FRACTION], which is where the 16-tap
-         * kernel starts to band as the stride widens. A bloom wider than this
-         * wants a downsampled pass, not a coarser one.
+         * Kept at [BlurPass.MAX_RADIUS_FRACTION], which is where the 16-tap
+         * kernel begins to band. Because the blur now runs at 1/[DOWNSCALE] of
+         * the frame, this is an effective [DOWNSCALE] x 0.014 ≈ 0.028 of the
+         * short side in full-resolution terms — roughly 30px at 1080, which is a
+         * halo a person actually sees — while every tap stays inside the density
+         * the cap was chosen for. That is the whole trade: the same kernel,
+         * twice the reach, no banding.
          */
-        const val MAX_RADIUS_FRACTION = 0.012f
+        const val MAX_RADIUS_FRACTION = BlurPass.MAX_RADIUS_FRACTION.toFloat()
+
+        /**
+         * How much smaller the blurred copy is, per axis.
+         *
+         * Two, not four. A quarter-resolution bloom would reach twice as far
+         * again, but the canvas is already capped at `kMaxPreviewCanvasPx` in
+         * preview, so on a short-side-400 canvas a quarter is 100px — few enough
+         * that the upsample itself becomes visible as softness in the bloom's
+         * shape. Half is the largest step that is invisible at every size this
+         * app renders, and it is already the difference between a bloom nobody
+         * notices and one that reads as the effect.
+         */
+        const val DOWNSCALE = 2
     }
 }
 

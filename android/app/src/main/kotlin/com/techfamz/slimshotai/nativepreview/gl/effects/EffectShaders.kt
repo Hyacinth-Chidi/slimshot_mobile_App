@@ -71,6 +71,20 @@ internal object EffectShaders {
 
             "fisheye" -> listOf(FisheyePass(FullFrameProgram(FisheyePass.FRAGMENT)))
 
+            // **The discriminator for glow, as well as an effect in its own
+            // right.** Glow was reported as rendering nothing, with two
+            // candidate causes: [BlurPass]'s 16-tap loop being the only loop any
+            // shader here runs — spec-legal on ES 2.0 under the
+            // constant-index-expression rule, but with no driver precedent in
+            // this app — or the bloom simply being too small to see. Glow was
+            // the only effect depending on [BlurPass], so the two were
+            // indistinguishable. Wiring blur separates them: if blur visibly
+            // blurs, the loop is fine and the bloom's size was the cause.
+            //
+            // The wiring is due regardless — `blur` is in the Dart catalog and
+            // was falling to the "no shader yet" branch.
+            "blur" -> BlurPass.chain().map { StandaloneBlurPass(it) }
+
             "glow" -> glowPasses()
 
             // The first timed effect. Structurally an ordinary single-frame
@@ -156,13 +170,23 @@ internal object EffectShaders {
         // pair's starting value, and the two halves must share it — a radius
         // that differed between the axes would be a directional smear, not a
         // gaussian.
-        val blur = BlurPass.chain().map { GlowBlurPass(it) }
+        //
+        // **The bloom is blurred at half resolution**, which is what makes it
+        // large enough to see: the 16-tap kernel's radius cap is a sampling
+        // density limit, so the way past it is fewer pixels rather than more
+        // taps. The horizontal half owns the downscaled buffer and the vertical
+        // half reads it back up to full size; see [GlowBlurPass].
+        val halves = BlurPass.chain()
+        val horizontal = GlowBlurPass(halves[0], ownsDownscale = true)
+        val vertical = GlowBlurPass(halves[1], ownsDownscale = false)
+        horizontal.shareDownscaleWith(vertical)
+
         val composite = GlowCompositePass(
             FullFrameProgram(GlowCompositePass.FRAGMENT),
             source,
         )
 
-        return listOf(bright) + blur + composite
+        return listOf(bright, horizontal, vertical, composite)
     }
 
     /**
@@ -180,7 +204,14 @@ internal object EffectShaders {
         for (pass in passes) {
             when (pass) {
                 is SingleFramePass -> pass.release()
+                // **The wrappers must come before [BlurPass].** Each delegates
+                // the interface to a `BlurPass` but is not one, so a branch
+                // order that tested the bare pass first would never be reached
+                // by either — and a wrapper falling through to the `else` leaks
+                // its program, and in `GlowBlurPass`'s case its downscale target
+                // too, on every effect change.
                 is GlowBlurPass -> pass.release()
+                is StandaloneBlurPass -> pass.release()
                 is BlurPass -> pass.release()
                 is GlowCompositePass -> pass.release()
                 else -> Log.w(TAG, "Effect pass '${pass.id}' has no release path")

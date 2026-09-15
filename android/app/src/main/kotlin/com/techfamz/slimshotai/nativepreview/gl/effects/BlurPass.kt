@@ -266,6 +266,60 @@ internal class BlurPass private constructor(
 }
 
 /**
+ * The `blur` catalog entry: a plain gaussian softening of the whole frame.
+ *
+ * A wrapper around [BlurPass] for the same reason [GlowBlurPass] is one — the
+ * intensity has to reach the radius without a rebuild — but with a **different
+ * mapping**, which is why the two cannot be one class. Here the blur *is* the
+ * effect, so intensity 1 means as soft as the kernel will honestly go; in a
+ * bloom the radius is a supporting parameter and tops out lower. One class
+ * holding both mappings would need a mode flag deciding which is in force.
+ *
+ * Unlike glow's halves this runs at **full resolution**. A bloom is by
+ * definition the low-frequency part of the picture and is screened back over a
+ * sharp scene, so nobody can see it computed small; a foreground blur is the
+ * picture itself, and a half-resolution one would read as the upsample's
+ * softness rather than as the gaussian's. If `blur` ever wants a radius past
+ * the cap, that is the moment to reconsider — not before.
+ */
+internal class StandaloneBlurPass(
+    private val blur: BlurPass,
+) : EffectPass by blur, IntensityControlled {
+
+    override fun applyIntensity(intensity: Float) {
+        val clamped = intensity.coerceIn(0f, 1f)
+        blur.radiusFraction = (
+            MIN_RADIUS_FRACTION + (MAX_RADIUS_FRACTION - MIN_RADIUS_FRACTION) * clamped
+            ).toDouble()
+    }
+
+    /** Deletes the shared program. Idempotent — both halves hold the same one. */
+    fun release() {
+        blur.release()
+    }
+
+    internal companion object {
+        /**
+         * Radius at intensity 0.
+         *
+         * Not zero: an effect the user has applied must visibly do something at
+         * every slider position, or the bottom of the range reads as the effect
+         * being broken. A touch of softening is the honest floor.
+         */
+        const val MIN_RADIUS_FRACTION = 0.002f
+
+        /**
+         * Radius at intensity 1 — the full kernel, right at the density cap.
+         *
+         * [BlurPass.MAX_RADIUS_FRACTION] is where 16 taps begin to band as the
+         * stride widens, and a blur is exactly the effect where banding would be
+         * obvious, so this sits on the cap rather than past it.
+         */
+        const val MAX_RADIUS_FRACTION = BlurPass.MAX_RADIUS_FRACTION.toFloat()
+    }
+}
+
+/**
  * The linked blur program and its uniform locations.
  *
  * One program serves both axes: the axis is a uniform, so there is nothing to
