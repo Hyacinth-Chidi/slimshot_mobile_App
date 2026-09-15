@@ -1098,6 +1098,20 @@ chain (`MAX_EFFECT_PASSES` 4, two targets allocated per size change and reused).
 passes the frame takes exactly the old path** — the diff that introduced this removed two lines
 and both reappear in the no-passes branch.
 
+**The pass budget is per *frame*, and a frame draws one clip.** `applyClipEffect` resolves a
+single clip from the timeline position — the outgoing one inside a transition window, the master
+lane's otherwise — and applies only that clip's effect. So a project of any length with a
+different effect on every clip costs nothing extra: clip 4's blur is never drawn while clip 1 is
+on screen, and even a transition draws **one** effect because the outgoing clip owns the window.
+The budget binds only when a *single* clip stacks several effects, which is what makes stacking
+the feature that has to reckon with it.
+
+`MAX_EFFECT_PASSES` is a **correctness bound, not a performance one** — enough for a separable
+blur plus a composite, and a hard stop on a future catalog entry quietly asking for twelve.
+Whether a given device sustains four is a different question, and the answer is the standing rule:
+**probe at runtime and degrade loudly**, never assume from one handset. 36 of the 39 effects are
+single-pass, so the cap is reached by stacking blur-class effects, not ordinary ones.
+
 **The chain runs inside `composite`, before overlays.** That is what keeps text or a sticker on a
 blurred clip **sharp**: effects treat the clip picture, overlays sit above it. Do not move the
 chain out or the overlay draw in.
