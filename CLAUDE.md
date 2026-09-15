@@ -1166,6 +1166,62 @@ ES 2.0 (Appendix A constant-index-expression) but with no driver precedent here,
 **unverified on hardware**. Every other shader deliberately avoids loops. If `blur` renders
 unchanged footage on a device, that loop is the first suspect and the fallback is unrolling it.
 
+### Animatable parameters — envelopes and keyframes
+
+**Awaiting device verification.** An effect's intensity is an `AnimatableDouble`
+(`logic/animation/animatable_double.dart`): a base value, an optional named **envelope**, an
+optional **keyframe** list, and one `resolveAt(progress)` that answers what the value is now.
+A Kotlin port (`nativepreview/AnimatableDouble.kt`) is pinned to the Dart by
+`test/fixtures/animatable_fixture.json`, the same mechanism the text animation curves use — and
+with the same caveat, that it catches *divergence tomorrow*, never a wrong curve today.
+
+**The model is general, and that was deliberate.** `AnimatableDouble` knows nothing about
+effects; effects merely happen to be its first consumer. Keyframes are a **timeline** feature —
+transform (Ken Burns), opacity and volume will all want them — and building them inside the
+effects system would have meant keyframes that work in exactly one place plus a draft migration
+when the second consumer arrived.
+
+**Resolution order is keyframes, else envelope, else the flat base value**, and it is not
+negotiable. One keyframe means the user has taken manual control and the envelope steps aside
+*entirely* — no blending, no mode to enter, no state where both are half-applied.
+
+**Every envelope lands on 1.0 at `p == 1`**, pinned by a table-wide test that iterates
+`kEnvelopeNames`, so an envelope added later inherits the rule rather than needing someone to
+remember it. An effect caught mid-transition on a clip's final frame pops exactly on the cut,
+where the eye already is; resting at full strength makes the last frame identical to the clip
+with no envelope, so the handover is continuous by construction.
+
+**A flat parameter serialises as the bare number it replaced** (`toJson` returns `baseValue` when
+`!isAnimated`), which is how introducing this changed nothing for the 37 effects carrying no
+envelope, and how drafts written before it still load. `fromJson` takes `dynamic` for the same
+reason. Only `blur` (`ramp_out`) and `glow` (`throb`) carry a default envelope; static grades
+declare none, because a pulsing vignette is a gimmick, and timed intros declare none because they
+already animate through `uProgress` and an envelope on top would fight it.
+
+**Keyframe positions are clip-relative `0..1`, and the selection is addressed by progress, never
+by index.** Adding a keyframe before the selected one renumbers the list, so an index-based
+selection would silently begin editing its neighbour — a canary test adds at 0.05, watches the
+selected keyframe move from index 1 to 2, and asserts the selection still names the same one.
+Clip-relative positions also mean a trimmed or sped-up clip keeps its keyframes where they look
+right, and a draft renders identically on any device.
+
+**The keyframe row does not exist until it is asked for.** `VideoEditorState.keyframeEditorSegmentId`
+names the clip whose row is open; nothing else builds one. A user who never taps "Keyframe" never
+sees a diamond, which is the whole two-audience design — a row that appeared unbidden would break
+the casual path. `selectedKeyframeProgress` lives beside it for the same reason: the row draws the
+diamond, the row's controls delete it, and **the effects panel's slider edits its value** — and
+that panel is a modal sheet, nowhere near the timeline in the widget tree.
+
+**Adding a keyframe must never change the picture.** It takes the parameter's value *at that
+moment* (`resolveAt(progress)`), so placing one is purely additive. Tested at several positions
+and with existing keyframes present, because it is the property a future refactor would silently
+break.
+
+**The intensity slider has two subjects**, and the label says which (`Intensity` versus
+`Keyframe at 50%`). With a diamond selected it reads and writes that keyframe's value; with none
+it writes `baseValue` exactly as before. A slider silently editing something other than what it
+says is worse than no feature at all.
+
 ### 3. Then â€” timeline UX
 
 Zoom (`_pixelsPerSecond` is a `static const 50.0`; `ClipFilmstrip` already recomputes its grid from
