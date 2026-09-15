@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../logic/animation/animatable_double.dart';
+import '../../logic/animation/clip_keyframes.dart';
 import '../../logic/effects/effect_catalog.dart';
 import '../../providers/video_editor_notifier.dart';
 
@@ -182,27 +182,12 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                 if (selected != null)
                   _intensityRow(
                     notifier: notifier,
-                    // Whether the keyframe row is already open, so the control
-                    // reads as a toggle rather than a button that stops
-                    // responding once tapped.
-                    keyframesOpen:
-                        editorState.keyframeEditorSegmentId == segment.id,
-                    // **One slider, two subjects, and the label says which.**
-                    //
-                    // With a diamond selected it edits *that keyframe's*
-                    // value; with nothing selected it edits the parameter's
-                    // base. A second slider would be the obvious alternative
-                    // and is worse: two controls for one quantity, one of them
-                    // inert most of the time, and nothing on screen explaining
-                    // which the picture is currently following.
-                    //
-                    // **Never the value at the playhead.** An envelope shapes
-                    // the base across the clip, so a slider tracking the
-                    // resolved value would wander while playing and would write
-                    // back whatever the curve happened to be at when the user
-                    // grabbed it — quietly flattening the animation into one
-                    // frame of itself.
-                    keyframe: editorState.selectedKeyframe,
+                    // **The base value, never the value at the playhead.** An
+                    // envelope or a keyframe shapes the strength across the
+                    // clip, so a slider tracking the resolved value would
+                    // wander while playing and write back whatever the curve
+                    // happened to be at when the user grabbed it — quietly
+                    // flattening the animation into one frame of itself.
                     intensity: segment.effectIntensity.baseValue,
                   ),
                 const SizedBox(height: 8),
@@ -316,43 +301,30 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
   Widget _intensityRow({
     required VideoEditorNotifier notifier,
     required double intensity,
-    required bool keyframesOpen,
-    required Keyframe? keyframe,
   }) {
-    final editingKeyframe = keyframe != null;
-    final value = (editingKeyframe ? keyframe.value : intensity)
-        .clamp(0.0, 1.0)
-        .toDouble();
+    final value = intensity.clamp(0.0, 1.0).toDouble();
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Align(
+          const Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              editingKeyframe
-                  // Named by where it sits, because that is how the user
-                  // picked it out on the row.
-                  ? 'Keyframe at ${(keyframe.progress * 100).round()}%'
-                  : 'Intensity',
+              'Intensity',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: editingKeyframe
-                    ? AppColors.primaryStart
-                    : AppColors.textSecondary,
+                color: AppColors.textSecondary,
               ),
             ),
           ),
           Row(
             children: [
-              Icon(
-                editingKeyframe ? LucideIcons.diamond : LucideIcons.gauge,
-                color: editingKeyframe
-                    ? AppColors.primaryStart
-                    : AppColors.textSecondary,
+              const Icon(
+                LucideIcons.gauge,
+                color: AppColors.textSecondary,
                 size: 16,
               ),
               Expanded(
@@ -370,32 +342,24 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                     // pixel parameter would make those two different pictures.
                     value: value,
                     onChangeStart: (_) {
-                      // **One undo entry for the whole drag**, whichever
-                      // subject it is pointed at. The snapshot is taken here
-                      // and every frame after writes live; going through a
-                      // snapshotting setter per frame makes undo walk the drag
-                      // back a pixel at a time.
+                      // **One undo entry for the whole drag.** The snapshot is
+                      // taken here and every frame after writes live; going
+                      // through a snapshotting setter per frame makes undo walk
+                      // the drag back a pixel at a time.
                       notifier.saveStateForUndo();
                     },
                     onChanged: (next) {
-                      if (editingKeyframe) {
-                        // Addressed by the keyframe's **progress**, which is
-                        // also how the selection is stored — so a keyframe
-                        // added or removed elsewhere on the row cannot
-                        // renumber this drag onto a different diamond.
-                        notifier.setEffectIntensityKeyframeValue(
-                          keyframe.progress,
-                          next,
-                          takeUndoSnapshot: false,
-                        );
-                        return;
-                      }
-                      notifier.setClipEffect(
-                        // The effect is unchanged — only its strength moves —
-                        // so the id is re-sent rather than cleared and
-                        // reapplied.
-                        ref.read(videoEditorProvider).selectedSegment?.effectId,
-                        intensity: next,
+                      // **This slider has no idea keyframes exist**, and that
+                      // is the point. `setClipProperty` writes the base value
+                      // on a clip with no diamonds and the keyframe under the
+                      // playhead on a clip with some — the same rule the pinch
+                      // gesture and the volume slider follow, so the sheet
+                      // needs no keyframe control of its own. The rejected
+                      // design put one here, which is how the feature ended up
+                      // able to animate exactly one number.
+                      notifier.setClipProperty(
+                        ClipProperty.effectIntensity,
+                        next,
                         takeUndoSnapshot: false,
                       );
                     },
@@ -413,14 +377,6 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                   ),
                   textAlign: TextAlign.right,
                 ),
-              ),
-              const SizedBox(width: 8),
-              KeyframeToggleButton(
-                isOpen: keyframesOpen,
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  notifier.toggleKeyframeEditor();
-                },
               ),
             ],
           ),
@@ -444,87 +400,6 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
   }
 }
 
-/// The opt-in control for keyframing this clip's effect intensity.
-///
-/// **A user who never taps this never sees a diamond.** That is the whole
-/// design of the two audiences the effects system serves: someone who wants a
-/// good-looking clip taps an effect and leaves — the catalog's own envelope
-/// already makes it feel designed — while someone who wants a glitch that
-/// builds to a beat opts in here. A keyframe row that appeared on its own,
-/// under every clip that happened to carry an effect, would break the casual
-/// path for everyone to serve the few.
-///
-/// It is shown only beside the intensity slider, which itself only exists once
-/// an effect is applied, so there is never a keyframe control over a value
-/// nothing reads.
-///
-/// A widget of its own rather than a private builder so a test can read
-/// [isOpen] off it instead of inferring the toggle's state from its pixels —
-/// the same route [EffectTile] takes, for the same reason.
-class KeyframeToggleButton extends StatelessWidget {
-  const KeyframeToggleButton({
-    super.key,
-    required this.isOpen,
-    required this.onTap,
-  });
-
-  /// Whether the row is already showing. The control is a toggle, not a
-  /// one-way door: a button that stopped responding after the first tap would
-  /// leave the row with no way back to a clean timeline.
-  final bool isOpen;
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: isOpen,
-      label: 'Keyframe',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: isOpen ? AppColors.highlight : AppColors.surface,
-            border: Border.all(
-              color: isOpen ? AppColors.primaryStart : AppColors.border,
-            ),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                LucideIcons.diamond,
-                size: 13,
-                color:
-                    isOpen ? AppColors.textPrimary : AppColors.textSecondary,
-              ),
-              const SizedBox(width: 5),
-              Text(
-                'Keyframe',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isOpen ? FontWeight.w600 : FontWeight.w500,
-                  color:
-                      isOpen ? AppColors.textPrimary : AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// One shelf entry: a glyph and a label, selected or not.
-///
-/// A widget of its own rather than a private builder so a test can read
-/// [isSelected] off the tile instead of inferring selection from its pixels —
-/// the same route `TextAnimationTile` takes, for the same reason.
 class EffectTile extends StatelessWidget {
   const EffectTile({
     super.key,

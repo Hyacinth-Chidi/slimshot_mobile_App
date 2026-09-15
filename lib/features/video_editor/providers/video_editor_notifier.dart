@@ -11,6 +11,7 @@ import '../../../core/models/draft_project.dart';
 import '../../../core/services/draft_service.dart';
 import '../../../core/utils/file_utils.dart';
 import '../logic/animation/animatable_double.dart';
+import '../logic/animation/clip_keyframes.dart';
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 import '../logic/timeline/timeline_geometry.dart';
@@ -527,9 +528,6 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       isClipSelected: false,
       clearActiveToolId: true,
       clearSelectedTransitionSegmentId: true,
-      // The row belongs to a clip, so deselecting every clip takes the
-      // selected diamond with it — see [selectSegment].
-      clearSelectedKeyframeProgress: true,
       currentMenuId: 'root',
     );
   }
@@ -544,12 +542,6 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedVideoOverlayId: true,
       clearSelectedAudioId: true,
       clearSelectedTransitionSegmentId: true,
-      // **A diamond belongs to one clip's row.** `keyframeEditorSegmentId`
-      // already scopes the row to the clip that asked for it, so selecting a
-      // different clip closes the row — and a selection carried across would
-      // then light Delete, and point the panel's slider, at whatever keyframe
-      // happened to sit at the same instant on the next row that opened.
-      clearSelectedKeyframeProgress: true,
       trimRange: RangeValues(
         state.segments.firstWhere((s) => s.id == id).sourceStart,
         state.segments.firstWhere((s) => s.id == id).sourceEnd,
@@ -720,9 +712,17 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       canvasOffsetY: segment.canvasOffsetY,
     );
 
+    // Keyframes are clip-relative, so each half gets its own rescaled copy.
+    // A reversed clip plays its source backwards, but *progress* is timeline
+    // order in both cases — the left half is always the one that plays first —
+    // so the cut fraction is the same either way.
+    final cut = (offsetIntoClip / segment.duration).clamp(0.0, 1.0).toDouble();
     final updatedSegments = [...segments]
-      ..[index] = leftSegment
-      ..insert(index + 1, rightSegment);
+      ..[index] = _splitKeyframes(leftSegment, segment, cut, isLeft: true)
+      ..insert(
+        index + 1,
+        _splitKeyframes(rightSegment, segment, cut, isLeft: false),
+      );
 
     saveStateForUndo();
     state = state.copyWith(
@@ -731,6 +731,73 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       isClipSelected: true,
       trimRange: RangeValues(rightSegment.sourceStart, rightSegment.sourceEnd),
     );
+  }
+
+  /// One half of a split clip, with every keyframe rescaled into its own 0..1.
+  ///
+  /// **A keyframe's progress is clip-relative, so a split has to rescale it.**
+  /// Copying the lists verbatim leaves the left half's later keyframes sitting
+  /// past its own end — where the value holds, silently freezing the move — and
+  /// bunches the right half's earlier ones before its start.
+  ///
+  /// [cut] is where the split falls in the *original* clip's progress. For the
+  /// left half keyframes at or before it map `p -> p / cut`; for the right,
+  /// those at or after map `p -> (p - cut) / (1 - cut)`.
+  ///
+  /// **A keyframe is captured at the cut first**, so the value at the seam is
+  /// identical on either side and the split is invisible in the picture. Doing
+  /// it before the rescale is what makes the two halves meet: without it the
+  /// left half's last keyframe and the right half's first would be whatever
+  /// happened to be nearest, and the move would jump at the cut.
+  ///
+  /// A degenerate cut (at 0 or 1) leaves one half unkeyframed rather than
+  /// dividing by zero — the split guard makes that unreachable in practice, but
+  /// this must not be the thing that throws if it ever changes.
+  VideoSegment _splitKeyframes(
+    VideoSegment half,
+    VideoSegment original,
+    double cut, {
+    required bool isLeft,
+  }) {
+    if (!original.hasKeyframes) return half;
+    if (cut <= 0.0 || cut >= 1.0) return half;
+
+    // Pin the seam on the original, so both halves read the same value there.
+    final pinned = captureKeyframe(original, cut);
+
+    var out = half;
+    for (final property in ClipProperty.values) {
+      final param = clipParameter(pinned, property);
+      final kept = <Keyframe>[];
+      for (final k in param.keyframes) {
+        if (isLeft) {
+          if (k.progress > cut + kKeyframeMatchProgress) continue;
+          kept.add(Keyframe(
+            progress: (k.progress / cut).clamp(0.0, 1.0).toDouble(),
+            value: k.value,
+            interpolation: k.interpolation,
+          ));
+        } else {
+          if (k.progress < cut - kKeyframeMatchProgress) continue;
+          kept.add(Keyframe(
+            progress:
+                ((k.progress - cut) / (1 - cut)).clamp(0.0, 1.0).toDouble(),
+            value: k.value,
+            interpolation: k.interpolation,
+          ));
+        }
+      }
+      out = withClipParameter(
+        out,
+        property,
+        AnimatableDouble.sorted(
+          baseValue: param.baseValue,
+          envelope: param.envelope,
+          keyframes: kept,
+        ),
+      );
+    }
+    return out;
   }
 
   void splitAtPlayhead(double timelineSeconds) {
@@ -757,27 +824,36 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     required double offsetX,
     required double offsetY,
   }) {
-    final targetId = state.selectedSegmentId;
-    if (targetId == null) return;
-    state = state.copyWith(
-      segments: [
-        for (final segment in state.segments)
-          if (segment.id == targetId)
-            // Writes the base value. Task 5 routes this through the edit
-            // rule, after which a clip carrying diamonds keyframes the
-            // gesture at the playhead instead.
-            segment.copyWith(
-              canvasScale: segment.canvasScale.copyWith(
-                baseValue: scale.clamp(kMinClipCanvasScale, kMaxClipCanvasScale),
-              ),
-              canvasOffsetX: segment.canvasOffsetX
-                  .copyWith(baseValue: offsetX.clamp(-1.5, 1.5)),
-              canvasOffsetY: segment.canvasOffsetY
-                  .copyWith(baseValue: offsetY.clamp(-1.5, 1.5)),
-            )
-          else
-            segment,
-      ],
+    // **Three properties, one instant.** Routed through the edit rule like
+    // every other control, so the gesture keyframes itself on a clip carrying
+    // diamonds and writes base values on one that does not — without knowing
+    // the feature exists. The three writes share one resolved progress, so a
+    // single diamond is placed rather than three at almost-identical instants.
+    //
+    // No undo snapshot per frame: `beginClipCanvasTransform` took one, which is
+    // what makes the whole drag one step.
+    _editSelectedClip(
+      takeUndoSnapshot: false,
+      (segment, progress) {
+        var out = _writeClipValue(
+          segment,
+          ClipProperty.canvasScale,
+          scale.clamp(kMinClipCanvasScale, kMaxClipCanvasScale).toDouble(),
+          playheadProgress: progress,
+        );
+        out = _writeClipValue(
+          out,
+          ClipProperty.canvasOffsetX,
+          offsetX.clamp(-1.5, 1.5).toDouble(),
+          playheadProgress: progress,
+        );
+        return _writeClipValue(
+          out,
+          ClipProperty.canvasOffsetY,
+          offsetY.clamp(-1.5, 1.5).toDouble(),
+          playheadProgress: progress,
+        );
+      },
     );
   }
 
@@ -1005,11 +1081,22 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     if (index == -1) return;
 
     saveStateForUndo();
+    // Through the edit rule, so a clip carrying diamonds keyframes the volume
+    // at the playhead instead of flattening the fade to one level. Resolved
+    // against *this* clip rather than `selectedClipProgress`, because
+    // `getActiveSegment` falls back to the only clip when nothing is selected
+    // and the two would then disagree about which clip is being edited.
+    final target = state.segments[index];
+    final starts = segmentTimelineStarts(state.segments);
+    final progress = index < starts.length
+        ? target.clipProgressAt(state.currentPlaybackPosition, starts[index])
+        : null;
     final updatedSegments = [...state.segments];
-    updatedSegments[index] = updatedSegments[index].copyWith(
-      volume: updatedSegments[index]
-          .volume
-          .copyWith(baseValue: state.previewVolume!),
+    updatedSegments[index] = _writeClipValue(
+      target,
+      ClipProperty.volume,
+      state.previewVolume!,
+      playheadProgress: progress,
     );
     state = state.copyWith(segments: updatedSegments, clearPreviewVolume: true);
   }
@@ -1193,21 +1280,14 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
     if (takeUndoSnapshot) saveStateForUndo();
 
+    // **Changing the effect drops the *intensity's* keyframes** (see
+    // [_nextEffectIntensity]) — that parameter belongs to the effect, and
+    // carrying a curve onto a different shader would animate a strength the
+    // user never shaped. It leaves the transform and volume keyframes standing:
+    // those are the *clip's*, not the effect's, and the rejected design's habit
+    // of taking them down with the effect is exactly the confusion of ownership
+    // this rebuild exists to fix.
     state = state.copyWith(
-      // Clearing the effect puts the keyframe row away with it. The row would
-      // already stop drawing — `showsKeyframeRowFor` needs an effect — but a
-      // clip left *marked* as opted in would spring a diamond row open again
-      // the moment any other effect was tapped, which is the unbidden row the
-      // design rules out. Reapplying an effect is a fresh ask.
-      clearKeyframeEditorSegmentId:
-          resolvedId == null && state.keyframeEditorSegmentId == targetId,
-      // **A changed effect rebuilds the parameter and drops its keyframes**
-      // (see [_nextEffectIntensity]), so a selection held across that change
-      // would point at a diamond that no longer exists — and the panel's
-      // slider would then read as editing a keyframe while writing nothing.
-      // Re-sending the same id is the slider moving, and must not disturb it.
-      clearSelectedKeyframeProgress:
-          resolvedId != _segmentById(targetId)?.effectId,
       segments: [
         for (final segment in state.segments)
           if (segment.id == targetId)
@@ -1263,311 +1343,165 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
-  // ── Keyframes on the clip effect's intensity ──────────────────────────────
+  // ── Keyframes ─────────────────────────────────────────────────────────────
   //
-  // **A user who never taps "Keyframe" never sees a diamond.** The row that
-  // edits these is built only while [VideoEditorState.keyframeEditorSegmentId]
-  // names the selected clip, which nothing but [openKeyframeEditor] sets — so
-  // the casual path, one tap on an effect tile and out, never grows a control.
-  //
-  // Nothing here reimplements the precedence between keyframes and the
-  // envelope. [AnimatableDouble.resolveAt] already resolves keyframes first and
-  // exclusively; a keyframe placed through these methods takes over by that
-  // rule alone, with no mode to enter and no envelope to switch off. Note in
-  // particular that the envelope is **kept on the parameter**, not stripped:
-  // deleting the last keyframe hands the clip back the shape it was applied
-  // with rather than dropping it to a flat value the user never chose.
+  // **A diamond is an instant of a clip, and every animatable property carries
+  // a keyframe at it.** The pure functions live in `clip_keyframes.dart`; what
+  // is here is the part that needs the playhead — which instant "here" means,
+  // and whether a given edit is a base value or a keyframe.
 
-  /// Reveals the keyframe row for the selected clip.
+  /// **The one place an edit decides whether it writes a base value or a
+  /// keyframe.**
   ///
-  /// Not an undo step: which tool is open is not part of the edit, and an undo
-  /// that closed a panel rather than reversing a change reads as the button
-  /// having failed.
-  void openKeyframeEditor() {
-    final targetId = state.selectedSegmentId;
-    // With no clip, or no effect on it, there is no parameter to keyframe —
-    // and a row over a value nothing reads is exactly the unbidden control the
-    // design rules out.
-    if (targetId == null || _segmentById(targetId)?.effect == null) return;
-    state = state.copyWith(
-      keyframeEditorSegmentId: targetId,
-      // A fresh row opens with nothing chosen, so the panel's slider goes back
-      // to the base value rather than silently resuming an edit of whatever
-      // diamond was selected the last time a row was open.
-      clearSelectedKeyframeProgress: true,
+  /// This is what makes the diamond button the only keyframe control in the
+  /// app. The pinch gesture, the volume slider and the effect intensity slider
+  /// all route through here and inherit keyframing without knowing the feature
+  /// exists. The alternative — a keyframe-aware variant of each control — is
+  /// exactly how the rejected design ended up able to animate one number.
+  ///
+  /// - **No diamonds on the clip:** write the base. Byte-identical to what each
+  ///   control did before this existed, which is what keeps an unkeyframed
+  ///   project unchanged.
+  /// - **Diamonds, playhead on one:** write that keyframe's value and leave the
+  ///   base alone.
+  /// - **Diamonds, playhead between them:** place a diamond first — capturing
+  ///   every *other* property at that instant so nothing else moves — then
+  ///   write into it.
+  ///
+  /// Takes no undo snapshot: the caller's gesture already took one, once.
+  VideoSegment _writeClipValue(
+    VideoSegment segment,
+    ClipProperty property,
+    double value, {
+    required double? playheadProgress,
+  }) {
+    final param = clipParameter(segment, property);
+    if (!segment.hasKeyframes || playheadProgress == null) {
+      return withClipParameter(
+          segment, property, param.copyWith(baseValue: value));
+    }
+
+    final tolerance = keyframeHitToleranceFor(segment);
+    var out = segment;
+    var target = keyframeProgressNear(segment, playheadProgress, tolerance);
+    if (target == null) {
+      out = captureKeyframe(segment, playheadProgress);
+      target = playheadProgress;
+    }
+    final resolved = target;
+
+    final p = clipParameter(out, property);
+    return withClipParameter(
+      out,
+      property,
+      AnimatableDouble.sorted(
+        baseValue: p.baseValue,
+        envelope: p.envelope,
+        keyframes: [
+          for (final k in p.keyframes)
+            if ((k.progress - resolved).abs() <= kKeyframeMatchProgress)
+              // The easing belongs to the keyframe, not to the edit: retuning a
+              // value must not silently straighten the curve leaving it.
+              Keyframe(
+                progress: k.progress,
+                value: value,
+                interpolation: k.interpolation,
+              )
+            else
+              k,
+        ],
+      ),
     );
   }
 
-  /// Hides the keyframe row. The keyframes themselves are untouched: closing
-  /// the editor is putting the tool away, not discarding the work.
-  void closeKeyframeEditor() {
-    if (state.keyframeEditorSegmentId == null &&
-        state.selectedKeyframeProgress == null) {
-      return;
-    }
-    state = state.copyWith(
-      clearKeyframeEditorSegmentId: true,
-      // **The selection goes with the row.** Left behind, the effects panel's
-      // slider would still believe it was editing a keyframe — writing to a
-      // diamond nobody can see, on a row that is not drawn.
-      clearSelectedKeyframeProgress: true,
-    );
-  }
-
-  /// Chooses the diamond the row highlights and the intensity slider edits, or
-  /// clears it with null.
-  ///
-  /// Not an undo step: which diamond is chosen is which tool is pointed at,
-  /// not a change to the project.
-  void selectKeyframe(double? progress) {
-    if (progress == null) {
-      if (state.selectedKeyframeProgress == null) return;
-      state = state.copyWith(clearSelectedKeyframeProgress: true);
-      return;
-    }
-    if (state.selectedKeyframeProgress == progress) return;
-    state = state.copyWith(selectedKeyframeProgress: progress);
-  }
-
-  void toggleKeyframeEditor() {
-    if (state.keyframeEditorSegmentId != null) {
-      closeKeyframeEditor();
-      return;
-    }
-    openKeyframeEditor();
-  }
-
-  VideoSegment? _segmentById(String id) {
-    for (final segment in state.segments) {
-      if (segment.id == id) return segment;
-    }
-    return null;
-  }
-
-  /// Rewrites the selected clip's effect intensity through [transform].
-  ///
-  /// Every keyframe edit funnels through here so there is one place that finds
-  /// the clip, one place that writes the segment list, and one undo rule.
-  /// [takeUndoSnapshot] is false for the live frames of a drag: the gesture
-  /// snapshots once on start, so the whole drag undoes as one step instead of
-  /// walking back a pixel at a time.
-  void _updateEffectIntensity(
-    AnimatableDouble Function(AnimatableDouble current) transform, {
+  /// Applies [write] to the selected clip, resolving the playhead's progress
+  /// through it once.
+  void _editSelectedClip(
+    VideoSegment Function(VideoSegment segment, double? progress) write, {
     bool takeUndoSnapshot = true,
   }) {
     final targetId = state.selectedSegmentId;
     if (targetId == null) return;
-    final segment = _segmentById(targetId);
-    // Keyframing a parameter no shader reads would be an edit with no picture
-    // behind it, and the row is not offered in that state anyway.
-    if (segment == null || segment.effect == null) return;
-
-    final next = transform(segment.effectIntensity);
-    if (next == segment.effectIntensity) return;
-
+    final progress = state.selectedClipProgress;
     if (takeUndoSnapshot) saveStateForUndo();
     state = state.copyWith(
       segments: [
-        for (final s in state.segments)
-          if (s.id == targetId) s.copyWith(effectIntensity: next) else s,
+        for (final segment in state.segments)
+          if (segment.id == targetId) write(segment, progress) else segment,
       ],
     );
   }
 
-  /// Places a keyframe at [progress] holding **the value the parameter already
-  /// has there**.
-  ///
-  /// [value] is normally left null, and that is the whole point: the keyframe
-  /// takes `resolveAt(progress)` — the envelope's value at that instant if an
-  /// envelope is shaping the clip, the previous keyframes' interpolated value
-  /// if some are already placed — so **adding a keyframe never changes the
-  /// picture**. A first keyframe does switch the parameter onto the keyframe
-  /// path, where it then *holds* that one value for the whole clip rather than
-  /// following the envelope; matching the envelope at the instant the user is
-  /// looking at is what makes that switch invisible where their eye is.
-  ///
-  /// An explicit [value] is for a caller that has one — a drag writing a new
-  /// height, or a later numeric field.
-  ///
-  /// A keyframe already sitting on [progress] is **replaced** rather than
-  /// stacked. Two keyframes on one instant are legal in the model (a drag can
-  /// put them there) but pressing Add twice at a stationary playhead is
-  /// obviously one keyframe, and silently accumulating invisible duplicates
-  /// under the same diamond is how a row starts lying about what it holds.
-  void addEffectIntensityKeyframe(
-    double progress, {
-    double? value,
-    KeyframeInterpolation interpolation = KeyframeInterpolation.linear,
-    bool takeUndoSnapshot = true,
-  }) {
-    final p = progress.isNaN ? 0.0 : progress.clamp(0.0, 1.0).toDouble();
-    _updateEffectIntensity(
-      takeUndoSnapshot: takeUndoSnapshot,
-      (current) {
-        final placed = Keyframe(
-          progress: p,
-          value: value ?? current.resolveAt(p),
-          interpolation: interpolation,
-        );
-        return current.copyWith(
-          keyframes: [
-            for (final k in current.keyframes)
-              if ((k.progress - p).abs() > _kKeyframeSameInstant) k,
-            placed,
-          ],
-        );
-      },
-    );
-  }
-
-  /// Moves the keyframe at [fromProgress] to [toProgress], keeping its value
-  /// and its interpolation.
-  ///
-  /// Addressed by progress rather than by list index because the list is kept
-  /// sorted: dragging one keyframe past another renumbers the rest, and an
-  /// index captured at gesture start would start moving somebody else's
-  /// diamond halfway through the drag.
-  void moveEffectIntensityKeyframe(
-    double fromProgress,
-    double toProgress, {
-    bool takeUndoSnapshot = true,
-  }) {
-    final to =
-        toProgress.isNaN ? 0.0 : toProgress.clamp(0.0, 1.0).toDouble();
-    _updateEffectIntensity(
-      takeUndoSnapshot: takeUndoSnapshot,
-      (current) {
-        final index = _indexOfKeyframeAt(current, fromProgress);
-        if (index == -1) return current;
-        final moved = current.keyframes[index];
-        return current.copyWith(
-          keyframes: [
-            for (var i = 0; i < current.keyframes.length; i++)
-              if (i == index)
-                Keyframe(
-                  progress: to,
-                  value: moved.value,
-                  interpolation: moved.interpolation,
-                )
-              else
-                current.keyframes[i],
-          ],
-        );
-      },
-    );
-  }
-
-  /// Removes the keyframe at [progress].
-  ///
-  /// Removing the last one leaves the parameter with its envelope intact, so
-  /// the clip returns to the shape its effect was applied with rather than
-  /// going flat.
-  void removeEffectIntensityKeyframe(double progress) {
-    _updateEffectIntensity((current) {
-      final index = _indexOfKeyframeAt(current, progress);
-      if (index == -1) return current;
-      return current.copyWith(
-        keyframes: [
-          for (var i = 0; i < current.keyframes.length; i++)
-            if (i != index) current.keyframes[i],
-        ],
-      );
-    });
-    // **The selection cannot outlive the keyframe it names.** Left pointing at
-    // a deleted diamond, the effects panel's slider would show that keyframe's
-    // last value and write to nothing — live-looking and inert. Cleared here
-    // rather than at the caller so every route to a delete is covered by one
-    // rule.
-    if (state.selectedKeyframeProgress != null &&
-        (state.selectedKeyframeProgress! - progress).abs() <=
-            _kKeyframeSameInstant) {
-      state = state.copyWith(clearSelectedKeyframeProgress: true);
-    }
-  }
-
-  /// Sets how the keyframe at [progress] travels towards the next one.
-  ///
-  /// The flag belongs to the segment that *starts* at this keyframe — see
-  /// [Keyframe.interpolation] — which is what makes dropping `hold` on a
-  /// keyframe mean "stay here until the next one".
-  void setEffectIntensityKeyframeInterpolation(
-    double progress,
-    KeyframeInterpolation interpolation,
-  ) {
-    _updateEffectIntensity((current) {
-      final index = _indexOfKeyframeAt(current, progress);
-      if (index == -1) return current;
-      final target = current.keyframes[index];
-      return current.copyWith(
-        keyframes: [
-          for (var i = 0; i < current.keyframes.length; i++)
-            if (i == index)
-              Keyframe(
-                progress: target.progress,
-                value: target.value,
-                interpolation: interpolation,
-              )
-            else
-              current.keyframes[i],
-        ],
-      );
-    });
-  }
-
-  /// Writes the value of the keyframe at [progress].
-  void setEffectIntensityKeyframeValue(
-    double progress,
+  /// Writes one property of the selected clip through the edit rule.
+  void setClipProperty(
+    ClipProperty property,
     double value, {
     bool takeUndoSnapshot = true,
   }) {
-    _updateEffectIntensity(
+    _editSelectedClip(
       takeUndoSnapshot: takeUndoSnapshot,
-      (current) {
-        final index = _indexOfKeyframeAt(current, progress);
-        if (index == -1) return current;
-        final target = current.keyframes[index];
-        return current.copyWith(
-          keyframes: [
-            for (var i = 0; i < current.keyframes.length; i++)
-              if (i == index)
-                Keyframe(
-                  progress: target.progress,
-                  value: value,
-                  interpolation: target.interpolation,
-                )
-              else
-                current.keyframes[i],
-          ],
-        );
-      },
+      (segment, progress) => _writeClipValue(
+        segment,
+        property,
+        value,
+        playheadProgress: progress,
+      ),
     );
   }
 
-  /// The keyframe sitting on [progress], or -1.
-  ///
-  /// Matched within a tolerance rather than on equality: a caller addressing a
-  /// keyframe holds a double that has been through a pixel conversion and back,
-  /// and exact comparison on those is a coin toss. With several on one instant
-  /// the **nearest** wins, so a drag keeps hold of the diamond it grabbed.
-  static int _indexOfKeyframeAt(AnimatableDouble parameter, double progress) {
-    var best = -1;
-    var bestDistance = double.infinity;
-    for (var i = 0; i < parameter.keyframes.length; i++) {
-      final distance = (parameter.keyframes[i].progress - progress).abs();
-      if (distance <= _kKeyframeSameInstant && distance < bestDistance) {
-        best = i;
-        bestDistance = distance;
-      }
-    }
-    return best;
+  /// Places a diamond at the playhead, pinning every property at the value it
+  /// already has there — so the picture does not change.
+  void addKeyframeAtPlayhead() {
+    _editSelectedClip(
+      (segment, progress) =>
+          progress == null ? segment : captureKeyframe(segment, progress),
+    );
   }
 
-  /// How close two progresses have to be to count as the same instant.
+  /// Removes the diamond under the playhead from every property.
+  void removeKeyframeAtPlayhead() {
+    _editSelectedClip(
+      (segment, progress) => progress == null
+          ? segment
+          : removeKeyframe(
+              segment, progress, keyframeHitToleranceFor(segment)),
+    );
+  }
+
+  /// Re-eases the diamond under the playhead, **placing one first if there is
+  /// none**.
   ///
-  /// A thousandth of a clip: far below anything a finger can distinguish on a
-  /// row a few hundred pixels wide, and far above the rounding a progress
-  /// picks up travelling through pixels.
-  static const double _kKeyframeSameInstant = 0.001;
+  /// The same rule [_writeClipValue] follows, so the easing sheet and the
+  /// sliders can never disagree about what "here" means.
+  void setKeyframeEasingAtPlayhead(KeyframeInterpolation easing) {
+    _editSelectedClip((segment, progress) {
+      if (progress == null) return segment;
+      final tolerance = keyframeHitToleranceFor(segment);
+      final target = keyframeProgressNear(segment, progress, tolerance);
+      final withDiamond =
+          target == null ? captureKeyframe(segment, progress) : segment;
+      return setKeyframeEasing(
+        withDiamond,
+        target ?? progress,
+        tolerance,
+        easing,
+      );
+    });
+  }
+
+  /// Moves the playhead onto a diamond.
+  ///
+  /// What makes tapping a diamond and then tapping minus remove it — the
+  /// plus/minus flip reads the playhead, so the playhead has to actually be on
+  /// the diamond. Not an undoable edit: it moves the playhead, nothing else.
+  void seekToKeyframe(double progress) {
+    final segment = state.selectedSegment;
+    if (segment == null) return;
+    final starts = segmentTimelineStarts(state.segments);
+    final index = state.segments.indexWhere((s) => s.id == segment.id);
+    if (index < 0 || index >= starts.length) return;
+    updatePlaybackPosition(starts[index] + progress * segment.duration);
+  }
 
   /// Switches between grading the whole project and grading one clip.
   ///

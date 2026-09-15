@@ -22,7 +22,7 @@ import '../../providers/video_editor_notifier.dart';
 import '../../services/video_thumbnail_service.dart';
 import '../panels/cover_picker_sheet.dart';
 import 'clip_filmstrip.dart';
-import 'keyframe_row.dart';
+import 'clip_keyframe_diamonds.dart';
 
 class _WaveformPainter extends CustomPainter {
   final Color color;
@@ -244,9 +244,6 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
 
   /// Width of the project cover card in the run-in before 00:00.
   static const double _coverTileWidth = 44.0;
-
-  /// Height of the keyframe row, when there is one to draw.
-  static const double _keyframeRowHeight = 26.0;
 
   /// Which trim handle is being held, so it can show it has been grabbed.
   _TrimHandle? _activeTrimHandle;
@@ -1274,53 +1271,27 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     return widgets;
   }
 
-  // ── The keyframe row ───────────────────────────────────────────────────────
+  // ── Keyframe diamonds ─────────────────────────────────────────────────────
   //
-  // **A user who never taps "Keyframe" never sees a diamond.** Every builder
-  // below returns nothing unless [VideoEditorState.showsKeyframeRowFor] names
-  // the selected clip, which only the effects panel's own button sets. The row
-  // is not merely hidden in that state — it is not built, so it claims no
-  // height, no gestures and no lane.
+  // **A diamond is an instant of a clip**, drawn on the clip's own thumbnail,
+  // and every animatable property carries a keyframe at it. A clip with no
+  // diamonds draws nothing and the timeline keeps exactly the height it had
+  // before this feature — the row this replaced claimed 26px whenever it opened
+  // and pushed every lane down.
 
-  /// The layout of the clip the keyframe row belongs to, or null.
+  /// The layout of the clip diamonds are drawn on, or null.
   _ClipLayout? _keyframeClipLayout(
     List<_ClipLayout> layouts,
     VideoEditorState editorState,
   ) {
-    final id = widget.selectedSegmentId;
-    // The row has gone — closed, the clip deselected, or its effect cleared.
-    // The selection that named a diamond on it is dropped by the notifier at
-    // each of those moments, so nothing has to be unwound here: a selection
-    // left behind would follow the row to the *next* clip that opens one and
-    // light Delete — and point the effects panel's slider — at whatever
-    // keyframe happened to sit at the same instant.
-    if (!editorState.showsKeyframeRowFor(id)) return null;
+    final id = editorState.keyframeClipId;
+    if (id == null) return null;
     for (final layout in layouts) {
       // Never over a clip being carried: its position is provisional, and a
-      // diamond drag must not compete with the reorder.
+      // diamond tap must not compete with the reorder.
       if (layout.segment.id == id && !layout.isDragged) return layout;
     }
     return null;
-  }
-
-  /// Where the playhead falls in the clip's **effect progress** space, or null
-  /// when it is not inside that window.
-  ///
-  /// Progress is the effect's own clock, not the clip's: a timed effect (an
-  /// intro) animates across [VideoEffect.introSeconds] from the clip's first
-  /// frame and then sits at 1, which is exactly what `effectProgressAt` gives
-  /// both the preview engine and the export. Measuring the row across the whole
-  /// clip instead would put diamonds where moving them changes nothing.
-  ///
-  /// Resolved here, where the timeline's own geometry already says where the
-  /// clip starts, rather than inside the row — a row computing this from its
-  /// own copy of the geometry would be a second interpretation of the timeline.
-  double? _effectProgressAtPlayhead(_ClipLayout layout) {
-    final window = layout.segment.effect?.introSeconds ?? layout.displaySeconds;
-    if (window <= 0) return null;
-    final offset = widget.timelinePositionSeconds - layout.timelineStart;
-    if (offset < 0 || offset > window) return null;
-    return (offset / window).clamp(0.0, 1.0).toDouble();
   }
 
   /// The clip under the finger, drawn lifted off the timeline.
@@ -1786,11 +1757,10 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     // overlay and audio lanes — it is part of that clip, not another track. It
     // claims height only while it exists, so a project that never asked for a
     // keyframe has exactly the timeline it had before this feature.
+    // Diamonds are drawn *on* the filmstrip, so they claim no height of their
+    // own and the lanes sit where they always did.
     final keyframeLayout = _keyframeClipLayout(clipLayouts, editorState);
-    final double keyframeRowTop = filmstripTop + _filmstripHeight;
-    final double keyframeRowSpace =
-        keyframeLayout == null ? 0.0 : _keyframeRowHeight;
-    final double lanesTop = keyframeRowTop + keyframeRowSpace;
+    final double lanesTop = filmstripTop + _filmstripHeight;
     final double totalHeight = lanesTop + lanesHeight;
 
     // A floor as well as a cap: the editor's canvas is `Expanded`, so any
@@ -1874,24 +1844,20 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                           // 00:00, and a diamond is always at or after it.
                           if (keyframeLayout != null)
                             Positioned(
-                              top: keyframeRowTop,
+                              top: filmstripTop,
                               left: keyframeLayout.leftPx,
                               width: keyframeLayout.widthPx,
-                              height: _keyframeRowHeight,
-                              child: KeyframeRow(
+                              height: _filmstripHeight,
+                              child: ClipKeyframeDiamonds(
                                 key: ValueKey(
-                                  'keyframe_row_${keyframeLayout.segment.id}',
+                                  'keyframe_diamonds_${keyframeLayout.segment.id}',
                                 ),
                                 segment: keyframeLayout.segment,
-                                leftPx: keyframeLayout.leftPx,
                                 widthPx: keyframeLayout.widthPx,
-                                height: _keyframeRowHeight,
-                                playheadProgress:
-                                    _effectProgressAtPlayhead(keyframeLayout),
+                                height: _filmstripHeight,
                               ),
                             ),
 
-                          // 4. Audio tracks
                           ..._buildAudioTracks(lanesTop),
 
                           // 5. Text overlays track
@@ -2041,20 +2007,6 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   ],
                 );
               },
-            ),
-
-          // â”€â”€ Keyframe controls, pinned over the timeline â”€â”€
-          // Chrome, not content: Add and Delete have to stay reachable
-          // whatever the timeline is scrolled to, and the row itself may be
-          // scrolled right off screen while the user is still working on it.
-          if (keyframeLayout != null)
-            Positioned(
-              left: 8,
-              bottom: 6,
-              child: KeyframeRowControls(
-                segment: keyframeLayout.segment,
-                playheadProgress: _effectProgressAtPlayhead(keyframeLayout),
-              ),
             ),
 
           // â”€â”€ Fixed center playhead â”€â”€

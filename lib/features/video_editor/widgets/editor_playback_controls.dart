@@ -13,6 +13,10 @@ class EditorPlaybackControls extends StatelessWidget {
     required this.onUndo,
     required this.onRedo,
     this.onExpandPreview,
+    this.showsKeyframeControls = false,
+    this.isOnKeyframe = false,
+    this.onToggleKeyframe,
+    this.onOpenEasing,
   });
 
   final bool isPlaying;
@@ -24,6 +28,20 @@ class EditorPlaybackControls extends StatelessWidget {
   final VoidCallback onRedo;
   final VoidCallback? onExpandPreview;
 
+  /// Whether the keyframe controls are shown at all.
+  ///
+  /// **Only while a clip is selected.** A keyframe belongs to a clip; with none
+  /// selected there is nothing for the button to act on, and a control that is
+  /// present but inert is a control that lies.
+  final bool showsKeyframeControls;
+
+  /// Whether the playhead is sitting on a diamond, which flips the control from
+  /// "place one here" to "remove this one".
+  final bool isOnKeyframe;
+
+  final VoidCallback? onToggleKeyframe;
+  final VoidCallback? onOpenEasing;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -31,13 +49,39 @@ class EditorPlaybackControls extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          GestureDetector(
-            onTap: onTogglePreview,
-            child: Icon(
-              isPlaying ? LucideIcons.pause : LucideIcons.play,
-              color: AppColors.textPrimary,
-              size: 24,
-            ),
+          Row(
+            children: [
+              GestureDetector(
+                onTap: onTogglePreview,
+                child: Icon(
+                  isPlaying ? LucideIcons.pause : LucideIcons.play,
+                  color: AppColors.textPrimary,
+                  size: 24,
+                ),
+              ),
+              if (showsKeyframeControls) ...[
+                const SizedBox(width: 18),
+                GestureDetector(
+                  key: const Key('keyframe_toggle'),
+                  onTap: onToggleKeyframe,
+                  // **One control, not two.** "Place a diamond here" and
+                  // "remove this one" are never both available at the same
+                  // instant, so a second button would always have one of them
+                  // dead.
+                  child: KeyframeToggleIcon(isOnKeyframe: isOnKeyframe),
+                ),
+                const SizedBox(width: 18),
+                GestureDetector(
+                  key: const Key('keyframe_easing'),
+                  onTap: onOpenEasing,
+                  child: const Icon(
+                    LucideIcons.spline,
+                    color: AppColors.textSecondary,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ],
           ),
           Text(
             timelineLabel,
@@ -76,6 +120,55 @@ class EditorPlaybackControls extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The diamond-with-plus / diamond-with-minus control.
+///
+/// **Drawn rather than taken from the icon set.** `lucide_icons` 0.257.0 is a
+/// snapshot of Lucide that predates `diamond-plus` and `diamond-minus`; it ships
+/// `diamond`, `plus` and `minus` and nothing between them. Substituting an
+/// unrelated icon was the other option and is worse: the diamond is how the
+/// control is recognised, and it has to match the diamonds on the thumbnail.
+class KeyframeToggleIcon extends StatelessWidget {
+  const KeyframeToggleIcon({super.key, required this.isOnKeyframe});
+
+  /// True when the playhead is on a diamond, so the control removes rather than
+  /// places.
+  final bool isOnKeyframe;
+
+  @override
+  Widget build(BuildContext context) {
+    // On a diamond the mark is "live" — it is the one thing on screen the
+    // control is about — so it fills; off one it is an outline, the same
+    // unselected/selected language the diamonds on the filmstrip use.
+    final colour =
+        isOnKeyframe ? AppColors.primaryStart : AppColors.textPrimary;
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Transform.rotate(
+            angle: 0.785398, // 45°: a square on its corner is a diamond.
+            child: Container(
+              width: 15,
+              height: 15,
+              decoration: BoxDecoration(
+                color: isOnKeyframe ? colour : Colors.transparent,
+                border: Border.all(color: colour, width: 1.6),
+              ),
+            ),
+          ),
+          Icon(
+            isOnKeyframe ? LucideIcons.minus : LucideIcons.plus,
+            size: 10,
+            color: isOnKeyframe ? Colors.white : colour,
           ),
         ],
       ),

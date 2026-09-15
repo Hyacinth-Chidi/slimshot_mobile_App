@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../logic/animation/animatable_double.dart';
+import '../logic/animation/clip_keyframes.dart';
 import '../logic/timeline/timeline_geometry.dart';
 import 'filter_preset.dart';
 import 'media_asset.dart';
@@ -28,6 +29,28 @@ enum EditorCropRatio {
 }
 
 enum EditorBackgroundType { black, color }
+
+/// How close the playhead must be to a diamond to count as sitting on it.
+///
+/// **Seconds, not progress.** The same progress tolerance is a different number
+/// of frames on a 1s clip and a 30s one, so a fixed progress window would make
+/// diamonds unhittable on long clips and impossible to step off on short ones.
+///
+/// 0.05s is about a frame and a half at 30fps: tight enough that two diamonds a
+/// user placed deliberately stay distinct, loose enough that a playhead parked
+/// by tapping a diamond lands on it.
+const double kKeyframeHitSeconds = 0.05;
+
+/// [kKeyframeHitSeconds] expressed as progress on this clip.
+///
+/// Capped at half the clip so a very short one cannot make every point on it
+/// "on" every diamond, and a zero-length clip answers 1.0 rather than dividing
+/// by zero.
+double keyframeHitToleranceFor(VideoSegment segment) {
+  final d = segment.duration;
+  if (d <= 0) return 1.0;
+  return (kKeyframeHitSeconds / d).clamp(0.0, 0.5).toDouble();
+}
 
 class VideoEditorState {
   const VideoEditorState({
@@ -77,8 +100,6 @@ class VideoEditorState {
     this.backgroundColor = Colors.black,
     this.backgroundBlurIntensity = 20.0,
     this.selectedTransitionSegmentId,
-    this.keyframeEditorSegmentId,
-    this.selectedKeyframeProgress,
   });
 
   final String? draftId;
@@ -146,84 +167,59 @@ class VideoEditorState {
   final double backgroundBlurIntensity;
   final String? selectedTransitionSegmentId;
 
-  /// The clip whose keyframe row is open, or null — which is every project
-  /// until someone asks for one.
+  /// The clip the keyframe controls act on: the selected one.
   ///
-  /// **A user who never taps "Keyframe" never sees a diamond**, and this field
-  /// is the whole mechanism: the timeline builds no keyframe row at all unless
-  /// it names the selected clip. A flag derived from "this parameter has
-  /// keyframes" would be the same thing backwards — the row would have to
-  /// exist before the first keyframe could be placed — and one derived from
-  /// "an effect is applied" would put a diamond row under every clip of the
-  /// casual user who tapped one tile and left.
+  /// Null with nothing selected, which is what takes the diamond button out of
+  /// the playback bar — a keyframe belongs to a clip, and a control that is
+  /// present but inert is a control that lies.
   ///
-  /// **Transient and never serialised**, like [isClipTransformActive]: it is
-  /// which tool is open, not part of the edit. A draft that reopened with the
-  /// row showing would be exactly the unbidden row the design rules out, for a
-  /// user who may have placed nothing.
-  ///
-  /// Scoped to one clip rather than a bare bool so selecting a different clip
-  /// closes it: the row draws one clip's parameter, and carrying it across a
-  /// selection change would show the new clip a row it never asked for.
-  final String? keyframeEditorSegmentId;
+  /// **There is no "keyframe mode" and no editor to open.** The rejected design
+  /// held a `keyframeEditorSegmentId` naming a clip whose row was showing;
+  /// diamonds now live on the clip's own thumbnail and the controls act on
+  /// whatever is selected, so there is no third state to keep in step.
+  String? get keyframeClipId => isClipSelected ? selectedSegmentId : null;
 
-  /// Which diamond on the open keyframe row is selected, addressed by its
-  /// **progress** — or null, which is every project until one is tapped.
-  ///
-  /// **Held here for the same reason [keyframeEditorSegmentId] is**: more than
-  /// one widget acts on this one selection and they do not share an ancestor
-  /// that could own it. The row draws the diamond, `KeyframeRowControls`
-  /// deletes it and sets its interpolation, and the **effects panel's intensity
-  /// slider edits its value** — and the panel is a modal sheet, nowhere near
-  /// the timeline in the tree. Two owners would let Delete light up while
-  /// nothing on the row looked chosen, or let the slider write to a keyframe
-  /// the user had already moved on from.
-  ///
-  /// **By progress, never by list index.** The keyframe list is kept sorted, so
-  /// adding a keyframe, deleting one, or dragging one past a neighbour
-  /// renumbers the rest — a stored index would then address somebody else's
-  /// keyframe and edit it silently. Progress is how every keyframe is addressed
-  /// in [VideoEditorNotifier] already (`_indexOfKeyframeAt`, matched within a
-  /// tolerance), so this is the same identity the notifier uses rather than a
-  /// second one.
-  ///
-  /// **Transient and never serialised**, like [keyframeEditorSegmentId] and
-  /// [isClipTransformActive]: which diamond is highlighted is which tool is
-  /// open, not part of the edit.
-  final double? selectedKeyframeProgress;
-
-  /// The selected keyframe on the open row, or null.
-  ///
-  /// Resolved against the clip that owns the row rather than the selected clip:
-  /// they are the same clip while the row is open (`showsKeyframeRowFor`
-  /// requires it) and resolving through the row's owner is what makes a stale
-  /// selection impossible to read back.
-  Keyframe? get selectedKeyframe {
-    final progress = selectedKeyframeProgress;
-    final ownerId = keyframeEditorSegmentId;
-    if (progress == null || ownerId == null) return null;
-    if (!showsKeyframeRowFor(ownerId)) return null;
-    for (final segment in segments) {
-      if (segment.id != ownerId) continue;
-      for (final keyframe in segment.effectIntensity.keyframes) {
-        if ((keyframe.progress - progress).abs() <= 0.001) return keyframe;
-      }
-    }
-    return null;
+  /// Every diamond on the selected clip, as clip-relative progresses.
+  List<double> get selectedClipKeyframes {
+    final segment = selectedSegment;
+    if (segment == null) return const [];
+    return keyframeProgresses(segment);
   }
 
-  /// Whether the keyframe row should be drawn for [segmentId].
+  /// The diamond under the playhead, or null.
   ///
-  /// Both conditions matter and neither implies the other: the row belongs to
-  /// the clip that opted in, and a clip with no effect has no parameter to
-  /// keyframe — tapping None while the row is open must take the row with it
-  /// rather than leave diamonds over a value nothing reads.
-  bool showsKeyframeRowFor(String? segmentId) {
-    if (segmentId == null || keyframeEditorSegmentId != segmentId) return false;
-    for (final segment in segments) {
-      if (segment.id == segmentId) return segment.effect != null;
+  /// **The selection is the playhead.** Nothing is stored: the diamond being
+  /// acted on is simply the one the playhead is standing on, which is what lets
+  /// the plus/minus flip, the easing sheet and the timeline agree about what
+  /// "here" means without a third piece of state that could fall out of step.
+  double? get playheadKeyframeProgress {
+    final segment = selectedSegment;
+    final progress = selectedClipProgress;
+    if (segment == null || progress == null) return null;
+    return keyframeProgressNear(
+      segment,
+      progress,
+      keyframeHitToleranceFor(segment),
+    );
+  }
+
+  bool get playheadIsOnKeyframe => playheadKeyframeProgress != null;
+
+  /// The easing of the diamond under the playhead, or [KeyframeInterpolation.linear]
+  /// when there is none — which is what a diamond placed here would carry, so
+  /// the sheet opens showing what choosing a curve would replace.
+  KeyframeInterpolation get playheadKeyframeEasing {
+    final segment = selectedSegment;
+    final target = playheadKeyframeProgress;
+    if (segment == null || target == null) return KeyframeInterpolation.linear;
+    for (final property in ClipProperty.values) {
+      for (final k in clipParameter(segment, property).keyframes) {
+        if ((k.progress - target).abs() <= kKeyframeMatchProgress) {
+          return k.interpolation;
+        }
+      }
     }
-    return false;
+    return KeyframeInterpolation.linear;
   }
 
   /// The first imported file, as an [XFile].
@@ -375,10 +371,6 @@ class VideoEditorState {
     double? backgroundBlurIntensity,
     String? selectedTransitionSegmentId,
     bool clearSelectedTransitionSegmentId = false,
-    String? keyframeEditorSegmentId,
-    bool clearKeyframeEditorSegmentId = false,
-    double? selectedKeyframeProgress,
-    bool clearSelectedKeyframeProgress = false,
   }) {
     return VideoEditorState(
       draftId: draftId ?? this.draftId,
@@ -445,12 +437,6 @@ class VideoEditorState {
       selectedTransitionSegmentId: clearSelectedTransitionSegmentId
           ? null
           : selectedTransitionSegmentId ?? this.selectedTransitionSegmentId,
-      keyframeEditorSegmentId: clearKeyframeEditorSegmentId
-          ? null
-          : keyframeEditorSegmentId ?? this.keyframeEditorSegmentId,
-      selectedKeyframeProgress: clearSelectedKeyframeProgress
-          ? null
-          : selectedKeyframeProgress ?? this.selectedKeyframeProgress,
     );
   }
 }

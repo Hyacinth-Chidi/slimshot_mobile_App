@@ -26,6 +26,7 @@ import '../features/video_editor/services/media_import_service.dart';
 import '../features/video_editor/services/native_timeline_preview_service.dart';
 import '../core/models/draft_project.dart';
 import '../features/video_editor/widgets/editor_playback_controls.dart';
+import '../features/video_editor/widgets/panels/keyframe_easing_sheet.dart';
 import '../features/video_editor/widgets/timeline/scrollable_timeline.dart';
 import 'package:flutter/scheduler.dart';
 import '../features/video_editor/widgets/video_editor_top_bar.dart';
@@ -1254,6 +1255,27 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       onUndo: _undoLastTimelineEdit,
       onRedo: _redoLastTimelineEdit,
       onExpandPreview: () => _openFullscreenPreview(),
+      // **Only while a clip is selected**, and the icon says which way it acts:
+      // a plus places a diamond at the playhead, a minus removes the one the
+      // playhead is standing on.
+      showsKeyframeControls: editorState.keyframeClipId != null,
+      isOnKeyframe: editorState.playheadIsOnKeyframe,
+      onToggleKeyframe: () {
+        HapticFeedback.selectionClick();
+        final notifier = ref.read(videoEditorProvider.notifier);
+        if (editorState.playheadIsOnKeyframe) {
+          notifier.removeKeyframeAtPlayhead();
+        } else {
+          notifier.addKeyframeAtPlayhead();
+        }
+      },
+      onOpenEasing: () => showKeyframeEasingSheet(
+        context,
+        current: editorState.playheadKeyframeEasing,
+        onSelected: (easing) => ref
+            .read(videoEditorProvider.notifier)
+            .setKeyframeEasingAtPlayhead(easing),
+      ),
     );
   }
 

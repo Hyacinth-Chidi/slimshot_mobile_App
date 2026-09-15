@@ -307,11 +307,14 @@ void main() {
 
   testWidgets('the slider writes the base value and keeps the envelope',
       (tester) async {
-    // **The rule that makes an animated intensity survive being retuned.** The
-    // slider re-sends the effect id on every frame of a drag, so a setter that
+    // **The rule that makes an enveloped intensity survive being retuned.** The
+    // slider re-sends the strength on every frame of a drag, so a setter that
     // rebuilt the parameter from scratch would wipe the envelope on the first
-    // pixel of movement — and the user would watch their pulsing glitch go
-    // flat while adjusting its strength.
+    // pixel of movement — and the user would watch their pulsing glitch go flat
+    // while adjusting its strength.
+    //
+    // No keyframes on this clip, so the edit rule writes the base. That is the
+    // path every project takes until someone places a diamond.
     final notifier = notifierWith(
       [clip('a', effectId: 'blur', effectIntensity: 0.4)],
       selectedSegmentId: 'a',
@@ -319,10 +322,9 @@ void main() {
     notifier.state = notifier.state.copyWith(
       segments: [
         notifier.state.segments[0].copyWith(
-          effectIntensity: AnimatableDouble.sorted(
+          effectIntensity: const AnimatableDouble(
             baseValue: 0.4,
             envelope: 'pulse',
-            keyframes: const [Keyframe(progress: 0.5, value: 0.9)],
           ),
         ),
       ],
@@ -340,9 +342,32 @@ void main() {
     final intensity = notifier.state.segments[0].effectIntensity;
     expect(intensity.baseValue, greaterThan(0.4));
     expect(intensity.envelope, 'pulse');
-    expect(intensity.keyframes, hasLength(1));
-    expect(intensity.keyframes.single.value, 0.9);
+    expect(intensity.keyframes, isEmpty);
   });
+
+  testWidgets('on a keyframed clip the slider writes the keyframe, not the base',
+      (tester) async {
+    // **The slider has no idea keyframes exist.** It calls one setter and the
+    // edit rule decides; that is what lets the effects sheet carry no keyframe
+    // control of its own, which is the whole correction this rebuild makes.
+    final notifier = notifierWith(
+      [clip('a', effectId: 'blur', effectIntensity: 0.4)],
+      selectedSegmentId: 'a',
+    );
+    // A diamond exactly under the playhead, which is parked at 0.
+    notifier.addKeyframeAtPlayhead();
+    await pumpPanel(tester, notifier);
+
+    await tester.drag(find.byType(Slider), const Offset(80, 0));
+    await tester.pump();
+
+    final intensity = notifier.state.segments[0].effectIntensity;
+    expect(intensity.keyframes, hasLength(1));
+    expect(intensity.keyframes.single.value, greaterThan(0.4));
+    // The base is untouched: the user is editing a moment, not the clip.
+    expect(intensity.baseValue, closeTo(0.4, 1e-9));
+  });
+
 
   testWidgets('applying a different effect drops the old effect\'s shape',
       (tester) async {
