@@ -407,6 +407,45 @@ Anything built on the `AudioProcessor` interface has to branch on `isActive()`.
 
 ---
 
+## 23. A keyframe row under the clip, opened from the effects sheet
+
+**Built, device-reviewed, rejected outright, deleted.** The first keyframe UI put a "Keyframe"
+button on the effects panel; tapping it opened a 26px row under the selected clip holding
+diamonds for that clip's **effect intensity**, and the panel's intensity slider grew a second
+subject so it could edit whichever diamond was selected.
+
+**Why it was wrong, and it is a design fault rather than an implementation one.**
+`AnimatableDouble` was written general on purpose — its own header says keyframes are a *timeline*
+feature that the transform, opacity and volume will all want. The UI then contradicted that: it
+was reachable only from one tool panel, drew a row that existed only while an effect was applied,
+and could animate exactly one number. A user wanting a Ken Burns move had no way in at all. The
+plan that specified it said "a Keyframe control on the effects panel"; the implementer built what
+was written.
+
+Three structural symptoms, each of which looked like a local problem:
+
+- **A row implies one lane per animated property**, so it could never grow to five properties
+  without becoming five rows — and it claimed 26px of timeline height whenever it opened, pushing
+  every lane down.
+- **A stored selection** (`keyframeEditorSegmentId` + `selectedKeyframeProgress`) had to be
+  cleared at five separate moments — deselecting a clip, selecting another, clearing the effect,
+  changing the effect, closing the row — because three widgets with no common ancestor all acted
+  on it. Every one of those clears was a bug waiting to be forgotten.
+- **A slider with two subjects and a label saying which** is a symptom, not a fix. The label
+  existed because the control could not otherwise be understood.
+
+**What replaced it:** a diamond is an instant of a *clip*, pinning every animatable property at
+once; the control lives in the playback bar beside the transport, where anything acting on the
+whole clip belongs; and one rule in the notifier decides whether an edit writes a base value or a
+keyframe, so every existing slider and gesture keyframes itself without a control of its own. The
+selection is simply the playhead, so there is no stored state to clear.
+
+**The rule this produces: a keyframe control belongs to the clip, never to a tool panel.** If a
+feature wants keyframes, it does not grow a keyframe UI — it routes its writes through
+`setClipProperty` and gets them.
+
+---
+
 ## Decoder hygiene — the general lesson
 
 Most of the remaining stutter in this app has come from **decoder flushes and codec re-creation

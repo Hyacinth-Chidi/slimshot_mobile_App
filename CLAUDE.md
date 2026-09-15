@@ -1198,29 +1198,98 @@ reason. Only `blur` (`ramp_out`) and `glow` (`throb`) carry a default envelope; 
 declare none, because a pulsing vignette is a gimmick, and timed intros declare none because they
 already animate through `uProgress` and an envelope on top would fight it.
 
-**Keyframe positions are clip-relative `0..1`, and the selection is addressed by progress, never
-by index.** Adding a keyframe before the selected one renumbers the list, so an index-based
-selection would silently begin editing its neighbour — a canary test adds at 0.05, watches the
-selected keyframe move from index 1 to 2, and asserts the selection still names the same one.
-Clip-relative positions also mean a trimmed or sped-up clip keeps its keyframes where they look
-right, and a draft renders identically on any device.
-
-**The keyframe row does not exist until it is asked for.** `VideoEditorState.keyframeEditorSegmentId`
-names the clip whose row is open; nothing else builds one. A user who never taps "Keyframe" never
-sees a diamond, which is the whole two-audience design — a row that appeared unbidden would break
-the casual path. `selectedKeyframeProgress` lives beside it for the same reason: the row draws the
-diamond, the row's controls delete it, and **the effects panel's slider edits its value** — and
-that panel is a modal sheet, nowhere near the timeline in the widget tree.
+**Keyframe positions are clip-relative `0..1`**, so a trimmed or sped-up clip keeps its keyframes
+where they look right and a draft renders identically on any device.
 
 **Adding a keyframe must never change the picture.** It takes the parameter's value *at that
 moment* (`resolveAt(progress)`), so placing one is purely additive. Tested at several positions
 and with existing keyframes present, because it is the property a future refactor would silently
 break.
 
-**The intensity slider has two subjects**, and the label says which (`Intensity` versus
-`Keyframe at 50%`). With a diamond selected it reads and writes that keyframe's value; with none
-it writes `baseValue` exactly as before. A slider silently editing something other than what it
-says is worse than no feature at all.
+### Keyframes — a diamond is an instant of a clip
+
+**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-09-15-clip-keyframes-design.md`.
+
+A clip carries five keyframable properties, all `AnimatableDouble`: `canvasScale`,
+`canvasOffsetX`, `canvasOffsetY`, `volume` and `effectIntensity`. **A diamond at progress `p`
+means every one of them carries a keyframe at `p`** — that is what makes one mark on the
+filmstrip an honest picture of the clip's state, and what lets a single button serve every
+property with no picker. `logic/animation/clip_keyframes.dart` holds the pure functions
+(`ClipProperty`, `captureKeyframe`, `removeKeyframe`, `setKeyframeEasing`, `keyframeProgresses`);
+they take a segment and return a segment, knowing nothing about the playhead or Riverpod.
+
+**One rule decides whether an edit is a base value or a keyframe**, and it is the reason no
+control has a keyframe UI of its own. `VideoEditorNotifier._writeClipValue`:
+
+- **No diamonds on the clip** → write the base value. Byte-identical to what each control did
+  before keyframes existed, which is the path every project takes until someone places one.
+- **Diamonds, playhead on one** → write that keyframe, leaving the base alone.
+- **Diamonds, playhead between them** → place a diamond first (capturing every *other* property
+  at that instant so nothing else moves), then write into it.
+
+The pinch gesture, the volume slider and the effect intensity slider all call `setClipProperty`
+and inherit keyframing without knowing the feature exists. **Anything new that edits a clip
+property must go through it**, or it will be the one control that cannot be keyframed — which is
+exactly how the rejected design ended up able to animate a single number.
+
+**The selection is the playhead.** Nothing stores which diamond is selected: it is the one the
+playhead is standing on (`playheadKeyframeProgress`). That is what keeps the plus/minus flip, the
+easing sheet and the filmstrip agreeing about what "here" means without a third piece of state to
+fall out of step. Tapping a diamond seeks onto it, which is what makes tap-then-minus remove it.
+
+**`kKeyframeHitSeconds` (0.05s) is seconds, not progress.** The same progress tolerance is a
+different number of frames on a 1s clip and a 30s one, so a fixed progress window would make
+diamonds unhittable on long clips and impossible to step off on short ones.
+
+**Progress is whole-clip for every property** (`clipProgressAt`), including `effectIntensity`,
+which previously measured against the effect's intro window. The shader's `uProgress` keeps that
+window — it is the *effect's* clock, a different quantity that happens to share a range — but a
+diamond is an instant of the **clip**, and resolving one against the intro window would put it
+somewhere the timeline never drew it.
+
+**Easing is four families × four cells**: Default (sine), Quadratic, Cubic, Bounce, each offering
+None / Ease in / Ease out / Ease. Every group's None is `linear` — there is one way not to ease.
+`hold` is deliberately absent from the sheet (it is a different kind of thing from a curve) but
+kept in the enum for drafts and step effects. The sheet's cells plot their curve from
+`applyKeyframeEasing` itself, because "Quadratic ease out" and "Cubic ease out" are
+indistinguishable as words and obvious as shapes.
+
+**`ease` no longer exists as an enum value and resolves on read to `cubicInOut`** — the curve it
+always was. The enum name is persisted into drafts and crosses the channel, so this is a
+migration, and an exact one. **A fresh keyframe is `linear`**, so the sheet's highlighted cell
+tells the truth about a diamond nobody has shaped; an unreadable name degrades to `linear` too,
+because guessing a curve would move the value along a path nobody chose.
+
+**Every curve lands on exactly 0 and 1 at the ends and stays inside that range**, bounce
+included. A keyframe pair means "this value here, that value there"; overshooting would send a
+parameter past the maximum its own slider offers, which a clamped consumer silently flattens into
+a plateau. `test/fixtures/animatable_fixture.json` pins all fourteen curves against the Kotlin
+port at fourteen sample points, including the bounce family's segment boundaries where the curve
+touches exactly 1.0 and an off-by-one `<` versus `<=` shows up.
+
+**Splitting a keyframed clip rescales into each half's own 0..1**, after pinning a keyframe at
+the cut on the original so both halves read the same value at the seam. Copying the lists
+verbatim would leave the left half's later keyframes past its own end, where the value holds and
+the move silently freezes.
+
+Three engine-side subtleties worth not rediscovering:
+
+- **`Lane.applyVolume` change-guards on `VOLUME_EPSILON`, and that guard is what makes a
+  keyframed fade safe.** Setting an unchanged volume every tick makes ExoPlayer rebuild its
+  `AudioTrack` — fault 10 in this engine's history.
+- **`AudioExportMixer` must not skip a clip keyframed up from silence.** Its silent-clip check
+  reads `baseValue`, which for a fade-in from zero *is* zero; it now asks `isAnimated` first, or
+  the clip exports mute.
+- **The clamps live on the resolved value, not the parse.** `canvasScaleAt` and `volumeAt` clamp,
+  because a keyframe moves the value after `fromWire` has run — the same move the effect
+  intensity clamp already made.
+
+**Keyframes are the clip's, not the effect's.** Changing an effect drops the *intensity's*
+keyframes (that parameter belongs to the effect) and leaves transform and volume keyframes
+standing.
+
+**The rejected design is entry 23 in `docs/dead-ends.md`** — a keyframe row under the clip, opened
+from a button on the effects sheet. Read it before proposing anywhere else for a keyframe control.
 
 ### 3. Then â€” timeline UX
 
