@@ -19,8 +19,13 @@ import com.techfamz.slimshotai.nativepreview.gl.EffectPass
  * list, which [com.techfamz.slimshotai.nativepreview.gl.EffectPassChain] renders
  * as the unprocessed frame. The clip plays; it simply carries no effect. This is
  * the same rule unknown transition names already follow, and it is what lets the
- * catalog and the shaders be filled in at different times — the thirteen entries
- * with no shader yet cost nothing and break nothing.
+ * catalog and the shaders be filled in at different times.
+ *
+ * **Every catalog id now resolves to a shader.** The third case above is
+ * therefore currently empty, and it stays in place deliberately: it is what
+ * makes adding a catalog entry ahead of its shader a safe intermediate state
+ * rather than a crash, which is how the twelve static looks and the timed intros
+ * were each landed in their own batch.
  *
  * **Every pass here links a program**, so [passesFor] must be called on the GL
  * thread with the context current, and never in the render path: a
@@ -70,6 +75,62 @@ internal object EffectShaders {
             "vignette" -> listOf(VignettePass(FullFrameProgram(VignettePass.FRAGMENT)))
 
             "fisheye" -> listOf(FisheyePass(FullFrameProgram(FisheyePass.FRAGMENT)))
+
+            // -- static grades ------------------------------------------------
+            //
+            // The catalog's original continuous looks: colour and coordinate
+            // work applied to the whole clip, the same shape as `vignette` and
+            // `fisheye` above. None declares `introSeconds`, so `uProgress` runs
+            // across the clip — which most of them ignore and a few use to move
+            // noise or a bloom, never to settle.
+            "duotone" -> listOf(DuotonePass(FullFrameProgram(DuotonePass.FRAGMENT)))
+
+            // **Deliberately a different shader from `rgb_split`.** Chromatic
+            // aberration scales its channel displacement with the square of the
+            // distance from the centre — a lens artefact, registered in the
+            // middle and worst at the corners. The split below is a uniform
+            // offset. Written the same way the two would be one effect at two
+            // strengths; written these two ways they read as glass and as
+            // damage.
+            "chromatic" -> listOf(ChromaticPass(FullFrameProgram(ChromaticPass.FRAGMENT)))
+
+            // The first pass in the catalog to need a uniform beyond intensity
+            // and aspect: a 3x3 convolution has to know how big a texel is, and
+            // ES 2.0 has no `textureSize()`. It supplies one through
+            // `SingleFramePass.bindExtraUniforms`, which existed for exactly
+            // this and had no caller until now.
+            "sharpen" -> listOf(SharpenPass(FullFrameProgram(SharpenPass.FRAGMENT)))
+
+            // -- retro artefacts ----------------------------------------------
+            //
+            // Every one of these needs pseudo-randomness and every one takes it
+            // from `EffectShaderLib`'s deterministic hash — of the pixel, and of
+            // `uProgress` where the noise should move. Never `Random()`, never a
+            // frame counter: export runs faster than realtime, so anything
+            // stateful draws a different picture in the file than on the canvas.
+            "grain" -> listOf(GrainPass(FullFrameProgram(GrainPass.FRAGMENT)))
+
+            "vhs" -> listOf(VhsPass(FullFrameProgram(VhsPass.FRAGMENT)))
+
+            "scanlines" -> listOf(ScanlinesPass(FullFrameProgram(ScanlinesPass.FRAGMENT)))
+
+            "rgb_split" -> listOf(RgbSplitPass(FullFrameProgram(RgbSplitPass.FRAGMENT)))
+
+            "glitch" -> listOf(GlitchPass(FullFrameProgram(GlitchPass.FRAGMENT)))
+
+            // -- distortions --------------------------------------------------
+            //
+            // [FisheyePass]'s family: these perturb the sampling coordinate
+            // rather than the colour, in an aspect-corrected space, and clamp
+            // back into 0..1 before sampling.
+            "ripple" -> listOf(RipplePass(FullFrameProgram(RipplePass.FRAGMENT)))
+
+            "swirl" -> listOf(SwirlPass(FullFrameProgram(SwirlPass.FRAGMENT)))
+
+            "mirror" -> listOf(MirrorPass(FullFrameProgram(MirrorPass.FRAGMENT)))
+
+            // -- light --------------------------------------------------------
+            "light_leak" -> listOf(LightLeakPass(FullFrameProgram(LightLeakPass.FRAGMENT)))
 
             // **The discriminator for glow, as well as an effect in its own
             // right.** Glow was reported as rendering nothing, with two
