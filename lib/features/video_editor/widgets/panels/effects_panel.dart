@@ -181,6 +181,11 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                 if (selected != null)
                   _intensityRow(
                     notifier: notifier,
+                    // Whether the keyframe row is already open, so the control
+                    // reads as a toggle rather than a button that stops
+                    // responding once tapped.
+                    keyframesOpen:
+                        editorState.keyframeEditorSegmentId == segment.id,
                     // **The slider shows and writes the base value**, not the
                     // parameter's value at the playhead. An envelope shapes
                     // that base across the clip, so a slider tracking the
@@ -293,6 +298,7 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
   Widget _intensityRow({
     required VideoEditorNotifier notifier,
     required double intensity,
+    required bool keyframesOpen,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -346,6 +352,14 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
               textAlign: TextAlign.right,
             ),
           ),
+          const SizedBox(width: 8),
+          KeyframeToggleButton(
+            isOpen: keyframesOpen,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              notifier.toggleKeyframeEditor();
+            },
+          ),
         ],
       ),
     );
@@ -360,6 +374,82 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
         decoration: BoxDecoration(
           color: Colors.white24,
           borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
+/// The opt-in control for keyframing this clip's effect intensity.
+///
+/// **A user who never taps this never sees a diamond.** That is the whole
+/// design of the two audiences the effects system serves: someone who wants a
+/// good-looking clip taps an effect and leaves — the catalog's own envelope
+/// already makes it feel designed — while someone who wants a glitch that
+/// builds to a beat opts in here. A keyframe row that appeared on its own,
+/// under every clip that happened to carry an effect, would break the casual
+/// path for everyone to serve the few.
+///
+/// It is shown only beside the intensity slider, which itself only exists once
+/// an effect is applied, so there is never a keyframe control over a value
+/// nothing reads.
+///
+/// A widget of its own rather than a private builder so a test can read
+/// [isOpen] off it instead of inferring the toggle's state from its pixels —
+/// the same route [EffectTile] takes, for the same reason.
+class KeyframeToggleButton extends StatelessWidget {
+  const KeyframeToggleButton({
+    super.key,
+    required this.isOpen,
+    required this.onTap,
+  });
+
+  /// Whether the row is already showing. The control is a toggle, not a
+  /// one-way door: a button that stopped responding after the first tap would
+  /// leave the row with no way back to a clean timeline.
+  final bool isOpen;
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: isOpen,
+      label: 'Keyframe',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: isOpen ? AppColors.highlight : AppColors.surface,
+            border: Border.all(
+              color: isOpen ? AppColors.primaryStart : AppColors.border,
+            ),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                LucideIcons.diamond,
+                size: 13,
+                color:
+                    isOpen ? AppColors.textPrimary : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'Keyframe',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isOpen ? FontWeight.w600 : FontWeight.w500,
+                  color:
+                      isOpen ? AppColors.textPrimary : AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

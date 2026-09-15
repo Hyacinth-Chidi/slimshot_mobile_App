@@ -75,6 +75,7 @@ class VideoEditorState {
     this.backgroundColor = Colors.black,
     this.backgroundBlurIntensity = 20.0,
     this.selectedTransitionSegmentId,
+    this.keyframeEditorSegmentId,
   });
 
   final String? draftId;
@@ -141,6 +142,41 @@ class VideoEditorState {
   final Color backgroundColor;
   final double backgroundBlurIntensity;
   final String? selectedTransitionSegmentId;
+
+  /// The clip whose keyframe row is open, or null — which is every project
+  /// until someone asks for one.
+  ///
+  /// **A user who never taps "Keyframe" never sees a diamond**, and this field
+  /// is the whole mechanism: the timeline builds no keyframe row at all unless
+  /// it names the selected clip. A flag derived from "this parameter has
+  /// keyframes" would be the same thing backwards — the row would have to
+  /// exist before the first keyframe could be placed — and one derived from
+  /// "an effect is applied" would put a diamond row under every clip of the
+  /// casual user who tapped one tile and left.
+  ///
+  /// **Transient and never serialised**, like [isClipTransformActive]: it is
+  /// which tool is open, not part of the edit. A draft that reopened with the
+  /// row showing would be exactly the unbidden row the design rules out, for a
+  /// user who may have placed nothing.
+  ///
+  /// Scoped to one clip rather than a bare bool so selecting a different clip
+  /// closes it: the row draws one clip's parameter, and carrying it across a
+  /// selection change would show the new clip a row it never asked for.
+  final String? keyframeEditorSegmentId;
+
+  /// Whether the keyframe row should be drawn for [segmentId].
+  ///
+  /// Both conditions matter and neither implies the other: the row belongs to
+  /// the clip that opted in, and a clip with no effect has no parameter to
+  /// keyframe — tapping None while the row is open must take the row with it
+  /// rather than leave diamonds over a value nothing reads.
+  bool showsKeyframeRowFor(String? segmentId) {
+    if (segmentId == null || keyframeEditorSegmentId != segmentId) return false;
+    for (final segment in segments) {
+      if (segment.id == segmentId) return segment.effect != null;
+    }
+    return false;
+  }
 
   /// The first imported file, as an [XFile].
   ///
@@ -273,6 +309,8 @@ class VideoEditorState {
     double? backgroundBlurIntensity,
     String? selectedTransitionSegmentId,
     bool clearSelectedTransitionSegmentId = false,
+    String? keyframeEditorSegmentId,
+    bool clearKeyframeEditorSegmentId = false,
   }) {
     return VideoEditorState(
       draftId: draftId ?? this.draftId,
@@ -339,6 +377,9 @@ class VideoEditorState {
       selectedTransitionSegmentId: clearSelectedTransitionSegmentId
           ? null
           : selectedTransitionSegmentId ?? this.selectedTransitionSegmentId,
+      keyframeEditorSegmentId: clearKeyframeEditorSegmentId
+          ? null
+          : keyframeEditorSegmentId ?? this.keyframeEditorSegmentId,
     );
   }
 }
