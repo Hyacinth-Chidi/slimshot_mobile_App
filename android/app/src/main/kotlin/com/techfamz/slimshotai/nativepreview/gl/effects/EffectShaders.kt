@@ -93,6 +93,90 @@ internal object EffectShaders {
             // learn what an intro is.
             "fade_in" -> listOf(FadeInPass(FullFrameProgram(FadeInPass.FRAGMENT)))
 
+            // -- timed intros: zoom ------------------------------------------
+            //
+            // One geometry, five curves. Every one lands on scale 1.0 at
+            // progress 1, so the settled clip is the untouched frame — progress
+            // stays at 1 for the rest of the clip, so a curve ending anywhere
+            // else would leave a permanent magnification.
+            "cinema_zoom" ->
+                listOf(CinemaZoomPass(FullFrameProgram(CinemaZoomPass.FRAGMENT)))
+
+            "zoom_in" -> listOf(ZoomInPass(FullFrameProgram(ZoomInPass.FRAGMENT)))
+
+            "super_zoom" -> listOf(SuperZoomPass(FullFrameProgram(SuperZoomPass.FRAGMENT)))
+
+            "pulse_zoom" -> listOf(PulseZoomPass(FullFrameProgram(PulseZoomPass.FRAGMENT)))
+
+            "bounce" -> listOf(BouncePass(FullFrameProgram(BouncePass.FRAGMENT)))
+
+            // -- timed intros: motion ----------------------------------------
+            //
+            // These move the frame off its own edge, so they sample through
+            // `sampleFrame` — background outside the picture, never a clamped
+            // smear — and push in slightly while they move, the cover zoom
+            // decaying to exactly 1.0 with the motion.
+            "spin" -> listOf(SpinPass(FullFrameProgram(SpinPass.FRAGMENT)))
+
+            "roll" -> listOf(RollPass(FullFrameProgram(RollPass.FRAGMENT)))
+
+            "tilt" -> listOf(TiltPass(FullFrameProgram(TiltPass.FRAGMENT)))
+
+            "steady_in" -> listOf(SteadyInPass(FullFrameProgram(SteadyInPass.FRAGMENT)))
+
+            // -- timed intros: resolve ---------------------------------------
+            "pixel_in" -> listOf(PixelInPass(FullFrameProgram(PixelInPass.FRAGMENT)))
+
+            "hue_shift" -> listOf(HueShiftPass(FullFrameProgram(HueShiftPass.FRAGMENT)))
+
+            "bw_fade" -> listOf(BwFadePass(FullFrameProgram(BwFadePass.FRAGMENT)))
+
+            // The one intro that is not a single pass: a gaussian is separable,
+            // so it is [BlurPass]'s two halves with the radius driven off
+            // progress rather than a second blur shader.
+            "blur_in" -> BlurPass.chain().map { BlurInPass(it) }
+
+            // -- reveals from black ------------------------------------------
+            //
+            // **Not transitions.** A transition is an overlap between two clips
+            // and cannot exist on the first clip of a timeline; a reveal is a
+            // property of one clip, so it works there — which is the case a user
+            // opening a video actually wants.
+            "shutter" -> listOf(ShutterPass(FullFrameProgram(ShutterPass.FRAGMENT)))
+
+            "horizontal_open" ->
+                listOf(HorizontalOpenPass(FullFrameProgram(HorizontalOpenPass.FRAGMENT)))
+
+            "circle_in" -> listOf(CircleInPass(FullFrameProgram(CircleInPass.FRAGMENT)))
+
+            // One implementation, two cell counts. A second copy of the shader
+            // for the denser grid would drift from this one.
+            "grid" -> listOf(
+                GridPass("grid", FullFrameProgram(GridPass.fragmentFor(GridPass.CELLS))),
+            )
+
+            "grid_collage" -> listOf(
+                GridPass(
+                    "grid_collage",
+                    FullFrameProgram(GridPass.fragmentFor(GridPass.COLLAGE_CELLS)),
+                ),
+            )
+
+            "roulette" -> listOf(RoulettePass(FullFrameProgram(RoulettePass.FRAGMENT)))
+
+            // -- continuous looks --------------------------------------------
+            //
+            // No `introSeconds`, so `uProgress` runs across the whole clip and
+            // these never settle — which is the point of them. Every
+            // displacement is a pure function of that progress, never
+            // `Random()`: export runs faster than realtime, so anything stateful
+            // would draw a different picture in the file than on the canvas.
+            "camera_pan" -> listOf(CameraPanPass(FullFrameProgram(CameraPanPass.FRAGMENT)))
+
+            "handheld" -> listOf(HandheldPass(FullFrameProgram(HandheldPass.FRAGMENT)))
+
+            "super_shake" -> listOf(SuperShakePass(FullFrameProgram(SuperShakePass.FRAGMENT)))
+
             else -> {
                 // Two cases land here and both are correct as no effect: an id
                 // this build has never heard of, and a catalog id whose shader
@@ -212,6 +296,7 @@ internal object EffectShaders {
                 // too, on every effect change.
                 is GlowBlurPass -> pass.release()
                 is StandaloneBlurPass -> pass.release()
+                is BlurInPass -> pass.release()
                 is BlurPass -> pass.release()
                 is GlowCompositePass -> pass.release()
                 else -> Log.w(TAG, "Effect pass '${pass.id}' has no release path")

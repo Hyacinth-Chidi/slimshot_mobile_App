@@ -54,6 +54,29 @@ enum EffectCategory {
   /// frame. That is also why [VideoEffect.introSeconds] exists — an intro
   /// occupies the clip's opening, not the whole clip.
   intro,
+
+  /// The clip appears from black over its opening — a shutter parting, a circle
+  /// opening, cells arriving in a grid.
+  ///
+  /// **These are not transitions, and keeping them apart is the point of the
+  /// category.** A transition is an overlap between two clips: it needs two live
+  /// decoders, a window the composer resolves, and by definition something to
+  /// blend *from*, so it cannot exist on the first clip of a timeline. A reveal
+  /// is a property of one clip and works there — which is exactly where a user
+  /// opening a video wants one.
+  ///
+  /// Timed, like [intro], and settling the same way. Shelved separately because
+  /// a person browsing knows whether they want the picture to *arrive* or to
+  /// *move*, and mixing eighteen of both on one shelf makes neither findable.
+  reveal,
+
+  /// Runs for the whole clip and never settles — a drift, a handheld shake.
+  ///
+  /// The counterpart of [intro]: these declare **no** [VideoEffect.introSeconds],
+  /// so `uProgress` is the clip's position across its whole length and the
+  /// motion is still going at the last frame. A continuous look that settled
+  /// would be an intro.
+  motionLoop,
 }
 
 /// What a clip's effect intensity reads as when nothing has set one.
@@ -144,12 +167,18 @@ class VideoEffect {
   /// multiplier exists to avoid.
   final double? introSeconds;
 
-  /// Whether this effect animates over time rather than rendering one fixed
-  /// look.
+  /// Whether this effect plays over a window at the clip's opening and then
+  /// settles.
   ///
   /// Derived from [introSeconds] rather than stored beside it: two fields that
   /// can disagree is one field too many, and here the disagreement would be an
   /// effect declared as animated that never moves.
+  ///
+  /// **Not the same question as "does it move".** A [EffectCategory.motionLoop]
+  /// entry animates for the whole clip and declares no window, so it is false
+  /// here — which is correct, because what this actually answers is "does
+  /// progress run out before the clip does". Both [EffectCategory.intro] and
+  /// [EffectCategory.reveal] are true.
   bool get isTimed => introSeconds != null;
 
   /// Whether this effect needs the ping-pong chain rather than a single draw.
@@ -291,6 +320,186 @@ const List<VideoEffect> kVideoEffects = [
     // An intro's strength is how far down it starts, not how much of the
     // picture it occupies; full is the fade people mean — up from true black.
     defaultIntensity: 1.0,
+  ),
+  VideoEffect(
+    id: 'cinema_zoom',
+    label: 'Cinema Zoom',
+    category: EffectCategory.intro,
+    // The longest window in the category, because the whole character of a
+    // cinematic push is that the movement is barely perceptible until it
+    // stops. A fast cinema zoom is just a zoom.
+    introSeconds: 1.2,
+    defaultIntensity: 0.6,
+  ),
+  VideoEffect(
+    id: 'zoom_in',
+    label: 'Zoom In',
+    category: EffectCategory.intro,
+    // Short, because a punch that takes a second is a drift.
+    introSeconds: 0.5,
+    defaultIntensity: 0.7,
+  ),
+  VideoEffect(
+    id: 'super_zoom',
+    label: 'Super Zoom',
+    category: EffectCategory.intro,
+    introSeconds: 0.5,
+    // Lower than `zoom_in`'s despite being the harder effect: its own start
+    // scale is far higher, so the same visual punch needs less of the slider —
+    // and it leaves room to go further, which is the reason it is a separate
+    // entry rather than `zoom_in` at maximum.
+    defaultIntensity: 0.6,
+  ),
+  VideoEffect(
+    id: 'pulse_zoom',
+    label: 'Pulse Zoom',
+    category: EffectCategory.intro,
+    // Three pulses over a second — around 180bpm, fast for music but right for
+    // a short-form opening where the pulse must be legible in under a second.
+    introSeconds: 1.0,
+    defaultIntensity: 0.6,
+  ),
+  VideoEffect(
+    id: 'bounce',
+    label: 'Bounce',
+    category: EffectCategory.intro,
+    introSeconds: 0.9,
+    defaultIntensity: 0.6,
+  ),
+  VideoEffect(
+    id: 'spin',
+    label: 'Spin',
+    category: EffectCategory.intro,
+    introSeconds: 0.8,
+    defaultIntensity: 0.7,
+  ),
+  VideoEffect(
+    id: 'roll',
+    label: 'Roll',
+    category: EffectCategory.intro,
+    introSeconds: 0.8,
+    defaultIntensity: 0.7,
+  ),
+  VideoEffect(
+    id: 'tilt',
+    label: 'Tilt',
+    category: EffectCategory.intro,
+    introSeconds: 0.7,
+    defaultIntensity: 0.7,
+  ),
+  VideoEffect(
+    id: 'blur_in',
+    label: 'Blur In',
+    category: EffectCategory.intro,
+    // Separable gaussian, like `blur`: horizontal then vertical.
+    passCount: 2,
+    introSeconds: 0.8,
+    defaultIntensity: 0.8,
+  ),
+  VideoEffect(
+    id: 'pixel_in',
+    label: 'Pixel In',
+    category: EffectCategory.intro,
+    introSeconds: 0.8,
+    defaultIntensity: 0.7,
+  ),
+  VideoEffect(
+    id: 'hue_shift',
+    label: 'Hue Sweep',
+    category: EffectCategory.intro,
+    introSeconds: 1.0,
+    defaultIntensity: 0.8,
+  ),
+  VideoEffect(
+    id: 'bw_fade',
+    label: 'Colour In',
+    category: EffectCategory.intro,
+    introSeconds: 1.0,
+    defaultIntensity: 1.0,
+  ),
+  VideoEffect(
+    id: 'steady_in',
+    label: 'Steady In',
+    category: EffectCategory.intro,
+    introSeconds: 0.9,
+    defaultIntensity: 0.6,
+  ),
+
+  // -- reveal --------------------------------------------------------------
+  //
+  // Timed like the intros and settling by the same rule, but the picture
+  // *arrives* rather than moving. Every one works on the first clip of a
+  // timeline, which is what separates them from transitions.
+  VideoEffect(
+    id: 'shutter',
+    label: 'Shutter',
+    category: EffectCategory.reveal,
+    introSeconds: 0.8,
+    // A reveal's strength is how much of the frame starts covered, so full is
+    // the gesture people mean — the clip opens on black.
+    defaultIntensity: 1.0,
+  ),
+  VideoEffect(
+    id: 'horizontal_open',
+    label: 'Side Open',
+    category: EffectCategory.reveal,
+    introSeconds: 0.8,
+    defaultIntensity: 1.0,
+  ),
+  VideoEffect(
+    id: 'circle_in',
+    label: 'Circle Open',
+    category: EffectCategory.reveal,
+    introSeconds: 0.8,
+    defaultIntensity: 1.0,
+  ),
+  VideoEffect(
+    id: 'grid',
+    label: 'Grid',
+    category: EffectCategory.reveal,
+    introSeconds: 1.0,
+    defaultIntensity: 1.0,
+  ),
+  VideoEffect(
+    id: 'grid_collage',
+    label: 'Collage',
+    category: EffectCategory.reveal,
+    // Longer than `grid`: more cells over the same window would each get a
+    // shorter slice and the stagger would stop being legible.
+    introSeconds: 1.2,
+    defaultIntensity: 1.0,
+  ),
+  VideoEffect(
+    id: 'roulette',
+    label: 'Roulette',
+    category: EffectCategory.reveal,
+    introSeconds: 0.9,
+    defaultIntensity: 1.0,
+  ),
+
+  // -- continuous ----------------------------------------------------------
+  //
+  // **No `introSeconds` on any of these, deliberately.** `uProgress` then runs
+  // across the whole clip and the motion is still going at the last frame,
+  // which is what "continuous" means. One of them declaring a window would
+  // settle part-way through and then stop dead.
+  VideoEffect(
+    id: 'camera_pan',
+    label: 'Camera Pan',
+    category: EffectCategory.motionLoop,
+    defaultIntensity: 0.6,
+  ),
+  VideoEffect(
+    id: 'handheld',
+    label: 'Handheld',
+    category: EffectCategory.motionLoop,
+    defaultIntensity: 0.5,
+  ),
+  VideoEffect(
+    id: 'super_shake',
+    label: 'Super Shake',
+    category: EffectCategory.motionLoop,
+    defaultIntensity: 0.5,
   ),
 ];
 

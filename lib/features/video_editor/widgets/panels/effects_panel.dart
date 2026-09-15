@@ -52,6 +52,8 @@ String effectCategoryLabel(EffectCategory category) => switch (category) {
       EffectCategory.light => 'Light',
       EffectCategory.motion => 'Focus',
       EffectCategory.intro => 'Intro',
+      EffectCategory.reveal => 'Reveal',
+      EffectCategory.motionLoop => 'Motion',
     };
 
 /// A tile's glyph.
@@ -80,6 +82,31 @@ const Map<String, IconData> _kEffectIcons = {
   'sharpen': LucideIcons.focus,
   'blur': LucideIcons.droplet,
   'fade_in': LucideIcons.sunrise,
+  // -- intro ---------------------------------------------------------------
+  'cinema_zoom': LucideIcons.clapperboard,
+  'zoom_in': LucideIcons.zoomIn,
+  'super_zoom': LucideIcons.scan,
+  'pulse_zoom': LucideIcons.activity,
+  'bounce': LucideIcons.arrowDownUp,
+  'spin': LucideIcons.rotateCw,
+  'roll': LucideIcons.iterationCw,
+  'tilt': LucideIcons.galleryVerticalEnd,
+  'blur_in': LucideIcons.aperture,
+  'pixel_in': LucideIcons.grid,
+  'hue_shift': LucideIcons.paintbrush,
+  'bw_fade': LucideIcons.droplets,
+  'steady_in': LucideIcons.crosshair,
+  // -- reveal ---------------------------------------------------------------
+  'shutter': LucideIcons.rows,
+  'horizontal_open': LucideIcons.columns,
+  'circle_in': LucideIcons.circleDashed,
+  'grid': LucideIcons.layoutGrid,
+  'grid_collage': LucideIcons.layoutDashboard,
+  'roulette': LucideIcons.loader,
+  // -- continuous ------------------------------------------------------------
+  'camera_pan': LucideIcons.moveHorizontal,
+  'handheld': LucideIcons.hand,
+  'super_shake': LucideIcons.vibrate,
 };
 
 IconData _iconForCategory(EffectCategory category) => switch (category) {
@@ -90,6 +117,8 @@ IconData _iconForCategory(EffectCategory category) => switch (category) {
       EffectCategory.light => LucideIcons.sun,
       EffectCategory.motion => LucideIcons.aperture,
       EffectCategory.intro => LucideIcons.play,
+      EffectCategory.reveal => LucideIcons.eye,
+      EffectCategory.motionLoop => LucideIcons.move,
     };
 
 /// The glyph for [effect], falling back to its category's.

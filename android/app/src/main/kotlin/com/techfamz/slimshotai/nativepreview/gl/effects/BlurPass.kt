@@ -86,7 +86,27 @@ internal class BlurPass private constructor(
         // resolution blur by the same visible amount.
         val shortSide = min(viewportWidth, viewportHeight)
         val radiusPx = radiusFraction * shortSide
-        if (radiusPx <= 0.0) return
+
+        // **A zero radius still has to draw.** Returning here would leave the
+        // target holding whatever the ping-pong buffer had from two frames ago,
+        // and the chain hands that texture on as its result — a stale frame
+        // presented as the current one, which reads as the picture freezing.
+        // Nothing hit this while every caller had a non-zero minimum radius;
+        // `blur_in` drives the radius to exactly zero as it settles, which is
+        // the correct settled state and must be a passthrough, not a skip.
+        //
+        // One tap at the centre with weight 1 *is* the identity: the loop's
+        // other taps carry zero weight, so the result is exactly the source
+        // texel, and the frame is copied rather than filtered.
+        if (radiusPx <= 0.0) {
+            GLES20.glDisable(GLES20.GL_BLEND)
+            program.use()
+            program.setStep(0f, 0f)
+            program.setWeights(weightsFor(0))
+            program.bindSource(sourceTextureId)
+            program.drawQuad(quadVertices, quadTexCoords)
+            return
+        }
 
         // **When the radius outruns the tap budget, spread the taps — never
         // clamp the radius.** The kernel is a fixed 16 taps per side, so a

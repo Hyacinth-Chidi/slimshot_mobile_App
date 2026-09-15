@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/effects/effect_catalog.dart';
 
@@ -73,6 +75,26 @@ void main() {
   });
 
   group('ids and labels', () {
+    test('the effects this batch added are present', () {
+      // Same contract as the planned set below: these ids are persisted into
+      // drafts and sent over the channel, so a rename is a migration.
+      const added = [
+        // intros
+        'cinema_zoom', 'zoom_in', 'super_zoom', 'pulse_zoom', 'bounce',
+        'spin', 'roll', 'tilt', 'blur_in', 'pixel_in', 'hue_shift',
+        'bw_fade', 'steady_in',
+        // reveals
+        'shutter', 'horizontal_open', 'circle_in', 'grid', 'grid_collage',
+        'roulette',
+        // continuous
+        'camera_pan', 'handheld', 'super_shake',
+      ];
+      final ids = kVideoEffects.map((e) => e.id).toSet();
+      for (final id in added) {
+        expect(ids, contains(id), reason: id);
+      }
+    });
+
     test('the planned shader set is present', () {
       // These ids are persisted into drafts, so this list is a contract: a
       // rename needs a migration, not an edit here.
@@ -87,23 +109,54 @@ void main() {
       }
     });
 
-    test('an intro declares its window; a static look declares none', () {
+    /// The categories whose entries play over a window at the clip's opening
+    /// and then settle.
+    ///
+    /// A reveal is timed exactly as an intro is — same clock, same settle rule
+    /// — and is a separate shelf only because a person browsing knows whether
+    /// they want the picture to *arrive* or to *move*.
+    const timedCategories = {EffectCategory.intro, EffectCategory.reveal};
+
+    test('a timed effect declares its window; everything else declares none',
+        () {
       // The two states are what the renderer branches on, and conflating them
       // is the bug this pins: a static look with a window would be told its
       // progress runs out part-way through the clip, and an intro without one
       // would stretch its animation across a 90s clip.
       for (final effect in kVideoEffects) {
-        if (effect.category == EffectCategory.intro) {
+        if (timedCategories.contains(effect.category)) {
           expect(effect.introSeconds, isNotNull,
-              reason: '${effect.id} is an intro with no window');
+              reason: '${effect.id} is timed but declares no window');
           expect(effect.introSeconds, greaterThan(0),
               reason: '${effect.id} has a window that ends before it starts');
           expect(effect.isTimed, isTrue, reason: effect.id);
         } else {
           expect(effect.introSeconds, isNull,
-              reason: '${effect.id} is a static look and must ignore the clock');
+              reason: '${effect.id} must measure progress across the clip');
           expect(effect.isTimed, isFalse, reason: effect.id);
         }
+      }
+    });
+
+    test('a continuous look declares no window, so it never settles', () {
+      // The distinction the `motionLoop` category exists for: these animate for
+      // the whole clip, so `uProgress` must run across its whole length. One of
+      // them declaring a window would settle part-way through and stop dead,
+      // which is an intro, not a continuous look.
+      final continuous = effectsInCategory(EffectCategory.motionLoop);
+      expect(continuous, isNotEmpty);
+      for (final effect in continuous) {
+        expect(effect.introSeconds, isNull, reason: effect.id);
+        expect(effect.isTimed, isFalse, reason: effect.id);
+      }
+    });
+
+    test('an intro window is short enough to be an opening', () {
+      // A window is the clip's *opening*, not its length. Past a couple of
+      // seconds the effect stops reading as an intro and starts competing with
+      // the footage — and on a short-form clip it would never settle at all.
+      for (final effect in kVideoEffects.where((e) => e.isTimed)) {
+        expect(effect.introSeconds, lessThanOrEqualTo(2.0), reason: effect.id);
       }
     });
 
@@ -149,6 +202,69 @@ void main() {
         expect(effect.label.length, lessThanOrEqualTo(14),
             reason: '${effect.id}: "${effect.label}" will not fit a tile');
         expect(effect.label, isNot(equals(effect.id)), reason: effect.id);
+      }
+    });
+  });
+
+  group('the Kotlin registry matches the catalog', () {
+    // **This is the drift the whole two-file design is exposed to.** The
+    // catalog says what effects exist; `EffectShaders.passesFor` says how each
+    // is drawn, and an id in one and not the other is invisible until a device
+    // run: an unregistered id silently renders the unprocessed frame, which
+    // reads as "I tapped the tile and nothing happened".
+    //
+    // Reading the Kotlin source is crude but it is the only check available
+    // from a Dart test, and the alternative — noticing on a device — is what
+    // this exists to replace. It greps for the `when` branches' string
+    // literals, so a new effect is registered or this fails.
+    final registry = File(
+      'android/app/src/main/kotlin/com/techfamz/slimshotai/'
+      'nativepreview/gl/effects/EffectShaders.kt',
+    );
+
+    /// Every id `passesFor` has a branch for.
+    Set<String> registeredIds() {
+      final source = registry.readAsStringSync();
+      // The branches are the only place a bare quoted id appears at the start
+      // of a `when` arm.
+      final matches = RegExp(r'''^\s*"([a-z][a-z0-9_]*)"\s*->''', multiLine: true)
+          .allMatches(source);
+      return matches.map((m) => m.group(1)!).toSet();
+    }
+
+    test('the registry file is where the test thinks it is', () {
+      // A moved file would make every assertion below vacuously pass, which is
+      // worse than the drift they are checking for.
+      expect(registry.existsSync(), isTrue,
+          reason: 'EffectShaders.kt not found at ${registry.path}');
+      expect(registeredIds(), isNotEmpty);
+    });
+
+    test('every effect with a shader is one the catalog offers', () {
+      // The direction that would ship a shader the panel can never reach — and
+      // more importantly, catches a typo in a branch id, which otherwise looks
+      // exactly like an effect that was never registered.
+      final catalogIds = kVideoEffects.map((e) => e.id).toSet();
+      for (final id in registeredIds()) {
+        if (id == 'none') continue;
+        expect(catalogIds, contains(id),
+            reason: '$id has a shader but no catalog entry');
+      }
+    });
+
+    test('every timed effect the catalog offers has a shader', () {
+      // Deliberately not *every* effect: the catalog carries thirteen static
+      // looks whose shaders are not written yet, and those degrade correctly to
+      // the unprocessed frame. A **timed** effect degrading that way is
+      // different — it is an animation the user picked that never plays.
+      final registered = registeredIds();
+      final timed = kVideoEffects.where(
+        (e) => e.isTimed || e.category == EffectCategory.motionLoop,
+      );
+      expect(timed, isNotEmpty);
+      for (final effect in timed) {
+        expect(registered, contains(effect.id),
+            reason: '${effect.id} animates but has no shader registered');
       }
     });
   });
