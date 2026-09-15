@@ -37,28 +37,205 @@ import 'dart:math' as math;
 /// **Renaming one is a migration, not an edit** — the same rule effect ids,
 /// transition names and text animation ids already follow.
 enum KeyframeInterpolation {
-  /// A straight line. What a user placing two points expects when they have not
-  /// asked for anything cleverer.
+  /// A straight line, and **what a freshly placed keyframe gets**.
+  ///
+  /// The easing sheet's highlighted cell has to tell the truth about the
+  /// diamond the user just placed, and "None" is the honest answer for a point
+  /// nobody has shaped yet. A default of *some* curve would mean every new
+  /// keyframe silently carried an easing the sheet then showed as already
+  /// chosen.
   linear,
-
-  /// Slow at both ends, quick through the middle. The default, because a value
-  /// that arrives and departs abruptly reads as a glitch rather than as motion,
-  /// and most keyframes are placed by someone who wants "make this move", not
-  /// "make this move *linearly*".
-  ease,
 
   /// No travel at all: the value stays put until the next keyframe and then
   /// jumps. This is what makes step effects — a strobe, a hard cut in intensity
   /// — expressible, and a linear ramp could never approximate one.
+  ///
+  /// **Deliberately absent from the easing sheet.** It is a different kind of
+  /// thing from a curve, and a user reaching for "no easing" means [linear].
+  /// Kept because drafts carry it and step effects need it.
   hold,
+
+  sineIn,
+  sineOut,
+  sineInOut,
+  quadIn,
+  quadOut,
+  quadInOut,
+  cubicIn,
+  cubicOut,
+  cubicInOut,
+  bounceIn,
+  bounceOut,
+  bounceInOut,
 }
+
+/// The curve the legacy name `ease` resolves to.
+///
+/// **`ease` was `_easeInOut`, the standard cubic in-out.** It is no longer a
+/// value of the enum — the easing sheet is a grid of families, and a cell for a
+/// synonym of `cubicInOut` would be a second name for one curve — but every
+/// draft written before the families existed carries the string, so
+/// [_interpolationByName] maps it here.
+///
+/// **Renaming a persisted value is a migration, and this is it.** The migration
+/// is exact: the curve is unchanged, only what it is called. A draft written
+/// yesterday resolves to the same numbers today.
+const KeyframeInterpolation kDefaultKeyframeInterpolation =
+    KeyframeInterpolation.cubicInOut;
+
+/// The eased fraction for [t] (0..1) on [e].
+///
+/// **Pure `dart:math`**, like everything else in this file: `AnimatableDouble.kt`
+/// ports it function for function and the shared fixture asserts the two agree.
+/// Anything reaching for `Curves` could not be ported, and the exported file
+/// would move differently from the canvas with nothing on screen explaining it.
+///
+/// **Every curve here lands on exactly 0 at t == 0 and 1 at t == 1, and stays
+/// inside that range throughout.** A keyframe pair means "this value here, that
+/// value there"; a curve that overshot would send the parameter somewhere the
+/// user never placed — past the maximum its own slider offers, which for a
+/// clamped consumer (a volume, an opacity) silently flattens into a plateau.
+/// That is why the bounce family bounces *within* the range rather than
+/// overshooting the way an elastic ease would.
+double applyKeyframeEasing(KeyframeInterpolation e, double t) {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  switch (e) {
+    case KeyframeInterpolation.linear:
+    // `hold` never actually reaches here — [AnimatableDouble.resolveAt] returns
+    // the held value before easing — but the switch must be exhaustive, and a
+    // straight line is the honest answer for a caller asking a hold for its
+    // *curve*.
+    case KeyframeInterpolation.hold:
+      return t;
+    case KeyframeInterpolation.sineIn:
+      return 1 - math.cos((t * math.pi) / 2);
+    case KeyframeInterpolation.sineOut:
+      return math.sin((t * math.pi) / 2);
+    case KeyframeInterpolation.sineInOut:
+      return -(math.cos(math.pi * t) - 1) / 2;
+    case KeyframeInterpolation.quadIn:
+      return t * t;
+    case KeyframeInterpolation.quadOut:
+      return 1 - (1 - t) * (1 - t);
+    case KeyframeInterpolation.quadInOut:
+      if (t < 0.5) return 2 * t * t;
+      final u = -2 * t + 2;
+      return 1 - (u * u) / 2;
+    case KeyframeInterpolation.cubicIn:
+      return t * t * t;
+    case KeyframeInterpolation.cubicOut:
+      final u = 1 - t;
+      return 1 - u * u * u;
+    case KeyframeInterpolation.cubicInOut:
+      if (t < 0.5) return 4 * t * t * t;
+      final u = -2 * t + 2;
+      return 1 - (u * u * u) / 2;
+    case KeyframeInterpolation.bounceIn:
+      return 1 - _bounceOut(1 - t);
+    case KeyframeInterpolation.bounceOut:
+      return _bounceOut(t);
+    case KeyframeInterpolation.bounceInOut:
+      return t < 0.5
+          ? (1 - _bounceOut(1 - 2 * t)) / 2
+          : (1 + _bounceOut(2 * t - 1)) / 2;
+  }
+}
+
+/// The standard four-segment bounce — Penner's, the curve every toolkit ships
+/// as `bounceOut`, Flutter's `Curves.bounceOut` included.
+///
+/// Written out rather than taken from Flutter for this file's standing reason:
+/// Flutter cannot be imported here and Kotlin has no equivalent. **The
+/// constants are exact and deliberately unrounded** so the port can be compared
+/// against this digit for digit — a "tidied" 0.98 in one of the two would be a
+/// divergence the fixture catches but nobody could explain.
+double _bounceOut(double t) {
+  const n1 = 7.5625;
+  const d1 = 2.75;
+  if (t < 1 / d1) return n1 * t * t;
+  if (t < 2 / d1) {
+    final u = t - 1.5 / d1;
+    return n1 * u * u + 0.75;
+  }
+  if (t < 2.5 / d1) {
+    final u = t - 2.25 / d1;
+    return n1 * u * u + 0.9375;
+  }
+  final u = t - 2.625 / d1;
+  return n1 * u * u + 0.984375;
+}
+
+/// One row of the easing sheet: a family, and its four cells.
+class KeyframeEasingGroup {
+  const KeyframeEasingGroup({
+    required this.label,
+    required this.none,
+    required this.easeIn,
+    required this.easeOut,
+    required this.easeInOut,
+  });
+
+  final String label;
+
+  /// **Every group's None is [KeyframeInterpolation.linear]** — there is one way
+  /// not to ease.
+  ///
+  /// So picking None in any group is the same edit, and the sheet highlights
+  /// None in whichever group the user happened to open. Giving each family its
+  /// own "none" would make one state look like four different ones.
+  final KeyframeInterpolation none;
+
+  final KeyframeInterpolation easeIn;
+  final KeyframeInterpolation easeOut;
+  final KeyframeInterpolation easeInOut;
+}
+
+/// The families the easing sheet offers, in the order it draws them.
+///
+/// Sine is labelled **Default** because it is the gentlest of the four and the
+/// one a user who has not thought about curves wants. The four labels are the
+/// user's own, from the design they described.
+///
+/// A test pins this table against [KeyframeInterpolation.values], so a curve
+/// added to the enum cannot be silently orphaned somewhere no user can pick it.
+const List<KeyframeEasingGroup> kKeyframeEasingGroups = [
+  KeyframeEasingGroup(
+    label: 'Default',
+    none: KeyframeInterpolation.linear,
+    easeIn: KeyframeInterpolation.sineIn,
+    easeOut: KeyframeInterpolation.sineOut,
+    easeInOut: KeyframeInterpolation.sineInOut,
+  ),
+  KeyframeEasingGroup(
+    label: 'Quadratic',
+    none: KeyframeInterpolation.linear,
+    easeIn: KeyframeInterpolation.quadIn,
+    easeOut: KeyframeInterpolation.quadOut,
+    easeInOut: KeyframeInterpolation.quadInOut,
+  ),
+  KeyframeEasingGroup(
+    label: 'Cubic',
+    none: KeyframeInterpolation.linear,
+    easeIn: KeyframeInterpolation.cubicIn,
+    easeOut: KeyframeInterpolation.cubicOut,
+    easeInOut: KeyframeInterpolation.cubicInOut,
+  ),
+  KeyframeEasingGroup(
+    label: 'Bounce',
+    none: KeyframeInterpolation.linear,
+    easeIn: KeyframeInterpolation.bounceIn,
+    easeOut: KeyframeInterpolation.bounceOut,
+    easeInOut: KeyframeInterpolation.bounceInOut,
+  ),
+];
 
 /// One value pinned at one moment of a clip.
 class Keyframe {
   const Keyframe({
     required this.progress,
     required this.value,
-    this.interpolation = KeyframeInterpolation.ease,
+    this.interpolation = KeyframeInterpolation.linear,
   });
 
   /// Where in the clip this value sits, **0..1, never seconds**.
@@ -127,11 +304,17 @@ class Keyframe {
 /// An interpolation name that this build does not know degrades to the default
 /// rather than throwing — a draft from a newer build must still open.
 KeyframeInterpolation _interpolationByName(Object? name) {
-  if (name is! String) return KeyframeInterpolation.ease;
+  if (name is! String) return KeyframeInterpolation.linear;
+  // The one legacy name. See [kDefaultKeyframeInterpolation].
+  if (name == 'ease') return kDefaultKeyframeInterpolation;
   for (final value in KeyframeInterpolation.values) {
     if (value.name == name) return value;
   }
-  return KeyframeInterpolation.ease;
+  // **Linear, not the default curve.** A name this build cannot read is a shape
+  // it has no idea about, and guessing a curve would move the value along a
+  // path nobody chose. A straight line between the two points the user did
+  // place is the answer that adds nothing of its own.
+  return KeyframeInterpolation.linear;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,9 +460,7 @@ class AnimatableDouble {
       if (span <= 0) return after.value;
 
       final t = (p - before.progress) / span;
-      final eased = before.interpolation == KeyframeInterpolation.linear
-          ? t
-          : _easeInOut(t);
+      final eased = applyKeyframeEasing(before.interpolation, t);
       return before.value + (after.value - before.value) * eased;
     }
 

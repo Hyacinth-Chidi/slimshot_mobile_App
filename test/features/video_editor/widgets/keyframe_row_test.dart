@@ -557,7 +557,7 @@ void main() {
       // The drag moves a keyframe in time. Its value and the way it travels
       // belong to the user, not to the gesture.
       expect(moved.value, 0.4);
-      expect(moved.interpolation, KeyframeInterpolation.ease);
+      expect(moved.interpolation, KeyframeInterpolation.linear);
     });
 
     testWidgets('a whole drag is one undo step', (tester) async {
@@ -778,7 +778,7 @@ void main() {
       // Only the selected keyframe changed.
       expect(
         intensityOf(notifier).keyframes.last.interpolation,
-        KeyframeInterpolation.ease,
+        KeyframeInterpolation.linear,
       );
 
       await tester.tap(find.text('Linear'));
@@ -922,7 +922,7 @@ void main() {
       // other keyframe's travel to the default ease.
       expect(keyframes[0].progress, closeTo(0.2, 1e-9));
       expect(keyframes[0].value, 0.1);
-      expect(keyframes[0].interpolation, KeyframeInterpolation.ease);
+      expect(keyframes[0].interpolation, KeyframeInterpolation.linear);
       expect(keyframes[2].progress, closeTo(0.8, 1e-9));
       expect(keyframes[2].value, 0.9);
       expect(keyframes[2].interpolation, KeyframeInterpolation.linear);

@@ -565,6 +565,10 @@ class KeyframeRowControls extends ConsumerWidget {
 String keyframeInterpolationLabel(KeyframeInterpolation interpolation) =>
     switch (interpolation) {
       KeyframeInterpolation.linear => 'Linear',
-      KeyframeInterpolation.ease => 'Ease',
       KeyframeInterpolation.hold => 'Hold',
+      // This whole row is replaced by the playback-bar controls and the easing
+      // sheet, which name curves by family and cell. Until it is deleted the
+      // families share one label rather than growing twelve strings nothing
+      // will ever show.
+      _ => 'Ease',
     };

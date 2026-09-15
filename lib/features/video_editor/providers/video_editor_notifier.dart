@@ -1386,7 +1386,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   void addEffectIntensityKeyframe(
     double progress, {
     double? value,
-    KeyframeInterpolation interpolation = KeyframeInterpolation.ease,
+    KeyframeInterpolation interpolation = KeyframeInterpolation.linear,
     bool takeUndoSnapshot = true,
   }) {
     final p = progress.isNaN ? 0.0 : progress.clamp(0.0, 1.0).toDouble();

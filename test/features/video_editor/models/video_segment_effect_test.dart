@@ -595,8 +595,11 @@ void main() {
         'progress': 0.25,
         'value': 0.2,
         // The Dart enum's `.name`, lower case — which is the `wireName` the
-        // Kotlin enum declares rather than its own constant name.
-        'interpolation': 'ease',
+        // Kotlin enum declares rather than its own constant name. `linear`
+        // because that is a freshly constructed keyframe's default: the easing
+        // sheet's highlighted cell has to tell the truth about a diamond
+        // nobody has shaped yet.
+        'interpolation': 'linear',
       });
       expect((keyframes.last as Map)['interpolation'], 'hold');
     });

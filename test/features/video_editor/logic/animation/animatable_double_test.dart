@@ -79,9 +79,17 @@ void main() {
       expect(p.resolveAt(0.75), closeTo(0.75, 1e-9));
     });
 
-    test('ease is symmetric about the midpoint and slower at the ends', () {
+    test('an ease is symmetric about the midpoint and slower at the ends', () {
+      // Spelled out rather than relying on the constructor default: a fresh
+      // keyframe is **linear** now, so that the easing sheet's highlighted cell
+      // tells the truth about a diamond nobody has shaped. This test is about
+      // the curve, so it names the curve.
       const p = AnimatableDouble(baseValue: 0, keyframes: [
-        Keyframe(progress: 0, value: 0),
+        Keyframe(
+          progress: 0,
+          value: 0,
+          interpolation: KeyframeInterpolation.cubicInOut,
+        ),
         Keyframe(progress: 1, value: 1),
       ]);
       // Halfway is halfway for any symmetric ease.
@@ -390,13 +398,15 @@ void main() {
       }
     });
 
-    test('an unknown interpolation name degrades to the default', () {
+    test('an unknown interpolation name degrades to linear, never throws', () {
       final k = Keyframe.fromJson(const {
         'progress': 0.5,
         'value': 0.5,
         'interpolation': 'bezier_from_a_future_build',
       });
-      expect(k.interpolation, KeyframeInterpolation.ease);
+      // Linear, not the default curve: a curve this build cannot read is one it
+      // must not pretend to shape.
+      expect(k.interpolation, KeyframeInterpolation.linear);
     });
 
     test('a keyframe round-trips', () {
@@ -460,6 +470,160 @@ void main() {
       expect(a, b);
       expect(a.hashCode, b.hashCode);
       expect(a, isNot(const AnimatableDouble(baseValue: 0.5)));
+    });
+  });
+
+  group('easing families', () {
+    test('every curve starts at 0 and ends at 1', () {
+      for (final e in KeyframeInterpolation.values) {
+        expect(applyKeyframeEasing(e, 0.0), closeTo(0.0, 1e-9), reason: e.name);
+        expect(applyKeyframeEasing(e, 1.0), closeTo(1.0, 1e-9), reason: e.name);
+      }
+    });
+
+    test('ease is read as cubicInOut, the curve it always was', () {
+      final k = Keyframe.fromJson(
+          const {'progress': 0.0, 'value': 0.0, 'interpolation': 'ease'});
+      expect(k.interpolation, KeyframeInterpolation.cubicInOut);
+    });
+
+    test('a draft written with ease resolves exactly as it used to', () {
+      // The migration is a rename, not a curve change: the standard cubic
+      // in-out, symmetric about 0.5.
+      const p = AnimatableDouble(baseValue: 0, keyframes: [
+        Keyframe(
+          progress: 0.0,
+          value: 0.0,
+          interpolation: KeyframeInterpolation.cubicInOut,
+        ),
+        Keyframe(progress: 1.0, value: 1.0),
+      ]);
+      expect(p.resolveAt(0.25), closeTo(4 * 0.25 * 0.25 * 0.25, 1e-9));
+      expect(p.resolveAt(0.5), closeTo(0.5, 1e-9));
+    });
+
+    test('in-out curves are symmetric about the midpoint', () {
+      for (final e in [
+        KeyframeInterpolation.sineInOut,
+        KeyframeInterpolation.quadInOut,
+        KeyframeInterpolation.cubicInOut,
+      ]) {
+        for (final t in [0.1, 0.25, 0.4]) {
+          expect(applyKeyframeEasing(e, t),
+              closeTo(1 - applyKeyframeEasing(e, 1 - t), 1e-9),
+              reason: '${e.name} @ $t');
+        }
+      }
+    });
+
+    test('an out curve is the reflection of its in curve', () {
+      for (final pair in [
+        [KeyframeInterpolation.quadIn, KeyframeInterpolation.quadOut],
+        [KeyframeInterpolation.cubicIn, KeyframeInterpolation.cubicOut],
+        [KeyframeInterpolation.sineIn, KeyframeInterpolation.sineOut],
+        [KeyframeInterpolation.bounceIn, KeyframeInterpolation.bounceOut],
+      ]) {
+        for (final t in [0.15, 0.5, 0.85]) {
+          expect(applyKeyframeEasing(pair[0], t),
+              closeTo(1 - applyKeyframeEasing(pair[1], 1 - t), 1e-9),
+              reason: '${pair[0].name} @ $t');
+        }
+      }
+    });
+
+    test('bounce out actually bounces rather than merely easing', () {
+      // Not "is monotone" — a bounce deliberately is not. It reverses direction
+      // several times on the way, which is the whole point of the family, and a
+      // port that quietly collapsed into a plain ease would still pass a
+      // start/end check.
+      var reversals = 0;
+      var last = applyKeyframeEasing(KeyframeInterpolation.bounceOut, 0.0);
+      var rising = true;
+      for (var i = 1; i <= 200; i++) {
+        final v = applyKeyframeEasing(KeyframeInterpolation.bounceOut, i / 200);
+        final nowRising = v >= last;
+        if (nowRising != rising) reversals++;
+        rising = nowRising;
+        last = v;
+      }
+      expect(reversals, greaterThanOrEqualTo(4));
+    });
+
+    test('every curve stays within 0..1 for a bounce and beyond it for none',
+        () {
+      // The bounce family is the only one that could overshoot, and it must
+      // not: a value past 1 would push a consumer's parameter beyond the range
+      // its own slider offers.
+      for (final e in KeyframeInterpolation.values) {
+        for (var i = 0; i <= 100; i++) {
+          final v = applyKeyframeEasing(e, i / 100);
+          expect(v, inInclusiveRange(-1e-9, 1 + 1e-9), reason: '${e.name} @ $i');
+        }
+      }
+    });
+
+    test('a keyframe pair travels on the chosen curve', () {
+      const p = AnimatableDouble(baseValue: 0, keyframes: [
+        Keyframe(
+          progress: 0.0,
+          value: 0.0,
+          interpolation: KeyframeInterpolation.quadIn,
+        ),
+        Keyframe(progress: 1.0, value: 1.0),
+      ]);
+      expect(p.resolveAt(0.5), closeTo(0.25, 1e-9)); // quadIn(0.5) == 0.25
+    });
+
+    test('a hold still holds, whatever the easing table says', () {
+      const p = AnimatableDouble(baseValue: 0, keyframes: [
+        Keyframe(
+          progress: 0.0,
+          value: 0.0,
+          interpolation: KeyframeInterpolation.hold,
+        ),
+        Keyframe(progress: 1.0, value: 1.0),
+      ]);
+      expect(p.resolveAt(0.99), 0.0);
+    });
+
+    test('a fresh keyframe is linear, so the sheet opens on None', () {
+      const k = Keyframe(progress: 0.5, value: 1.0);
+      expect(k.interpolation, KeyframeInterpolation.linear);
+    });
+
+    test('the sheet groups name four curves each and cover every selectable value',
+        () {
+      expect(kKeyframeEasingGroups.map((g) => g.label).toList(),
+          ['Default', 'Quadratic', 'Cubic', 'Bounce']);
+      final offered = <KeyframeInterpolation>{
+        for (final g in kKeyframeEasingGroups) ...[
+          g.none,
+          g.easeIn,
+          g.easeOut,
+          g.easeInOut,
+        ],
+      };
+      // `hold` is deliberately absent from the sheet; everything else is
+      // reachable, so a curve cannot be added to the enum and silently
+      // orphaned where no user can pick it.
+      expect(
+        offered,
+        KeyframeInterpolation.values.toSet()..remove(KeyframeInterpolation.hold),
+      );
+    });
+
+    test('every group offers the same None, because there is one way not to ease',
+        () {
+      for (final g in kKeyframeEasingGroups) {
+        expect(g.none, KeyframeInterpolation.linear, reason: g.label);
+      }
+    });
+
+    test('an interpolation name round-trips through json', () {
+      for (final e in KeyframeInterpolation.values) {
+        final k = Keyframe(progress: 0.5, value: 1.0, interpolation: e);
+        expect(Keyframe.fromJson(k.toJson()).interpolation, e, reason: e.name);
+      }
     });
   });
 }

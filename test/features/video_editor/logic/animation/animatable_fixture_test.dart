@@ -130,14 +130,14 @@ void main() {
         baseValue: (entry['baseValue'] as num).toDouble(),
         envelope: entry['envelope'] as String?,
         keyframes: [
+          // Rebuilt through `Keyframe.fromJson` rather than by looking the name
+          // up here. A second copy of name resolution in the test would not
+          // know about the legacy `ease` alias, so a fixture recorded before
+          // the easing families existed would throw on load — and more to the
+          // point, the thing being pinned is what the *model* makes of the
+          // recorded shape, which is exactly what `fromJson` answers.
           for (final k in (entry['keyframes'] as List).cast<Map<String, dynamic>>())
-            Keyframe(
-              progress: (k['progress'] as num).toDouble(),
-              value: (k['value'] as num).toDouble(),
-              interpolation: KeyframeInterpolation.values.firstWhere(
-                (v) => v.name == k['interpolation'],
-              ),
-            ),
+            Keyframe.fromJson(k),
         ],
       );
 
