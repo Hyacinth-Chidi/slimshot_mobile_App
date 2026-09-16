@@ -14,6 +14,7 @@ import '../../models/video_segment.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../../services/video_thumbnail_service.dart';
 import 'apply_to_all_toggle.dart';
+import 'editor_sheet.dart';
 
 class FiltersDrawer extends ConsumerStatefulWidget {
   const FiltersDrawer({super.key});
@@ -277,7 +278,7 @@ class _FiltersDrawerState extends ConsumerState<FiltersDrawer> {
     final previewFrame = loadedFrame ?? editorState.filterThumbnail;
 
     return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.55,
+      height: MediaQuery.of(context).size.height * kEditorSheetPreviewFraction,
       child: Container(
         decoration: const BoxDecoration(
           color: AppColors.background, // Dark background matching the theme

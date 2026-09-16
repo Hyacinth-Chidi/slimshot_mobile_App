@@ -33,7 +33,10 @@ enum EditorCropRatio {
   const EditorCropRatio(this.ratio, this.label);
 }
 
-enum EditorBackgroundType { black, color }
+/// What fills the letterbox. `black` predates the picker (a draft's implicit
+/// default); `color` is a chosen tile; `image` is a photo at
+/// [VideoEditorState.backgroundImagePath], cover-fitted by the engine.
+enum EditorBackgroundType { black, color, image }
 
 /// How close the playhead must be to a diamond to count as sitting on it.
 ///
@@ -104,6 +107,7 @@ class VideoEditorState {
     this.backgroundType = EditorBackgroundType.black,
     this.backgroundColor = Colors.black,
     this.backgroundBlurIntensity = 20.0,
+    this.backgroundImagePath,
     this.selectedTransitionSegmentId,
   });
 
@@ -170,6 +174,13 @@ class VideoEditorState {
   final EditorBackgroundType backgroundType;
   final Color backgroundColor;
   final double backgroundBlurIntensity;
+
+  /// The project's own copy of a background photo, when one has been picked.
+  ///
+  /// Kept even while a colour is in use, so the photo tile keeps showing it and
+  /// one tap brings it back without another trip to the picker. Only read by
+  /// the engine when [backgroundType] is [EditorBackgroundType.image].
+  final String? backgroundImagePath;
   final String? selectedTransitionSegmentId;
 
   /// The first imported file, as an [XFile].
@@ -463,6 +474,8 @@ class VideoEditorState {
     EditorBackgroundType? backgroundType,
     Color? backgroundColor,
     double? backgroundBlurIntensity,
+    String? backgroundImagePath,
+    bool clearBackgroundImagePath = false,
     String? selectedTransitionSegmentId,
     bool clearSelectedTransitionSegmentId = false,
   }) {
@@ -528,6 +541,9 @@ class VideoEditorState {
       backgroundType: backgroundType ?? this.backgroundType,
       backgroundColor: backgroundColor ?? this.backgroundColor,
       backgroundBlurIntensity: backgroundBlurIntensity ?? this.backgroundBlurIntensity,
+      backgroundImagePath: clearBackgroundImagePath
+          ? null
+          : backgroundImagePath ?? this.backgroundImagePath,
       selectedTransitionSegmentId: clearSelectedTransitionSegmentId
           ? null
           : selectedTransitionSegmentId ?? this.selectedTransitionSegmentId,

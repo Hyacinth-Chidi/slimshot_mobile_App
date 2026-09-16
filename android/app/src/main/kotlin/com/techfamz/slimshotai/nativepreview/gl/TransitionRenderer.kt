@@ -13,6 +13,8 @@ import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import com.techfamz.slimshotai.nativepreview.LaneFit
+import com.techfamz.slimshotai.thumbnails.StillImageDecoder
+import java.util.concurrent.Executors
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -286,6 +288,19 @@ internal class TransitionRenderer(
 
     @Volatile
     private var colorOffset = floatArrayOf(0f, 0f, 0f, 0f)
+
+    /**
+     * The letterbox photo. Handed over from any thread, uploaded on the GL
+     * thread at the next draw ([uploadPendingBackgroundImage]) — the same
+     * handover a photo lane uses, for the same reason.
+     */
+    @Volatile private var pendingBackgroundImage: Bitmap? = null
+    @Volatile private var pendingBackgroundClear = false
+    @Volatile private var backgroundImagePath: String? = null
+    private var backgroundTextureId = 0
+    private var backgroundImageWidth = 0
+    private var backgroundImageHeight = 0
+    private val backgroundDecoder = Executors.newSingleThreadExecutor()
 
     /** Letterbox and empty-canvas colour, linear 0..1 RGB. */
     @Volatile
@@ -585,6 +600,7 @@ internal class TransitionRenderer(
     }
 
     fun release() {
+        backgroundDecoder.shutdownNow()
         released = true
         val latch = CountDownLatch(1)
         val posted = handler.post {
@@ -665,6 +681,53 @@ internal class TransitionRenderer(
         lane.pendingImage = bitmap
         lane.showingImage = true
         requestRender()
+    }
+
+    /**
+     * Uses the photo at [path] as the letterbox background, or clears it for
+     * null.
+     *
+     * Decoded off the GL thread — on [backgroundDecoder], or inline when
+     * [synchronous], which export needs so the texture is pending before its
+     * first frame — and uploaded on the GL thread at the next draw, the way a
+     * photo lane's bitmap is. Change-guarded on the path: every `setTimeline`
+     * re-sends the canvas, and decoding a 2048px photo per push would be the
+     * kind of cost that shows as a hitch on every edit. A photo that will not
+     * decode falls back to the colour **and says so** through `onWarning`,
+     * because a background that silently stays black reads as a broken tile.
+     */
+    fun setBackgroundImagePath(path: String?, synchronous: Boolean = false) {
+        if (released) return
+        if (path == backgroundImagePath) return
+        backgroundImagePath = path
+        if (path == null) {
+            pendingBackgroundImage = null
+            pendingBackgroundClear = true
+            requestRender()
+            return
+        }
+        val decode = Runnable {
+            val bitmap = try {
+                StillImageDecoder.decode(path, BACKGROUND_IMAGE_MAX_PX, BACKGROUND_IMAGE_MAX_PX)
+            } catch (error: Exception) {
+                null
+            }
+            // A later call may have moved on while this decoded.
+            if (backgroundImagePath != path) {
+                bitmap?.recycle()
+                return@Runnable
+            }
+            if (bitmap == null) {
+                pendingBackgroundImage = null
+                pendingBackgroundClear = true
+                onWarning("Background photo could not be loaded; the bars show the colour instead.")
+            } else {
+                pendingBackgroundClear = false
+                pendingBackgroundImage = bitmap
+            }
+            requestRender()
+        }
+        if (synchronous) decode.run() else backgroundDecoder.execute(decode)
     }
 
     /** Whether [laneIndex] is currently sampling an uploaded photo. */
@@ -1062,8 +1125,10 @@ internal class TransitionRenderer(
      * keeps a project without effects rendering exactly as it did.
      */
     private fun drawScene() {
+        uploadPendingBackgroundImage()
         GLES20.glClearColor(backgroundColor[0], backgroundColor[1], backgroundColor[2], 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        val backgroundFit = backgroundImageFit()
 
         val draw = transition
         val outgoing = draw?.let { lanes.getOrNull(it.outgoingLane) }
@@ -1084,7 +1149,14 @@ internal class TransitionRenderer(
             )
             if (program != null) {
                 program.use()
-                program.bindCanvas(colorMatrix, colorOffset, backgroundColor, viewportAspect)
+                program.bindCanvas(
+                    colorMatrix,
+                    colorOffset,
+                    backgroundColor,
+                    viewportAspect,
+                    backgroundTextureId,
+                    backgroundFit,
+                )
                 bindLaneAsIncoming(program, incoming)
                 bindLaneAsOutgoing(program, outgoing)
                 program.setProgress(draw.progress)
@@ -1101,12 +1173,86 @@ internal class TransitionRenderer(
                 val program = programFor(PASSTHROUGH, lane.showingImage, lane.showingImage)
                 if (program != null) {
                     program.use()
-                    program.bindCanvas(colorMatrix, colorOffset, backgroundColor, viewportAspect)
+                    program.bindCanvas(
+                        colorMatrix,
+                        colorOffset,
+                        backgroundColor,
+                        viewportAspect,
+                        backgroundTextureId,
+                        backgroundFit,
+                    )
                     bindLaneAsIncoming(program, lane)
                     drawQuad(program)
                 }
+            } else if (backgroundTextureId != 0) {
+                drawBackgroundImageOnly(backgroundFit)
             }
         }
+    }
+
+    /**
+     * The tail past the last clip, or a lane not yet holding a picture, with a
+     * background photo: the photo alone, covering the canvas.
+     *
+     * Drawn through the passthrough program with the photo bound as the
+     * "clip" and the **reciprocal** of its cover fit as the contain fit — a fit
+     * above 1 samples a central sub-rectangle — so the canvas shows exactly the
+     * region `backgroundAt` samples behind a clip, and the photo cannot jump at
+     * the last cut. The clear already painted the colour, which is what shows
+     * if the photo is still decoding.
+     */
+    private fun drawBackgroundImageOnly(cover: Pair<Float, Float>) {
+        val program = programFor(PASSTHROUGH, incomingIsImage = true, outgoingIsImage = true)
+            ?: return
+        program.use()
+        program.bindCanvas(colorMatrix, colorOffset, backgroundColor, viewportAspect)
+        program.bindIncoming(
+            backgroundTextureId,
+            GLES20.GL_TEXTURE_2D,
+            BITMAP_MATRIX,
+            1f / cover.first,
+            1f / cover.second,
+            0f,
+            0f,
+        )
+        program.bindIncomingGrade(null, NO_COLOR_OFFSET)
+        drawQuad(program)
+    }
+
+    /** The background photo's cover fit on the viewport being drawn. */
+    private fun backgroundImageFit(): Pair<Float, Float> {
+        if (backgroundTextureId == 0 || backgroundImageHeight <= 0) return Pair(1f, 1f)
+        return BackgroundFit.cover(
+            backgroundImageWidth.toDouble() / backgroundImageHeight,
+            viewportAspect.toDouble(),
+        )
+    }
+
+    /**
+     * Uploads or clears the background photo, on the GL thread, before the
+     * frame that first shows the change — the same atomic handover a photo
+     * lane's bitmap gets, so the fit and the pixels always agree.
+     */
+    private fun uploadPendingBackgroundImage() {
+        if (pendingBackgroundClear) {
+            pendingBackgroundClear = false
+            if (backgroundTextureId != 0) GlUtil.deleteTexture(backgroundTextureId)
+            backgroundTextureId = 0
+            backgroundImageWidth = 0
+            backgroundImageHeight = 0
+        }
+        val bitmap = pendingBackgroundImage ?: return
+        pendingBackgroundImage = null
+        if (bitmap.isRecycled) return
+        if (backgroundTextureId == 0) {
+            backgroundTextureId = GlUtil.createTexture2D(bitmap.width, bitmap.height)
+        }
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, backgroundTextureId)
+        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+        backgroundImageWidth = bitmap.width
+        backgroundImageHeight = bitmap.height
+        GlUtil.checkGlError("uploadPendingBackgroundImage")
     }
 
     /** Uploads a photo handed to this lane, replacing whatever it held. */
@@ -1301,6 +1447,21 @@ internal class TransitionRenderer(
          */
         private val NO_COLOR_OFFSET = floatArrayOf(0f, 0f, 0f, 0f)
         private val IDENTITY_MATRIX = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
+
+        /** Bitmaps are top-left origin; the quad's texcoords run y-up. */
+        private val BITMAP_MATRIX = floatArrayOf(
+            1f, 0f, 0f, 0f,
+            0f, -1f, 0f, 0f,
+            0f, 0f, 1f, 0f,
+            0f, 1f, 0f, 1f,
+        )
+
+        /**
+         * Longest side a background photo is decoded to. Covers a 1080p export
+         * with room to spare; a 12-megapixel original uploaded whole would be
+         * texture memory spent on pixels no frame can show.
+         */
+        private const val BACKGROUND_IMAGE_MAX_PX = 2048
     }
 }
 
@@ -1325,6 +1486,9 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glGetUniformLocation(handle, "uRotationOutgoing")
     private val uCanvasAspect = GLES20.glGetUniformLocation(handle, "uCanvasAspect")
     private val uBackground = GLES20.glGetUniformLocation(handle, "uBackground")
+    private val uBackgroundImage = GLES20.glGetUniformLocation(handle, "uBackgroundImage")
+    private val uBackgroundImageOn = GLES20.glGetUniformLocation(handle, "uBackgroundImageOn")
+    private val uBackgroundImageFit = GLES20.glGetUniformLocation(handle, "uBackgroundImageFit")
     private val uContentRectIncoming =
         GLES20.glGetUniformLocation(handle, "uContentRectIncoming")
     private val uContentRectOutgoing =
@@ -1402,8 +1566,18 @@ internal class TransitionProgram(private val handle: Int) {
         colorOffset: FloatArray,
         background: FloatArray,
         canvasAspect: Float = 1f,
+        backgroundImage: Int = 0,
+        backgroundImageFit: Pair<Float, Float> = Pair(1f, 1f),
     ) {
         GLES20.glUniform3f(uBackground, background[0], background[1], background[2])
+        // The background photo, on its own unit so the lanes keep 0 and 1. A
+        // texture of 0 means "the colour", and the shader never samples then.
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, backgroundImage)
+        GLES20.glUniform1i(uBackgroundImage, 2)
+        GLES20.glUniform1f(uBackgroundImageOn, if (backgroundImage != 0) 1f else 0f)
+        GLES20.glUniform2f(uBackgroundImageFit, backgroundImageFit.first, backgroundImageFit.second)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         // The rotation helper needs the canvas shape to rotate without shearing.
         // Guarded against zero: a viewport that has not been sized yet would
         // otherwise divide every sampled coordinate by nothing.

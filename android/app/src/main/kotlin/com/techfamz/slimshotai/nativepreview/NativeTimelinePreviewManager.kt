@@ -154,6 +154,12 @@ class NativeTimelinePreviewManager(
                 0xFF000000.toInt()
             }
             renderer?.setBackgroundColor(argb)
+            // Synchronous: the export's first frame must not go out before the
+            // photo is at least pending for upload.
+            renderer?.setBackgroundImagePath(
+                if (backgroundType == "image") canvas?.get("backgroundImagePath") as? String else null,
+                synchronous = true,
+            )
         }
 
         val overlays = NativeTimelineOverlays.fromTimeline(timeline)

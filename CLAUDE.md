@@ -306,14 +306,41 @@ carried through the timeline contract into the shader (`uBackground`) and `glCle
 are the chosen colour in preview and export alike. `blur` has no native implementation yet and falls
 back to **black**, not to the colour — a user who chose blur did not choose that colour.
 
-**The picker is `BackgroundSheet`**: square 64px tiles (the crop panel's tile width; square because
-a colour needs no label), applied live, one undo step each (`setBackground` writes type and colour
-together). The old "Solid Color" switch is gone — black is the first tile, so there was nothing left
-to switch; the `black` type survives in the model for existing drafts and shows as the black tile
-being current. **Image and blurred-clip backgrounds are agreed but unbuilt**: an image is one
-uploaded texture sampled where a lane's fit returns background, inside the same `composite` both
-engines share (parity for free), with the file copied into the project folder like a cover; blur
-rides the effect pass chain. Both belong in this sheet as further tiles.
+**The picker is `BackgroundSheet`**: a photo tile, then square 64px colour tiles (the crop panel's
+tile width; square because a colour needs no label), applied live, one undo step each
+(`setBackground` writes type and colour together). The old "Solid Color" switch is gone — black is
+the first tile, so there was nothing left to switch; the `black` type survives in the model for
+existing drafts and shows as the black tile being current. The sheet stops at
+`kEditorSheetPreviewFraction` (45%) of the screen and scrolls inside — a sheet at half the screen
+hid the frame the user was choosing for. Filters, Effects, Transitions and the clip animations
+share the fraction; the audio and sticker *libraries* keep their own taller height.
+
+**A photo as the background** (`EditorBackgroundType.image`, **awaiting device verification** —
+the shader half is GLSL). The photo tile is an action where the colour tiles are values: empty, a
+dashed frame with an add glyph and "Photo" under it; chosen, the photo itself, and it keeps showing
+while a colour is in use so one tap brings it back with no second trip to the picker
+(`useBackgroundImage`); tapped while in use, it replaces. `importBackgroundImage` copies the picked
+file into the project folder as `bg_<draftId>_<ts>` like a cover — the picker's path is a cache the
+OS may reclaim, and a fresh name per pick defeats `FileImage`'s path cache — and deletes the
+previous copy; the path is persisted in the draft (absent when none) and read back as `black` when
+the file is gone. The contract sends `canvas.backgroundImagePath` only while the photo is in use,
+so a resting photo never reaches the engine and an older build reads the payload it always did.
+
+In the engine the photo **covers** the canvas (`BackgroundFit.cover`: the visible fraction per axis,
+centred — a background with bars would need a background of its own) and is sampled by
+`backgroundAt()` in the shader header wherever `incomingAt`/`outgoingAt` used to return the colour,
+so every transition inherits it. It samples at `vTexCoord`, the fragment's own canvas position,
+not at the uv a transition may have warped, so the photo stays put while clips move over it; and it
+flips v, because bitmaps are top-left. The tail past the last clip draws the photo alone through
+the passthrough program with the *reciprocal* of the cover fit — a fit above 1 samples a central
+sub-rectangle — which lands on exactly the region sampled behind a clip, so the photo cannot jump
+at the last cut. It rides texture unit 2 (lanes keep 0 and 1), is decoded to ≤2048px by
+`StillImageDecoder` off the GL thread (synchronously for export, so the first frame does not go
+out before it is pending) and uploaded at the next draw like a photo lane's bitmap; the renderer
+change-guards on the path, because every `setTimeline` re-sends the canvas. A photo that will not
+decode falls back to the colour **and warns**, through the same `onWarning` the lane fallback uses.
+**Blur remains unbuilt**: it rides the effect pass chain and belongs in this sheet as a further
+tile.
 
 **Per-clip canvas transform (pinch to scale, drag to move — CapCut-style).** With a clip selected,
 pinching the preview scales it about the contain-fit and a one-finger drag moves it; double-tap

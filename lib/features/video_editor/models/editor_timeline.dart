@@ -121,6 +121,7 @@ class EditorTimelineCanvas {
     required this.backgroundColor,
     required this.backgroundType,
     required this.backgroundBlurIntensity,
+    this.backgroundImagePath,
     required this.cropRatio,
     required this.customCropRect,
     required this.videoScale,
@@ -161,6 +162,12 @@ class EditorTimelineCanvas {
   final Color backgroundColor;
   final String backgroundType;
   final double backgroundBlurIntensity;
+
+  /// The background photo's path when [backgroundType] is `image`, else null
+  /// and **absent from the JSON** — a build that predates the photo reads the
+  /// payload it always did. The engine decodes it and samples it wherever it
+  /// used to paint the colour.
+  final String? backgroundImagePath;
   final String cropRatio;
   final Rect customCropRect;
   final double videoScale;
@@ -181,6 +188,7 @@ class EditorTimelineCanvas {
       'colorMatrix': colorMatrix,
       'backgroundType': backgroundType,
       'backgroundBlurIntensity': backgroundBlurIntensity,
+      if (backgroundImagePath != null) 'backgroundImagePath': backgroundImagePath,
       'cropRatio': cropRatio,
       'customCropRect': {
         'left': customCropRect.left,

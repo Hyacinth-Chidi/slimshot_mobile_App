@@ -121,6 +121,11 @@ class VideoEditorTimelineComposer {
         backgroundColor: state.backgroundColor,
         backgroundType: state.backgroundType.name,
         backgroundBlurIntensity: state.backgroundBlurIntensity,
+        // Only while the photo is in use: a resting photo is the sheet's
+        // business, not the engine's.
+        backgroundImagePath: state.backgroundType == EditorBackgroundType.image
+            ? state.backgroundImagePath
+            : null,
         cropRatio: state.selectedRatio.name,
         customCropRect: state.customCropRect,
         videoScale: state.videoScale,

@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../logic/transitions/transition_catalog.dart';
 import '../../providers/video_editor_notifier.dart';
 import 'apply_to_all_toggle.dart';
+import 'editor_sheet.dart';
 
 class TransitionsDrawer extends ConsumerWidget {
   const TransitionsDrawer({super.key});
@@ -33,7 +34,7 @@ class TransitionsDrawer extends ConsumerWidget {
     final resolvedTargetSegmentId = targetSegmentId;
     if (resolvedTargetSegmentId == null || editorState.segments.length < 2) {
       return SizedBox(
-        height: MediaQuery.of(context).size.height * 0.45,
+        height: MediaQuery.of(context).size.height * kEditorSheetPreviewFraction,
         child: Container(
           decoration: const BoxDecoration(
             color: AppColors.background,
@@ -82,7 +83,7 @@ class TransitionsDrawer extends ConsumerWidget {
     final options = <EditorTransition?>[null, ...EditorTransition.values];
 
     return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.45,
+      height: MediaQuery.of(context).size.height * kEditorSheetPreviewFraction,
       child: Container(
         decoration: const BoxDecoration(
           color: AppColors.background,

@@ -1,11 +1,17 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/toast_utils.dart';
 import '../../models/video_editor_state.dart';
 import '../../providers/video_editor_notifier.dart';
+import 'editor_sheet.dart';
 
 /// The solid colours offered for the letterbox background. Black first: it is
 /// the default every project starts on, and the tile that reads as current for
@@ -33,26 +39,52 @@ const double _kEdge = 16;
 /// The gap between tiles, in both directions.
 const double _kTileGap = 10;
 
-/// The letterbox background picker: a sheet of square colour tiles.
+/// Asks the user for a photo and answers its path, or null when they back out.
+typedef BackgroundPhotoPicker = Future<String?> Function();
+
+Future<String?> _pickFromGallery() async {
+  final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+  return picked?.path;
+}
+
+/// The letterbox background picker: a photo tile, then square colour tiles.
 ///
 /// **A sheet, not a panel.** A background is a choice *about* the picture with
 /// no canvas or timeline gesture attached — the rule that already puts the
 /// curve, filters and effects in sheets — so it opens over a clear canvas like
-/// they do and the user watches the bars change as they tap.
+/// they do and the user watches the bars change as they tap. **Capped at
+/// [kEditorSheetPreviewFraction] of the screen** and scrolling inside, because
+/// a sheet that climbs to half the screen hides the very picture it is about.
 ///
 /// **The "Solid Color" switch is gone.** It toggled between a `black` type and
 /// a `color` type, but black is a colour: it is the first tile, and picking any
 /// tile is the whole interaction. The `black` type survives in the model for
 /// drafts already written and shows here as the black tile being current.
 ///
+/// **The photo tile leads.** Empty, it is an invitation — a dashed frame with
+/// an add-photo glyph and "Photo" under it; with a photo chosen it shows that
+/// photo, and stays showing it while a colour is in use, so one tap brings the
+/// photo back without another trip to the picker (tapping it while it is
+/// already in use replaces it). Its box is a colour tile's size, so the grid
+/// reads as one family; only the label under it sets it apart, and that is the
+/// point — it is an action where the others are values.
+///
 /// **Tiles, not circles**, the width of the crop panel's ratio tiles and square
-/// because a colour needs no label — one tile language across the editor's
-/// pickers. Every tap applies live and is one undo step; the ✓ only dismisses.
+/// because a colour needs no label. Every tap applies live and is one undo
+/// step; the ✓ only dismisses.
 class BackgroundSheet extends ConsumerWidget {
-  const BackgroundSheet({super.key});
+  const BackgroundSheet({super.key, this.pickImage});
+
+  /// How a photo is asked for. The gallery picker in the app; a stub in tests,
+  /// which have no platform to answer one.
+  final BackgroundPhotoPicker? pickImage;
 
   /// The side of a tile: the crop panel's tile width, so the two pickers match.
   static const double kTileSize = 64.0;
+
+  /// The photo tile's box (not its label), for tests and anything that needs
+  /// to find it.
+  static const Key photoTileKey = Key('background_photo_tile');
 
   /// The key of a colour's tile, for tests and for anything that needs to
   /// find one.
@@ -63,10 +95,19 @@ class BackgroundSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
-    // The old `black` type is the black tile; anything else is its colour.
-    final current = state.backgroundType == EditorBackgroundType.color
-        ? state.backgroundColor.toARGB32()
-        : Colors.black.toARGB32();
+    final photoPath = state.backgroundImagePath;
+    final usingPhoto =
+        state.backgroundType == EditorBackgroundType.image && photoPath != null;
+    // The old `black` type is the black tile; a colour is its colour; a photo
+    // in use marks no colour at all.
+    final int? currentColour = switch (state.backgroundType) {
+      EditorBackgroundType.black => Colors.black.toARGB32(),
+      EditorBackgroundType.color => state.backgroundColor.toARGB32(),
+      EditorBackgroundType.image =>
+        photoPath == null ? Colors.black.toARGB32() : null,
+    };
+    final maxHeight =
+        MediaQuery.sizeOf(context).height * kEditorSheetPreviewFraction;
 
     return Container(
       decoration: const BoxDecoration(
@@ -75,65 +116,106 @@ class BackgroundSheet extends ConsumerWidget {
       ),
       child: SafeArea(
         top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _handle(),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: _kEdge),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Background',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                  GestureDetector(
-                    key: const Key('background_done'),
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      Navigator.of(context).pop();
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Icon(
-                        LucideIcons.check,
-                        color: AppColors.primaryStart,
-                        size: 22,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _handle(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: _kEdge),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Background',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(_kEdge, 0, _kEdge, _kEdge),
-              child: Wrap(
-                spacing: _kTileGap,
-                runSpacing: _kTileGap,
-                children: [
-                  for (final colour in kBackgroundPresets)
-                    _ColourTile(
-                      key: tileKey(colour),
-                      colour: colour,
-                      selected: colour.toARGB32() == current,
+                    GestureDetector(
+                      key: const Key('background_done'),
                       onTap: () {
                         HapticFeedback.selectionClick();
-                        notifier.setBackground(colour);
+                        Navigator.of(context).pop();
                       },
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(
+                          LucideIcons.check,
+                          color: AppColors.primaryStart,
+                          size: 22,
+                        ),
+                      ),
                     ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              // Loose, so a short list takes only its height and a long one
+              // stops at the cap and scrolls.
+              Flexible(
+                child: SingleChildScrollView(
+                  padding:
+                      const EdgeInsets.fromLTRB(_kEdge, 0, _kEdge, _kEdge),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _PhotoTile(
+                        path: photoPath,
+                        selected: usingPhoto,
+                        onTap: () => _onPhotoTap(context, ref),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: _kTileGap,
+                        runSpacing: _kTileGap,
+                        children: [
+                          for (final colour in kBackgroundPresets)
+                            _ColourTile(
+                              key: tileKey(colour),
+                              colour: colour,
+                              selected: colour.toARGB32() == currentColour,
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                notifier.setBackground(colour);
+                              },
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  /// The photo tile's three meanings, by state: no photo → pick one; a photo
+  /// resting while a colour is in use → use it again, no picker; the photo in
+  /// use → pick a replacement.
+  Future<void> _onPhotoTap(BuildContext context, WidgetRef ref) async {
+    HapticFeedback.selectionClick();
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final state = ref.read(videoEditorProvider);
+    if (state.backgroundImagePath != null &&
+        state.backgroundType != EditorBackgroundType.image) {
+      notifier.useBackgroundImage();
+      return;
+    }
+    final picked = await (pickImage ?? _pickFromGallery)();
+    if (picked == null) return;
+    final ok = await notifier.importBackgroundImage(picked);
+    if (!ok && context.mounted) {
+      // Loudly, not silently: a tap that did nothing reads as a broken tile.
+      ToastUtils.show(context, 'Could not use that photo.', isError: true);
+    }
   }
 
   /// The grab handle, drawn exactly as every other sheet in the app draws it.
@@ -145,6 +227,131 @@ class BackgroundSheet extends ConsumerWidget {
       decoration: BoxDecoration(
         color: Colors.white24,
         borderRadius: BorderRadius.circular(2),
+      ),
+    );
+  }
+}
+
+class _PhotoTile extends StatelessWidget {
+  const _PhotoTile({
+    required this.path,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String? path;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = path;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          KeyedSubtree(
+            key: BackgroundSheet.photoTileKey,
+            child: SizedBox(
+              width: BackgroundSheet.kTileSize,
+              height: BackgroundSheet.kTileSize,
+              child: photo == null
+                  ? const _EmptyPhotoTile()
+                  : _ChosenPhotoTile(path: photo, selected: selected),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Photo',
+            style: TextStyle(
+              color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// No photo yet: a dashed frame with an add glyph — an invitation, drawn in
+/// the palette's quiet tones so the colour tiles beside it stay the loud ones.
+class _EmptyPhotoTile extends StatelessWidget {
+  const _EmptyPhotoTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: const _DashedFramePainter(
+        colour: AppColors.border,
+        radius: 12,
+        strokeWidth: 1.5,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.center,
+        child: const Icon(
+          LucideIcons.imagePlus,
+          color: AppColors.textSecondary,
+          size: 24,
+        ),
+      ),
+    );
+  }
+}
+
+/// The chosen photo, cover-fitted into the tile the way the engine cover-fits
+/// it onto the canvas; the accent border and a check when it is in use.
+class _ChosenPhotoTile extends StatelessWidget {
+  const _ChosenPhotoTile({required this.path, required this.selected});
+
+  final String path;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: selected ? AppColors.primaryStart : AppColors.border,
+          width: selected ? 2 : 1,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.file(
+              File(path),
+              fit: BoxFit.cover,
+              // A missing file shows the glyph, never an exception: drafts
+              // outlive cache folders.
+              errorBuilder: (_, __, ___) => Container(
+                color: AppColors.surface,
+                alignment: Alignment.center,
+                child: const Icon(
+                  LucideIcons.image,
+                  color: AppColors.textSecondary,
+                  size: 22,
+                ),
+              ),
+            ),
+            if (selected)
+              Container(
+                color: Colors.black38,
+                alignment: Alignment.center,
+                child: const Icon(LucideIcons.check, color: Colors.white, size: 22),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -188,4 +395,43 @@ class _ColourTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A rounded rectangle drawn as dashes: the empty photo tile's frame.
+class _DashedFramePainter extends CustomPainter {
+  const _DashedFramePainter({
+    required this.colour,
+    required this.radius,
+    required this.strokeWidth,
+  });
+
+  final Color colour;
+  final double radius;
+  final double strokeWidth;
+
+  static const double _dash = 5;
+  static const double _gap = 4;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = colour
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+    final rect = (Offset.zero & size).deflate(strokeWidth / 2);
+    final outline = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
+    for (final ui.PathMetric metric in outline.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final end = (distance + _dash).clamp(0.0, metric.length);
+        canvas.drawPath(metric.extractPath(distance, end), paint);
+        distance = end + _gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedFramePainter old) =>
+      old.colour != colour || old.radius != radius || old.strokeWidth != strokeWidth;
 }

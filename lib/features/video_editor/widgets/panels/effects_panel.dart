@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../logic/animation/clip_keyframes.dart';
 import '../../logic/effects/effect_catalog.dart';
 import '../../providers/video_editor_notifier.dart';
+import 'editor_sheet.dart';
 
 /// The clip's Effects sheet: a category row, a grid of effect tiles, and one
 /// intensity slider.
@@ -151,7 +152,7 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
     final effects = effectsInCategory(_category);
 
     return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.45,
+      height: MediaQuery.of(context).size.height * kEditorSheetPreviewFraction,
       child: Container(
         decoration: const BoxDecoration(
           color: AppColors.background,

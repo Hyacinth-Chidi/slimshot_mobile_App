@@ -1050,6 +1050,11 @@ internal class TimelinePlaybackEngine(
             else -> BLACK
         }
         renderer.setBackgroundColor(backgroundArgb)
+        // The letterbox photo while the type is `image`; anything else clears
+        // it. Decoded off this thread and uploaded at the next draw.
+        renderer.setBackgroundImagePath(
+            if (backgroundType == "image") canvas?.get("backgroundImagePath") as? String else null,
+        )
 
         // The canvas rect is no longer read here: each clip carries its own
         // composed rect and `applyLaneFits` pushes it per lane, the same way

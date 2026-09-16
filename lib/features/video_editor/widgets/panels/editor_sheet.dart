@@ -22,6 +22,15 @@ import '../../../../core/theme/app_motion.dart';
 /// panel arrive and leave as one family. A test scans `lib/` for stray
 /// `showModalBottomSheet` calls, because a new sheet opened directly would
 /// bring the tint and the stock timing back without anyone having chosen them.
+/// The most of the screen a sheet may take when its choices are judged on the
+/// picture — Background, Filters, Effects, Transitions, the clip animations.
+///
+/// Device-reported: a sheet at half the screen hid the very frame the user was
+/// choosing for. 45% keeps the canvas comfortably visible above it; a sheet
+/// with more to show scrolls inside the cap. Browsers of *libraries* (audio,
+/// stickers) are not about the picture and keep their own, taller height.
+const double kEditorSheetPreviewFraction = 0.45;
+
 Future<T?> showEditorSheet<T>(
   BuildContext context, {
   required WidgetBuilder builder,

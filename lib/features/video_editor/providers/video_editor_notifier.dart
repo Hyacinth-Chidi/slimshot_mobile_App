@@ -41,7 +41,26 @@ bool _isNearlyFullFrame(Rect rect) {
       (1.0 - rect.bottom).abs() < 0.0001;
 }
 
-/// Ratio a draft reopens with.
+/// Ratio a draft reopens with./// The draft's background type, with a photo that is gone read as black.
+///
+/// The project keeps its own copy of a background photo, but a cleared app
+/// folder or a draft moved between devices can still leave the path pointing
+/// at nothing. Reopening such a draft as `image` would hand the engine a file
+/// it cannot decode on every push; black is what the project had before the
+/// photo, and the path is kept so the tile can still offer a re-pick.
+EditorBackgroundType _backgroundTypeFromDraft(DraftProject draft) {
+  final type = EditorBackgroundType.values.firstWhere(
+    (e) => e.name == draft.backgroundType,
+    orElse: () => EditorBackgroundType.black,
+  );
+  if (type != EditorBackgroundType.image) return type;
+  final path = draft.backgroundImagePath;
+  return path != null && File(path).existsSync()
+      ? type
+      : EditorBackgroundType.black;
+}
+
+
 ///
 /// Drafts written while `custom` was the app default carry `custom` plus a
 /// full-frame crop rect — that combination was the implicit 9:16 default, not
@@ -290,6 +309,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         backgroundType: state.backgroundType.name,
         backgroundColorValue: state.backgroundColor.value,
         backgroundBlurIntensity: state.backgroundBlurIntensity,
+        backgroundImagePath: state.backgroundImagePath,
         isMuted: state.isMuted,
       );
 
@@ -391,12 +411,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       // reopen with the sheet set to "apply to all", because the next filter
       // the user picked would then wipe every one of those grades.
       filterAppliesToAll: !segments.any((s) => s.filterId != null),
-      backgroundType: EditorBackgroundType.values.firstWhere(
-        (e) => e.name == draft.backgroundType,
-        orElse: () => EditorBackgroundType.black,
-      ),
+      backgroundType: _backgroundTypeFromDraft(draft),
       backgroundColor: Color(draft.backgroundColorValue),
       backgroundBlurIntensity: draft.backgroundBlurIntensity,
+      backgroundImagePath: draft.backgroundImagePath,
       isMuted: draft.isMuted,
       isPlaying: false,
       isExporting: false,
@@ -1213,6 +1231,67 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       backgroundType: EditorBackgroundType.color,
       backgroundColor: color,
     );
+  }
+
+  /// Uses the photo at [path] as the background: type and path together, one
+  /// undo step. The path should already be the project's own copy — see
+  /// [importBackgroundImage].
+  void setBackgroundImage(String path) {
+    saveStateForUndo();
+    state = state.copyWith(
+      backgroundType: EditorBackgroundType.image,
+      backgroundImagePath: path,
+    );
+  }
+
+  /// Switches back to the photo already chosen, without another pick. A no-op
+  /// with none chosen, and not an undo step then — nothing changed.
+  void useBackgroundImage() {
+    if (state.backgroundImagePath == null) return;
+    if (state.backgroundType == EditorBackgroundType.image) return;
+    saveStateForUndo();
+    state = state.copyWith(backgroundType: EditorBackgroundType.image);
+  }
+
+  /// Copies a picked photo into the project's folder and uses it.
+  ///
+  /// The picker hands back a cache path the OS may reclaim, so the project
+  /// keeps its own copy, named by draft and time like a cover is — a fresh
+  /// name per pick, because `FileImage` caches by path and overwriting one
+  /// file would keep showing the old photo everywhere it had been drawn. The
+  /// previous copy is deleted. False, with nothing changed, when there is no
+  /// draft to keep it in or the copy fails; the sheet says so.
+  Future<bool> importBackgroundImage(
+    String sourcePath, {
+    Directory? destinationDir,
+  }) async {
+    final draftId = state.draftId;
+    if (draftId == null) return false;
+    try {
+      final source = File(sourcePath);
+      if (!await source.exists()) return false;
+      final dir = destinationDir ?? await getApplicationDocumentsDirectory();
+      final name = sourcePath.split(RegExp(r'[\\/]')).last;
+      final dot = name.lastIndexOf('.');
+      final extension = dot > 0 ? name.substring(dot) : '.jpg';
+      final copy = await source.copy(
+        '${dir.path}/bg_${draftId}_${DateTime.now().millisecondsSinceEpoch}$extension',
+      );
+
+      final previous = state.backgroundImagePath;
+      setBackgroundImage(copy.path);
+      if (previous != null && previous.contains('bg_$draftId')) {
+        unawaited(() async {
+          try {
+            await File(previous).delete();
+          } catch (_) {}
+        }());
+      }
+      await saveDraft();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   void setBackgroundBlurIntensity(double intensity) {

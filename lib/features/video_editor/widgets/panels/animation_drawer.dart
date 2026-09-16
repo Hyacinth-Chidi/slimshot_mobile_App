@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../../models/overlay_animation.dart';
 import '../../../../core/theme/app_colors.dart';
+import 'editor_sheet.dart';
 
 class AnimationDrawer extends ConsumerStatefulWidget {
   const AnimationDrawer({super.key});
@@ -48,7 +49,7 @@ class _AnimationDrawerState extends ConsumerState<AnimationDrawer> {
     final activeDuration = _activeTabIndex == 0 ? currentAnimInDuration : currentAnimOutDuration;
 
     return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.55,
+      height: MediaQuery.of(context).size.height * kEditorSheetPreviewFraction,
       child: Container(
         decoration: const BoxDecoration(
           color: AppColors.background,

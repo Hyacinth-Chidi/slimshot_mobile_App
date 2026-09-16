@@ -34,6 +34,9 @@ class DraftProject {
   final String backgroundType;
   final int backgroundColorValue;
   final double backgroundBlurIntensity;
+
+  /// The project's copy of a background photo; absent from the JSON when none.
+  final String? backgroundImagePath;
   
   final bool isMuted;
 
@@ -60,6 +63,7 @@ class DraftProject {
     required this.backgroundType,
     required this.backgroundColorValue,
     required this.backgroundBlurIntensity,
+    this.backgroundImagePath,
     required this.isMuted,
   });
 
@@ -87,6 +91,7 @@ class DraftProject {
       'backgroundType': backgroundType,
       'backgroundColorValue': backgroundColorValue,
       'backgroundBlurIntensity': backgroundBlurIntensity,
+      if (backgroundImagePath != null) 'backgroundImagePath': backgroundImagePath,
       'isMuted': isMuted,
     };
   }
@@ -117,6 +122,7 @@ class DraftProject {
       backgroundType: json['backgroundType'] as String? ?? 'black',
       backgroundColorValue: json['backgroundColorValue'] as int? ?? 0xFF000000,
       backgroundBlurIntensity: (json['backgroundBlurIntensity'] as num?)?.toDouble() ?? 20.0,
+      backgroundImagePath: json['backgroundImagePath'] as String?,
       isMuted: json['isMuted'] as bool? ?? false,
     );
   }

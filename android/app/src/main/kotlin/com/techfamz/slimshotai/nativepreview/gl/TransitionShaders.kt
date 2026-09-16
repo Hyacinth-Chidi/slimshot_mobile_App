@@ -70,6 +70,9 @@ uniform float uRotationIncoming;
 uniform float uRotationOutgoing;
 uniform float uCanvasAspect;
 uniform vec3 uBackground;
+uniform sampler2D uBackgroundImage;
+uniform float uBackgroundImageOn;
+uniform vec2 uBackgroundImageFit;
 uniform vec4 uContentRectIncoming;
 uniform vec4 uContentRectOutgoing;
 uniform mat4 uColorMatrix;
@@ -146,12 +149,26 @@ vec2 rotateCanvas(vec2 uv, float radians) {
 // find the clip's centre), then un-rotates about it, then un-fits. Rotating
 // *before* removing the pan would spin the clip about the canvas centre rather
 // than its own, and a clip dragged to the corner would orbit instead of turn.
+// The letterbox fill at this fragment: the project colour, or the background
+// photo covering the canvas. Read at vTexCoord — the fragment's own canvas
+// position — rather than at the uv a transition may have warped, so the photo
+// stays put while the clips move over it. uBackgroundImageFit is the visible
+// fraction of the photo per axis, centred (BackgroundFit.cover); bitmaps are
+// top-left origin, so v is flipped.
+vec4 backgroundAt() {
+    if (uBackgroundImageOn < 0.5) {
+        return vec4(uBackground, 1.0);
+    }
+    vec2 bg = (vTexCoord - 0.5) * uBackgroundImageFit + 0.5;
+    return texture2D(uBackgroundImage, vec2(bg.x, 1.0 - bg.y));
+}
+
 vec4 incomingAt(vec2 uv) {
     vec2 centred = rotateCanvas(uv - uPanIncoming * vec2(1.0, -1.0), uRotationIncoming);
     vec2 fitted = (centred - 0.5) / uFitIncoming + 0.5;
     // Outside the fitted rect is background, not stretched edge pixels.
     if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
-        return vec4(uBackground, 1.0);
+        return backgroundAt();
     }
     vec2 source = uContentRectIncoming.xy + fitted * uContentRectIncoming.zw;
     vec4 texel = texture2D(uIncoming, (uTexMatrixIncoming * vec4(source, 0.0, 1.0)).xy);
@@ -162,7 +179,7 @@ vec4 outgoingAt(vec2 uv) {
     vec2 centred = rotateCanvas(uv - uPanOutgoing * vec2(1.0, -1.0), uRotationOutgoing);
     vec2 fitted = (centred - 0.5) / uFitOutgoing + 0.5;
     if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
-        return vec4(uBackground, 1.0);
+        return backgroundAt();
     }
     vec2 source = uContentRectOutgoing.xy + fitted * uContentRectOutgoing.zw;
     vec4 texel = texture2D(uOutgoing, (uTexMatrixOutgoing * vec4(source, 0.0, 1.0)).xy);

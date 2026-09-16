@@ -7,6 +7,7 @@ import 'package:slimshotai/features/video_editor/providers/video_editor_notifier
 import 'package:slimshotai/features/video_editor/services/video_editor_service.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/background_sheet.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/crop_panel.dart';
+import 'package:slimshotai/features/video_editor/widgets/panels/editor_sheet.dart';
 
 /// The background picker is a sheet of square colour tiles.
 ///
@@ -26,14 +27,32 @@ void main() {
       ..state = VideoEditorState(backgroundType: type, backgroundColor: colour);
   }
 
-  Future<void> pump(WidgetTester tester, VideoEditorNotifier notifier) {
+  Future<void> pump(
+    WidgetTester tester,
+    VideoEditorNotifier notifier, {
+    Future<String?> Function()? pickImage,
+    Size screen = const Size(400, 800),
+  }) {
     return tester.pumpWidget(
       ProviderScope(
         overrides: [videoEditorProvider.overrideWith((ref) => notifier)],
-        child: const MaterialApp(home: Scaffold(body: BackgroundSheet())),
+        child: MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(size: screen),
+            child: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: BackgroundSheet(pickImage: pickImage),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
+
+  Finder checkIn(Finder parent) =>
+      find.descendant(of: parent, matching: find.byIcon(LucideIcons.check));
 
   Finder tile(Color colour) => find.byKey(BackgroundSheet.tileKey(colour));
 
@@ -98,6 +117,89 @@ void main() {
     n.undo();
     expect(n.state.backgroundType, EditorBackgroundType.black);
     expect(n.state.backgroundColor, Colors.black);
+  });
+
+  group('the photo tile', () {
+    testWidgets('leads the grid, with its label under it', (tester) async {
+      await pump(tester, notifierWith());
+      expect(find.byKey(BackgroundSheet.photoTileKey), findsOneWidget);
+      expect(find.text('Photo'), findsOneWidget);
+      // The same footprint as a colour tile, so the grid reads as one family.
+      final size = tester.getSize(find.byKey(BackgroundSheet.photoTileKey));
+      expect(size.width, BackgroundSheet.kTileSize);
+      expect(size.height, BackgroundSheet.kTileSize);
+    });
+
+    testWidgets('with none chosen, a tap asks for a photo', (tester) async {
+      var asked = 0;
+      final n = notifierWith();
+      await pump(tester, n, pickImage: () async {
+        asked++;
+        return null; // the user backed out of the picker
+      });
+
+      await tester.tap(find.byKey(BackgroundSheet.photoTileKey));
+      await tester.pump();
+
+      expect(asked, 1);
+      expect(n.state.backgroundType, EditorBackgroundType.black);
+    });
+
+    testWidgets('with a photo in use, it is current and colours are not',
+        (tester) async {
+      final n = notifierWith()
+        ..state = const VideoEditorState(
+          backgroundType: EditorBackgroundType.image,
+          backgroundImagePath: '/nowhere/bg.jpg',
+        );
+      await pump(tester, n);
+
+      expect(checkIn(find.byKey(BackgroundSheet.photoTileKey)), findsOneWidget);
+      for (final colour in kBackgroundPresets) {
+        expect(checkIn(tile(colour)), findsNothing, reason: '$colour');
+      }
+    });
+
+    testWidgets('a colour after a photo keeps the photo; tapping it again '
+        'uses it without another pick', (tester) async {
+      var asked = 0;
+      final n = notifierWith()
+        ..state = const VideoEditorState(
+          backgroundType: EditorBackgroundType.image,
+          backgroundImagePath: '/nowhere/bg.jpg',
+        );
+      await pump(tester, n, pickImage: () async {
+        asked++;
+        return null;
+      });
+
+      await tester.tap(tile(Colors.white));
+      await tester.pump();
+      expect(n.state.backgroundType, EditorBackgroundType.color);
+      expect(n.state.backgroundImagePath, '/nowhere/bg.jpg');
+
+      await tester.tap(find.byKey(BackgroundSheet.photoTileKey));
+      await tester.pump();
+      expect(n.state.backgroundType, EditorBackgroundType.image);
+      expect(asked, 0);
+    });
+  });
+
+  testWidgets('the sheet stops at 45% of the screen and scrolls', (tester) async {
+    // The point of a sheet over a clear canvas is watching the picture change;
+    // a sheet that climbs to half the screen hides the picture it is about.
+    // A short screen, so the cap is what decides the height: at 400×800 the
+    // whole grid fits under 45% and the sheet simply takes its content.
+    await pump(tester, notifierWith(), screen: const Size(400, 600));
+    final sheet = tester.getSize(find.byType(BackgroundSheet));
+    expect(sheet.height, closeTo(600 * kEditorSheetPreviewFraction, 0.5));
+    expect(
+      find.descendant(
+        of: find.byType(BackgroundSheet),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the tick dismisses the sheet', (tester) async {
