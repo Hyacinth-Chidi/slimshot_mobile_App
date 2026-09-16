@@ -49,6 +49,7 @@ class ClipEffectProgressTest {
         canvasScale = AnimatableDouble(baseValue = 1.0),
         canvasOffsetX = AnimatableDouble(baseValue = 0.0),
         canvasOffsetY = AnimatableDouble(baseValue = 0.0),
+        canvasRotation = AnimatableDouble(baseValue = 0.0),
         effectId = "fade_in",
         effectIntensity = AnimatableDouble(baseValue = 1.0),
         effectIntroSeconds = introSeconds,

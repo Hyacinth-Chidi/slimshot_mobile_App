@@ -66,6 +66,9 @@ uniform vec2 uFitIncoming;
 uniform vec2 uFitOutgoing;
 uniform vec2 uPanIncoming;
 uniform vec2 uPanOutgoing;
+uniform float uRotationIncoming;
+uniform float uRotationOutgoing;
+uniform float uCanvasAspect;
 uniform vec3 uBackground;
 uniform vec4 uContentRect;
 uniform mat4 uColorMatrix;
@@ -113,8 +116,35 @@ vec4 gradeClip(vec4 c, mat4 m, vec4 o, float enabled) {
 // texcoord (0,0) sits at the bottom-left vertex — so y is negated here, at the
 // one place the two frames meet. Skip that and a downward drag moves the clip
 // up, which shipped once.
+// Rotates a canvas coordinate about the canvas centre by `radians`.
+//
+// **In an aspect-true space, or it shears.** The canvas is 9:16, so a unit of
+// u is not a unit of v; rotating in raw uv squashes the picture into a rhombus
+// at 45 degrees. Scale x by the aspect first so both axes are the same size,
+// rotate, scale back. `OverlayRenderer.writeCorners` documents the identical
+// trap for overlays.
+//
+// Applied to the point being *sampled*, so the rotation is inverse: to draw
+// the clip turned clockwise we look up each pixel at its counter-clockwise
+// source. Which is why the sign here is the opposite of what a diagram of the
+// clip turning would suggest.
+vec2 rotateCanvas(vec2 uv, float radians) {
+    vec2 p = (uv - 0.5) * vec2(uCanvasAspect, 1.0);
+    float s = sin(-radians);
+    float c = cos(-radians);
+    p = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+    return p / vec2(uCanvasAspect, 1.0) + 0.5;
+}
+
+// **Order: pan, then rotate, then fit.** Undoing the transform in reverse of how
+// the clip was built: the clip is fitted into the canvas, then spun about its
+// own centre, then dragged into place. So sampling first removes the pan (to
+// find the clip's centre), then un-rotates about it, then un-fits. Rotating
+// *before* removing the pan would spin the clip about the canvas centre rather
+// than its own, and a clip dragged to the corner would orbit instead of turn.
 vec4 incomingAt(vec2 uv) {
-    vec2 fitted = (uv - 0.5 - uPanIncoming * vec2(1.0, -1.0)) / uFitIncoming + 0.5;
+    vec2 centred = rotateCanvas(uv - uPanIncoming * vec2(1.0, -1.0), uRotationIncoming);
+    vec2 fitted = (centred - 0.5) / uFitIncoming + 0.5;
     // Outside the fitted rect is background, not stretched edge pixels.
     if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
         return vec4(uBackground, 1.0);
@@ -125,7 +155,8 @@ vec4 incomingAt(vec2 uv) {
 }
 
 vec4 outgoingAt(vec2 uv) {
-    vec2 fitted = (uv - 0.5 - uPanOutgoing * vec2(1.0, -1.0)) / uFitOutgoing + 0.5;
+    vec2 centred = rotateCanvas(uv - uPanOutgoing * vec2(1.0, -1.0), uRotationOutgoing);
+    vec2 fitted = (centred - 0.5) / uFitOutgoing + 0.5;
     if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
         return vec4(uBackground, 1.0);
     }

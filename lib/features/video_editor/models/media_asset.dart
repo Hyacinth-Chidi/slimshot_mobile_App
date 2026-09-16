@@ -139,3 +139,17 @@ const double kDefaultCanvasHeightPx = 1280.0;
 /// only stops a clip vanishing into an unrecoverable dot.
 const double kMinClipCanvasScale = 0.1;
 const double kMaxClipCanvasScale = 8.0;
+
+/// Folds any angle into `(-180, 180]`.
+///
+/// So a clip dragged round twice reads as its actual orientation rather than
+/// 725, and two clips at the same visual angle compare equal for the merge
+/// rule. `180` rather than `-180` for the seam, so a straight flip reads as the
+/// positive half-turn the ruler shows.
+double normaliseDegrees(double degrees) {
+  if (degrees.isNaN || degrees.isInfinite) return 0.0;
+  var d = degrees % 360.0;
+  if (d > 180.0) d -= 360.0;
+  if (d <= -180.0) d += 360.0;
+  return d;
+}

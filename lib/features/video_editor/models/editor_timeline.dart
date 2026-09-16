@@ -221,6 +221,7 @@ class EditorTimelineVideoClip {
     this.canvasScale = const AnimatableDouble(baseValue: 1.0),
     this.canvasOffsetX = const AnimatableDouble(baseValue: 0.0),
     this.canvasOffsetY = const AnimatableDouble(baseValue: 0.0),
+    this.canvasRotation = const AnimatableDouble(baseValue: 0.0),
   });
 
   final String id;
@@ -326,6 +327,9 @@ class EditorTimelineVideoClip {
   final AnimatableDouble canvasOffsetX;
   final AnimatableDouble canvasOffsetY;
 
+  /// Rotation about the clip's centre, in degrees. See `VideoSegment`.
+  final AnimatableDouble canvasRotation;
+
   double get timelineDuration => timelineEnd - timelineStart;
 
   /// This clip's 0..1 position at a timeline instant.
@@ -344,12 +348,14 @@ class EditorTimelineVideoClip {
   double canvasScaleAt(double progress) => canvasScale.resolveAt(progress);
   double canvasOffsetXAt(double progress) => canvasOffsetX.resolveAt(progress);
   double canvasOffsetYAt(double progress) => canvasOffsetY.resolveAt(progress);
+  double canvasRotationAt(double progress) => canvasRotation.resolveAt(progress);
 
   /// Whether this clip carries any keyframe at all, on any property.
   bool get hasKeyframes =>
       canvasScale.keyframes.isNotEmpty ||
       canvasOffsetX.keyframes.isNotEmpty ||
       canvasOffsetY.keyframes.isNotEmpty ||
+      canvasRotation.keyframes.isNotEmpty ||
       volume.keyframes.isNotEmpty ||
       effectIntensity.keyframes.isNotEmpty;
 
@@ -400,6 +406,7 @@ class EditorTimelineVideoClip {
       'canvasScale': canvasScale.toJson(),
       'canvasOffsetX': canvasOffsetX.toJson(),
       'canvasOffsetY': canvasOffsetY.toJson(),
+      'canvasRotation': canvasRotation.toJson(),
     };
   }
 }

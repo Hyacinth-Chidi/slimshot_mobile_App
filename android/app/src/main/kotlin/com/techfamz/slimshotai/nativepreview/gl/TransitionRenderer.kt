@@ -86,6 +86,10 @@ internal class TransitionRenderer(
         @Volatile
         var panY = 0f
 
+        /** The clip's rotation about its own centre, in radians. */
+        @Volatile
+        var rotation = 0f
+
         /**
          * Set once the decoder has delivered at least one frame. Sampling a
          * lane before this would read undefined texture memory, so a
@@ -675,13 +679,24 @@ internal class TransitionRenderer(
      * pushed fit is still in flight — that lag flashed at every photo cut.
      * Video lanes keep the whole fit through [setLaneFit].
      */
-    fun setLaneImageTransform(laneIndex: Int, scale: Float, panX: Float, panY: Float) {
+    fun setLaneImageTransform(
+        laneIndex: Int,
+        scale: Float,
+        panX: Float,
+        panY: Float,
+        rotationRadians: Float = 0f,
+    ) {
         val lane = lanes.getOrNull(laneIndex) ?: return
         val next = scale.coerceIn(0.005f, 16f)
-        if (lane.imageScale == next && lane.panX == panX && lane.panY == panY) return
+        if (lane.imageScale == next && lane.panX == panX && lane.panY == panY &&
+            lane.rotation == rotationRadians
+        ) {
+            return
+        }
         lane.imageScale = next
         lane.panX = panX
         lane.panY = panY
+        lane.rotation = rotationRadians
         requestRender()
     }
 
@@ -812,12 +827,14 @@ internal class TransitionRenderer(
         fitY: Float,
         panX: Float = 0f,
         panY: Float = 0f,
+        rotationRadians: Float = 0f,
     ) {
         val lane = lanes.getOrNull(laneIndex) ?: return
         val nextX = fitX.coerceIn(0.005f, 16f)
         val nextY = fitY.coerceIn(0.005f, 16f)
         if (lane.fitX == nextX && lane.fitY == nextY &&
-            lane.panX == panX && lane.panY == panY
+            lane.panX == panX && lane.panY == panY &&
+            lane.rotation == rotationRadians
         ) {
             return
         }
@@ -825,6 +842,7 @@ internal class TransitionRenderer(
         lane.fitY = nextY
         lane.panX = panX
         lane.panY = panY
+        lane.rotation = rotationRadians
         requestRender()
     }
 
@@ -1015,7 +1033,7 @@ internal class TransitionRenderer(
         val program = programFor(PASSTHROUGH, incomingIsImage = true, outgoingIsImage = true)
             ?: return
         program.use()
-        program.bindCanvas(FULL_FRAME_RECT, null, NO_COLOR_OFFSET, backgroundColor)
+        program.bindCanvas(FULL_FRAME_RECT, null, NO_COLOR_OFFSET, backgroundColor, viewportAspect)
         program.bindIncoming(
             textureId,
             GLES20.GL_TEXTURE_2D,
@@ -1060,7 +1078,7 @@ internal class TransitionRenderer(
             )
             if (program != null) {
                 program.use()
-                program.bindCanvas(contentRect, colorMatrix, colorOffset, backgroundColor)
+                program.bindCanvas(contentRect, colorMatrix, colorOffset, backgroundColor, viewportAspect)
                 bindLaneAsIncoming(program, incoming)
                 bindLaneAsOutgoing(program, outgoing)
                 program.setProgress(draw.progress)
@@ -1077,7 +1095,7 @@ internal class TransitionRenderer(
                 val program = programFor(PASSTHROUGH, lane.showingImage, lane.showingImage)
                 if (program != null) {
                     program.use()
-                    program.bindCanvas(contentRect, colorMatrix, colorOffset, backgroundColor)
+                    program.bindCanvas(contentRect, colorMatrix, colorOffset, backgroundColor, viewportAspect)
                     bindLaneAsIncoming(program, lane)
                     drawQuad(program)
                 }
@@ -1135,6 +1153,7 @@ internal class TransitionRenderer(
                 fitY,
                 lane.panX,
                 lane.panY,
+                lane.rotation,
             )
         } else {
             program.bindIncoming(
@@ -1145,6 +1164,7 @@ internal class TransitionRenderer(
                 lane.fitY,
                 lane.panX,
                 lane.panY,
+                lane.rotation,
             )
         }
         program.bindIncomingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1161,6 +1181,7 @@ internal class TransitionRenderer(
                 fitY,
                 lane.panX,
                 lane.panY,
+                lane.rotation,
             )
         } else {
             program.bindOutgoing(
@@ -1171,6 +1192,7 @@ internal class TransitionRenderer(
                 lane.fitY,
                 lane.panX,
                 lane.panY,
+                lane.rotation,
             )
         }
         program.bindOutgoingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1282,6 +1304,11 @@ internal class TransitionProgram(private val handle: Int) {
     private val uFitOutgoing = GLES20.glGetUniformLocation(handle, "uFitOutgoing")
     private val uPanIncoming = GLES20.glGetUniformLocation(handle, "uPanIncoming")
     private val uPanOutgoing = GLES20.glGetUniformLocation(handle, "uPanOutgoing")
+    private val uRotationIncoming =
+        GLES20.glGetUniformLocation(handle, "uRotationIncoming")
+    private val uRotationOutgoing =
+        GLES20.glGetUniformLocation(handle, "uRotationOutgoing")
+    private val uCanvasAspect = GLES20.glGetUniformLocation(handle, "uCanvasAspect")
     private val uBackground = GLES20.glGetUniformLocation(handle, "uBackground")
     private val uContentRect = GLES20.glGetUniformLocation(handle, "uContentRect")
     private val uColorMatrix = GLES20.glGetUniformLocation(handle, "uColorMatrix")
@@ -1353,6 +1380,7 @@ internal class TransitionProgram(private val handle: Int) {
         colorMatrix: FloatArray?,
         colorOffset: FloatArray,
         background: FloatArray,
+        canvasAspect: Float = 1f,
     ) {
         GLES20.glUniform4f(
             uContentRect,
@@ -1362,6 +1390,10 @@ internal class TransitionProgram(private val handle: Int) {
             contentRect[3],
         )
         GLES20.glUniform3f(uBackground, background[0], background[1], background[2])
+        // The rotation helper needs the canvas shape to rotate without shearing.
+        // Guarded against zero: a viewport that has not been sized yet would
+        // otherwise divide every sampled coordinate by nothing.
+        GLES20.glUniform1f(uCanvasAspect, if (canvasAspect > 0f) canvasAspect else 1f)
 
         if (colorMatrix == null) {
             GLES20.glUniform1f(uColorEnabled, 0f)
@@ -1387,6 +1419,7 @@ internal class TransitionProgram(private val handle: Int) {
         fitY: Float,
         panX: Float,
         panY: Float,
+        rotationRadians: Float = 0f,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(target, textureId)
@@ -1394,6 +1427,7 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glUniformMatrix4fv(uTexMatrixIncoming, 1, false, texMatrix, 0)
         GLES20.glUniform2f(uFitIncoming, fitX, fitY)
         GLES20.glUniform2f(uPanIncoming, panX, panY)
+        GLES20.glUniform1f(uRotationIncoming, rotationRadians)
     }
 
     fun bindOutgoing(
@@ -1404,6 +1438,7 @@ internal class TransitionProgram(private val handle: Int) {
         fitY: Float,
         panX: Float,
         panY: Float,
+        rotationRadians: Float = 0f,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
         GLES20.glBindTexture(target, textureId)
@@ -1411,6 +1446,7 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glUniformMatrix4fv(uTexMatrixOutgoing, 1, false, texMatrix, 0)
         GLES20.glUniform2f(uFitOutgoing, fitX, fitY)
         GLES20.glUniform2f(uPanOutgoing, panX, panY)
+        GLES20.glUniform1f(uRotationOutgoing, rotationRadians)
     }
 
     fun setProgress(progress: Float) {

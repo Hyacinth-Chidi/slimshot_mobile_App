@@ -381,6 +381,7 @@ class NativeTimelinePreviewManager(
                     (call.argument<Number>("scale") ?: 1.0).toDouble(),
                     (call.argument<Number>("offsetX") ?: 0.0).toDouble(),
                     (call.argument<Number>("offsetY") ?: 0.0).toDouble(),
+                    (call.argument<Number>("rotation") ?: 0.0).toDouble(),
                 )
                 result.success(null)
             }

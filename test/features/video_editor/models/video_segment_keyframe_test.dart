@@ -196,4 +196,55 @@ void main() {
       expect(p.isNaN, isFalse);
     });
   });
+
+  group('rotation', () {
+    // **Rotation did not exist before this.** The `rotate` tool was a menu
+    // entry with no handler, and the only `rotation` in the contract belonged
+    // to overlays. This is a clip's own angle, the sixth keyframable property.
+    test('defaults to zero and serialises as a bare number', () {
+      final s = VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 5);
+      expect(s.canvasRotationAt(0.5), 0.0);
+      // Bare `0.0`, not a map: a clip nobody rotated writes what it always
+      // would have, so no draft migration and no growth in saved projects.
+      expect(s.toJson()['canvasRotation'], 0.0);
+      expect(s.toJson()['canvasRotation'], isA<num>());
+    });
+
+    test('a draft without the field loads unrotated', () {
+      final s = VideoSegment.fromJson(const {
+        'id': 'a',
+        'sourceStart': 0.0,
+        'sourceEnd': 5.0,
+      });
+      expect(s.canvasRotationAt(0.3), 0.0);
+    });
+
+    test('is stored in degrees and round-trips', () {
+      // Degrees, not radians: it is what the ruler shows and what a draft
+      // should be readable as. The shader converts once.
+      final s = VideoSegment(
+        id: 'a',
+        sourceStart: 0,
+        sourceEnd: 5,
+        canvasRotation: const AnimatableDouble(baseValue: 90.0),
+      );
+      final restored =
+          VideoSegment.fromJson(jsonDecode(jsonEncode(s.toJson())));
+      expect(restored.canvasRotationAt(0.5), 90.0);
+    });
+
+    test('keyframes like every other property', () {
+      final s = VideoSegment(
+        id: 'a',
+        sourceStart: 0,
+        sourceEnd: 5,
+        canvasRotation: const AnimatableDouble(baseValue: 0.0, keyframes: [
+          Keyframe(progress: 0.0, value: 0.0),
+          Keyframe(progress: 1.0, value: 180.0),
+        ]),
+      );
+      expect(s.canvasRotationAt(0.5), closeTo(90.0, 1e-9));
+      expect(s.hasKeyframes, isTrue);
+    });
+  });
 }

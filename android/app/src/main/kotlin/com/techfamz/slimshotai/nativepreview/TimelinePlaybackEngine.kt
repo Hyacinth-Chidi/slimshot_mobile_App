@@ -167,8 +167,14 @@ internal class TimelinePlaybackEngine(
      */
     private val transformOverrides = HashMap<String, DoubleArray>()
 
-    fun setClipTransform(clipId: String, scale: Double, offsetX: Double, offsetY: Double) {
-        transformOverrides[clipId] = doubleArrayOf(scale, offsetX, offsetY)
+    fun setClipTransform(
+        clipId: String,
+        scale: Double,
+        offsetX: Double,
+        offsetY: Double,
+        rotationDegrees: Double = 0.0,
+    ) {
+        transformOverrides[clipId] = doubleArrayOf(scale, offsetX, offsetY, rotationDegrees)
         applyLaneFits(timelinePositionSeconds())
     }
 
@@ -1091,6 +1097,12 @@ internal class TimelinePlaybackEngine(
             val scale = override?.get(0) ?: clip.canvasScaleAt(clipProgress)
             val panX = override?.get(1) ?: clip.canvasOffsetXAt(clipProgress)
             val panY = override?.get(2) ?: clip.canvasOffsetYAt(clipProgress)
+            // Degrees in the model and on the channel, radians at the uniform.
+            // The one conversion, so the two sides can never disagree about
+            // which unit crossed.
+            val rotationDegrees =
+                override?.getOrNull(3) ?: clip.canvasRotationAt(clipProgress)
+            val rotation = Math.toRadians(rotationDegrees).toFloat()
 
             if (renderer.laneShowingImage(lane.index)) {
                 // A photo's contain fit is derived by the renderer from the
@@ -1105,6 +1117,7 @@ internal class TimelinePlaybackEngine(
                     scale.toFloat(),
                     panX.toFloat(),
                     panY.toFloat(),
+                    rotation,
                 )
             } else {
                 val (fitX, fitY) = LaneFit.of(clip.sourceAspect, canvasAspect)
@@ -1114,6 +1127,7 @@ internal class TimelinePlaybackEngine(
                     fitY * scale.toFloat(),
                     panX.toFloat(),
                     panY.toFloat(),
+                    rotation,
                 )
             }
         }

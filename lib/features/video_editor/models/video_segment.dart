@@ -57,6 +57,18 @@ class VideoSegment {
   final AnimatableDouble canvasOffsetX;
   final AnimatableDouble canvasOffsetY;
 
+  /// The clip's rotation about its own centre, in **degrees**, clockwise.
+  ///
+  /// Degrees rather than radians because it is what the Transform ruler shows
+  /// and what a draft should be readable as; the shader converts once.
+  ///
+  /// **This did not exist before the Transform sheet.** The old `rotate` tool
+  /// was a menu entry with no handler, and the only `rotation` in the contract
+  /// belonged to overlays. A clip's own angle is the sixth keyframable
+  /// property, and it goes the full route: model, contract, shader, both
+  /// engines, export.
+  final AnimatableDouble canvasRotation;
+
   /// Colour filter on this clip alone, as a [FilterPresets] id.
   ///
   /// Null means the clip is ungraded — which is not the same as ungraded
@@ -127,6 +139,7 @@ class VideoSegment {
     this.canvasScale = kUnitParameter,
     this.canvasOffsetX = kZeroParameter,
     this.canvasOffsetY = kZeroParameter,
+    this.canvasRotation = kZeroParameter,
   });
 
   double get duration => (sourceEnd - sourceStart) / speed;
@@ -166,6 +179,9 @@ class VideoSegment {
   double canvasOffsetXAt(double progress) => canvasOffsetX.resolveAt(progress);
   double canvasOffsetYAt(double progress) => canvasOffsetY.resolveAt(progress);
 
+  /// The rotation at [progress], in degrees.
+  double canvasRotationAt(double progress) => canvasRotation.resolveAt(progress);
+
   /// Whether this clip carries any keyframe at all, on any property.
   ///
   /// Three things ask: the timeline, before drawing diamonds; the composer,
@@ -181,6 +197,7 @@ class VideoSegment {
       canvasScale.keyframes.isNotEmpty ||
       canvasOffsetX.keyframes.isNotEmpty ||
       canvasOffsetY.keyframes.isNotEmpty ||
+      canvasRotation.keyframes.isNotEmpty ||
       volume.keyframes.isNotEmpty ||
       effectIntensity.keyframes.isNotEmpty;
 
@@ -219,6 +236,7 @@ class VideoSegment {
     AnimatableDouble? canvasScale,
     AnimatableDouble? canvasOffsetX,
     AnimatableDouble? canvasOffsetY,
+    AnimatableDouble? canvasRotation,
   }) {
     return VideoSegment(
       id: id ?? this.id,
@@ -238,6 +256,7 @@ class VideoSegment {
       canvasScale: canvasScale ?? this.canvasScale,
       canvasOffsetX: canvasOffsetX ?? this.canvasOffsetX,
       canvasOffsetY: canvasOffsetY ?? this.canvasOffsetY,
+      canvasRotation: canvasRotation ?? this.canvasRotation,
     );
   }
 
@@ -282,6 +301,7 @@ class VideoSegment {
       'canvasScale': canvasScale.toJson(),
       'canvasOffsetX': canvasOffsetX.toJson(),
       'canvasOffsetY': canvasOffsetY.toJson(),
+      'canvasRotation': canvasRotation.toJson(),
     };
   }
 
@@ -325,6 +345,9 @@ class VideoSegment {
           AnimatableDouble.fromJson(json['canvasOffsetX'], fallback: 0.0),
       canvasOffsetY:
           AnimatableDouble.fromJson(json['canvasOffsetY'], fallback: 0.0),
+      // Absent in every draft written before clips could rotate.
+      canvasRotation:
+          AnimatableDouble.fromJson(json['canvasRotation'], fallback: 0.0),
     );
   }
 }

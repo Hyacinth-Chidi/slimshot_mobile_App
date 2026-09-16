@@ -49,6 +49,7 @@ enum ClipProperty {
   canvasScale,
   canvasOffsetX,
   canvasOffsetY,
+  canvasRotation,
   volume,
   effectIntensity,
 }
@@ -71,6 +72,8 @@ AnimatableDouble clipParameter(VideoSegment s, ClipProperty p) {
       return s.canvasOffsetX;
     case ClipProperty.canvasOffsetY:
       return s.canvasOffsetY;
+    case ClipProperty.canvasRotation:
+      return s.canvasRotation;
     case ClipProperty.volume:
       return s.volume;
     case ClipProperty.effectIntensity:
@@ -91,6 +94,8 @@ VideoSegment withClipParameter(
       return s.copyWith(canvasOffsetX: v);
     case ClipProperty.canvasOffsetY:
       return s.copyWith(canvasOffsetY: v);
+    case ClipProperty.canvasRotation:
+      return s.copyWith(canvasRotation: v);
     case ClipProperty.volume:
       return s.copyWith(volume: v);
     case ClipProperty.effectIntensity:

@@ -533,6 +533,7 @@ internal class VideoExportEngine(
                 clip.canvasScaleAt(clipProgress).toFloat(),
                 clip.canvasOffsetXAt(clipProgress).toFloat(),
                 clip.canvasOffsetYAt(clipProgress).toFloat(),
+                Math.toRadians(clip.canvasRotationAt(clipProgress)).toFloat(),
             )
         } else {
             val (fitX, fitY) = LaneFit.of(clip.sourceAspect, renderAspect)
@@ -542,6 +543,7 @@ internal class VideoExportEngine(
                 fitY * clip.canvasScaleAt(clipProgress).toFloat(),
                 clip.canvasOffsetXAt(clipProgress).toFloat(),
                 clip.canvasOffsetYAt(clipProgress).toFloat(),
+                Math.toRadians(clip.canvasRotationAt(clipProgress)).toFloat(),
             )
         }
         renderer.setLaneColorMatrix(clip.laneIndex, clip.colorMatrix)

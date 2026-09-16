@@ -145,12 +145,15 @@ class NativeTimelinePreviewService {
     required double scale,
     required double offsetX,
     required double offsetY,
+    double rotation = 0.0,
   }) {
     return _methodChannel.invokeMethod<void>('setClipTransform', {
       'clipId': clipId,
       'scale': scale,
       'offsetX': offsetX,
       'offsetY': offsetY,
+      // Degrees, as the model stores it; the engine converts once.
+      'rotation': rotation,
     });
   }
 

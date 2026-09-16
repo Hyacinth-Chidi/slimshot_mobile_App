@@ -709,4 +709,49 @@ void main() {
       expect(timeline.playbackClips, hasLength(1));
     });
   });
+
+  group('rotation on the wire', () {
+    test('reaches the timeline clip and resolves there', () {
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(
+            id: 'a',
+            sourceStart: 0,
+            sourceEnd: 4,
+            canvasRotation: const AnimatableDouble(baseValue: 45.0),
+          ),
+        ]),
+      );
+      final clip = timeline.videoClips.single;
+      expect(clip.canvasRotationAt(0.5), 45.0);
+      // Flat, so a bare number crosses the channel.
+      expect(clip.toJson()['canvasRotation'], 45.0);
+    });
+
+    test('an unrotated clip crosses as a bare zero', () {
+      final timeline = composer.compose(
+        stateWith([VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4)]),
+      );
+      final wire = timeline.videoClips.single.toJson();
+      expect(wire['canvasRotation'], 0.0);
+      expect(wire['canvasRotation'], isA<num>());
+    });
+
+    test('two clips rotated differently are never merged for playback', () {
+      // A merged media item can carry one angle. Same rule the transform and
+      // the grade already follow.
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(
+            id: 'a',
+            sourceStart: 0,
+            sourceEnd: 4,
+            canvasRotation: const AnimatableDouble(baseValue: 15.0),
+          ),
+          VideoSegment(id: 'b', sourceStart: 4, sourceEnd: 8),
+        ]),
+      );
+      expect(timeline.playbackClips, hasLength(2));
+    });
+  });
 }

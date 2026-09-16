@@ -49,6 +49,12 @@ internal data class NativeTimelineClip(
     val canvasOffsetX: AnimatableDouble,
     val canvasOffsetY: AnimatableDouble,
     /**
+     * Rotation about the clip's own centre, in **degrees** as the model stores
+     * it. Resolve through [canvasRotationAt]; the renderer converts to radians
+     * once, at the uniform.
+     */
+    val canvasRotation: AnimatableDouble,
+    /**
      * This clip's visual effect, as an id from `effect_catalog.dart`, or null
      * for an unaffected clip — which is every project written before effects
      * existed and every clip the user has not touched.
@@ -132,6 +138,9 @@ internal data class NativeTimelineClip(
     fun canvasOffsetXAt(progress: Double): Double = canvasOffsetX.resolveAt(progress)
 
     fun canvasOffsetYAt(progress: Double): Double = canvasOffsetY.resolveAt(progress)
+
+    /** The rotation at [progress], in degrees. Unclamped: any angle is a valid angle. */
+    fun canvasRotationAt(progress: Double): Double = canvasRotation.resolveAt(progress)
 
     /**
      * How far this clip's effect has played at [timelineSeconds], 0 at the
@@ -281,6 +290,8 @@ internal data class NativeTimelineClip(
                 canvasScale = AnimatableDouble.fromWire(map["canvasScale"], fallback = 1.0),
                 canvasOffsetX = AnimatableDouble.fromWire(map["canvasOffsetX"], fallback = 0.0),
                 canvasOffsetY = AnimatableDouble.fromWire(map["canvasOffsetY"], fallback = 0.0),
+                // Absent from every timeline composed before clips could rotate.
+                canvasRotation = AnimatableDouble.fromWire(map["canvasRotation"], fallback = 0.0),
                 effectId = (map["effectId"] as? String)?.takeIf { it.isNotBlank() },
                 // Either shape the composer writes: a **bare number** while the
                 // intensity is flat — which is what every clip sends and what

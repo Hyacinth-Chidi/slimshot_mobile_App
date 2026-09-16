@@ -353,6 +353,7 @@ class VideoEditorTimelineComposer {
       canvasScale: previous.canvasScale,
       canvasOffsetX: previous.canvasOffsetX,
       canvasOffsetY: previous.canvasOffsetY,
+      canvasRotation: previous.canvasRotation,
     );
   }
 
@@ -434,6 +435,9 @@ class VideoEditorTimelineComposer {
         (previous.canvasOffsetX.baseValue - next.canvasOffsetX.baseValue).abs() >
             transformEpsilon ||
         (previous.canvasOffsetY.baseValue - next.canvasOffsetY.baseValue).abs() >
+            transformEpsilon ||
+        (previous.canvasRotation.baseValue - next.canvasRotation.baseValue)
+                .abs() >
             transformEpsilon) {
       return false;
     }
@@ -522,6 +526,7 @@ class VideoEditorTimelineComposer {
       canvasScale: segment.canvasScale,
       canvasOffsetX: segment.canvasOffsetX,
       canvasOffsetY: segment.canvasOffsetY,
+      canvasRotation: segment.canvasRotation,
     );
   }
 
