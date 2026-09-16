@@ -12,6 +12,7 @@ import '../../../core/services/draft_service.dart';
 import '../../../core/utils/file_utils.dart';
 import '../logic/animation/animatable_double.dart';
 import '../logic/animation/clip_keyframes.dart';
+import '../logic/animation/clip_keyframes.dart' as kf;
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 import '../logic/timeline/timeline_geometry.dart';
@@ -1468,26 +1469,30 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
-  /// Re-eases the diamond under the playhead, **placing one first if there is
-  /// none**.
+  /// Sets the curve on the segment the playhead is inside.
   ///
-  /// The same rule [_writeClipValue] follows, so the easing sheet and the
-  /// sliders can never disagree about what "here" means.
-  void setKeyframeEasingAtPlayhead(KeyframeInterpolation easing) {
+  /// **Never places a diamond**, unlike every other write here. The plus button
+  /// is the one control that creates instants; a curve picker that quietly
+  /// added one was the device-reported fault — the user tapped it expecting to
+  /// choose a shape and got a new point on their timeline instead.
+  ///
+  /// With nothing to ease ([VideoEditorState.canEditKeyframeCurve] false) this
+  /// does nothing, and the icon is disabled so it should not be reachable.
+  void setKeyframeCurve(KeyframeInterpolation curve) {
+    if (!state.canEditKeyframeCurve) return;
     _editSelectedClip((segment, progress) {
       if (progress == null) return segment;
-      final tolerance = keyframeHitToleranceFor(segment);
-      final target = keyframeProgressNear(segment, progress, tolerance);
-      final withDiamond =
-          target == null ? captureKeyframe(segment, progress) : segment;
-      return setKeyframeEasing(
-        withDiamond,
-        target ?? progress,
-        tolerance,
-        easing,
+      // Aliased: the notifier method and the pure function share a name on
+      // purpose — one is the command, the other is what it does.
+      return kf.setKeyframeCurve(
+        segment,
+        progress,
+        keyframeHitToleranceFor(segment),
+        curve,
       );
     });
   }
+
 
   /// Moves the playhead onto a diamond.
   ///

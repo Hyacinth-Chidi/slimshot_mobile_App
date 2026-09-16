@@ -26,12 +26,25 @@ import 'animatable_double.dart';
 /// **Adding a value here is all it takes** for a property to be captured,
 /// removed, eased and drawn — which is the point of naming them in one place.
 ///
-/// Two deliberate absences. `speed` changes the clip's own duration, so a
-/// keyframe on it would move every other keyframe's instant while it was being
-/// edited; CapCut gives speed its own curve tool for the same reason. Filter
-/// intensity is a colour matrix resolved per lane *before* the blend, on a path
-/// with no per-frame parameter hook — keyframing it is a real feature, but a
-/// different one.
+/// **`speed` cannot join this list, and the reason is structural rather than a
+/// matter of effort.** Every other property here is read *at* a progress; speed
+/// decides what progress even means. `VideoSegment.duration` is
+/// `(sourceEnd - sourceStart) / speed`, and `clipProgressAt` divides by that
+/// duration — so a keyframed speed would make progress a function of itself,
+/// and every diamond on the clip would slide as the speed curve was edited.
+/// The timeline's own geometry (`segmentTimelineStarts`,
+/// `timelineTimeToSourceTime`) multiplies by a scalar speed too, as does
+/// `Lane.applySpeed` in the engine.
+///
+/// A ramp is a real feature and it is a **different** one: it needs
+/// source-time to be the integral of the speed curve, which is its own model,
+/// its own Kotlin port and its own UI. That is why CapCut ships speed as a
+/// separate curve tool rather than as a keyframable parameter, and why putting
+/// it here would produce diamonds that move while you edit them.
+///
+/// Filter intensity is absent for a smaller reason: it is a colour matrix
+/// resolved per lane *before* the blend, on a path with no per-frame parameter
+/// hook. Keyframing it is a genuine addition, just not a free one.
 enum ClipProperty {
   canvasScale,
   canvasOffsetX,
@@ -207,6 +220,73 @@ VideoSegment removeKeyframe(
     );
   }
   return out;
+}
+
+/// Which diamond's outgoing curve the curve control edits at [progress], or
+/// null when there is nothing to ease.
+///
+/// **A curve shapes travel between two diamonds**, and the interpolation lives
+/// on the diamond a segment *starts* at. So the target is the latest diamond at
+/// or before the playhead — provided a later one exists to travel towards.
+///
+/// Null in three cases, and each is a real "nothing to shape here":
+///
+/// - **Fewer than two diamonds.** One point is a value held across the whole
+///   clip; there is no travel, and a curve would change nothing.
+/// - **Before the first diamond.** The value holds back to the clip's start.
+/// - **After the last.** It holds to the end.
+///
+/// The one concession to the finger: **on the last diamond the target is the
+/// segment arriving at it**, not the nothing that follows. A user who taps the
+/// final diamond and reaches for the curve icon means the curve they can see,
+/// and an icon that went inert the moment they landed on a diamond would read
+/// as broken.
+double? keyframeCurveTarget(
+  VideoSegment s,
+  double progress,
+  double tolerance,
+) {
+  final all = keyframeProgresses(s);
+  // A curve needs two points to run between.
+  if (all.length < 2) return null;
+
+  final onDiamond = keyframeProgressNear(s, progress, tolerance);
+  if (onDiamond != null) {
+    final index = all.indexWhere((p) => (p - onDiamond).abs() <= kKeyframeMatchProgress);
+    // On the last diamond, edit the segment that arrives at it; on any other,
+    // the one that leaves it.
+    if (index == all.length - 1) return all[index - 1];
+    return all[index];
+  }
+
+  // Between diamonds: the segment the playhead is inside.
+  if (progress < all.first || progress > all.last) return null;
+  double? target;
+  for (final p in all) {
+    if (p <= progress) target = p;
+  }
+  return target;
+}
+
+/// Sets the curve on the segment the playhead is inside, on every property.
+///
+/// **Never places a diamond.** That is the whole distinction from
+/// [captureKeyframe]: the plus button creates instants, the curve control
+/// shapes travel that already exists. A curve picker that quietly added a
+/// keyframe was the device-reported fault — the user tapped it expecting to
+/// choose a shape and got a new point on their timeline.
+///
+/// No target — fewer than two diamonds, or the playhead outside them — returns
+/// [s] unchanged.
+VideoSegment setKeyframeCurve(
+  VideoSegment s,
+  double progress,
+  double tolerance,
+  KeyframeInterpolation curve,
+) {
+  final target = keyframeCurveTarget(s, progress, tolerance);
+  if (target == null) return s;
+  return setKeyframeEasing(s, target, tolerance, curve);
 }
 
 /// Re-eases the diamond nearest [progress], on every property.

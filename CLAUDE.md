@@ -1211,7 +1211,13 @@ break.
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-09-15-clip-keyframes-design.md`.
 
 A clip carries five keyframable properties, all `AnimatableDouble`: `canvasScale`,
-`canvasOffsetX`, `canvasOffsetY`, `volume` and `effectIntensity`. **A diamond at progress `p`
+`canvasOffsetX`, `canvasOffsetY`, `volume` and `effectIntensity`. **`speed` cannot join them, and
+the reason is structural**: every other property is read *at* a progress, while speed decides what
+progress means — `duration` is `(sourceEnd - sourceStart) / speed` and `clipProgressAt` divides by
+that duration, so a keyframed speed makes progress a function of itself and every diamond slides
+while the curve is edited. A speed ramp needs source-time to be the integral of the speed curve:
+its own model, its own Kotlin port, its own UI. That is why CapCut ships speed as a separate curve
+tool, not as a keyframable parameter. **A diamond at progress `p`
 means every one of them carries a keyframe at `p`** — that is what makes one mark on the
 filmstrip an honest picture of the clip's state, and what lets a single button serve every
 property with no picker. `logic/animation/clip_keyframes.dart` holds the pure functions
@@ -1247,12 +1253,41 @@ window — it is the *effect's* clock, a different quantity that happens to shar
 diamond is an instant of the **clip**, and resolving one against the intro window would put it
 somewhere the timeline never drew it.
 
-**Easing is four families × four cells**: Default (sine), Quadratic, Cubic, Bounce, each offering
-None / Ease in / Ease out / Ease. Every group's None is `linear` — there is one way not to ease.
-`hold` is deliberately absent from the sheet (it is a different kind of thing from a curve) but
-kept in the enum for drafts and step effects. The sheet's cells plot their curve from
-`applyKeyframeEasing` itself, because "Quadratic ease out" and "Cubic ease out" are
-indistinguishable as words and obvious as shapes.
+**A control shows what its write will target** (`clipEditValue`). With no diamonds an edit writes
+the base, so the base is shown; with diamonds it writes the keyframe at the playhead, so the value
+*there* is shown. This is not cosmetic, and getting it wrong was a device-reported bug: a volume
+slider parked at the base's 1.0 on a clip whose keyframes had taken it to 0.2 offers **no way to
+drag up** — the thumb sits at the top while the audio is quiet. An envelope is not a keyframe
+here: it shapes the base and the write still targets the base, so the base is what to show.
+
+**Easing is four families as TABS**: Default (sine), Quadratic, Cubic, Bounce, each offering
+None / Ease in / Ease out / Ease, with a ✓ that dismisses. Sixteen cells at once is a wall, and
+the families are alternatives rather than a list to read through. The sheet opens on the family
+the current curve belongs to, and every tap applies **live** — a sheet that held the choice until
+confirmed would make the user commit to a curve they have not seen move. Every group's None is
+`linear`, drawn as a crossed circle rather than a straight line: a diagonal in a graph box reads
+as *linear*, a curve among curves, rather than as the absence of one. `hold` is deliberately
+absent from the sheet but kept in the enum for drafts and step effects. The other cells plot their
+curve from `applyKeyframeEasing` itself over a dashed grid, because "Quadratic ease out" and
+"Cubic ease out" are indistinguishable as words and obvious as shapes.
+
+**The curve control edits a SEGMENT, and never places a diamond.** This is the distinction from
+the plus button, and blurring it was the second device-reported bug — tapping the curve icon
+between diamonds silently added one. A curve shapes travel that already exists;
+`keyframeCurveTarget` resolves which segment, and it is null in three real "nothing to shape"
+cases: fewer than two diamonds (one point is a value held, with no travel), before the first, and
+after the last. On the **last** diamond it falls back to the segment arriving at it — nothing
+follows, and an icon going inert the moment a user taps the final diamond reads as broken.
+Anywhere else the diamond's own flag controls the segment leaving it, which is what gets edited.
+
+**The curve icon is disabled, not hidden**, when `canEditKeyframeCurve` is false. A control that
+vanishes and reappears is harder to find than one that dims, and dimming teaches what it wants:
+place a second diamond and it lights up.
+
+**The cells give the graph the leftover height rather than demanding a square.** Three rounds of
+computing "square + label" arithmetic all overflowed by a different number, because the label's
+line height follows the text scale and a `TabBarView` refuses intrinsic measurement (it is a
+viewport). `Expanded` on the graph makes the cell shrink instead of striping at any size.
 
 **`ease` no longer exists as an enum value and resolves on read to `cubicInOut`** — the curve it
 always was. The enum name is persisted into drafts and crosses the channel, so this is a

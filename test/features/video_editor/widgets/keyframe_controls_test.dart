@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:slimshotai/core/theme/app_colors.dart';
 import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/widgets/editor_playback_controls.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/keyframe_easing_sheet.dart';
@@ -16,6 +17,7 @@ void main() {
     WidgetTester tester, {
     bool showsKeyframeControls = true,
     bool isOnKeyframe = false,
+    bool canEditCurve = true,
     VoidCallback? onToggleKeyframe,
     VoidCallback? onOpenEasing,
   }) {
@@ -32,6 +34,7 @@ void main() {
             onRedo: () {},
             showsKeyframeControls: showsKeyframeControls,
             isOnKeyframe: isOnKeyframe,
+            canEditCurve: canEditCurve,
             onToggleKeyframe: onToggleKeyframe,
             onOpenEasing: onOpenEasing,
           ),
@@ -95,6 +98,32 @@ void main() {
       await tester.tap(find.byKey(const Key('keyframe_easing')));
       expect(opened, 1);
     });
+
+    testWidgets('with nothing to ease the curve icon is dim and inert',
+        (tester) async {
+      // **Disabled, not hidden.** Device-reported: the icon was always live,
+      // and tapping it between diamonds silently added one. It is now dim
+      // until a curve exists to shape, which also teaches what it wants.
+      var opened = 0;
+      await pumpControls(
+        tester,
+        canEditCurve: false,
+        onOpenEasing: () => opened++,
+      );
+
+      await tester.tap(find.byKey(const Key('keyframe_easing')));
+      expect(opened, 0);
+
+      // Still present, so it does not jump in and out of the bar.
+      expect(find.byKey(const Key('keyframe_easing')), findsOneWidget);
+      final icon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('keyframe_easing')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(icon.color, isNot(AppColors.textSecondary));
+    });
   });
 
   group('the easing sheet', () {
@@ -124,21 +153,26 @@ void main() {
       return chosen;
     }
 
-    testWidgets('shows four groups of four', (tester) async {
+    testWidgets('shows four families as tabs, one group at a time',
+        (tester) async {
       await openSheet(tester);
 
+      // Every family is reachable as a tab...
       expect(find.text('Default'), findsOneWidget);
       expect(find.text('Quadratic'), findsOneWidget);
       expect(find.text('Cubic'), findsOneWidget);
       expect(find.text('Bounce'), findsOneWidget);
 
-      expect(find.text('None'), findsNWidgets(4));
-      expect(find.text('Ease in'), findsNWidgets(4));
-      expect(find.text('Ease out'), findsNWidgets(4));
-      expect(find.text('Ease'), findsNWidgets(4));
+      // ...but only the open one's four cells are on screen. Sixteen at once
+      // is a wall, and the families are alternatives rather than a list to
+      // read through.
+      expect(find.text('None'), findsOneWidget);
+      expect(find.text('Ease in'), findsOneWidget);
+      expect(find.text('Ease out'), findsOneWidget);
+      expect(find.text('Ease'), findsOneWidget);
     });
 
-    testWidgets('choosing a curve reports the right value', (tester) async {
+    testWidgets('switching tab shows that family', (tester) async {
       KeyframeInterpolation? chosen;
       await tester.pumpWidget(
         MaterialApp(
@@ -159,14 +193,56 @@ void main() {
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
-      // Bounce is the last group, so its "Ease out" is the last of the four.
-      await tester.tap(find.text('Ease out').last);
+      await tester.tap(find.text('Bounce'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ease out'));
       await tester.pumpAndSettle();
 
       expect(chosen, KeyframeInterpolation.bounceOut);
     });
 
-    testWidgets('choosing None in any group reports linear', (tester) async {
+    testWidgets('opens on the family the current curve belongs to',
+        (tester) async {
+      await openSheet(tester, current: KeyframeInterpolation.cubicOut);
+      // The highlighted cell has to be visible, not hidden behind a tab the
+      // user would have to go looking for.
+      await tester.tap(find.text('Ease out'));
+      await tester.pumpAndSettle();
+      expect(find.text('Cubic'), findsOneWidget);
+    });
+
+    testWidgets('choosing a curve applies it immediately', (tester) async {
+      // **Applied live, not on confirm.** A sheet that held the choice until ✓
+      // would make the user commit to a curve they have not seen move.
+      KeyframeInterpolation? chosen;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showKeyframeEasingSheet(
+                  context,
+                  current: KeyframeInterpolation.linear,
+                  onSelected: (e) => chosen = e,
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Ease in'));
+      await tester.pumpAndSettle();
+
+      expect(chosen, KeyframeInterpolation.sineIn);
+      // Still open, so the user can try another without reopening.
+      expect(find.text('Default'), findsOneWidget);
+    });
+
+    testWidgets('choosing None in any family reports linear', (tester) async {
       KeyframeInterpolation? chosen;
       await tester.pumpWidget(
         MaterialApp(
@@ -187,26 +263,29 @@ void main() {
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
-      // There is one way not to ease, so every group's None is the same edit.
-      await tester.tap(find.text('None').at(2));
+      // There is one way not to ease, so every family's None is the same edit.
+      await tester.tap(find.text('Cubic'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('None'));
       await tester.pumpAndSettle();
       expect(chosen, KeyframeInterpolation.linear);
     });
 
-    testWidgets('the sheet closes after a choice', (tester) async {
+    testWidgets('the tick dismisses the sheet', (tester) async {
       await openSheet(tester);
       expect(find.text('Default'), findsOneWidget);
-      await tester.tap(find.text('Ease in').first);
+      await tester.tap(find.byKey(const Key('keyframe_easing_done')));
       await tester.pumpAndSettle();
       expect(find.text('Default'), findsNothing);
     });
 
-    testWidgets('every curve is drawn, not just named', (tester) async {
-      // Sixteen cells, each plotting its own curve from `applyKeyframeEasing`.
-      // A text-only chip would make "Quadratic ease out" and "Cubic ease out"
-      // indistinguishable until the user tried both.
+    testWidgets('each curve is drawn, and None is not a curve', (tester) async {
+      // Three graphs plus the crossed circle: "None" drawn as a straight line
+      // would read as *linear*, a curve among curves, rather than as the
+      // absence of one.
       await openSheet(tester);
-      expect(find.byType(CustomPaint), findsAtLeastNWidgets(16));
+      expect(find.byType(CustomPaint), findsAtLeastNWidgets(3));
+      expect(find.byIcon(LucideIcons.ban), findsOneWidget);
     });
   });
 }

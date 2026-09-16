@@ -207,4 +207,100 @@ void main() {
       }
     });
   });
+
+  group('the curve target — which segment the curve icon edits', () {
+    // Sorted diamonds k0 < k1 < ...; the flag lives on the keyframe a segment
+    // *starts* at. The icon edits the segment the playhead is inside, so it
+    // must be inert wherever there is no travel to shape.
+    VideoSegment twoDiamonds() {
+      var s = captureKeyframe(seg(), 0.25);
+      s = captureKeyframe(s, 0.75);
+      return s;
+    }
+
+    test('no diamonds, no target', () {
+      expect(keyframeCurveTarget(seg(), 0.5, 0.01), isNull);
+    });
+
+    test('one diamond alone has no segment, so no target anywhere', () {
+      // A curve needs two points to run between. With one, the value holds on
+      // both sides and a curve would change nothing — a control that lies.
+      final s = captureKeyframe(seg(), 0.5);
+      expect(keyframeCurveTarget(s, 0.2, 0.01), isNull);
+      expect(keyframeCurveTarget(s, 0.5, 0.01), isNull);
+      expect(keyframeCurveTarget(s, 0.8, 0.01), isNull);
+    });
+
+    test('between two diamonds the target is the one the segment starts at',
+        () {
+      expect(keyframeCurveTarget(twoDiamonds(), 0.5, 0.01), 0.25);
+    });
+
+    test('before the first diamond there is nothing to ease', () {
+      expect(keyframeCurveTarget(twoDiamonds(), 0.1, 0.01), isNull);
+    });
+
+    test('after the last diamond there is nothing to ease', () {
+      expect(keyframeCurveTarget(twoDiamonds(), 0.9, 0.01), isNull);
+    });
+
+    test('on the last diamond the target is the segment arriving at it', () {
+      // The screenshot case: the playhead parked on the second diamond, the
+      // sheet open, editing the curve the value travelled to get there.
+      expect(keyframeCurveTarget(twoDiamonds(), 0.75, 0.01), 0.25);
+    });
+
+    test('on the first diamond the target is the segment leaving it', () {
+      // Nothing arrives at the first diamond, so the only curve near the
+      // playhead is the one leaving. Better than an inert icon on a diamond
+      // the user just tapped.
+      expect(keyframeCurveTarget(twoDiamonds(), 0.25, 0.01), 0.25);
+    });
+
+    test('on a middle diamond the outgoing segment wins', () {
+      // Only the *last* diamond falls back to the segment arriving at it,
+      // because nothing follows it. Anywhere else there is travel in both
+      // directions, and the diamond's own flag is the one controlling the
+      // segment that leaves it — so that is what the icon edits.
+      var s = twoDiamonds();
+      s = captureKeyframe(s, 0.5);
+      expect(keyframeCurveTarget(s, 0.5, 0.01), 0.5);
+    });
+
+    test('within tolerance of a diamond counts as on it', () {
+      expect(keyframeCurveTarget(twoDiamonds(), 0.753, 0.01), 0.25);
+    });
+  });
+
+  group('setting a curve', () {
+    test('writes the target segment on every property', () {
+      var s = captureKeyframe(seg(), 0.25);
+      s = captureKeyframe(s, 0.75);
+      s = setKeyframeCurve(s, 0.5, 0.01, KeyframeInterpolation.bounceOut);
+
+      for (final p in ClipProperty.values) {
+        final ks = clipParameter(s, p).keyframes;
+        expect(ks.first.interpolation, KeyframeInterpolation.bounceOut,
+            reason: p.name);
+        expect(ks.last.interpolation, KeyframeInterpolation.linear,
+            reason: p.name);
+      }
+    });
+
+    test('never places a diamond', () {
+      // The curve icon shapes travel that already exists. The plus button is
+      // the one control that creates instants; a curve picker that quietly
+      // added one was the device-reported fault.
+      final one = captureKeyframe(seg(), 0.5);
+      final after = setKeyframeCurve(one, 0.2, 0.01, KeyframeInterpolation.quadIn);
+      expect(after, one);
+      expect(keyframeProgresses(after), [0.5]);
+    });
+
+    test('with no target it changes nothing', () {
+      var s = captureKeyframe(seg(), 0.25);
+      s = captureKeyframe(s, 0.75);
+      expect(setKeyframeCurve(s, 0.9, 0.01, KeyframeInterpolation.quadIn), s);
+    });
+  });
 }

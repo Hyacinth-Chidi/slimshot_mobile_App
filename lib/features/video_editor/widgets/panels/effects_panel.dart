@@ -182,13 +182,15 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                 if (selected != null)
                   _intensityRow(
                     notifier: notifier,
-                    // **The base value, never the value at the playhead.** An
-                    // envelope or a keyframe shapes the strength across the
-                    // clip, so a slider tracking the resolved value would
-                    // wander while playing and write back whatever the curve
-                    // happened to be at when the user grabbed it — quietly
-                    // flattening the animation into one frame of itself.
-                    intensity: segment.effectIntensity.baseValue,
+                    // **What the write will target.** With no diamonds that is
+                    // the base — so an envelope's shape is not flattened by a
+                    // slider chasing its resolved value. With diamonds it is
+                    // the keyframe at the playhead, because that is what the
+                    // drag will land on.
+                    intensity: editorState.clipEditValue(
+                      segment,
+                      ClipProperty.effectIntensity,
+                    ),
                   ),
                 const SizedBox(height: 8),
                 Expanded(

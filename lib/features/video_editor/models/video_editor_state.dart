@@ -167,61 +167,6 @@ class VideoEditorState {
   final double backgroundBlurIntensity;
   final String? selectedTransitionSegmentId;
 
-  /// The clip the keyframe controls act on: the selected one.
-  ///
-  /// Null with nothing selected, which is what takes the diamond button out of
-  /// the playback bar — a keyframe belongs to a clip, and a control that is
-  /// present but inert is a control that lies.
-  ///
-  /// **There is no "keyframe mode" and no editor to open.** The rejected design
-  /// held a `keyframeEditorSegmentId` naming a clip whose row was showing;
-  /// diamonds now live on the clip's own thumbnail and the controls act on
-  /// whatever is selected, so there is no third state to keep in step.
-  String? get keyframeClipId => isClipSelected ? selectedSegmentId : null;
-
-  /// Every diamond on the selected clip, as clip-relative progresses.
-  List<double> get selectedClipKeyframes {
-    final segment = selectedSegment;
-    if (segment == null) return const [];
-    return keyframeProgresses(segment);
-  }
-
-  /// The diamond under the playhead, or null.
-  ///
-  /// **The selection is the playhead.** Nothing is stored: the diamond being
-  /// acted on is simply the one the playhead is standing on, which is what lets
-  /// the plus/minus flip, the easing sheet and the timeline agree about what
-  /// "here" means without a third piece of state that could fall out of step.
-  double? get playheadKeyframeProgress {
-    final segment = selectedSegment;
-    final progress = selectedClipProgress;
-    if (segment == null || progress == null) return null;
-    return keyframeProgressNear(
-      segment,
-      progress,
-      keyframeHitToleranceFor(segment),
-    );
-  }
-
-  bool get playheadIsOnKeyframe => playheadKeyframeProgress != null;
-
-  /// The easing of the diamond under the playhead, or [KeyframeInterpolation.linear]
-  /// when there is none — which is what a diamond placed here would carry, so
-  /// the sheet opens showing what choosing a curve would replace.
-  KeyframeInterpolation get playheadKeyframeEasing {
-    final segment = selectedSegment;
-    final target = playheadKeyframeProgress;
-    if (segment == null || target == null) return KeyframeInterpolation.linear;
-    for (final property in ClipProperty.values) {
-      for (final k in clipParameter(segment, property).keyframes) {
-        if ((k.progress - target).abs() <= kKeyframeMatchProgress) {
-          return k.interpolation;
-        }
-      }
-    }
-    return KeyframeInterpolation.linear;
-  }
-
   /// The first imported file, as an [XFile].
   ///
   /// A project can hold many assets now; this exists for the places that only
@@ -266,7 +211,108 @@ class VideoEditorState {
     return segment.clipProgressAt(currentPlaybackPosition, starts[index]);
   }
 
-  /// The asset a clip is cut from.
+  /// The clip the keyframe controls act on: the selected one.
+  ///
+  /// Null with nothing selected, which is what takes the diamond button out of
+  /// the playback bar — a keyframe belongs to a clip, and a control that is
+  /// present but inert is a control that lies.
+  ///
+  /// **There is no "keyframe mode" and no editor to open.** The rejected design
+  /// held a `keyframeEditorSegmentId` naming a clip whose row was showing;
+  /// diamonds now live on the clip's own thumbnail and the controls act on
+  /// whatever is selected, so there is no third state to keep in step.
+  String? get keyframeClipId => isClipSelected ? selectedSegmentId : null;
+
+  /// Every diamond on the selected clip, as clip-relative progresses.
+  List<double> get selectedClipKeyframes {
+    final segment = selectedSegment;
+    if (segment == null) return const [];
+    return keyframeProgresses(segment);
+  }
+
+  /// The diamond under the playhead, or null.
+  ///
+  /// **The selection is the playhead.** Nothing is stored: the diamond being
+  /// acted on is simply the one the playhead is standing on, which is what lets
+  /// the plus/minus flip, the easing sheet and the timeline agree about what
+  /// "here" means without a third piece of state that could fall out of step.
+  double? get playheadKeyframeProgress {
+    final segment = selectedSegment;
+    final progress = selectedClipProgress;
+    if (segment == null || progress == null) return null;
+    return keyframeProgressNear(
+      segment,
+      progress,
+      keyframeHitToleranceFor(segment),
+    );
+  }
+
+  bool get playheadIsOnKeyframe => playheadKeyframeProgress != null;
+
+  /// Which segment's curve the curve control edits, or null when there is
+  /// nothing to ease at the playhead.
+  double? get keyframeCurveTargetProgress {
+    final segment = selectedSegment;
+    final progress = selectedClipProgress;
+    if (segment == null || progress == null) return null;
+    return keyframeCurveTarget(
+      segment,
+      progress,
+      keyframeHitToleranceFor(segment),
+    );
+  }
+
+  /// Whether the curve control does anything here.
+  ///
+  /// **False is a disabled icon, not a hidden one.** A control that vanishes
+  /// and reappears is harder to find than one that dims; dimming also teaches
+  /// what it needs — place a second diamond and it lights up.
+  bool get canEditKeyframeCurve => keyframeCurveTargetProgress != null;
+
+  /// The curve currently on the segment the playhead is inside, or
+  /// [KeyframeInterpolation.linear] when there is none.
+  ///
+  /// Linear doubles as "None" in the sheet, which is honest: a segment with no
+  /// curve chosen travels in a straight line.
+  KeyframeInterpolation get keyframeCurve {
+    final segment = selectedSegment;
+    final target = keyframeCurveTargetProgress;
+    if (segment == null || target == null) return KeyframeInterpolation.linear;
+    for (final property in ClipProperty.values) {
+      for (final k in clipParameter(segment, property).keyframes) {
+        if ((k.progress - target).abs() <= kKeyframeMatchProgress) {
+          return k.interpolation;
+        }
+      }
+    }
+    return KeyframeInterpolation.linear;
+  }
+
+  /// What a control editing [property] should **show**.
+  ///
+  /// **A control shows what its write will target**, which is the rule that
+  /// makes the sliders honest. With no diamonds an edit writes the base, so the
+  /// base is shown. With diamonds it writes the keyframe at the playhead, so
+  /// the value *there* is shown.
+  ///
+  /// Getting this wrong is not cosmetic. A volume slider parked at the base's
+  /// 1.0 on a clip whose keyframes had taken it down to 0.2 offers no way to
+  /// drag *up* — the thumb is already at the top while the audio is quiet —
+  /// which is exactly the device report this rule fixes.
+  ///
+  /// **An envelope is not a keyframe here.** It shapes the base, and the write
+  /// still targets the base, so the base is what to show; a slider tracking an
+  /// enveloped curve would wander while playing and write back one frame of it
+  /// when grabbed.
+  double clipEditValue(VideoSegment segment, ClipProperty property) {
+    final param = clipParameter(segment, property);
+    if (!segment.hasKeyframes) return param.baseValue;
+    final progress = selectedClipProgress;
+    if (progress == null) return param.baseValue;
+    return param.resolveAt(progress);
+  }
+
+  /// The asset a clip is cut from.  /// The asset a clip is cut from.
   ///
   /// Falls back to the first asset so a draft written before clips carried an
   /// asset id still resolves to something playable.

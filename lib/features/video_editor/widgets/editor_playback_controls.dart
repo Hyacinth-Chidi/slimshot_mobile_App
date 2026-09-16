@@ -15,6 +15,7 @@ class EditorPlaybackControls extends StatelessWidget {
     this.onExpandPreview,
     this.showsKeyframeControls = false,
     this.isOnKeyframe = false,
+    this.canEditCurve = false,
     this.onToggleKeyframe,
     this.onOpenEasing,
   });
@@ -38,6 +39,14 @@ class EditorPlaybackControls extends StatelessWidget {
   /// Whether the playhead is sitting on a diamond, which flips the control from
   /// "place one here" to "remove this one".
   final bool isOnKeyframe;
+
+  /// Whether the curve control has anything to shape.
+  ///
+  /// **Disabled, not hidden.** A curve needs two diamonds to run between, so it
+  /// is inert until there are — and a control that vanishes and reappears is
+  /// harder to find than one that dims. Dimming also teaches what it wants:
+  /// place a second diamond and it lights up.
+  final bool canEditCurve;
 
   final VoidCallback? onToggleKeyframe;
   final VoidCallback? onOpenEasing;
@@ -73,10 +82,12 @@ class EditorPlaybackControls extends StatelessWidget {
                 const SizedBox(width: 18),
                 GestureDetector(
                   key: const Key('keyframe_easing'),
-                  onTap: onOpenEasing,
-                  child: const Icon(
+                  onTap: canEditCurve ? onOpenEasing : null,
+                  child: Icon(
                     LucideIcons.spline,
-                    color: AppColors.textSecondary,
+                    color: canEditCurve
+                        ? AppColors.textSecondary
+                        : AppColors.textTertiary.withValues(alpha: 0.3),
                     size: 20,
                   ),
                 ),

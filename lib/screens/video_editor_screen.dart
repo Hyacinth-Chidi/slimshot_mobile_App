@@ -25,6 +25,7 @@ import '../features/video_editor/providers/video_editor_notifier.dart';
 import '../features/video_editor/services/media_import_service.dart';
 import '../features/video_editor/services/native_timeline_preview_service.dart';
 import '../core/models/draft_project.dart';
+import '../features/video_editor/logic/animation/clip_keyframes.dart';
 import '../features/video_editor/widgets/editor_playback_controls.dart';
 import '../features/video_editor/widgets/panels/keyframe_easing_sheet.dart';
 import '../features/video_editor/widgets/timeline/scrollable_timeline.dart';
@@ -1269,12 +1270,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
           notifier.addKeyframeAtPlayhead();
         }
       },
+      // Inert where there is nothing to ease — fewer than two diamonds, or the
+      // playhead outside them. The icon dims rather than disappearing.
+      canEditCurve: editorState.canEditKeyframeCurve,
       onOpenEasing: () => showKeyframeEasingSheet(
         context,
-        current: editorState.playheadKeyframeEasing,
-        onSelected: (easing) => ref
-            .read(videoEditorProvider.notifier)
-            .setKeyframeEasingAtPlayhead(easing),
+        current: editorState.keyframeCurve,
+        onSelected: (curve) =>
+            ref.read(videoEditorProvider.notifier).setKeyframeCurve(curve),
       ),
     );
   }
@@ -1972,12 +1975,15 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
     final activeSegment = ref.watch(activeSegmentProvider);
     return VolumePanel(
-      // `baseValue`, not the value at the playhead: this is a *control*
-      // reading what to show. A slider tracking a keyframed curve would wander
-      // while playing and write back whatever the curve happened to be at when
-      // the user grabbed it, flattening the fade into one frame of itself.
-      displayVolume:
-          editorState.previewVolume ?? activeSegment?.volume.baseValue ?? 0,
+      // **What the write will target**, which on a keyframed clip is the value
+      // at the playhead, not the base. A slider showing the base while the
+      // keyframes had taken the volume down offered no way to drag *up* — the
+      // thumb sat at the top while the audio was quiet. See
+      // [VideoEditorState.clipEditValue].
+      displayVolume: editorState.previewVolume ??
+          (activeSegment == null
+              ? 0
+              : editorState.clipEditValue(activeSegment, ClipProperty.volume)),
       emptyMessage: activeSegment == null
           ? 'Select a clip to adjust volume'
           : null,

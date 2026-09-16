@@ -209,14 +209,15 @@ void main() {
       expect(s.canvasScaleAt(0.1), 2.4);
     });
 
-    test('the easing sheet writes the diamond under the playhead', () {
+    test('the curve sheet writes the segment under the playhead', () {
       final n = notifierWith([clip('a')], selectedSegmentId: 'a');
       n.addKeyframeAtPlayhead();
       n.updatePlaybackPosition(10.0);
       n.addKeyframeAtPlayhead();
 
-      n.updatePlaybackPosition(0.0);
-      n.setKeyframeEasingAtPlayhead(KeyframeInterpolation.bounceOut);
+      n.updatePlaybackPosition(5.0); // inside the one segment
+      expect(n.state.keyframeCurveTargetProgress, 0.0);
+      n.setKeyframeCurve(KeyframeInterpolation.bounceOut);
 
       final s = only(n);
       for (final p in ClipProperty.values) {
@@ -226,35 +227,57 @@ void main() {
         expect(ks.last.interpolation, KeyframeInterpolation.linear,
             reason: p.name);
       }
-      expect(n.state.playheadKeyframeEasing, KeyframeInterpolation.bounceOut);
+      expect(n.state.keyframeCurve, KeyframeInterpolation.bounceOut);
     });
 
-    test('choosing an easing between diamonds places one, like the sliders do',
-        () {
-      // The sheet and the sliders must agree about what "here" means, or the
-      // two controls would disagree about which instant the user is on.
+    test('the curve sheet never places a diamond', () {
+      // Device-reported: tapping the curve icon between diamonds added one.
+      // The plus button is the only control that creates instants.
       final n = notifierWith([clip('a')], selectedSegmentId: 'a',
           position: 3.0);
-      n.setKeyframeEasingAtPlayhead(KeyframeInterpolation.quadIn);
+      n.addKeyframeAtPlayhead();
+      n.updatePlaybackPosition(7.0);
 
-      final s = only(n);
-      expect(keyframeProgresses(s), hasLength(1));
-      expect(clipParameter(s, ClipProperty.volume).keyframes.single.interpolation,
-          KeyframeInterpolation.quadIn);
+      n.setKeyframeCurve(KeyframeInterpolation.quadIn);
+
+      expect(keyframeProgresses(only(n)), hasLength(1));
+    });
+
+    test('the curve icon is inert where there is nothing to ease', () {
+      final n = notifierWith([clip('a')], selectedSegmentId: 'a');
+      // No diamonds at all.
+      expect(n.state.canEditKeyframeCurve, isFalse);
+
+      n.addKeyframeAtPlayhead(); // one, at 0.0
+      n.updatePlaybackPosition(5.0);
+      // One diamond is not a segment.
+      expect(n.state.canEditKeyframeCurve, isFalse);
+
+      n.addKeyframeAtPlayhead(); // second, at 0.5
+      n.updatePlaybackPosition(2.5);
+      expect(n.state.canEditKeyframeCurve, isTrue); // between them
+      n.updatePlaybackPosition(8.0);
+      expect(n.state.canEditKeyframeCurve, isFalse); // past the last
     });
 
     test('retuning a value keeps the easing the keyframe already carried', () {
-      final n = notifierWith([clip('a')], selectedSegmentId: 'a',
-          position: 5.0);
-      n.addKeyframeAtPlayhead();
-      n.setKeyframeEasingAtPlayhead(KeyframeInterpolation.bounceOut);
+      // Two diamonds, so there is a segment with a curve to keep.
+      final n = notifierWith([clip('a')], selectedSegmentId: 'a');
+      n.addKeyframeAtPlayhead(); // 0.0
+      n.updatePlaybackPosition(10.0);
+      n.addKeyframeAtPlayhead(); // 1.0
+
+      n.updatePlaybackPosition(5.0);
+      n.setKeyframeCurve(KeyframeInterpolation.bounceOut);
+
+      n.updatePlaybackPosition(0.0);
       n.setClipProperty(ClipProperty.canvasScale, 2.0);
 
       // The slider moved the value; it must not silently straighten the curve.
       expect(
         clipParameter(only(n), ClipProperty.canvasScale)
             .keyframes
-            .single
+            .first
             .interpolation,
         KeyframeInterpolation.bounceOut,
       );
@@ -307,6 +330,67 @@ void main() {
       expect(s.effectId, isNull);
       expect(s.canvasScale.keyframes, isNotEmpty);
       expect(s.canvasScaleAt(0.5), 2.0);
+    });
+  });
+
+  group('what a control shows', () {
+    // **A control shows what its write will target.** With no diamonds the
+    // edit writes the base, so the base is shown; with diamonds the edit
+    // writes the keyframe at the playhead, so the value there is shown. The
+    // device-reported fault was a volume slider parked at the base's 1.0 on a
+    // clip whose keyframes had taken it to 0.2 — nowhere to drag *up* from.
+    test('with no diamonds, the base', () {
+      final n = notifierWith([
+        clip('a').copyWith(volume: const AnimatableDouble(baseValue: 0.6)),
+      ], selectedSegmentId: 'a', position: 5.0);
+      expect(n.state.clipEditValue(only(n), ClipProperty.volume), 0.6);
+    });
+
+    test('with an envelope but no diamonds, still the base', () {
+      // The envelope shapes the base and the write targets the base, so a
+      // slider tracking the resolved curve would wander while playing and
+      // write back one frame of it when grabbed.
+      final n = notifierWith([
+        clip('a').copyWith(
+          effectIntensity:
+              const AnimatableDouble(baseValue: 0.8, envelope: 'throb'),
+        ),
+      ], selectedSegmentId: 'a', position: 5.0);
+      expect(
+          n.state.clipEditValue(only(n), ClipProperty.effectIntensity), 0.8);
+    });
+
+    test('with diamonds, the value at the playhead', () {
+      final n = notifierWith([clip('a')], selectedSegmentId: 'a');
+      n.addKeyframeAtPlayhead(); // 1.0 at 0.0
+      n.updatePlaybackPosition(10.0);
+      n.setClipProperty(ClipProperty.volume, 0.2); // diamond at 1.0 -> 0.2
+
+      n.updatePlaybackPosition(5.0);
+      // Halfway between 1.0 and 0.2 on a linear segment.
+      expect(n.state.clipEditValue(only(n), ClipProperty.volume),
+          closeTo(0.6, 1e-9));
+      n.updatePlaybackPosition(10.0);
+      expect(n.state.clipEditValue(only(n), ClipProperty.volume),
+          closeTo(0.2, 1e-9));
+    });
+
+    test('the shown value is exactly what a write would land on', () {
+      // The contract, stated as a round trip: read the shown value, write it
+      // back, and the clip must be unchanged.
+      final n = notifierWith([clip('a')], selectedSegmentId: 'a');
+      n.addKeyframeAtPlayhead();
+      n.updatePlaybackPosition(10.0);
+      n.setClipProperty(ClipProperty.volume, 0.2);
+      n.updatePlaybackPosition(5.0);
+
+      final before = only(n);
+      n.setClipProperty(
+          ClipProperty.volume, n.state.clipEditValue(before, ClipProperty.volume));
+      final after = only(n);
+      for (final t in [0.0, 0.25, 0.5, 0.75, 1.0]) {
+        expect(after.volumeAt(t), closeTo(before.volumeAt(t), 1e-9));
+      }
     });
   });
 }
