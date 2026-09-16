@@ -104,6 +104,48 @@ int segmentIndexAt(double timelineSeconds, List<VideoSegment> segments) {
   return 0;
 }
 
+/// How close, in timeline **pixels**, a scrub release or a trim handle has to
+/// land to a snap point to be pulled onto it. 8px at the timeline's 50px/s is
+/// 0.16s: close enough to feel magnetic, far enough not to steal an intended
+/// near miss. Pixels, not seconds, because the finger's precision is in pixels
+/// whatever the zoom.
+const double kSnapTolerancePx = 8.0;
+
+/// [value] pulled onto the nearest of [candidates] when one lies within
+/// [tolerance]; otherwise [value] itself. A tie goes to the earlier candidate.
+///
+/// Unit-agnostic on purpose: a scrub release measures in timeline seconds, a
+/// trim handle in source seconds, and one helper serves both so the two feel
+/// identical under the finger.
+double snapToNearest(
+  double value,
+  Iterable<double> candidates,
+  double tolerance,
+) {
+  double? best;
+  var bestDistance = double.infinity;
+  for (final candidate in candidates) {
+    final distance = (candidate - value).abs();
+    if (distance <= tolerance && distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best ?? value;
+}
+
+/// Every instant a scrub wants to land on: the start of each clip and the end
+/// of the last, in timeline seconds — the seams, with transition overlaps
+/// already applied, so a release near a seam parks the playhead exactly where
+/// the cut is drawn.
+List<double> clipBoundaryTimes(List<VideoSegment> segments) {
+  if (segments.isEmpty) return const [];
+  return [
+    ...segmentTimelineStarts(segments),
+    videoTimelineDuration(segments),
+  ];
+}
+
 /// Maps a timeline instant onto a position in the source media.
 ///
 /// Inside an overlap two segments are live at once; this resolves to the

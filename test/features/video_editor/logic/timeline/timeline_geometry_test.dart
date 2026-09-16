@@ -412,4 +412,48 @@ void main() {
       expect(left.sourceEnd, right.sourceStart);
     });
   });
+
+
+  group('snapping', () {
+    // Snapping is a pull within a *pixel* tolerance, expressed in whatever
+    // unit the caller measures in — timeline seconds for a scrub release,
+    // source seconds for a trim — so one helper serves both.
+    test('pulls onto the nearest candidate within tolerance', () {
+      expect(snapToNearest(4.9, [2.0, 5.0, 9.0], 0.2), 5.0);
+      expect(snapToNearest(5.1, [2.0, 5.0, 9.0], 0.2), 5.0);
+    });
+
+    test('leaves a value alone outside tolerance', () {
+      expect(snapToNearest(4.5, [2.0, 5.0, 9.0], 0.2), 4.5);
+      expect(snapToNearest(4.5, const <double>[], 0.2), 4.5);
+    });
+
+    test('a tie goes to the earlier candidate', () {
+      expect(snapToNearest(3.5, [3.0, 4.0], 0.6), 3.0);
+    });
+
+    test('clip boundaries are every seam plus the two ends', () {
+      // 3s, then 4s dissolving for 1s into 4s: the third clip starts 1s
+      // early, so the seams are 3 and 6 and the end is 10 — the overlap has
+      // already been applied, which is where the cut is drawn.
+      final segments = [
+        VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 3),
+        VideoSegment(
+          id: 'b',
+          sourceStart: 0,
+          sourceEnd: 4,
+          transitionType: 'dissolve',
+          transitionDuration: 1.0,
+        ),
+        VideoSegment(id: 'c', sourceStart: 0, sourceEnd: 4),
+      ];
+      expect(clipBoundaryTimes(segments), [0.0, 3.0, 6.0, 10.0]);
+    });
+
+    test('the tolerance is a fixed number of pixels', () {
+      // 8px at the timeline's 50px/s is 0.16s: close enough to feel magnetic,
+      // far enough not to steal an intended near miss.
+      expect(kSnapTolerancePx, 8.0);
+    });
+  });
 }

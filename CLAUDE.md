@@ -1772,6 +1772,21 @@ chrome is square**: no radius on handles, clip bodies, the transition marker, th
 preview or the canvas â€” the only rounding left is the playhead's 2px glow line and the waveform
 bars' 1px softening, which are lines, not boxes.
 
+#### Snapping
+
+**A scrub release within `kSnapTolerancePx` (8px) of a clip seam glides onto it** — on release,
+not during the drag. The playhead is fixed and the content scrolls under it, so snapping the
+*reported* position mid-drag would put the marker a few pixels off the seam it claimed; sticking the
+scroll itself mid-drag fights the finger. A 120ms `animateTo` after the finger lifts feels magnetic
+without either, and it scrolls through the same notifications a finger does, so the engine follows
+it the same way. Seams come from `clipBoundaryTimes` — the starts with transition overlaps applied,
+plus the end — so the playhead parks where the cut is drawn. **A trim handle snaps to the playhead**
+when the playhead is inside the clip being trimmed: trimming to the frame you are looking at is the
+common intent and was otherwise a frame or two off every time. The tolerance is pixels converted to
+source seconds through the clip's speed, so the pull feels the same on a sped clip; the haptic
+fires once on arrival (`_trimSnapped`), not on every frame held there. `snapToNearest` is
+unit-agnostic so the two feel identical.
+
 #### Reordering clips
 
 Drag-and-drop lives in `ScrollableTimeline`. The shape of it:

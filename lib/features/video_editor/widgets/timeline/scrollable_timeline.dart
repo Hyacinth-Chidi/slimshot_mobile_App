@@ -523,10 +523,38 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       // seeks anything.
       widget.onTimelinePositionChanged?.call(timelineSeconds);
     } else if (notification is ScrollEndNotification) {
+      final wasUser = _isUserScrolling;
       _isUserScrolling = false;
       widget.onScrubEnd?.call();
+      if (wasUser) _snapScrubRelease();
     }
     return true;
+  }
+
+  /// A released scrub within [kSnapTolerancePx] of a clip seam glides onto it.
+  ///
+  /// **On release, not during the drag.** The playhead is fixed and the content
+  /// scrolls under it, so snapping the *reported* position mid-drag would put
+  /// the marker a few pixels off the seam it claimed to be on; sticking the
+  /// scroll itself mid-drag fights the finger. A short glide after the finger
+  /// lifts is what feels magnetic without either. The glide scrolls through the
+  /// same notifications a finger does, so the engine follows it the same way.
+  void _snapScrubRelease() {
+    if (!_scrollController.hasClients) return;
+    final pixels = _scrollController.offset;
+    final seconds = pixels / _pixelsPerSecond;
+    final snapped = snapToNearest(
+      seconds,
+      clipBoundaryTimes(widget.segments),
+      kSnapTolerancePx / _pixelsPerSecond,
+    );
+    if (snapped == seconds) return;
+    HapticFeedback.selectionClick();
+    _scrollController.animateTo(
+      snapped * _pixelsPerSecond,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+    );
   }
 
   void _updateTrim(double newStart, double newEnd) {
@@ -571,8 +599,15 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     if (handle == null) return;
 
     // Absolute, from the anchor — see [_trimAnchorGlobalX].
-    final next =
+    final free =
         _trimAnchorValue + (globalX - _trimAnchorGlobalX) / _pixelsPerSecond;
+    // Pulled onto the playhead when it is inside this clip and within
+    // [kSnapTolerancePx]: trimming *to the frame you are looking at* is the
+    // common intent, and it is otherwise a frame or two off every time. The
+    // playhead is timeline seconds; the trim is source seconds; the tolerance
+    // is pixels — converted here, with the clip's speed, so the pull feels the
+    // same on a sped clip.
+    final next = _snapTrimToPlayhead(free);
 
     // Clamped to the shortest allowed clip here, rather than left for
     // `_updateTrim` to reject: a rejected update leaves the handle wherever the
@@ -593,7 +628,31 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     _previewTrimPosition(target);
   }
 
+  /// Whether the current trim frame is held on the playhead, so the tick fires
+  /// once on arrival rather than on every frame spent there.
+  bool _trimSnapped = false;
+
+  double _snapTrimToPlayhead(double sourceSeconds) {
+    final segments = widget.segments;
+    final selectedIndex = segments.indexWhere((s) => s.id == widget.selectedSegmentId);
+    if (selectedIndex < 0) return sourceSeconds;
+    final playhead = widget.timelinePositionSeconds;
+    if (segmentIndexAt(playhead, segments) != selectedIndex) {
+      _trimSnapped = false;
+      return sourceSeconds;
+    }
+    final segment = segments[selectedIndex];
+    final playheadSource = timelineTimeToSourceTime(playhead, segments);
+    final tolerance = kSnapTolerancePx / _pixelsPerSecond * segment.speed;
+    final snapped = snapToNearest(sourceSeconds, [playheadSource], tolerance);
+    final nowSnapped = snapped != sourceSeconds;
+    if (nowSnapped && !_trimSnapped) HapticFeedback.selectionClick();
+    _trimSnapped = nowSnapped;
+    return snapped;
+  }
+
   void _endTrimDrag() {
+    _trimSnapped = false;
     if (!_isDraggingTrimHandle) return;
     _isDraggingTrimHandle = false;
     setState(() => _activeTrimHandle = null);

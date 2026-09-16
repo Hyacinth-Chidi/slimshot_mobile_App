@@ -48,7 +48,7 @@ Grouped so each batch shares one device-verification pass.
 
 ### Batch C — timeline feel
 
-- [ ] **C1 Snapping.** Trims, moves and the playhead snap to clip edges and whole seconds
+- [x] **C1 Snapping** (scrub release to seams; trim handle to the playhead). Trims, moves and the playhead snap to clip edges and whole seconds
   within a pixel tolerance, with a haptic tick; hold to override.
 - [x] **C2 Keyframe drag-to-move.** Long-press-drag a diamond along the filmstrip; every
   property's keyframe at that progress moves together.
