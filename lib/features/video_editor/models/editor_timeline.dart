@@ -234,6 +234,8 @@ class EditorTimelineVideoClip {
     this.canvasOffsetY = const AnimatableDouble(baseValue: 0.0),
     this.canvasRotation = const AnimatableDouble(baseValue: 0.0),
     this.contentRect = const Rect.fromLTWH(0, 0, 1, 1),
+    this.flipHorizontal = false,
+    this.flipVertical = false,
   });
 
   final String id;
@@ -353,6 +355,10 @@ class EditorTimelineVideoClip {
   /// the identical rect onto every clip, so nothing changes for it.
   final Rect contentRect;
 
+  /// Mirrored across its own axes. See `VideoSegment.flipHorizontal`.
+  final bool flipHorizontal;
+  final bool flipVertical;
+
   double get timelineDuration => timelineEnd - timelineStart;
 
   /// This clip's 0..1 position at a timeline instant.
@@ -430,6 +436,9 @@ class EditorTimelineVideoClip {
       'canvasOffsetX': canvasOffsetX.toJson(),
       'canvasOffsetY': canvasOffsetY.toJson(),
       'canvasRotation': canvasRotation.toJson(),
+      // Only when set, so an older engine reads the payload it always did.
+      if (flipHorizontal) 'flipHorizontal': true,
+      if (flipVertical) 'flipVertical': true,
       // The same shape the canvas rect crosses in, so the Kotlin reader is one
       // helper for both.
       'contentRect': {

@@ -409,6 +409,8 @@ class VideoEditorTimelineComposer {
       canvasOffsetY: previous.canvasOffsetY,
       canvasRotation: previous.canvasRotation,
       contentRect: previous.contentRect,
+      flipHorizontal: previous.flipHorizontal,
+      flipVertical: previous.flipVertical,
     );
   }
 
@@ -500,6 +502,12 @@ class VideoEditorTimelineComposer {
         (previous.canvasRotation.baseValue - next.canvasRotation.baseValue)
                 .abs() >
             transformEpsilon) {
+      return false;
+    }
+
+    // A merged item can only be mirrored one way.
+    if (previous.flipHorizontal != next.flipHorizontal ||
+        previous.flipVertical != next.flipVertical) {
       return false;
     }
 
@@ -600,6 +608,10 @@ class VideoEditorTimelineComposer {
       canvasOffsetX: plain ? kZeroParameter : segment.canvasOffsetX,
       canvasOffsetY: plain ? kZeroParameter : segment.canvasOffsetY,
       canvasRotation: plain ? kZeroParameter : segment.canvasRotation,
+      // A mirror is a placement too: plain shows the frame as shot, or the
+      // crop handles would land on the mirrored side.
+      flipHorizontal: !plain && segment.flipHorizontal,
+      flipVertical: !plain && segment.flipVertical,
       contentRect: contentRect,
     );
   }

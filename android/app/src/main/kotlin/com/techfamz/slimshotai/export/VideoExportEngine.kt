@@ -529,6 +529,7 @@ internal class VideoExportEngine(
         // frame, which is both correct and no longer accidental.
         val r = clip.contentRect
         renderer.setLaneContentRect(clip.laneIndex, r[0], r[1], r[2], r[3])
+        renderer.setLaneFlip(clip.laneIndex, clip.flipMask())
 
         if (clip.isImage) {
             // A photo's contain fit is derived by the renderer from the

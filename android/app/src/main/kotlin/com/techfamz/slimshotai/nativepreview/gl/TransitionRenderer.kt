@@ -99,6 +99,10 @@ internal class TransitionRenderer(
         @Volatile
         var contentRect = floatArrayOf(0f, 0f, 1f, 1f)
 
+        /** The clip's mirror mask, `[h, v]` of 0/1. See `NativeTimelineClip.flipMask`. */
+        @Volatile
+        var flip = floatArrayOf(0f, 0f)
+
         /**
          * Set once the decoder has delivered at least one frame. Sampling a
          * lane before this would read undefined texture memory, so a
@@ -799,6 +803,15 @@ internal class TransitionRenderer(
         requestRender()
     }
 
+    /** The lane's mirror mask, change-guarded like every other lane setter. */
+    fun setLaneFlip(laneIndex: Int, mask: FloatArray) {
+        if (released) return
+        val lane = lanes.getOrNull(laneIndex) ?: return
+        if (mask.size < 2 || mask.contentEquals(lane.flip)) return
+        lane.flip = floatArrayOf(mask[0], mask[1])
+        requestRender()
+    }
+
     /**
      * Sets the project colour filter.
      *
@@ -1313,6 +1326,7 @@ internal class TransitionRenderer(
                 lane.panY,
                 lane.rotation,
                 lane.contentRect,
+                lane.flip,
             )
         } else {
             program.bindIncoming(
@@ -1325,6 +1339,7 @@ internal class TransitionRenderer(
                 lane.panY,
                 lane.rotation,
                 lane.contentRect,
+                lane.flip,
             )
         }
         program.bindIncomingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1343,6 +1358,7 @@ internal class TransitionRenderer(
                 lane.panY,
                 lane.rotation,
                 lane.contentRect,
+                lane.flip,
             )
         } else {
             program.bindOutgoing(
@@ -1355,6 +1371,7 @@ internal class TransitionRenderer(
                 lane.panY,
                 lane.rotation,
                 lane.contentRect,
+                lane.flip,
             )
         }
         program.bindOutgoingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1493,6 +1510,8 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glGetUniformLocation(handle, "uContentRectIncoming")
     private val uContentRectOutgoing =
         GLES20.glGetUniformLocation(handle, "uContentRectOutgoing")
+    private val uFlipIncoming = GLES20.glGetUniformLocation(handle, "uFlipIncoming")
+    private val uFlipOutgoing = GLES20.glGetUniformLocation(handle, "uFlipOutgoing")
     private val uColorMatrix = GLES20.glGetUniformLocation(handle, "uColorMatrix")
     private val uColorOffset = GLES20.glGetUniformLocation(handle, "uColorOffset")
     private val uColorEnabled = GLES20.glGetUniformLocation(handle, "uColorEnabled")
@@ -1609,6 +1628,7 @@ internal class TransitionProgram(private val handle: Int) {
         panY: Float,
         rotationRadians: Float = 0f,
         contentRect: FloatArray = FULL_FRAME,
+        flip: FloatArray = NO_FLIP,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(target, textureId)
@@ -1624,6 +1644,7 @@ internal class TransitionProgram(private val handle: Int) {
             contentRect[2],
             contentRect[3],
         )
+        GLES20.glUniform2f(uFlipIncoming, flip[0], flip[1])
     }
 
     fun bindOutgoing(
@@ -1636,6 +1657,7 @@ internal class TransitionProgram(private val handle: Int) {
         panY: Float,
         rotationRadians: Float = 0f,
         contentRect: FloatArray = FULL_FRAME,
+        flip: FloatArray = NO_FLIP,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
         GLES20.glBindTexture(target, textureId)
@@ -1651,10 +1673,12 @@ internal class TransitionProgram(private val handle: Int) {
             contentRect[2],
             contentRect[3],
         )
+        GLES20.glUniform2f(uFlipOutgoing, flip[0], flip[1])
     }
 
     private companion object {
         val FULL_FRAME = floatArrayOf(0f, 0f, 1f, 1f)
+        val NO_FLIP = floatArrayOf(0f, 0f)
     }
 
     fun setProgress(progress: Float) {

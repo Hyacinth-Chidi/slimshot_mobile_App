@@ -90,6 +90,28 @@ void main() {
       expect(find.textContaining('°'), findsOneWidget);
     });
 
+    testWidgets('Rotate offers two mirrors, each one undo step', (tester) async {
+      // A mirror is the one orientation change a rotation cannot make, and it
+      // lives where a user looks for it.
+      final n = notifierWith([clip('a')], selectedSegmentId: 'a');
+      await pump(tester, n);
+      await tester.tap(find.text('Rotate'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('flip_horizontal')));
+      await tester.pump();
+      expect(n.state.segments.single.flipHorizontal, isTrue);
+      expect(n.state.segments.single.flipVertical, isFalse);
+
+      await tester.tap(find.byKey(const Key('flip_vertical')));
+      await tester.pump();
+      expect(n.state.segments.single.flipVertical, isTrue);
+
+      n.undo();
+      expect(n.state.segments.single.flipVertical, isFalse);
+      expect(n.state.segments.single.flipHorizontal, isTrue);
+    });
+
     testWidgets('with no clip selected it says so rather than lying',
         (tester) async {
       // Every tab writes a *clip* property, so with nothing selected there is

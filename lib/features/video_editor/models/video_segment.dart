@@ -89,6 +89,18 @@ class VideoSegment {
   /// sized source keeps its crop and a draft renders identically on any device.
   final Rect cropRect;
 
+  /// Mirrored across its own vertical axis (left for right) and horizontal
+  /// axis (top for bottom).
+  ///
+  /// **Not a rotation.** Turning a picture 180° puts it upside down *and*
+  /// back to front; a mirror does only the second, which is what selfie
+  /// footage wants. Applied to the fitted coordinate in the shader before the
+  /// content rect, so the picture mirrors inside its own frame and the frame
+  /// stays where it sits on the canvas. Plain booleans, deliberately not
+  /// animatable: half a mirror is not a picture.
+  final bool flipHorizontal;
+  final bool flipVertical;
+
   /// Whether this clip carries a crop of its own.
   bool get isCropped => cropRect != kFullFrameRect;
 
@@ -164,6 +176,8 @@ class VideoSegment {
     this.canvasOffsetY = kZeroParameter,
     this.canvasRotation = kZeroParameter,
     this.cropRect = kFullFrameRect,
+    this.flipHorizontal = false,
+    this.flipVertical = false,
   });
 
   double get duration => (sourceEnd - sourceStart) / speed;
@@ -262,6 +276,8 @@ class VideoSegment {
     AnimatableDouble? canvasOffsetY,
     AnimatableDouble? canvasRotation,
     Rect? cropRect,
+    bool? flipHorizontal,
+    bool? flipVertical,
   }) {
     return VideoSegment(
       id: id ?? this.id,
@@ -283,6 +299,8 @@ class VideoSegment {
       canvasOffsetY: canvasOffsetY ?? this.canvasOffsetY,
       canvasRotation: canvasRotation ?? this.canvasRotation,
       cropRect: cropRect ?? this.cropRect,
+      flipHorizontal: flipHorizontal ?? this.flipHorizontal,
+      flipVertical: flipVertical ?? this.flipVertical,
     );
   }
 
@@ -333,6 +351,9 @@ class VideoSegment {
       // cropped a clip writes exactly what it always wrote.
       if (isCropped)
         'cropRect': [cropRect.left, cropRect.top, cropRect.width, cropRect.height],
+      // Only when set: a project nobody mirrored writes what it always wrote.
+      if (flipHorizontal) 'flipHorizontal': true,
+      if (flipVertical) 'flipVertical': true,
     };
   }
 
@@ -394,6 +415,9 @@ class VideoSegment {
       canvasRotation:
           AnimatableDouble.fromJson(json['canvasRotation'], fallback: 0.0),
       cropRect: _rectFromJson(json['cropRect']),
+      // `== true`, so junk of any type reads as unflipped.
+      flipHorizontal: json['flipHorizontal'] == true,
+      flipVertical: json['flipVertical'] == true,
     );
   }
 }

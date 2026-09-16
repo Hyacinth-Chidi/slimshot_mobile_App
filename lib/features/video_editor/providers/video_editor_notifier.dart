@@ -749,8 +749,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       // field has to be named here — a rotated clip lost its angle on the
       // right of a cut until this line existed.
       canvasRotation: segment.canvasRotation,
-      // Same footage either side of the cut, so the same crop.
+      // Same footage either side of the cut, so the same crop and mirror.
       cropRect: segment.cropRect,
+      flipHorizontal: segment.flipHorizontal,
+      flipVertical: segment.flipVertical,
     );
 
     // Keyframes are clip-relative, so each half gets its own rescaled copy.
@@ -849,6 +851,27 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   ///
   /// The undo snapshot is taken here, once, so the whole gesture undoes as one
   /// step rather than as sixty.
+  /// Mirrors the selected clip across one axis: left for right when
+  /// [horizontal], top for bottom otherwise. One undo step; nothing with no
+  /// clip selected. A toggle, not a drag, so it commits through state and the
+  /// engine hears it on the next push — no override channel needed.
+  void toggleClipFlip({required bool horizontal}) {
+    final targetId = state.selectedSegmentId;
+    if (targetId == null) return;
+    saveStateForUndo();
+    state = state.copyWith(
+      segments: [
+        for (final s in state.segments)
+          if (s.id == targetId)
+            horizontal
+                ? s.copyWith(flipHorizontal: !s.flipHorizontal)
+                : s.copyWith(flipVertical: !s.flipVertical)
+          else
+            s,
+      ],
+    );
+  }
+
   void beginClipCanvasTransform() {
     if (state.selectedSegmentId == null) return;
     saveStateForUndo();
@@ -933,6 +956,9 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
               canvasOffsetX: kZeroParameter,
               canvasOffsetY: kZeroParameter,
               canvasRotation: kZeroParameter,
+              // A mirrored clip did not come mirrored.
+              flipHorizontal: false,
+              flipVertical: false,
             )
           else
             segment,

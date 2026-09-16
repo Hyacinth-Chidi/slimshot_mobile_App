@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -174,18 +176,46 @@ class _TransformSheetState extends ConsumerState<TransformSheet> {
           format: (v) => '${v.toStringAsFixed(2)}×',
         );
       case _Tab.rotate:
-        return _ruler(
-          segment: segment,
-          property: ClipProperty.canvasRotation,
-          value: shown(ClipProperty.canvasRotation),
-          min: -180,
-          max: 180,
-          unitsPerPixel: _kDegreesPerPixel,
-          // Right angles are what a rotation is usually reaching for; a
-          // reading of 89.6° is a mistake nobody meant.
-          snapPoints: const [0, 90, -90, 180, -180],
-          resetTo: 0.0,
-          format: (v) => '${v.toStringAsFixed(1)}°',
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ruler(
+              segment: segment,
+              property: ClipProperty.canvasRotation,
+              value: shown(ClipProperty.canvasRotation),
+              min: -180,
+              max: 180,
+              unitsPerPixel: _kDegreesPerPixel,
+              // Right angles are what a rotation is usually reaching for; a
+              // reading of 89.6° is a mistake nobody meant.
+              snapPoints: const [0, 90, -90, 180, -180],
+              resetTo: 0.0,
+              format: (v) => '${v.toStringAsFixed(1)}°',
+            ),
+            const SizedBox(height: 12),
+            // Mirrors live with rotation because that is where a user looks
+            // for them, and because a mirror is the one orientation change a
+            // rotation cannot make.
+            Row(
+              children: [
+                _flipToggle(
+                  key: const Key('flip_horizontal'),
+                  icon: LucideIcons.flipHorizontal,
+                  label: 'Flip H',
+                  on: segment.flipHorizontal,
+                  onTap: () => _notifier.toggleClipFlip(horizontal: true),
+                ),
+                const SizedBox(width: 10),
+                _flipToggle(
+                  key: const Key('flip_vertical'),
+                  icon: LucideIcons.flipVertical,
+                  label: 'Flip V',
+                  on: segment.flipVertical,
+                  onTap: () => _notifier.toggleClipFlip(horizontal: false),
+                ),
+              ],
+            ),
+          ],
         );
       case _Tab.position:
         return Column(
@@ -223,6 +253,54 @@ class _TransformSheetState extends ConsumerState<TransformSheet> {
           ],
         );
     }
+  }
+
+  /// A mirror toggle in the sheet's selection language: `primaryStart` border
+  /// over `highlight` fill when on, the plain surface when off.
+  Widget _flipToggle({
+    required Key key,
+    required IconData icon,
+    required String label,
+    required bool on,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      key: key,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: on ? AppColors.highlight : AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: on ? AppColors.primaryStart : AppColors.border,
+            width: on ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: on ? AppColors.textPrimary : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: on ? AppColors.textPrimary : AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Position as a signed percentage of the canvas — `+12%` reads as "a bit

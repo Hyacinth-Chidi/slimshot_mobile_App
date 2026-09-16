@@ -1108,6 +1108,7 @@ internal class TimelinePlaybackEngine(
             // through it. Change-guarded in the renderer like every lane setter.
             val r = clip.contentRect
             renderer.setLaneContentRect(lane.index, r[0], r[1], r[2], r[3])
+            renderer.setLaneFlip(lane.index, clip.flipMask())
 
             if (renderer.laneShowingImage(lane.index)) {
                 // A photo's contain fit is derived by the renderer from the

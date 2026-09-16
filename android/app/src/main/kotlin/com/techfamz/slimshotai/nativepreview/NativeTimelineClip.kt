@@ -65,6 +65,13 @@ internal data class NativeTimelineClip(
      */
     val contentRect: FloatArray,
     /**
+     * Mirrored across its own vertical / horizontal axis. Not a rotation; see
+     * `VideoSegment.flipHorizontal`. Defaults for the timelines composed
+     * before clips could mirror.
+     */
+    val flipHorizontal: Boolean = false,
+    val flipVertical: Boolean = false,
+    /**
      * This clip's visual effect, as an id from `effect_catalog.dart`, or null
      * for an unaffected clip — which is every project written before effects
      * existed and every clip the user has not touched.
@@ -159,6 +166,16 @@ internal data class NativeTimelineClip(
 
     /** The rotation at [progress], in degrees. Unclamped: any angle is a valid angle. */
     fun canvasRotationAt(progress: Double): Double = canvasRotation.resolveAt(progress)
+
+    /**
+     * The shader's mirror mask, `uFlip*`: 1 on an axis to mirror it, fed to
+     * `mix(fitted, 1.0 - fitted, mask)`. Encoded here once so the two engines
+     * cannot each translate the flags and disagree about an axis.
+     */
+    fun flipMask(): FloatArray = floatArrayOf(
+        if (flipHorizontal) 1f else 0f,
+        if (flipVertical) 1f else 0f,
+    )
 
     /**
      * How far this clip's effect has played at [timelineSeconds], 0 at the
@@ -314,6 +331,9 @@ internal data class NativeTimelineClip(
                 // own rect: the whole frame, which is what the canvas rect was
                 // for every clip that never had a project crop either.
                 contentRect = map.rect("contentRect") ?: floatArrayOf(0f, 0f, 1f, 1f),
+                // Written only when set; absent reads as unflipped.
+                flipHorizontal = map["flipHorizontal"] == true,
+                flipVertical = map["flipVertical"] == true,
                 effectId = (map["effectId"] as? String)?.takeIf { it.isNotBlank() },
                 // Either shape the composer writes: a **bare number** while the
                 // intensity is flat — which is what every clip sends and what

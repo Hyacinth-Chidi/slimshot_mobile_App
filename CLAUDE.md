@@ -1477,6 +1477,17 @@ pan spins the clip about the *canvas* centre rather than its own, and a clip dra
 orbits instead of turning. The sign is the inverse of the intuitive one because it is the sampled
 point being turned, not the clip.
 
+**Flip is two booleans, not a rotation** (`flipHorizontal`/`flipVertical`, **awaiting device
+verification**). Turning a picture 180° puts it upside down *and* back to front; a mirror does
+only the second, which is what selfie footage wants. The shader applies the mask to the *fitted*
+coordinate — after placement, before the content rect — `fitted = mix(fitted, 1.0 - fitted,
+uFlip*)`, so the picture mirrors inside its own frame and the frame stays where it sits.
+`NativeTimelineClip.flipMask()` encodes the flags once for both engines. Written to the wire and
+the draft only when set; suspended in the clip-crop plain view like scale and pan (a mirrored
+picture would put the handles on the wrong side); refused by the merge rule; copied by split;
+cleared by the transform reset. Two toggles on the Transform sheet's Rotate tab, where a user
+looks for them. Deliberately not animatable: half a mirror is not a picture.
+
 **The split's right half is built by hand, so every clip-owned field has to be named there.** A
 rotated clip lost its angle on the right of a cut until `canvasRotation` was added to that
 constructor; a test now checks the split carries both rotation and crop to both halves. Anything

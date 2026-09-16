@@ -75,6 +75,8 @@ uniform float uBackgroundImageOn;
 uniform vec2 uBackgroundImageFit;
 uniform vec4 uContentRectIncoming;
 uniform vec4 uContentRectOutgoing;
+uniform vec2 uFlipIncoming;
+uniform vec2 uFlipOutgoing;
 uniform mat4 uColorMatrix;
 uniform vec4 uColorOffset;
 uniform float uColorEnabled;
@@ -170,6 +172,10 @@ vec4 incomingAt(vec2 uv) {
     if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
         return backgroundAt();
     }
+    // Mirror inside the fitted frame — after placement, before the content
+    // rect — so the picture flips where it sits and the frame does not move.
+    // uFlip* is 0/1 per axis; mix with a 0/1 weight is a select.
+    fitted = mix(fitted, 1.0 - fitted, uFlipIncoming);
     vec2 source = uContentRectIncoming.xy + fitted * uContentRectIncoming.zw;
     vec4 texel = texture2D(uIncoming, (uTexMatrixIncoming * vec4(source, 0.0, 1.0)).xy);
     return gradeClip(texel, uClipMatrixIncoming, uClipOffsetIncoming, uClipColorIncoming);
@@ -181,6 +187,7 @@ vec4 outgoingAt(vec2 uv) {
     if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
         return backgroundAt();
     }
+    fitted = mix(fitted, 1.0 - fitted, uFlipOutgoing);
     vec2 source = uContentRectOutgoing.xy + fitted * uContentRectOutgoing.zw;
     vec4 texel = texture2D(uOutgoing, (uTexMatrixOutgoing * vec4(source, 0.0, 1.0)).xy);
     return gradeClip(texel, uClipMatrixOutgoing, uClipOffsetOutgoing, uClipColorOutgoing);
