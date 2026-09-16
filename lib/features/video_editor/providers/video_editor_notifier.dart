@@ -28,6 +28,7 @@ import '../models/video_segment.dart';
 import '../services/media_import_service.dart';
 import '../services/video_editor_service.dart';
 import '../services/video_thumbnail_service.dart';
+import '../logic/color/color_adjustments.dart';
 
 /// True when a stored crop rect is the whole frame — i.e. not a crop at all.
 ///
@@ -310,6 +311,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         backgroundColorValue: state.backgroundColor.value,
         backgroundBlurIntensity: state.backgroundBlurIntensity,
         backgroundImagePath: state.backgroundImagePath,
+        adjustments: state.adjustments,
         isMuted: state.isMuted,
       );
 
@@ -415,6 +417,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       backgroundColor: Color(draft.backgroundColorValue),
       backgroundBlurIntensity: draft.backgroundBlurIntensity,
       backgroundImagePath: draft.backgroundImagePath,
+      adjustments: draft.adjustments,
       isMuted: draft.isMuted,
       isPlaying: false,
       isExporting: false,
@@ -754,6 +757,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       flipHorizontal: segment.flipHorizontal,
       flipVertical: segment.flipVertical,
       opacity: segment.opacity,
+      // Same footage, same grade.
+      adjustments: segment.adjustments,
     );
 
     // Keyframes are clip-relative, so each half gets its own rescaled copy.
@@ -852,6 +857,32 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   ///
   /// The undo snapshot is taken here, once, so the whole gesture undoes as one
   /// step rather than as sixty.
+  /// The selected clip's Adjust. [takeUndoSnapshot] false for the live frames
+  /// of a drag whose start already took one.
+  void setClipAdjustments(
+    ColorAdjustments adjustments, {
+    bool takeUndoSnapshot = true,
+  }) {
+    final targetId = state.selectedSegmentId;
+    if (targetId == null) return;
+    if (takeUndoSnapshot) saveStateForUndo();
+    state = state.copyWith(
+      segments: [
+        for (final s in state.segments)
+          if (s.id == targetId) s.copyWith(adjustments: adjustments) else s,
+      ],
+    );
+  }
+
+  /// The project's Adjust, composed into the canvas look after the filter.
+  void setProjectAdjustments(
+    ColorAdjustments adjustments, {
+    bool takeUndoSnapshot = true,
+  }) {
+    if (takeUndoSnapshot) saveStateForUndo();
+    state = state.copyWith(adjustments: adjustments);
+  }
+
   /// Mirrors the selected clip across one axis: left for right when
   /// [horizontal], top for bottom otherwise. One undo step; nothing with no
   /// clip selected. A toggle, not a drag, so it commits through state and the

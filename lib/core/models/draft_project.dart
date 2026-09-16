@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../features/video_editor/logic/color/color_adjustments.dart';
 
 class DraftProject {
   final String id;
@@ -37,6 +38,9 @@ class DraftProject {
 
   /// The project's copy of a background photo; absent from the JSON when none.
   final String? backgroundImagePath;
+
+  /// The project-level Adjust; absent from the JSON while untouched.
+  final ColorAdjustments adjustments;
   
   final bool isMuted;
 
@@ -64,6 +68,7 @@ class DraftProject {
     required this.backgroundColorValue,
     required this.backgroundBlurIntensity,
     this.backgroundImagePath,
+    this.adjustments = ColorAdjustments.none,
     required this.isMuted,
   });
 
@@ -92,6 +97,7 @@ class DraftProject {
       'backgroundColorValue': backgroundColorValue,
       'backgroundBlurIntensity': backgroundBlurIntensity,
       if (backgroundImagePath != null) 'backgroundImagePath': backgroundImagePath,
+      if (!adjustments.isIdentity) 'adjustments': adjustments.toJson(),
       'isMuted': isMuted,
     };
   }
@@ -123,6 +129,7 @@ class DraftProject {
       backgroundColorValue: json['backgroundColorValue'] as int? ?? 0xFF000000,
       backgroundBlurIntensity: (json['backgroundBlurIntensity'] as num?)?.toDouble() ?? 20.0,
       backgroundImagePath: json['backgroundImagePath'] as String?,
+      adjustments: ColorAdjustments.fromJson(json['adjustments']),
       isMuted: json['isMuted'] as bool? ?? false,
     );
   }

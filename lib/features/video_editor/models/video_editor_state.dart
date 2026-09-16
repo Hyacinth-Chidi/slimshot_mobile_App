@@ -12,6 +12,7 @@ import 'text_overlay_model.dart';
 import 'video_overlay_model.dart';
 import 'video_segment.dart';
 import 'audio_track_model.dart';
+import '../logic/color/color_adjustments.dart';
 
 /// How far outside a clip's timeline span the playhead may sit and still count
 /// as on it — float slack for positions that arrive as event doubles, not a
@@ -108,6 +109,7 @@ class VideoEditorState {
     this.backgroundColor = Colors.black,
     this.backgroundBlurIntensity = 20.0,
     this.backgroundImagePath,
+    this.adjustments = ColorAdjustments.none,
     this.selectedTransitionSegmentId,
   });
 
@@ -181,6 +183,11 @@ class VideoEditorState {
   /// one tap brings it back without another trip to the picker. Only read by
   /// the engine when [backgroundType] is [EditorBackgroundType.image].
   final String? backgroundImagePath;
+
+  /// The project's brightness / contrast / saturation / temperature, composed
+  /// into the canvas look after the project filter. Coexists with per-clip
+  /// adjustments; see `logic/color/color_adjustments.dart`.
+  final ColorAdjustments adjustments;
   final String? selectedTransitionSegmentId;
 
   /// The first imported file, as an [XFile].
@@ -476,6 +483,7 @@ class VideoEditorState {
     double? backgroundBlurIntensity,
     String? backgroundImagePath,
     bool clearBackgroundImagePath = false,
+    ColorAdjustments? adjustments,
     String? selectedTransitionSegmentId,
     bool clearSelectedTransitionSegmentId = false,
   }) {
@@ -544,6 +552,7 @@ class VideoEditorState {
       backgroundImagePath: clearBackgroundImagePath
           ? null
           : backgroundImagePath ?? this.backgroundImagePath,
+      adjustments: adjustments ?? this.adjustments,
       selectedTransitionSegmentId: clearSelectedTransitionSegmentId
           ? null
           : selectedTransitionSegmentId ?? this.selectedTransitionSegmentId,

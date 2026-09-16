@@ -1426,6 +1426,31 @@ the project background rather than to black was the open question; the backgroun
 that is what the bars already show and a fade that revealed a different colour would read as a
 flash.
 
+### Adjust — brightness, contrast, saturation, temperature
+
+**Rides the grade pipeline that already exists; no shader changed.** `logic/color/color_adjustments.dart`
+turns the four parameters (each -1..1) into one 4×5 matrix in Flutter's `ColorFilter.matrix` layout
+— the shape a filter preset already is — and `composeColorMatrices(outer, inner)` multiplies two
+of them (inner first). A clip's adjustments compose **after its filter** into `VideoSegment.colorMatrix`,
+which is now what the clip sends as its `colorMatrix` (the old `filterMatrix` getter survives for
+the filter sheet's tiles); the project's compose after the project filter into the canvas look
+(`_projectColorMatrix`). Both land in the `gradeClip` / `outputColor` the engine already applies.
+Applied to a pixel in the order contrast, saturation, temperature, brightness — a convention, held
+in one place. Full desaturation collapses to Rec. 709 luma; contrast pivots about mid grey.
+
+**The two levels coexist**, unlike filters. A filter applied at both levels grades twice by mistake,
+which is what `filterAppliesToAll`'s exclusivity prevents; an adjustment at both is the user's
+intent — a warm project with one clip pulled cooler. The sheet (`panels/adjust_sheet.dart`) has
+four pills and one `ValueRuler`, opens on the selected clip and offers the same `ApplyToAllToggle`
+Filters uses to switch to the project; from the root menu there is no clip and no toggle. **The
+ruler shows the level it writes.** Drags write live with one undo snapshot per drag; the readout
+tap resets to 0. Persisted per clip (omitted while untouched) and on the draft (`adjustments`).
+
+**`ValueRuler` anchors its drag on pointer-down** (`DragStartBehavior.down`). Alone, a horizontal
+recogniser is accepted on its first move; inside a scrolling sheet it competes with the vertical
+recogniser and, with the default behaviour, the touch slop spent winning the arena was dropped from
+the drag — the Adjust sheet's first test got exactly half its travel. Same rule as the trim handles.
+
 ### Transform — a tool with a sheet, and a clip that can rotate
 
 **Awaiting device verification.** Plan: `docs/superpowers/plans/2026-09-16-transform-sheet-and-per-clip-crop.md`.

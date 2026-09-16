@@ -3,6 +3,7 @@ import 'dart:ui' show Rect;
 import '../logic/animation/animatable_double.dart';
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
+import '../logic/color/color_adjustments.dart';
 
 /// A parameter resting at 1.0 — an ungained volume, an unpinched scale.
 ///
@@ -111,6 +112,14 @@ class VideoSegment {
   /// because a keyframe can overshoot.
   final AnimatableDouble opacity;
 
+  /// This clip's own brightness / contrast / saturation / temperature.
+  ///
+  /// Composed into [colorMatrix] **after** the clip's filter, so it rides the
+  /// per-lane grade the engine already applies before a transition blends —
+  /// no shader of its own. Independent of the project's adjustments: the two
+  /// levels may coexist, unlike filters.
+  final ColorAdjustments adjustments;
+
   /// Whether this clip carries a crop of its own.
   bool get isCropped => cropRect != kFullFrameRect;
 
@@ -189,6 +198,7 @@ class VideoSegment {
     this.flipHorizontal = false,
     this.flipVertical = false,
     this.opacity = kUnitParameter,
+    this.adjustments = ColorAdjustments.none,
   });
 
   double get duration => (sourceEnd - sourceStart) / speed;
@@ -295,6 +305,7 @@ class VideoSegment {
     bool? flipHorizontal,
     bool? flipVertical,
     AnimatableDouble? opacity,
+    ColorAdjustments? adjustments,
   }) {
     return VideoSegment(
       id: id ?? this.id,
@@ -319,7 +330,19 @@ class VideoSegment {
       flipHorizontal: flipHorizontal ?? this.flipHorizontal,
       flipVertical: flipVertical ?? this.flipVertical,
       opacity: opacity ?? this.opacity,
+      adjustments: adjustments ?? this.adjustments,
     );
+  }
+
+  /// Everything that grades this clip — its filter, then its adjustments — as
+  /// one 4×5 matrix, or null when neither is set. **This** is what the clip
+  /// sends the engine; [filterMatrix] alone is the filter for the sheet's
+  /// tiles.
+  List<double>? get colorMatrix {
+    final filter = filterMatrix;
+    if (adjustments.isIdentity) return filter;
+    if (filter == null) return adjustments.matrix;
+    return composeColorMatrices(adjustments.matrix, filter);
   }
 
   /// This clip's own grade as a 4×5 `ColorFilter.matrix`, or null if ungraded.
@@ -373,6 +396,9 @@ class VideoSegment {
       // Only when set: a project nobody mirrored writes what it always wrote.
       if (flipHorizontal) 'flipHorizontal': true,
       if (flipVertical) 'flipVertical': true,
+      // Omitted while untouched, so a project nobody adjusted writes what it
+      // always wrote.
+      if (!adjustments.isIdentity) 'adjustments': adjustments.toJson(),
     };
   }
 
@@ -439,6 +465,7 @@ class VideoSegment {
       flipVertical: json['flipVertical'] == true,
       // Absent in every draft written before clips could fade.
       opacity: AnimatableDouble.fromJson(json['opacity'], fallback: 1.0),
+      adjustments: ColorAdjustments.fromJson(json['adjustments']),
     );
   }
 }

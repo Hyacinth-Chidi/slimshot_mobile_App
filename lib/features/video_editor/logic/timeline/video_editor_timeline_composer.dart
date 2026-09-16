@@ -6,6 +6,7 @@ import '../../models/video_editor_state.dart';
 import '../../models/video_segment.dart';
 import '../canvas_geometry.dart';
 import 'timeline_geometry.dart';
+import '../color/color_adjustments.dart';
 
 /// Turns editor state into the timeline contract the native engine consumes.
 ///
@@ -134,9 +135,7 @@ class VideoEditorTimelineComposer {
         width: state.projectCanvasSize.width,
         height: state.projectCanvasSize.height,
         contentRect: projectContentRect,
-        colorMatrix: state.selectedFilter?.getInterpolatedMatrix(
-          state.filterIntensity,
-        ),
+        colorMatrix: _projectColorMatrix(state),
       ),
       videoClips: videoClips,
       playbackClips: _composePlaybackClips(videoClips),
@@ -540,6 +539,16 @@ class VideoEditorTimelineComposer {
         (a.height - b.height).abs() <= epsilon;
   }
 
+  /// The project look: its filter, then its adjustments, as one matrix — or
+  /// null when neither is set, which is every project that predates both.
+  List<double>? _projectColorMatrix(VideoEditorState state) {
+    final filter =
+        state.selectedFilter?.getInterpolatedMatrix(state.filterIntensity);
+    if (state.adjustments.isIdentity) return filter;
+    if (filter == null) return state.adjustments.matrix;
+    return composeColorMatrices(state.adjustments.matrix, filter);
+  }
+
   bool _sameMatrix(List<double>? a, List<double>? b) {
     if (a == null || b == null) return a == null && b == null;
     if (a.length != b.length) return false;
@@ -590,7 +599,8 @@ class VideoEditorTimelineComposer {
       overrideVideoPath: segment.overrideVideoPath,
       // Graded before the shader blends this clip with its neighbour, so two
       // clips with different filters cross-fade between their looks.
-      colorMatrix: segment.filterMatrix,
+      // The clip's filter and its adjustments as one grade.
+      colorMatrix: segment.colorMatrix,
       // The effect is a separate thing applied at a separate moment — the
       // grade runs per lane before the blend, the effect whole-frame after
       // compositing — so it sits *beside* the matrix and never replaces it.

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -162,6 +163,13 @@ class _ValueRulerState extends State<ValueRuler> {
         const SizedBox(height: 6),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
+          // Anchored on pointer-down, not on arena acceptance. Alone, a
+          // horizontal recogniser is accepted on its first move; beside a
+          // scrolling sheet's vertical recogniser it has to win the arena
+          // first, and with the default behaviour the travel spent winning it
+          // — a touch slop's worth — was silently dropped from the drag. The
+          // trim handles follow the same rule for the same reason.
+          dragStartBehavior: DragStartBehavior.down,
           onHorizontalDragStart: _start,
           onHorizontalDragUpdate: _update,
           onHorizontalDragEnd: _end,

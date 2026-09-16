@@ -56,6 +56,7 @@ import '../features/video_editor/widgets/panels/editor_panel_switcher.dart';
 import '../features/video_editor/widgets/panels/background_sheet.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
 import '../features/video_editor/widgets/editor_tool_tile.dart';
+import '../features/video_editor/widgets/panels/adjust_sheet.dart';
 
 class EditorTool {
   final String id;
@@ -114,6 +115,10 @@ const EditorMenu _rootMenu = EditorMenu(
     EditorTool(id: 'zoom', label: 'Zoom', icon: LucideIcons.zoomIn),
     EditorTool(id: 'background', label: 'Background', icon: LucideIcons.image),
     EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
+    // Brightness, contrast, saturation and temperature — the corrections a
+    // filter preset is not. Project-level from here; per clip from the clip
+    // menu, the same way Filters works.
+    EditorTool(id: 'adjust', label: 'Adjust', icon: LucideIcons.slidersHorizontal),
     EditorTool(id: 'animate', label: 'Animate', icon: LucideIcons.clapperboard),
     EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
     EditorTool(id: 'stickers', label: 'Stickers', icon: LucideIcons.smile),
@@ -151,6 +156,7 @@ const EditorMenu _editMenu = EditorMenu(
     // Same tool as the root menu, but reached with a clip selected — opening it
     // from here grades that clip rather than the whole project.
     EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
+    EditorTool(id: 'adjust', label: 'Adjust', icon: LucideIcons.slidersHorizontal),
     // Beside Filters because a clip's effect and its look are siblings: both
     // change how this one clip is drawn. **Only here, never on the root menu**
     // — an effect belongs to a clip, and the root menu has none selected.
@@ -1573,6 +1579,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     showEditorSheet<void>(
                       context,
                       builder: (context) => const FiltersDrawer(),
+                    );
+                  } else if (tool.id == 'adjust') {
+                    // Which level it writes is the sheet's toggle; it opens on
+                    // the selected clip when there is one.
+                    showEditorSheet<void>(
+                      context,
+                      builder: (_) => const AdjustSheet(),
                     );
                   } else if (tool.id == 'transform') {
                     _showTransformSheet();

@@ -27,7 +27,7 @@ Grouped so each batch shares one device-verification pass.
   sees) and **before the effect chain** (a blurred clip at 50% is a blurred clip,
   half-present). Never alpha — see the CLAUDE.md design note. The existing Opacity tool
   joins the clip menu and writes through `setClipProperty`; the overlay path is unchanged.
-- [ ] **A3 Adjust** (brightness, contrast, saturation, temperature). Pure matrix maths in
+- [x] **A3 Adjust** (brightness, contrast, saturation, temperature). Pure matrix maths in
   `logic/color/color_adjustments.dart` composing into the **existing** 4×5 colour matrices —
   clip adjustments into the clip grade, project adjustments into the canvas look — so no
   shader change. An Adjust sheet of four `ValueRuler`s with the filters' apply-to-all
