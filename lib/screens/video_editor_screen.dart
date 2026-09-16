@@ -21,6 +21,7 @@ import '../features/video_editor/models/image_overlay_model.dart';
 import '../features/video_editor/models/video_segment.dart';
 import '../features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_overlay_model.dart';
+import '../features/video_editor/logic/tool_dismissal.dart';
 import '../features/video_editor/logic/timeline/timeline_geometry.dart';
 import '../features/video_editor/providers/video_editor_notifier.dart';
 import '../features/video_editor/services/media_import_service.dart';
@@ -49,10 +50,10 @@ import '../features/video_editor/widgets/panels/speed_panel.dart';
 import '../features/video_editor/widgets/panels/trim_panel.dart';
 import '../features/video_editor/widgets/panels/volume_panel.dart';
 import '../features/video_editor/widgets/panels/zoom_panel.dart';
-import '../features/video_editor/widgets/panels/background_panel.dart';
 import '../features/video_editor/widgets/panels/opacity_panel.dart';
 import '../features/video_editor/widgets/panels/animation_drawer.dart';
 import '../features/video_editor/widgets/panels/editor_panel_switcher.dart';
+import '../features/video_editor/widgets/panels/background_sheet.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
 
 class EditorTool {
@@ -1766,6 +1767,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     );
                   } else if (tool.id == 'overlay') {
                     _showOverlaySelectionMenu(buttonContext);
+                  } else if (tool.id == 'background') {
+                    // A choice about the picture with no canvas or timeline
+                    // gesture attached: a sheet, like filters and the curve.
+                    showEditorSheet<void>(
+                      context,
+                      builder: (_) => const BackgroundSheet(),
+                    );
                   } else {
                     notifier.setActiveTool(tool.id);
                     if (tool.id == 'zoom') {
@@ -1844,9 +1852,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
           ),
         );
         break;
-      case 'background':
-        content = BackgroundPanel(onClose: notifier.closeActiveTool);
-        break;
       case 'opacity':
         content = _buildOpacityPanel();
         break;
@@ -1903,37 +1908,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
               GestureDetector(
                 onTap: () {
                   HapticFeedback.selectionClick();
-
-                  if (activeToolId == 'volume' &&
-                      editorState.previewVolume != null) {
-                    if (editorState.selectedAudioId != null) {
-                      final track = editorState.audioTracks.firstWhere(
-                        (a) => a.id == editorState.selectedAudioId!,
-                      );
-                      notifier.updateAudioTrack(
-                        track.copyWith(volume: editorState.previewVolume!),
-                      );
-                      notifier.setPreviewVolume(
-                        null,
-                      ); // just clears the preview state
-                    } else if (editorState.selectedVideoOverlayId != null) {
-                      notifier.setPreviewVolume(
-                        null,
-                      ); // already updated in the panel
-                    } else {
-                      notifier.commitPreviewVolume();
-                    }
-                  }
-
-                  if (activeToolId == 'speed' &&
-                      editorState.previewSpeed != null) {
-                    notifier.commitPreviewSpeed();
-                  }
-                  if (activeToolId == 'zoom' &&
-                      editorState.previewVideoScale != null) {
-                    notifier.commitPreviewVideoTransform();
-                  }
-                  notifier.closeActiveTool();
+                  _commitAndCloseActiveTool();
                 },
                 child: const Padding(
                   padding: EdgeInsets.all(12),
@@ -1951,6 +1926,45 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         ],
       ),
     );
+  }
+
+  /// Closes the open tool **keeping** what the user set.
+  ///
+  /// The ✓, and every dismissal that is not the explicit ✕: the system Back
+  /// button and a tap on the canvas's empty space (`tool_dismissal.dart`). A
+  /// panel is modal in spirit, and a sheet's dismissal keeps its live edits,
+  /// so a panel's does too — preview values (volume, speed, zoom) are
+  /// committed here, and ✕ (`closeActiveTool` alone) stays the one way to
+  /// discard them. Reads state fresh: it is called from gestures that outlive
+  /// the build that wired them.
+  void _commitAndCloseActiveTool() {
+    final editorState = ref.read(videoEditorProvider);
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final activeToolId = editorState.activeToolId;
+    if (activeToolId == null) return;
+
+    if (activeToolId == 'volume' && editorState.previewVolume != null) {
+      if (editorState.selectedAudioId != null) {
+        final track = editorState.audioTracks.firstWhere(
+          (a) => a.id == editorState.selectedAudioId!,
+        );
+        notifier.updateAudioTrack(
+          track.copyWith(volume: editorState.previewVolume!),
+        );
+        notifier.setPreviewVolume(null); // just clears the preview state
+      } else if (editorState.selectedVideoOverlayId != null) {
+        notifier.setPreviewVolume(null); // already updated in the panel
+      } else {
+        notifier.commitPreviewVolume();
+      }
+    }
+    if (activeToolId == 'speed' && editorState.previewSpeed != null) {
+      notifier.commitPreviewSpeed();
+    }
+    if (activeToolId == 'zoom' && editorState.previewVideoScale != null) {
+      notifier.commitPreviewVideoTransform();
+    }
+    notifier.closeActiveTool();
   }
 
   Widget _buildTrimPanel() {
@@ -2397,6 +2411,17 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
+        // Back closes an open tool the way it closes a sheet, and only with
+        // none open leaves the editor. Device-reported: it left.
+        switch (backActionFor(
+          activeToolId: ref.read(videoEditorProvider).activeToolId,
+        )) {
+          case BackAction.closeTool:
+            _commitAndCloseActiveTool();
+            return;
+          case BackAction.leaveEditor:
+            break;
+        }
         await ref.read(videoEditorProvider.notifier).saveDraft();
         if (context.mounted) {
           Navigator.of(context).pop();
@@ -2434,6 +2459,15 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                                 );
                                 notifier.selectTextOverlay(null);
                                 notifier.selectImageOverlay(null);
+                                // Empty space dismisses an open panel the way
+                                // it dismisses a sheet — unless the tool edits
+                                // on the canvas, where a tap is part of using
+                                // it (`toolClosesOnCanvasTap`).
+                                final tool =
+                                    ref.read(videoEditorProvider).activeToolId;
+                                if (tool != null && toolClosesOnCanvasTap(tool)) {
+                                  _commitAndCloseActiveTool();
+                                }
                               },
                               onShowTextEditor:
                                   (

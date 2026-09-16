@@ -1202,6 +1202,19 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     state = state.copyWith(backgroundColor: color);
   }
 
+  /// Picks a solid background colour.
+  ///
+  /// Type and colour move together as **one undo step**: the picker has no
+  /// separate switch any more (black is a tile like any other), so a tap is
+  /// one decision and undo should take back exactly one.
+  void setBackground(Color color) {
+    saveStateForUndo();
+    state = state.copyWith(
+      backgroundType: EditorBackgroundType.color,
+      backgroundColor: color,
+    );
+  }
+
   void setBackgroundBlurIntensity(double intensity) {
     state = state.copyWith(backgroundBlurIntensity: intensity);
   }

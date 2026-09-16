@@ -306,6 +306,15 @@ carried through the timeline contract into the shader (`uBackground`) and `glCle
 are the chosen colour in preview and export alike. `blur` has no native implementation yet and falls
 back to **black**, not to the colour — a user who chose blur did not choose that colour.
 
+**The picker is `BackgroundSheet`**: square 64px tiles (the crop panel's tile width; square because
+a colour needs no label), applied live, one undo step each (`setBackground` writes type and colour
+together). The old "Solid Color" switch is gone — black is the first tile, so there was nothing left
+to switch; the `black` type survives in the model for existing drafts and shows as the black tile
+being current. **Image and blurred-clip backgrounds are agreed but unbuilt**: an image is one
+uploaded texture sampled where a lane's fit returns background, inside the same `composite` both
+engines share (parity for free), with the file copied into the project folder like a cover; blur
+rides the effect pass chain. Both belong in this sheet as further tiles.
+
 **Per-clip canvas transform (pinch to scale, drag to move — CapCut-style).** With a clip selected,
 pinching the preview scales it about the contain-fit and a one-finger drag moves it; double-tap
 resets. Stored on `VideoSegment.canvasScale/canvasOffsetX/canvasOffsetY` (canvas fractions, so a
@@ -1710,7 +1719,8 @@ Drag-and-drop lives in `ScrollableTimeline`. The shape of it:
 | Filter scope | Both: a project look **and** per-clip looks, switched by one "apply to all" toggle and kept mutually exclusive so nothing grades twice. |
 | Transition scope | Same toggle in the transition sheet; "all" writes every seam except the last. |
 | Transition frame source | Two live decoders. Freeze-frame was built, reviewed and rejected. |
-| Panels vs sheets | **A tool that edits on the canvas or the timeline is an in-place panel; a set of choices about the picture is a sheet.** Crop, clip crop, Trim, Zoom and Speed stay panels — a sheet is modal and would cover the very surface they edit (handles on the canvas, handles and the stretching clip on the timeline). Curve, Transform, Filters, Effects and Transitions are sheets. Volume and Background could go either way and stay panels so the family reads as one rule; the two kinds share `AppMotion` and the same look instead. |
+| Panels vs sheets | **A tool that edits on the canvas or the timeline is an in-place panel; a set of choices about the picture is a sheet.** Crop, clip crop, Trim, Zoom and Speed stay panels — a sheet is modal and would cover the very surface they edit (handles on the canvas, handles and the stretching clip on the timeline). Curve, Transform, Filters, Effects, Transitions and **Background** are sheets. Volume could go either way and stays a panel; the two kinds share `AppMotion` and the same look. |
+| Dismissing a panel | **Back and a tap on empty canvas space close an open panel, keeping its edits** — modal semantics, as a sheet's dismissal keeps its live edits; ✕ stays the explicit discard. Exception: a canvas-editing tool (`kCanvasEditingTools`: crop, clip crop, zoom) ignores the canvas tap, because touching the canvas is how it is used. Back closes any tool. Only with no tool open does Back leave the editor. `logic/tool_dismissal.dart`. |
 
 Fuller detail, ordering, and the test matrix are in `docs/roadmap.md`. Approaches already tried and
 rejected are in `docs/dead-ends.md` â€” read it before proposing an architecture.
