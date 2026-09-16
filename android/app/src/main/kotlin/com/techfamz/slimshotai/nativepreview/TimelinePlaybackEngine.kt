@@ -1055,6 +1055,9 @@ internal class TimelinePlaybackEngine(
         renderer.setBackgroundImagePath(
             if (backgroundType == "image") canvas?.get("backgroundImagePath") as? String else null,
         )
+        // The clip blurred behind itself; the colour above stays black as the
+        // fallback for a device whose GL refuses the buffers.
+        renderer.setBackgroundBlur(backgroundType == "blur")
 
         // The canvas rect is no longer read here: each clip carries its own
         // composed rect and `applyLaneFits` pushes it per lane, the same way

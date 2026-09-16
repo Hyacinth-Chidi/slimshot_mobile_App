@@ -1450,6 +1450,13 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
+  /// The clip blurred behind itself as the letterbox fill. One undo step.
+  void setBackgroundBlur() {
+    if (state.backgroundType == EditorBackgroundType.blur) return;
+    saveStateForUndo();
+    state = state.copyWith(backgroundType: EditorBackgroundType.blur);
+  }
+
   /// Switches back to the photo already chosen, without another pick. A no-op
   /// with none chosen, and not an undo step then — nothing changed.
   void useBackgroundImage() {

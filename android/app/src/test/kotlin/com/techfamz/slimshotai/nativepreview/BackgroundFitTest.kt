@@ -40,6 +40,30 @@ class BackgroundFitTest {
     }
 
     @Test
+    fun `a lane's contain fit yields the reciprocal cover fit, pinch scale cancelling`() {
+        // A 16:9 clip on a 9:16 canvas is contain-fitted (1, 9/16 ÷ 16/9). To
+        // cover the canvas instead, the fit uniform must exceed 1 on the axis
+        // that had bars: the reciprocal of the visible fraction.
+        val canvas = 9.0 / 16.0
+        val fitY = (canvas / (16.0 / 9.0)).toFloat()
+        val (u, v) = BackgroundFit.coverFitFromContain(1f, fitY, canvas)
+        assertEquals(1.0 / (canvas / (16.0 / 9.0)), u.toDouble(), 1e-5)
+        assertEquals(1f, v, 1e-6f)
+
+        // The engine hands the renderer fit × pinch scale; the ratio is what
+        // carries the clip's shape, so the scale must not change the answer.
+        val (u2, v2) = BackgroundFit.coverFitFromContain(2f, fitY * 2f, canvas)
+        assertEquals(u, u2, 1e-5f)
+        assertEquals(v, v2, 1e-6f)
+    }
+
+    @Test
+    fun `a degenerate contain fit covers with the whole texture`() {
+        assertEquals(Pair(1f, 1f), BackgroundFit.coverFitFromContain(0f, 1f, 0.5625))
+        assertEquals(Pair(1f, 1f), BackgroundFit.coverFitFromContain(1f, 1f, 0.0))
+    }
+
+    @Test
     fun `an unknown shape shows all of itself rather than guessing`() {
         assertEquals(Pair(1f, 1f), BackgroundFit.cover(0.0, 0.5625))
         assertEquals(Pair(1f, 1f), BackgroundFit.cover(1.5, 0.0))

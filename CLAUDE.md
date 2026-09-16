@@ -303,8 +303,16 @@ shape and the clip-crop editor.
 
 **The letterbox background** is `canvas.backgroundType`/`backgroundColor` from the background tool,
 carried through the timeline contract into the shader (`uBackground`) and `glClearColor`, so bars
-are the chosen colour in preview and export alike. `blur` has no native implementation yet and falls
-back to **black**, not to the colour — a user who chose blur did not choose that colour.
+are the chosen colour in preview and export alike. **`blur` is the clip blurred behind itself**
+(**awaiting device verification**): each frame the renderer draws the lanes on screen
+*cover-fitted* — the cover fit derived from the contain fit the engine already pushed
+(`BackgroundFit.coverFitFromContain`; the pinch scale cancels out of the ratio), centred, unrotated,
+fully present — into a quarter-size target, runs the effect `BlurPass` chain over it twice (four
+passes, the cap), and hands the result to `backgroundAt()` in place of a photo with fit (1,1) and
+**no v flip** (`uBackgroundImageFlip` is 1 for a bitmap, 0 for a texture the renderer drew).
+Preview and export share it through `composite`. The tail past the last clip has nothing to blur
+and shows the colour, which stays black for `blur` as the fallback; a device whose GL refuses the
+quarter-size buffers falls back to that colour **and says so once** through `onWarning`.
 
 **The picker is `BackgroundSheet`**: a photo tile, then square 64px colour tiles (the crop panel's
 tile width; square because a colour needs no label), applied live, one undo step each
@@ -342,8 +350,8 @@ at the last cut. It rides texture unit 2 (lanes keep 0 and 1), is decoded to ≤
 out before it is pending) and uploaded at the next draw like a photo lane's bitmap; the renderer
 change-guards on the path, because every `setTimeline` re-sends the canvas. A photo that will not
 decode falls back to the colour **and warns**, through the same `onWarning` the lane fallback uses.
-**Blur remains unbuilt**: it rides the effect pass chain and belongs in this sheet as a further
-tile.
+**Blur is the second tile**, beside Photo — the two "picture" fills before the flat colours — and
+sets `EditorBackgroundType.blur`, one undo step; the engine side is in the canvas section above.
 
 **Per-clip canvas transform (pinch to scale, drag to move — CapCut-style).** With a clip selected,
 pinching the preview scales it about the contain-fit and a one-finger drag moves it; double-tap

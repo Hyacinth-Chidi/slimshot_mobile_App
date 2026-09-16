@@ -90,6 +90,9 @@ class BackgroundSheet extends ConsumerWidget {
   /// to find it.
   static const Key photoTileKey = Key('background_photo_tile');
 
+  /// The blur tile, second in the grid.
+  static const Key blurTileKey = Key('background_blur_tile');
+
   /// The key of a colour's tile, for tests and for anything that needs to
   /// find one.
   static Key tileKey(Color colour) =>
@@ -109,7 +112,9 @@ class BackgroundSheet extends ConsumerWidget {
       EditorBackgroundType.color => state.backgroundColor.toARGB32(),
       EditorBackgroundType.image =>
         photoPath == null ? Colors.black.toARGB32() : null,
+      EditorBackgroundType.blur => null,
     };
+    final usingBlur = state.backgroundType == EditorBackgroundType.blur;
     final maxHeight =
         MediaQuery.sizeOf(context).height * kEditorSheetPreviewFraction;
 
@@ -175,6 +180,18 @@ class BackgroundSheet extends ConsumerWidget {
                         path: photoPath,
                         selected: usingPhoto,
                         onTap: () => _onPhotoTap(context, ref),
+                      ),
+                      // The clip blurred behind itself — what most editors
+                      // default to for landscape footage on a portrait canvas.
+                      // Second, beside the photo: the two are the "picture"
+                      // fills, the colours are the flat ones.
+                      _BlurTile(
+                        key: blurTileKey,
+                        selected: usingBlur,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          notifier.setBackgroundBlur();
+                        },
                       ),
                       for (final colour in kBackgroundPresets)
                         _ColourTile(
@@ -367,6 +384,69 @@ class _ChosenPhotoTile extends StatelessWidget {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The blurred-clip fill: a soft two-tone tile with the aperture glyph and its
+/// caption, in the same quiet tones as the empty photo tile.
+class _BlurTile extends StatelessWidget {
+  const _BlurTile({super.key, required this.selected, required this.onTap});
+
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: BackgroundSheet.kTileSize,
+        height: BackgroundSheet.kTileSize,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.surfaceLight, AppColors.surface],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? AppColors.primaryStart : AppColors.border,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  LucideIcons.aperture,
+                  color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+                  size: 20,
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Blur',
+                  style: _kCaptionStyle.copyWith(
+                    color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            if (selected)
+              const Align(
+                alignment: Alignment.topRight,
+                child: Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(LucideIcons.check, color: AppColors.primaryStart, size: 14),
+                ),
+              ),
           ],
         ),
       ),

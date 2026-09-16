@@ -36,8 +36,10 @@ enum EditorCropRatio {
 
 /// What fills the letterbox. `black` predates the picker (a draft's implicit
 /// default); `color` is a chosen tile; `image` is a photo at
-/// [VideoEditorState.backgroundImagePath], cover-fitted by the engine.
-enum EditorBackgroundType { black, color, image }
+/// [VideoEditorState.backgroundImagePath], cover-fitted by the engine; `blur`
+/// is the clip itself, cover-fitted and blurred, behind its own letterboxed
+/// picture — the engine renders it per frame from the lanes on screen.
+enum EditorBackgroundType { black, color, image, blur }
 
 /// How close the playhead must be to a diamond to count as sitting on it.
 ///

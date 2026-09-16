@@ -39,7 +39,7 @@ Grouped so each batch shares one device-verification pass.
 - [x] **B1 Freeze frame.** Split at the playhead and insert a photo clip of that frame
   (frame via `VideoThumbnailService.frameAtSize`, written like a cover, `kDefaultPhotoDurationSeconds`).
   Clip menu tool.
-- [ ] **B2 Blurred-clip background.** `EditorBackgroundType.blur` becomes real: the effect
+- [x] **B2 Blurred-clip background** (device check pending). `EditorBackgroundType.blur` becomes real: the effect
   pass chain renders the active lane blurred, cover-fitted, as the letterbox fill. A third
   kind of tile in `BackgroundSheet`. Falls back to black **with a warning** where the chain
   cannot run.

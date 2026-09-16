@@ -171,6 +171,16 @@ void main() {
       expect(canvas['backgroundImagePath'], '/p/bg.jpg');
     });
 
+    test('a blurred background names itself on the canvas', () {
+      // The engine reads the type name; `blur` used to mean "fall back to
+      // black" and now means "blur the clip behind itself".
+      final json =
+          composer.compose(stateWith(EditorBackgroundType.blur, null)).toJson();
+      final canvas = json['canvas'] as Map<String, dynamic>;
+      expect(canvas['backgroundType'], 'blur');
+      expect(canvas.containsKey('backgroundImagePath'), isFalse);
+    });
+
     test('writes nothing new for a project without one', () {
       // The key is absent, not null: a build that predates the feature reads
       // the same payload it always did.

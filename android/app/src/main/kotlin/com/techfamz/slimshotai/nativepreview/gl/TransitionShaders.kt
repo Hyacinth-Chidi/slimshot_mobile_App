@@ -73,6 +73,7 @@ uniform vec3 uBackground;
 uniform sampler2D uBackgroundImage;
 uniform float uBackgroundImageOn;
 uniform vec2 uBackgroundImageFit;
+uniform float uBackgroundImageFlip;
 uniform vec4 uContentRectIncoming;
 uniform vec4 uContentRectOutgoing;
 uniform vec2 uFlipIncoming;
@@ -164,7 +165,9 @@ vec4 backgroundAt() {
         return vec4(uBackground, 1.0);
     }
     vec2 bg = (vTexCoord - 0.5) * uBackgroundImageFit + 0.5;
-    return texture2D(uBackgroundImage, vec2(bg.x, 1.0 - bg.y));
+    // A bitmap is top-left origin and flips; a texture the renderer drew
+    // itself (the blurred clip) is already the right way up.
+    return texture2D(uBackgroundImage, vec2(bg.x, mix(bg.y, 1.0 - bg.y, uBackgroundImageFlip)));
 }
 
 vec4 incomingAt(vec2 uv) {

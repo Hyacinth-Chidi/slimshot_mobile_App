@@ -160,6 +160,7 @@ class NativeTimelinePreviewManager(
                 if (backgroundType == "image") canvas?.get("backgroundImagePath") as? String else null,
                 synchronous = true,
             )
+            renderer?.setBackgroundBlur(backgroundType == "blur")
         }
 
         val overlays = NativeTimelineOverlays.fromTimeline(timeline)

@@ -13,6 +13,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import com.techfamz.slimshotai.nativepreview.LaneFit
+import com.techfamz.slimshotai.nativepreview.gl.effects.BlurPass
 import com.techfamz.slimshotai.thumbnails.StillImageDecoder
 import java.util.concurrent.Executors
 import java.nio.ByteBuffer
@@ -309,6 +310,21 @@ internal class TransitionRenderer(
     private var backgroundImageWidth = 0
     private var backgroundImageHeight = 0
     private val backgroundDecoder = Executors.newSingleThreadExecutor()
+
+    /**
+     * The clip blurred behind itself as the letterbox fill. Rendered per frame
+     * from the lanes on screen — cover-fitted into a quarter-size target, then
+     * the effect blur run over it twice — and handed to `backgroundAt()` in
+     * place of a photo. Allocated on the first blurred frame, never before.
+     */
+    @Volatile private var blurBackground = false
+    private var blurTarget: RenderTarget? = null
+    private var blurPasses: List<BlurPass>? = null
+    private val blurChain = EffectPassChain { message ->
+        Log.w(TAG, message)
+        onWarning(message)
+    }
+    private var blurWarned = false
 
     /** Letterbox and empty-canvas colour, linear 0..1 RGB. */
     @Volatile
@@ -704,6 +720,13 @@ internal class TransitionRenderer(
      * decode falls back to the colour **and says so** through `onWarning`,
      * because a background that silently stays black reads as a broken tile.
      */
+    /** Whether the letterbox shows the clip blurred behind itself. */
+    fun setBackgroundBlur(enabled: Boolean) {
+        if (released || enabled == blurBackground) return
+        blurBackground = enabled
+        requestRender()
+    }
+
     fun setBackgroundImagePath(path: String?, synchronous: Boolean = false) {
         if (released) return
         if (path == backgroundImagePath) return
@@ -1043,6 +1066,11 @@ internal class TransitionRenderer(
         viewportAspect =
             if (viewportHeight > 0) viewportWidth.toFloat() / viewportHeight else 0f
 
+        // The letterbox fill for this frame: the photo, the clip blurred behind
+        // itself, or the colour. Resolved before the scene binds because the
+        // blur draws into its own target first.
+        val fill = resolveBackgroundFill(viewportWidth, viewportHeight)
+
         val passes = effectPasses
         val scene = if (passes.isEmpty()) {
             null
@@ -1058,14 +1086,14 @@ internal class TransitionRenderer(
             // draw. Every project without an effect is this one.
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
             GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
-            drawScene()
+            drawScene(fill)
             return
         }
 
         // Lanes into the scene texture, then the passes over it. `bind` sets the
         // viewport to the target's own size, which is the output's size here.
         scene.bind()
-        drawScene()
+        drawScene(fill)
 
         // Every pass `run` executes writes to one of its own targets — it has to
         // return a sampleable texture, so it cannot use the interface's null
@@ -1119,6 +1147,12 @@ internal class TransitionRenderer(
         sceneTarget?.release()
         sceneTarget = null
         effectChain.release()
+        blurTarget?.release()
+        blurTarget = null
+        blurChain.release()
+        // Both halves share one program; releasing either deletes it.
+        blurPasses?.firstOrNull()?.release()
+        blurPasses = null
     }
 
     /**
@@ -1155,11 +1189,86 @@ internal class TransitionRenderer(
      * when this was inline** — one clear, one program, one quad — which is what
      * keeps a project without effects rendering exactly as it did.
      */
-    private fun drawScene() {
+    /**
+     * What `backgroundAt()` samples this frame: a texture (0 for the colour),
+     * the visible fraction per axis, and whether to flip v — a bitmap is
+     * top-left, a texture the renderer drew itself is not.
+     */
+    private class BackgroundFill(val texture: Int, val fit: Pair<Float, Float>, val flipV: Float) {
+        companion object {
+            val COLOUR = BackgroundFill(0, Pair(1f, 1f), 1f)
+        }
+    }
+
+    /**
+     * The frame's letterbox fill. Uploads a pending photo first, then: blur if
+     * asked and a lane has a picture to blur, else the photo if one is
+     * uploaded, else the colour.
+     */
+    private fun resolveBackgroundFill(viewportWidth: Int, viewportHeight: Int): BackgroundFill {
         uploadPendingBackgroundImage()
+        if (blurBackground) {
+            val blurred = renderBlurredBackground(viewportWidth, viewportHeight)
+            if (blurred != 0) return BackgroundFill(blurred, Pair(1f, 1f), 0f)
+        }
+        if (backgroundTextureId != 0) {
+            return BackgroundFill(backgroundTextureId, backgroundImageFit(), 1f)
+        }
+        return BackgroundFill.COLOUR
+    }
+
+    /**
+     * The lanes on screen, cover-fitted into a quarter-size target and blurred
+     * twice with the effect blur — the strongest honest softening the kernel
+     * gives at that size, which the upsample back to the canvas makes into the
+     * frosted fill an editor's blur background is. Returns the texture, or 0
+     * when nothing is on screen to blur or the device refused the buffers — in
+     * which case the colour shows, and the refusal is said once.
+     *
+     * Runs before the scene is drawn and leaves the framebuffer bound to its
+     * own target; `composite` rebinds the output or the scene target after.
+     */
+    private fun renderBlurredBackground(viewportWidth: Int, viewportHeight: Int): Int {
+        if (!lanes.any { it.hasContent }) return 0
+        val width = (viewportWidth / BLUR_BACKGROUND_DOWNSCALE).coerceAtLeast(1)
+        val height = (viewportHeight / BLUR_BACKGROUND_DOWNSCALE).coerceAtLeast(1)
+
+        val existing = blurTarget
+        val target = if (existing != null && existing.width == width && existing.height == height) {
+            existing
+        } else {
+            existing?.release()
+            blurTarget = null
+            val created = createRenderTarget(width, height)
+            if (created == null || !blurChain.resize(width, height)) {
+                if (!blurWarned) {
+                    blurWarned = true
+                    onWarning("Blurred background is unavailable on this device; the bars show the colour instead.")
+                }
+                return 0
+            }
+            blurTarget = created
+            created
+        }
+        val passes = blurPasses ?: BlurPass.chain(BlurPass.MAX_RADIUS_FRACTION).also { blurPasses = it }
+
+        target.bind()
+        drawLanes(BackgroundFill.COLOUR, cover = true)
+        return blurChain.run(target.textureId, passes + passes, width, height)
+    }
+
+    private fun drawScene(fill: BackgroundFill) {
+        drawLanes(fill, cover = false)
+    }
+
+    /**
+     * Clears to the colour and draws the lanes. [cover] draws each lane
+     * cover-fitted, centred and unrotated — the blurred background's picture —
+     * instead of placed as the user placed it.
+     */
+    private fun drawLanes(fill: BackgroundFill, cover: Boolean) {
         GLES20.glClearColor(backgroundColor[0], backgroundColor[1], backgroundColor[2], 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-        val backgroundFit = backgroundImageFit()
 
         val draw = transition
         val outgoing = draw?.let { lanes.getOrNull(it.outgoingLane) }
@@ -1185,11 +1294,12 @@ internal class TransitionRenderer(
                     colorOffset,
                     backgroundColor,
                     viewportAspect,
-                    backgroundTextureId,
-                    backgroundFit,
+                    fill.texture,
+                    fill.fit,
+                    fill.flipV,
                 )
-                bindLaneAsIncoming(program, incoming)
-                bindLaneAsOutgoing(program, outgoing)
+                bindLaneAsIncoming(program, incoming, cover)
+                bindLaneAsOutgoing(program, outgoing, cover)
                 program.setProgress(draw.progress)
                 drawQuad(program)
             }
@@ -1209,14 +1319,17 @@ internal class TransitionRenderer(
                         colorOffset,
                         backgroundColor,
                         viewportAspect,
-                        backgroundTextureId,
-                        backgroundFit,
+                        fill.texture,
+                        fill.fit,
+                        fill.flipV,
                     )
-                    bindLaneAsIncoming(program, lane)
+                    bindLaneAsIncoming(program, lane, cover)
                     drawQuad(program)
                 }
-            } else if (backgroundTextureId != 0) {
-                drawBackgroundImageOnly(backgroundFit)
+            } else if (!cover && fill.texture != 0 && fill.texture == backgroundTextureId) {
+                // The tail with a photo: the photo alone. A blurred fill has no
+                // lane to blur here, so the colour it was cleared to stands.
+                drawBackgroundImageOnly(fill.fit)
             }
         }
     }
@@ -1331,69 +1444,93 @@ internal class TransitionRenderer(
         return Pair(fitX * lane.imageScale, fitY * lane.imageScale)
     }
 
-    private fun bindLaneAsIncoming(program: TransitionProgram, lane: Lane) {
+    /**
+     * How a lane is placed for one draw: as the user placed it, or — for the
+     * blurred background — covering the canvas, centred, unrotated and fully
+     * present. The cover fit is derived from the contain fit the engine pushed
+     * (`BackgroundFit.coverFitFromContain`), so the pinch scale cancels out.
+     */
+    private class LanePlacement(
+        val fitX: Float,
+        val fitY: Float,
+        val panX: Float,
+        val panY: Float,
+        val rotation: Float,
+        val opacity: Float,
+    )
+
+    private fun placementOf(lane: Lane, cover: Boolean): LanePlacement {
+        val (fitX, fitY) = if (lane.showingImage) imageFit(lane) else Pair(lane.fitX, lane.fitY)
+        if (!cover) {
+            return LanePlacement(fitX, fitY, lane.panX, lane.panY, lane.rotation, lane.opacity)
+        }
+        val (cx, cy) = BackgroundFit.coverFitFromContain(fitX, fitY, viewportAspect.toDouble())
+        return LanePlacement(cx, cy, 0f, 0f, 0f, 1f)
+    }
+
+    private fun bindLaneAsIncoming(program: TransitionProgram, lane: Lane, cover: Boolean = false) {
+        val p = placementOf(lane, cover)
         if (lane.showingImage) {
-            val (fitX, fitY) = imageFit(lane)
             program.bindIncoming(
                 lane.imageTextureId,
                 GLES20.GL_TEXTURE_2D,
                 lane.imageMatrix,
-                fitX,
-                fitY,
-                lane.panX,
-                lane.panY,
-                lane.rotation,
+                p.fitX,
+                p.fitY,
+                p.panX,
+                p.panY,
+                p.rotation,
                 lane.contentRect,
                 lane.flip,
-                lane.opacity,
+                p.opacity,
             )
         } else {
             program.bindIncoming(
                 lane.textureId,
                 GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
                 lane.texMatrix,
-                lane.fitX,
-                lane.fitY,
-                lane.panX,
-                lane.panY,
-                lane.rotation,
+                p.fitX,
+                p.fitY,
+                p.panX,
+                p.panY,
+                p.rotation,
                 lane.contentRect,
                 lane.flip,
-                lane.opacity,
+                p.opacity,
             )
         }
         program.bindIncomingGrade(lane.colorMatrix, lane.colorOffset)
     }
 
-    private fun bindLaneAsOutgoing(program: TransitionProgram, lane: Lane) {
+    private fun bindLaneAsOutgoing(program: TransitionProgram, lane: Lane, cover: Boolean = false) {
+        val p = placementOf(lane, cover)
         if (lane.showingImage) {
-            val (fitX, fitY) = imageFit(lane)
             program.bindOutgoing(
                 lane.imageTextureId,
                 GLES20.GL_TEXTURE_2D,
                 lane.imageMatrix,
-                fitX,
-                fitY,
-                lane.panX,
-                lane.panY,
-                lane.rotation,
+                p.fitX,
+                p.fitY,
+                p.panX,
+                p.panY,
+                p.rotation,
                 lane.contentRect,
                 lane.flip,
-                lane.opacity,
+                p.opacity,
             )
         } else {
             program.bindOutgoing(
                 lane.textureId,
                 GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
                 lane.texMatrix,
-                lane.fitX,
-                lane.fitY,
-                lane.panX,
-                lane.panY,
-                lane.rotation,
+                p.fitX,
+                p.fitY,
+                p.panX,
+                p.panY,
+                p.rotation,
                 lane.contentRect,
                 lane.flip,
-                lane.opacity,
+                p.opacity,
             )
         }
         program.bindOutgoingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1504,6 +1641,14 @@ internal class TransitionRenderer(
 
         /** Below this an opacity change is not worth a redraw. */
         private const val OPACITY_EPSILON = 0.001f
+
+        /**
+         * The blurred background renders at 1/N of the canvas. Quarter size is
+         * where the 16-tap kernel run twice reaches a frosted look, and the
+         * upsample back is what a blur wants anyway; it also makes the pass
+         * cheap enough for the low-end target on every frame.
+         */
+        private const val BLUR_BACKGROUND_DOWNSCALE = 4
     }
 }
 
@@ -1531,6 +1676,7 @@ internal class TransitionProgram(private val handle: Int) {
     private val uBackgroundImage = GLES20.glGetUniformLocation(handle, "uBackgroundImage")
     private val uBackgroundImageOn = GLES20.glGetUniformLocation(handle, "uBackgroundImageOn")
     private val uBackgroundImageFit = GLES20.glGetUniformLocation(handle, "uBackgroundImageFit")
+    private val uBackgroundImageFlip = GLES20.glGetUniformLocation(handle, "uBackgroundImageFlip")
     private val uContentRectIncoming =
         GLES20.glGetUniformLocation(handle, "uContentRectIncoming")
     private val uContentRectOutgoing =
@@ -1614,6 +1760,7 @@ internal class TransitionProgram(private val handle: Int) {
         canvasAspect: Float = 1f,
         backgroundImage: Int = 0,
         backgroundImageFit: Pair<Float, Float> = Pair(1f, 1f),
+        backgroundImageFlipV: Float = 1f,
     ) {
         GLES20.glUniform3f(uBackground, background[0], background[1], background[2])
         // The background photo, on its own unit so the lanes keep 0 and 1. A
@@ -1623,6 +1770,8 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glUniform1i(uBackgroundImage, 2)
         GLES20.glUniform1f(uBackgroundImageOn, if (backgroundImage != 0) 1f else 0f)
         GLES20.glUniform2f(uBackgroundImageFit, backgroundImageFit.first, backgroundImageFit.second)
+        // 1 for a bitmap (top-left origin), 0 for a texture this renderer drew.
+        GLES20.glUniform1f(uBackgroundImageFlip, backgroundImageFlipV)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         // The rotation helper needs the canvas shape to rotate without shearing.
         // Guarded against zero: a viewport that has not been sized yet would

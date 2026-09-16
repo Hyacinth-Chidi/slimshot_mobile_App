@@ -199,6 +199,42 @@ void main() {
     });
   });
 
+  group('the blur tile', () {
+    testWidgets('sits second, after the photo, labelled', (tester) async {
+      await pump(tester, notifierWith());
+      final blur = tester.getRect(find.byKey(BackgroundSheet.blurTileKey));
+      final photo = tester.getRect(find.byKey(BackgroundSheet.photoTileKey));
+      final firstColour = tester.getRect(tile(kBackgroundPresets.first));
+      expect(blur.top, photo.top);
+      expect(blur.left, greaterThan(photo.right));
+      expect(blur.right, lessThan(firstColour.left));
+      expect(
+        find.descendant(
+          of: find.byKey(BackgroundSheet.blurTileKey),
+          matching: find.text('Blur'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('tapping it blurs the clip behind itself, one undo step',
+        (tester) async {
+      final n = notifierWith();
+      await pump(tester, n);
+      await tester.tap(find.byKey(BackgroundSheet.blurTileKey));
+      await tester.pump();
+
+      expect(n.state.backgroundType, EditorBackgroundType.blur);
+      expect(checkIn(find.byKey(BackgroundSheet.blurTileKey)), findsOneWidget);
+      for (final colour in kBackgroundPresets) {
+        expect(checkIn(tile(colour)), findsNothing, reason: '$colour');
+      }
+
+      n.undo();
+      expect(n.state.backgroundType, EditorBackgroundType.black);
+    });
+  });
+
   testWidgets('the sheet stops at 45% of the screen and scrolls', (tester) async {
     // The point of a sheet over a clear canvas is watching the picture change;
     // a sheet that climbs to half the screen hides the picture it is about.
