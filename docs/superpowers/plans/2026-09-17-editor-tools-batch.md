@@ -36,7 +36,7 @@ Grouped so each batch shares one device-verification pass.
 
 ### Batch B — mostly Dart
 
-- [ ] **B1 Freeze frame.** Split at the playhead and insert a photo clip of that frame
+- [x] **B1 Freeze frame.** Split at the playhead and insert a photo clip of that frame
   (frame via `VideoThumbnailService.frameAtSize`, written like a cover, `kDefaultPhotoDurationSeconds`).
   Clip menu tool.
 - [ ] **B2 Blurred-clip background.** `EditorBackgroundType.blur` becomes real: the effect

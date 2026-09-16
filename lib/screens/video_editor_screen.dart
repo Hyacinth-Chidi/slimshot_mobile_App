@@ -133,6 +133,8 @@ const EditorMenu _editMenu = EditorMenu(
       label: 'Split',
       icon: LucideIcons.splitSquareHorizontal,
     ),
+    // Hold the frame under the playhead as a 3s still, cut in where it is.
+    EditorTool(id: 'freeze', label: 'Freeze', icon: LucideIcons.snowflake),
     EditorTool(id: 'speed', label: 'Speed', icon: LucideIcons.gauge),
     EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
     // The clip's own presence, beside Volume — a fade of the picture next to
@@ -667,6 +669,20 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     _isTrimming = false;
 
     unawaited(_syncNativePreviewTimeline(ref.read(videoEditorProvider)));
+  }
+
+  /// Freeze: the frame under the playhead becomes a still clip. Async because
+  /// the frame is decoded; the toast is how the blade's refusals already read.
+  Future<void> _freezeFrameAtPlayhead() async {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    try {
+      await notifier.freezeFrameAtPlayhead();
+      if (!mounted) return;
+      HapticFeedback.selectionClick();
+    } catch (e) {
+      if (!mounted) return;
+      ToastUtils.show(context, e.toString(), isError: true);
+    }
   }
 
   void _splitAtPlayhead() {
@@ -1644,6 +1660,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     }
                   } else if (tool.id == 'add') {
                     unawaited(_addMedia());
+                  } else if (tool.id == 'freeze') {
+                    unawaited(_freezeFrameAtPlayhead());
                   } else if (tool.id == 'split') {
                     if (editorState.selectedVideoOverlayId != null) {
                       try {

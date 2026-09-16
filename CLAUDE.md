@@ -1426,6 +1426,26 @@ the project background rather than to black was the open question; the backgroun
 that is what the bars already show and a fade that revealed a different colour would read as a
 flash.
 
+### Freeze frame — a still cut in where the playhead is
+
+`freezeFrameAtPlayhead` is built from parts that already existed: the frame under the playhead is
+decoded by the filmstrip's extractor (`frameAtSize`) at the clip's **source** time there
+(`sourceAtOffset`, so a trimmed, sped or reversed clip freezes the frame that was on screen),
+written into the project folder like a cover (`freeze_<draftId>_<ts>.jpg`, decoded at most 1920
+on the long side — no export renders a still larger), added as an image asset, and inserted as a
+`kDefaultPhotoDurationSeconds` photo clip. **The still wears the clip's state at that instant as
+flat values**: a keyframed zoom mid-flight freezes at the size it had, with no keyframes, because a
+still has no travel; filter, effect, crop, flip and adjustments copy across. Where the playhead is
+at least `kMinClipDurationSeconds` from both ends the clip is cut and the still goes between the
+halves — **one undo step** for cut and insert; nearer an end it goes before or after, uncut, rather
+than forcing a sliver the blade would refuse. A photo throws ("already a still"), as does a frame
+the extractor cannot read, with the message the user sees — the blade's own pattern.
+
+**The cut is a helper now** (`_cutSegments`): pure, returning the new list and where the right half
+landed. `splitAtPosition` and the freeze both build on it, so a cut is one piece of arithmetic
+however it is reached. Anything else that cuts a clip should go through it rather than re-derive
+the source split and the keyframe rescale.
+
 ### Adjust — brightness, contrast, saturation, temperature
 
 **Rides the grade pipeline that already exists; no shader changed.** `logic/color/color_adjustments.dart`

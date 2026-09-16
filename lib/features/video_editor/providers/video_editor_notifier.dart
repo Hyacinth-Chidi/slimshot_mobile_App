@@ -80,6 +80,10 @@ EditorCropRatio _ratioFromDraft(DraftProject draft) {
   return isFullFrame ? EditorCropRatio.ratio9x16 : EditorCropRatio.custom;
 }
 
+/// Longest side a frozen frame is decoded at. No export renders a still
+/// larger, and a 4K decode for a 3-second hold is memory spent on nothing.
+const double kFreezeFrameMaxPx = 1920.0;
+
 class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   final VideoEditorService _editorService;
   final List<VideoEditorState> _undoStack = [];
@@ -678,7 +682,29 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// playback and the filmstrip use — so the cut lands under the playhead
   /// through trims, speed changes and reversal alike.
   void splitAtPosition(double timelineSeconds) {
-    final segments = state.segments;
+    final cut = _cutSegments(state.segments, timelineSeconds);
+    final updatedSegments = cut.segments;
+    final rightSegment = updatedSegments[cut.rightIndex];
+    saveStateForUndo();
+    state = state.copyWith(
+      segments: updatedSegments,
+      selectedSegmentId: rightSegment.id,
+      isClipSelected: true,
+      trimRange: RangeValues(rightSegment.sourceStart, rightSegment.sourceEnd),
+    );
+  }
+
+  /// The segment list with the clip under [timelineSeconds] cut in two, and
+  /// where the right half landed.
+  ///
+  /// Pure: reads nothing from state and writes nothing. The blade and the
+  /// freeze both build on it, so a cut is one piece of arithmetic however it
+  /// is reached. Throws, with the message the user sees, where a cut is
+  /// impossible.
+  ({List<VideoSegment> segments, int rightIndex}) _cutSegments(
+    List<VideoSegment> segments,
+    double timelineSeconds,
+  ) {
     if (segments.isEmpty) {
       throw Exception('There is nothing to split.');
     }
@@ -773,13 +799,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         _splitKeyframes(rightSegment, segment, cut, isLeft: false),
       );
 
-    saveStateForUndo();
-    state = state.copyWith(
-      segments: updatedSegments,
-      selectedSegmentId: rightSegment.id,
-      isClipSelected: true,
-      trimRange: RangeValues(rightSegment.sourceStart, rightSegment.sourceEnd),
-    );
+    return (segments: updatedSegments, rightIndex: index + 1);
   }
 
   /// One half of a split clip, with every keyframe rescaled into its own 0..1.
@@ -851,6 +871,134 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
   void splitAtPlayhead(double timelineSeconds) {
     splitAtPosition(timelineSeconds);
+  }
+
+  /// Holds the frame under the playhead as a photo clip of
+  /// [kDefaultPhotoDurationSeconds], inserted where the playhead is.
+  ///
+  /// The frame is pulled from the **source** at the clip's own time there —
+  /// `sourceAtOffset`, the mapping playback and the filmstrip use, so a
+  /// trimmed, sped or reversed clip freezes the frame that was on screen —
+  /// written into the project folder like a cover, and added as an image
+  /// asset. The still inherits the clip's look and placement **as resolved at
+  /// that instant**: a keyframed zoom mid-flight freezes at the size it had,
+  /// as flat base values, because a still has no travel to keyframe.
+  ///
+  /// Where the playhead is far enough from both ends the clip is cut and the
+  /// still goes between the halves — one undo step for the cut and the insert
+  /// together. Nearer an end than a clip may be short, it goes before or after
+  /// instead of forcing a sliver. A photo has no frame to freeze; that throws,
+  /// like the blade does, with the message the user sees.
+  ///
+  /// [frameProvider] and [destinationDir] exist for tests, which have neither
+  /// a platform to decode a frame nor a documents folder.
+  Future<void> freezeFrameAtPlayhead({
+    Future<Uint8List?> Function(String path, int timeMs, int width, int height)?
+        frameProvider,
+    Directory? destinationDir,
+  }) async {
+    final segments = state.segments;
+    final position = state.currentPlaybackPosition;
+    final index = segmentIndexAt(position, segments);
+    if (index < 0) {
+      throw Exception('Move the playhead onto a clip to freeze a frame.');
+    }
+    final segment = segments[index];
+    final asset = state.assetFor(segment);
+    if (asset == null) {
+      throw Exception('This clip has no source to freeze.');
+    }
+    if (asset.isImage) {
+      throw Exception('This clip is already a still.');
+    }
+    final draftId = state.draftId;
+    if (draftId == null) {
+      throw Exception('Save the project before freezing a frame.');
+    }
+
+    final starts = segmentTimelineStarts(segments);
+    final offset = position - starts[index];
+    final sourceSeconds = segment.sourceAtOffset(offset);
+    final progress = segment.clipProgressAt(position, starts[index]);
+
+    // Full source size, capped so a 4K clip does not decode a 4K still —
+    // no export renders one larger than this.
+    final scale = asset.width > kFreezeFrameMaxPx
+        ? kFreezeFrameMaxPx / asset.width
+        : 1.0;
+    final width = (asset.width * scale).round();
+    final height = (asset.height * scale).round();
+    final provide = frameProvider ??
+        (path, timeMs, w, h) => VideoThumbnailService.instance
+            .frameAtSize(path: path, timeMs: timeMs, width: w, height: h);
+    final bytes = await provide(
+      asset.path,
+      (sourceSeconds * 1000).round(),
+      width,
+      height,
+    );
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception('Could not read a frame here.');
+    }
+
+    final dir = destinationDir ?? await getApplicationDocumentsDirectory();
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final file = File('${dir.path}/freeze_${draftId}_$stamp.jpg');
+    await file.writeAsBytes(bytes);
+
+    final frameAsset = MediaAsset(
+      id: 'freeze_$stamp',
+      path: file.path,
+      type: MediaAssetType.image,
+      durationSeconds: 0,
+      width: asset.width,
+      height: asset.height,
+      hasAudio: false,
+    );
+
+    // The still, wearing the clip's state at this instant as flat values.
+    AnimatableDouble flat(ClipProperty p) =>
+        AnimatableDouble(baseValue: clipParameter(segment, p).resolveAt(progress));
+    final still = VideoSegment(
+      id: 'clip_freeze_$stamp',
+      assetId: frameAsset.id,
+      sourceStart: 0,
+      sourceEnd: kDefaultPhotoDurationSeconds,
+      filterId: segment.filterId,
+      filterIntensity: segment.filterIntensity,
+      effectId: segment.effectId,
+      effectIntensity: flat(ClipProperty.effectIntensity),
+      canvasScale: flat(ClipProperty.canvasScale),
+      canvasOffsetX: flat(ClipProperty.canvasOffsetX),
+      canvasOffsetY: flat(ClipProperty.canvasOffsetY),
+      canvasRotation: flat(ClipProperty.canvasRotation),
+      opacity: flat(ClipProperty.opacity),
+      cropRect: segment.cropRect,
+      flipHorizontal: segment.flipHorizontal,
+      flipVertical: segment.flipVertical,
+      adjustments: segment.adjustments,
+    );
+
+    // Cut where a cut is possible; otherwise sit the still beside the clip
+    // at the nearer end rather than force a sliver the blade would refuse.
+    final canCut = offset >= kMinClipDurationSeconds &&
+        segment.duration - offset >= kMinClipDurationSeconds;
+    final List<VideoSegment> updated;
+    if (canCut) {
+      final cut = _cutSegments(segments, position);
+      updated = [...cut.segments]..insert(cut.rightIndex, still);
+    } else {
+      final nearStart = offset < segment.duration - offset;
+      updated = [...segments]..insert(nearStart ? index : index + 1, still);
+    }
+
+    saveStateForUndo();
+    state = state.copyWith(
+      assets: [...state.assets, frameAsset],
+      segments: updated,
+      selectedSegmentId: still.id,
+      isClipSelected: true,
+    );
   }
 
   /// A pinch/drag on the canvas is starting to reposition the selected clip.
