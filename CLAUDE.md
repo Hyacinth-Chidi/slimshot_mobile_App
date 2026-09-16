@@ -1260,9 +1260,16 @@ slider parked at the base's 1.0 on a clip whose keyframes had taken it to 0.2 of
 drag up** — the thumb sits at the top while the audio is quiet. An envelope is not a keyframe
 here: it shapes the base and the write still targets the base, so the base is what to show.
 
-**Easing is four families as TABS**: Default (sine), Quadratic, Cubic, Bounce, each offering
-None / Ease in / Ease out / Ease, with a ✓ that dismisses. Sixteen cells at once is a wall, and
-the families are alternatives rather than a list to read through. The sheet opens on the family
+**Easing is four families, one shown at a time**: Default (sine), Quadratic, Cubic, Bounce, each
+offering None / Ease in / Ease out / Ease, with a ✓ that dismisses. Sixteen cells at once is a
+wall, and the families are alternatives rather than a list to read through. **The sheet is styled
+from the effects sheet, not from Material** — same background, corner radius and grab handle, the
+same *pill* row for the families (not a `TabBar`, whose underline and ripple are a different
+visual language), and the same `primaryStart` border over `highlight` fill for a selected cell.
+The first version used a white highlight and a Material tab bar; every choice was defensible on
+its own and the result read as a different app. One `_kEdge` (16) aligns the family row, the cell
+row and the ✓, and each cell carries half of `_kCellGap` per side so the outer margin matches the
+gaps between cells rather than crowding the edges. The sheet opens on the family
 the current curve belongs to, and every tap applies **live** — a sheet that held the choice until
 confirmed would make the user commit to a curve they have not seen move. Every group's None is
 `linear`, drawn as a crossed circle rather than a straight line: a diagonal in a graph box reads
