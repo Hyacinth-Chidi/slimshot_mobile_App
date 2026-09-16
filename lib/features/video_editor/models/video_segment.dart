@@ -1,3 +1,5 @@
+import 'dart:ui' show Rect;
+
 import '../logic/animation/animatable_double.dart';
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
@@ -11,6 +13,9 @@ const AnimatableDouble kUnitParameter = AnimatableDouble(baseValue: 1.0);
 
 /// A parameter resting at 0.0 — a centred clip's offsets.
 const AnimatableDouble kZeroParameter = AnimatableDouble(baseValue: 0.0);
+
+/// An uncropped clip: the whole source frame.
+const Rect kFullFrameRect = Rect.fromLTWH(0, 0, 1, 1);
 
 class VideoSegment {
   final String id;
@@ -68,6 +73,24 @@ class VideoSegment {
   /// property, and it goes the full route: model, contract, shader, both
   /// engines, export.
   final AnimatableDouble canvasRotation;
+
+  /// This clip's own crop, as fractions of its source frame.
+  ///
+  /// **Freehand only, and per clip.** There is no ratio: a per-clip ratio would
+  /// fight the project canvas every clip is fitted into. It composes *inside*
+  /// the project's crop (`composeCropRects`), so cropping a clip to its middle
+  /// half means the middle half of what the project already shows.
+  ///
+  /// **A plain [Rect], deliberately not animatable.** An animated crop is a
+  /// pan-and-scan — a real feature with its own design, and four coupled
+  /// numbers rather than one parameter. It does not belong to the diamond.
+  ///
+  /// Fractions, like every other geometry here, so a trimmed or differently
+  /// sized source keeps its crop and a draft renders identically on any device.
+  final Rect cropRect;
+
+  /// Whether this clip carries a crop of its own.
+  bool get isCropped => cropRect != kFullFrameRect;
 
   /// Colour filter on this clip alone, as a [FilterPresets] id.
   ///
@@ -140,6 +163,7 @@ class VideoSegment {
     this.canvasOffsetX = kZeroParameter,
     this.canvasOffsetY = kZeroParameter,
     this.canvasRotation = kZeroParameter,
+    this.cropRect = kFullFrameRect,
   });
 
   double get duration => (sourceEnd - sourceStart) / speed;
@@ -237,6 +261,7 @@ class VideoSegment {
     AnimatableDouble? canvasOffsetX,
     AnimatableDouble? canvasOffsetY,
     AnimatableDouble? canvasRotation,
+    Rect? cropRect,
   }) {
     return VideoSegment(
       id: id ?? this.id,
@@ -257,6 +282,7 @@ class VideoSegment {
       canvasOffsetX: canvasOffsetX ?? this.canvasOffsetX,
       canvasOffsetY: canvasOffsetY ?? this.canvasOffsetY,
       canvasRotation: canvasRotation ?? this.canvasRotation,
+      cropRect: cropRect ?? this.cropRect,
     );
   }
 
@@ -302,7 +328,26 @@ class VideoSegment {
       'canvasOffsetX': canvasOffsetX.toJson(),
       'canvasOffsetY': canvasOffsetY.toJson(),
       'canvasRotation': canvasRotation.toJson(),
+      // `[l, t, w, h]`, the shape the draft already uses for the project crop.
+      // Omitted entirely for an uncropped clip, so a project that never
+      // cropped a clip writes exactly what it always wrote.
+      if (isCropped)
+        'cropRect': [cropRect.left, cropRect.top, cropRect.width, cropRect.height],
     };
+  }
+
+  /// A `[l, t, w, h]` list, or the full frame for anything else — absent,
+  /// short, or junk. A malformed crop costs the clip its crop, never the
+  /// project.
+  static Rect _rectFromJson(Object? raw) {
+    if (raw is! List || raw.length < 4) return kFullFrameRect;
+    final v = <double>[];
+    for (final e in raw.take(4)) {
+      if (e is! num) return kFullFrameRect;
+      v.add(e.toDouble());
+    }
+    if (v[2] <= 0 || v[3] <= 0) return kFullFrameRect;
+    return Rect.fromLTWH(v[0], v[1], v[2], v[3]);
   }
 
   factory VideoSegment.fromJson(Map<String, dynamic> json) {
@@ -348,6 +393,7 @@ class VideoSegment {
       // Absent in every draft written before clips could rotate.
       canvasRotation:
           AnimatableDouble.fromJson(json['canvasRotation'], fallback: 0.0),
+      cropRect: _rectFromJson(json['cropRect']),
     );
   }
 }

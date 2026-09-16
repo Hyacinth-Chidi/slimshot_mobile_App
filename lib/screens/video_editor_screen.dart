@@ -129,6 +129,11 @@ const EditorMenu _editMenu = EditorMenu(
     // clip is selected, and a tool reachable only by deselecting the clip you
     // want to transform is not reachable.
     EditorTool(id: 'transform', label: 'Transform', icon: LucideIcons.move),
+    // **This clip's** crop — freehand, no ratio — as distinct from the root
+    // menu's Crop, which is the project's. A different id so the two panels
+    // and the two rects cannot be confused; the same label because to the
+    // user it is the same verb applied to a smaller thing.
+    EditorTool(id: 'clip_crop', label: 'Crop', icon: LucideIcons.crop),
     EditorTool(
       id: 'transition',
       label: 'Transition',
@@ -1816,6 +1821,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       case 'crop':
         content = _buildCropPanel();
         break;
+      case 'clip_crop':
+        content = _buildClipCropPanel();
+        break;
       case 'zoom':
         content = _buildZoomPanel();
         break;
@@ -2062,6 +2070,67 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       onChanged: (value) {
         notifier.setOverlayOpacity(value);
       },
+    );
+  }
+
+  /// The clip-crop tool's panel. The editing happens on the canvas — the
+  /// handles are drawn there — so this holds only what the canvas cannot: the
+  /// instruction, and a way back to the whole frame.
+  Widget _buildClipCropPanel() {
+    final editorState = ref.watch(videoEditorProvider);
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final segment = editorState.selectedSegment;
+    if (segment == null) {
+      return const Center(
+        child: Text(
+          'Select a clip to crop it.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Drag the corners on the canvas. This crop applies to this clip only.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: segment.isCropped
+                ? () {
+                    HapticFeedback.selectionClick();
+                    notifier.resetClipCropRect();
+                  }
+                : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                border: Border.all(
+                  color: segment.isCropped
+                      ? AppColors.border
+                      : AppColors.border.withValues(alpha: 0.4),
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Reset',
+                style: TextStyle(
+                  color: segment.isCropped
+                      ? AppColors.textPrimary
+                      : AppColors.textTertiary.withValues(alpha: 0.5),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

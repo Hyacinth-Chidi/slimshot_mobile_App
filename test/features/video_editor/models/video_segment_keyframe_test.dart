@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
@@ -245,6 +246,48 @@ void main() {
       );
       expect(s.canvasRotationAt(0.5), closeTo(90.0, 1e-9));
       expect(s.hasKeyframes, isTrue);
+    });
+  });
+
+  group('a clip\'s own crop', () {
+    test('defaults to the whole frame and writes nothing', () {
+      final s = VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 5);
+      expect(s.isCropped, isFalse);
+      // Omitted, not `[0,0,1,1]`: a project that never cropped a clip writes
+      // exactly what it always wrote.
+      expect(s.toJson().containsKey('cropRect'), isFalse);
+    });
+
+    test('round-trips as [l, t, w, h], the draft\'s own rect shape', () {
+      final s = VideoSegment(
+        id: 'a',
+        sourceStart: 0,
+        sourceEnd: 5,
+        cropRect: const Rect.fromLTWH(0.1, 0.2, 0.5, 0.6),
+      );
+      final json = s.toJson();
+      // Per element, not list equality: `height` is `bottom - top`, and
+      // 0.8 - 0.2 is 0.6000000000000001 in binary floating point.
+      final written = (json['cropRect'] as List).cast<double>();
+      expect(written, hasLength(4));
+      for (final (i, v) in [0.1, 0.2, 0.5, 0.6].indexed) {
+        expect(written[i], closeTo(v, 1e-9));
+      }
+      final restored = VideoSegment.fromJson(jsonDecode(jsonEncode(json)));
+      expect(restored.cropRect, const Rect.fromLTWH(0.1, 0.2, 0.5, 0.6));
+      expect(restored.isCropped, isTrue);
+    });
+
+    test('a malformed crop costs the clip its crop, never the project', () {
+      for (final junk in [null, 'x', [0.1, 0.2], [0.1, 0.2, 0.0, 0.5], ['a', 1, 2, 3]]) {
+        final s = VideoSegment.fromJson({
+          'id': 'a',
+          'sourceStart': 0.0,
+          'sourceEnd': 5.0,
+          'cropRect': junk,
+        });
+        expect(s.cropRect, kFullFrameRect, reason: '$junk');
+      }
     });
   });
 }

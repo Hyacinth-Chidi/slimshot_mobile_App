@@ -14,6 +14,9 @@ import '../text_overlay/text_overlay_layer.dart';
 
 enum CropDragMode { none, top, bottom, left, right, topLeft, topRight, bottomLeft, bottomRight, center }
 
+/// What the crop handles edit: the project's rect, a clip's own, or nothing.
+enum _CropTarget { none, project, clip }
+
 class VideoPreviewCanvas extends ConsumerStatefulWidget {
   /// The native engine's texture. The canvas draws this and nothing else —
   /// crop, zoom, grade and letterboxing are already in those pixels, which is
@@ -311,8 +314,13 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                           ),
                         ),
 
-                        // Crop Overlay brackets (only show when crop tool is active)
-                        if (editorState.activeToolId == 'crop')
+                        // Crop overlay: the project crop tool, or a clip's own.
+                        // **One editor, two targets.** The clip-crop tool reuses
+                        // the project crop's handles and painter rather than
+                        // growing a second editor that would drift from the
+                        // first — only which rect is read and written differs,
+                        // and `_cropTarget` decides that in one place.
+                        if (_cropTarget(editorState) != _CropTarget.none)
                           Positioned.fill(
                             child: LayoutBuilder(
                               builder: (context, constraints) {
@@ -322,10 +330,10 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                                   onPanEnd: _handleCropPanEnd,
                                   child: CustomPaint(
                                     painter: _CropBoundsPainter(
-                                      cropRect: editorState.customCropRect,
-                                      isCustom:
-                                          editorState.selectedRatio ==
-                                              EditorCropRatio.custom,
+                                      cropRect: _editingCropRect(editorState),
+                                      // A clip crop is always freehand — there
+                                      // is no ratio to lock it to.
+                                      isCustom: _cropIsFreehand(editorState),
                                     ),
                                   ),
                                 );
@@ -346,7 +354,7 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
 
   void _handleCropPanStart(DragStartDetails details, BoxConstraints constraints) {
     final editorState = ref.read(videoEditorProvider);
-    if (editorState.selectedRatio != EditorCropRatio.custom) return;
+    if (!_cropIsFreehand(editorState)) return;
 
     final width = constraints.maxWidth;
     final height = constraints.maxHeight;
@@ -354,11 +362,12 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     final dx = details.localPosition.dx;
     final dy = details.localPosition.dy;
 
+    final editing = _editingCropRect(editorState);
     final rect = Rect.fromLTRB(
-      editorState.customCropRect.left * width,
-      editorState.customCropRect.top * height,
-      editorState.customCropRect.right * width,
-      editorState.customCropRect.bottom * height,
+      editing.left * width,
+      editing.top * height,
+      editing.right * width,
+      editing.bottom * height,
     );
 
     const hit = 40.0;
@@ -384,6 +393,12 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     } else {
       _cropDragMode = CropDragMode.none;
     }
+
+    // **One undo step per drag**, the rule every gesture here follows. Taken
+    // at the start and never per frame — the frames below write live.
+    if (_cropDragMode != CropDragMode.none) {
+      ref.read(videoEditorProvider.notifier).saveStateForUndo();
+    }
   }
 
   void _handleCropPanUpdate(DragUpdateDetails details, BoxConstraints constraints) {
@@ -396,10 +411,11 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     final dx = details.delta.dx / width;
     final dy = details.delta.dy / height;
 
-    double left = editorState.customCropRect.left;
-    double top = editorState.customCropRect.top;
-    double right = editorState.customCropRect.right;
-    double bottom = editorState.customCropRect.bottom;
+    final editing = _editingCropRect(editorState);
+    double left = editing.left;
+    double top = editing.top;
+    double right = editing.right;
+    double bottom = editing.bottom;
 
     if (_cropDragMode == CropDragMode.center) {
       if (left + dx >= 0 && right + dx <= 1.0) { left += dx; right += dx; }
@@ -419,13 +435,61 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
       }
     }
 
-    ref.read(videoEditorProvider.notifier).setCustomCropRect(
-      Rect.fromLTRB(left, top, right, bottom),
-    );
+    _writeCropRect(editorState, Rect.fromLTRB(left, top, right, bottom));
   }
 
   void _handleCropPanEnd(DragEndDetails details) {
     _cropDragMode = CropDragMode.none;
+  }
+
+  /// Which rect the crop editor is pointed at, from the open tool.
+  _CropTarget _cropTarget(VideoEditorState state) {
+    switch (state.activeToolId) {
+      case 'crop':
+        return _CropTarget.project;
+      case 'clip_crop':
+        return state.selectedSegment == null
+            ? _CropTarget.none
+            : _CropTarget.clip;
+      default:
+        return _CropTarget.none;
+    }
+  }
+
+  /// The rect under the handles: the project's, or the selected clip's own.
+  Rect _editingCropRect(VideoEditorState state) {
+    switch (_cropTarget(state)) {
+      case _CropTarget.clip:
+        return state.selectedSegment!.cropRect;
+      case _CropTarget.project:
+      case _CropTarget.none:
+        return state.customCropRect;
+    }
+  }
+
+  /// Whether the handles can be dragged freely. The project crop only under
+  /// its Custom ratio; a clip crop always — it has no ratio to lock to.
+  bool _cropIsFreehand(VideoEditorState state) {
+    switch (_cropTarget(state)) {
+      case _CropTarget.clip:
+        return true;
+      case _CropTarget.project:
+        return state.selectedRatio == EditorCropRatio.custom;
+      case _CropTarget.none:
+        return false;
+    }
+  }
+
+  void _writeCropRect(VideoEditorState state, Rect rect) {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    switch (_cropTarget(state)) {
+      case _CropTarget.clip:
+        notifier.setClipCropRect(rect);
+      case _CropTarget.project:
+        notifier.setCustomCropRect(rect);
+      case _CropTarget.none:
+        break;
+    }
   }
 
   int _getMaxLane(dynamic editorState) {

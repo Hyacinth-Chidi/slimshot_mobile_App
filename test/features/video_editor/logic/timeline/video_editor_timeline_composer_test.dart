@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/logic/effects/effect_catalog.dart';
@@ -752,6 +754,179 @@ void main() {
         ]),
       );
       expect(timeline.playbackClips, hasLength(2));
+    });
+  });
+
+  group('the sampling rect is per clip', () {
+    // **Behaviour-preserving on its own.** Every clip carries the project's
+    // rect until a clip has a crop of its own, so nothing renders differently
+    // for an existing project — and the check that pins that is the one a
+    // regression here would trip.
+    test('every clip carries the project rect, identically', () {
+      final timeline = composer.compose(
+        VideoEditorState(
+          assets: const [
+            MediaAsset(
+              id: 'asset_main',
+              path: '/source/video.mp4',
+              type: MediaAssetType.video,
+              durationSeconds: 60,
+              width: 1920,
+              height: 1080,
+              hasAudio: true,
+            ),
+          ],
+          segments: [
+            VideoSegment(id: 'a', assetId: 'asset_main', sourceStart: 0, sourceEnd: 4),
+            VideoSegment(id: 'b', assetId: 'asset_main', sourceStart: 4, sourceEnd: 8),
+          ],
+          selectedRatio: EditorCropRatio.custom,
+          customCropRect: const Rect.fromLTWH(0.1, 0.2, 0.5, 0.6),
+        ),
+      );
+
+      final project = timeline.canvas.contentRect;
+      expect(project, const Rect.fromLTWH(0.1, 0.2, 0.5, 0.6));
+      for (final clip in timeline.videoClips) {
+        expect(clip.contentRect, project, reason: clip.id);
+      }
+    });
+
+    test('an uncropped project stamps the full frame on every clip', () {
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4),
+          VideoSegment(id: 'b', sourceStart: 4, sourceEnd: 8),
+        ]),
+      );
+      for (final clip in timeline.videoClips) {
+        expect(clip.contentRect, const Rect.fromLTWH(0, 0, 1, 1));
+      }
+    });
+
+    test('crosses the wire in the same shape as the canvas rect', () {
+      // One Kotlin reader for both.
+      final timeline = composer.compose(
+        stateWith([VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4)]),
+      );
+      final wire = timeline.videoClips.single.toJson()['contentRect'] as Map;
+      expect(wire.keys.toSet(), {'left', 'top', 'width', 'height'});
+      expect(wire['width'], 1.0);
+      expect(wire['height'], 1.0);
+    });
+
+    test('identical rects still merge, so nothing regressed', () {
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4),
+          VideoSegment(id: 'b', sourceStart: 4, sourceEnd: 8),
+        ]),
+      );
+      expect(timeline.playbackClips, hasLength(1));
+    });
+  });
+
+  group('a clip\'s own crop', () {
+    test('composes inside the project rect', () {
+      // Project shows the middle half horizontally; the clip crops to the
+      // right half of *that*. The clip's rect is the right quarter of the
+      // frame: left 0.5, width 0.25.
+      final timeline = composer.compose(
+        VideoEditorState(
+          assets: const [
+            MediaAsset(
+              id: 'asset_main',
+              path: '/source/video.mp4',
+              type: MediaAssetType.video,
+              durationSeconds: 60,
+              width: 1920,
+              height: 1080,
+              hasAudio: true,
+            ),
+          ],
+          segments: [
+            VideoSegment(
+              id: 'a',
+              assetId: 'asset_main',
+              sourceStart: 0,
+              sourceEnd: 4,
+              cropRect: const Rect.fromLTWH(0.5, 0.0, 0.5, 1.0),
+            ),
+          ],
+          selectedRatio: EditorCropRatio.custom,
+          customCropRect: const Rect.fromLTWH(0.25, 0.0, 0.5, 1.0),
+        ),
+      );
+      final r = timeline.videoClips.single.contentRect;
+      expect(r.left, closeTo(0.5, 1e-9));
+      expect(r.width, closeTo(0.25, 1e-9));
+      expect(r.top, closeTo(0.0, 1e-9));
+      expect(r.height, closeTo(1.0, 1e-9));
+    });
+
+    test('an uncropped clip still carries exactly the project rect', () {
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4),
+          VideoSegment(
+            id: 'b',
+            sourceStart: 4,
+            sourceEnd: 8,
+            cropRect: const Rect.fromLTWH(0.2, 0.2, 0.6, 0.6),
+          ),
+        ]),
+      );
+      expect(timeline.videoClips[0].contentRect, timeline.canvas.contentRect);
+      expect(timeline.videoClips[1].contentRect,
+          const Rect.fromLTWH(0.2, 0.2, 0.6, 0.6));
+    });
+
+    test('cropping one clip leaves its neighbour alone, and they do not merge',
+        () {
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(
+            id: 'a',
+            sourceStart: 0,
+            sourceEnd: 4,
+            cropRect: const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
+          ),
+          VideoSegment(id: 'b', sourceStart: 4, sourceEnd: 8),
+        ]),
+      );
+      expect(timeline.videoClips[1].contentRect, const Rect.fromLTWH(0, 0, 1, 1));
+      // A merged media item samples through one rect.
+      expect(timeline.playbackClips, hasLength(2));
+    });
+
+    test('while the clip-crop tool is open on a clip, its crop is suspended',
+        () {
+      // The whole frame has to show under the handles, or the user is dragging
+      // a rectangle over an already-cropped picture. Only *that* clip — the
+      // rest of the project must not change shape while one clip is edited.
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(
+            id: 'a',
+            sourceStart: 0,
+            sourceEnd: 4,
+            cropRect: const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
+          ),
+          VideoSegment(
+            id: 'b',
+            sourceStart: 4,
+            sourceEnd: 8,
+            cropRect: const Rect.fromLTWH(0.2, 0.2, 0.6, 0.6),
+          ),
+        ]).copyWith(
+          selectedSegmentId: 'a',
+          isClipSelected: true,
+          activeToolId: 'clip_crop',
+        ),
+      );
+      expect(timeline.videoClips[0].contentRect, const Rect.fromLTWH(0, 0, 1, 1));
+      expect(timeline.videoClips[1].contentRect,
+          const Rect.fromLTWH(0.2, 0.2, 0.6, 0.6));
     });
   });
 }

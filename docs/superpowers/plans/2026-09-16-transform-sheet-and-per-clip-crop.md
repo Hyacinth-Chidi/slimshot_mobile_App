@@ -31,7 +31,7 @@ The one genuinely new *widget*. Built and tested alone before anything depends o
 - Create: `lib/features/video_editor/widgets/panels/value_ruler.dart`
 - Test: `test/features/video_editor/widgets/value_ruler_test.dart`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```dart
 testWidgets('dragging right raises the value, left lowers it', (tester) async {
@@ -83,12 +83,12 @@ testWidgets('it tracks an anchor, not accumulated deltas', (tester) async {
 });
 ```
 
-- [ ] **Step 2: Run them, watch them fail**
+- [x] **Step 2: Run them, watch them fail**
 
 Run: `flutter test test/features/video_editor/widgets/value_ruler_test.dart`
 Expected: FAIL, `ValueRuler` undefined.
 
-- [ ] **Step 3: Build it**
+- [x] **Step 3: Build it**
 
 A horizontal strip of tick marks with a fixed centre indicator, dragged under the finger. Requirements the tests above pin:
 
@@ -97,7 +97,7 @@ A horizontal strip of tick marks with a fixed centre indicator, dragged under th
 - Ticks drawn with `CustomPaint`; the centre indicator in `AppColors.primaryStart`.
 - A numeric readout (`1.4×`, `-12°`, `0.20`) — a ruler with no number cannot be set precisely.
 
-- [ ] **Step 4: Gates and commit**
+- [x] **Step 4: Gates and commit**
 
 ---
 
@@ -114,7 +114,7 @@ A horizontal strip of tick marks with a fixed centre indicator, dragged under th
 - Modify: `android/.../nativepreview/TimelinePlaybackEngine.kt`, `export/VideoExportEngine.kt`
 - Test: extend `test/features/video_editor/models/video_segment_keyframe_test.dart`
 
-- [ ] **Step 1: The model**
+- [x] **Step 1: The model**
 
 `VideoSegment.canvasRotation`, an `AnimatableDouble` in **degrees**, default 0.
 
@@ -124,11 +124,11 @@ Degrees not radians: it is what the UI shows and what a draft should be readable
 
 Serialises as a bare `0.0` when unanimated, so no draft migration.
 
-- [ ] **Step 2: Through the contract**
+- [x] **Step 2: Through the contract**
 
 `EditorTimelineClip.canvasRotation` + `canvasRotationAt(progress)`, composed straight through like the transform already is. **The merge rule must refuse two clips rotated differently** — `_canMergeForPlayback` already compares the transform; rotation joins that comparison, or a merged media item would take the first clip's angle for both.
 
-- [ ] **Step 3: The shader**
+- [x] **Step 3: The shader**
 
 Two uniforms, `uRotationIncoming`/`uRotationOutgoing` (radians), applied inside `incomingAt`/`outgoingAt` — the same place the pan and fit already act, so all eleven transitions inherit it.
 
@@ -148,15 +148,15 @@ vec2 rotateAboutCentre(vec2 uv, float radians, float aspect) {
 
 Corners rotated outside the fitted rect return `uBackground`, which the existing bounds check already does.
 
-- [ ] **Step 4: Both engines**
+- [x] **Step 4: Both engines**
 
 `applyLaneFits` (preview) and `prepareLane` (export) each push the angle resolved at the clip's own progress — `canvasRotationAt(clipProgressAt(t))` — beside the scale and pan they already push. **Both, or the file will not match the canvas.**
 
-- [ ] **Step 5: Tests**
+- [x] **Step 5: Tests**
 
 Round-trip, a keyframed rotation resolving mid-clip, the merge refusal, and an unrotated clip serialising as a bare number.
 
-- [ ] **Step 6: Gates and commit** (including `compileDebugKotlin`)
+- [x] **Step 6: Gates and commit** (including `compileDebugKotlin`)
 
 ---
 
@@ -167,7 +167,7 @@ Round-trip, a keyframed rotation resolving mid-clip, the merge refusal, and an u
 - Modify: `lib/screens/video_editor_screen.dart`
 - Test: `test/features/video_editor/widgets/transform_sheet_test.dart`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```dart
 testWidgets('three tabs, one shown at a time', (tester) async {
@@ -223,9 +223,9 @@ testWidgets('each ruler shows the value the write will target',
 });
 ```
 
-- [ ] **Step 2: Run them, watch them fail**
+- [x] **Step 2: Run them, watch them fail**
 
-- [ ] **Step 3: Build the sheet**
+- [x] **Step 3: Build the sheet**
 
 **Styled from the curve sheet**, which is itself styled from the effects sheet: `AppColors.background`, `BorderRadius.vertical(top: Radius.circular(24))`, the standard grab handle, the **pill row** for tabs (not a Material `TabBar`), and one `_kEdge` aligning everything. That pattern is now established in three places — do not invent a fourth.
 
@@ -237,11 +237,11 @@ testWidgets('each ruler shows the value the write will target',
 
 Every write goes through **`setClipProperty`**, so all three inherit keyframing without knowing the feature exists — and every ruler *displays* `clipEditValue`, so it shows what its write will target.
 
-- [ ] **Step 4: Wire it**
+- [x] **Step 4: Wire it**
 
 `'transform'` in the panel dispatch opens the sheet, exactly as `'effects'` does. The root tool no longer has `hasSubMenu`.
 
-- [ ] **Step 5: Gates and commit**
+- [x] **Step 5: Gates and commit**
 
 ---
 
@@ -253,17 +253,17 @@ The contract change that per-clip crop needs. **Behaviour-preserving on its own*
 - Modify: `android/.../gl/TransitionShaders.kt`, `gl/TransitionRenderer.kt`
 - Modify: `android/.../nativepreview/TimelinePlaybackEngine.kt`, `export/VideoExportEngine.kt`
 
-- [ ] **Step 1: Split the uniform**
+- [x] **Step 1: Split the uniform**
 
 `uContentRect` becomes `uContentRectIncoming`/`uContentRectOutgoing`, set per lane rather than bound once in `bindCanvas`.
 
 This mirrors `uFitIncoming`/`uFitOutgoing` exactly, which is the precedent to copy — including that a lane holding a photo samples through it identically.
 
-- [ ] **Step 2: Both engines push it per lane**
+- [x] **Step 2: Both engines push it per lane**
 
 A new `setLaneContentRect(laneIndex, …)` beside `setLaneFit`, change-guarded the way every lane setter is. `bindCanvas` stops carrying the rect.
 
-- [ ] **Step 3: Gates, and a device check before Task 5**
+- [x] **Step 3: Gates, and a device check before Task 5**
 
 **This step alone is worth verifying on device**, because it changes the sampling path for *every* clip while intending to change nothing: crop, zoom and pan must all still behave, on video and on photos, in preview and in export. A regression here would otherwise be discovered later and blamed on per-clip crop.
 
@@ -278,7 +278,7 @@ A new `setLaneContentRect(laneIndex, …)` beside `setLaneFit`, change-guarded t
 - Modify: `android/.../nativepreview/NativeTimelineClip.kt` + both engines
 - Test: extend the segment and composer tests
 
-- [ ] **Step 1: The model**
+- [x] **Step 1: The model**
 
 `VideoSegment.cropRect`, a `Rect` in **source fractions**, default `Rect.fromLTWH(0, 0, 1, 1)`.
 
@@ -286,23 +286,23 @@ Fractions, like every other geometry in this codebase: a trimmed or differently-
 
 **Not an `AnimatableDouble`** — a rect is four numbers, and an animated crop is a different feature (a pan-and-scan) with its own design. Deliberately out of scope; say so at the field.
 
-- [ ] **Step 2: Composed per clip**
+- [x] **Step 2: Composed per clip**
 
 The composer resolves each clip's rect **through `resolveContentRect`**, composing the clip's crop with the project's crop/zoom/pan rather than replacing it — one geometry definition, as the constraint requires. A clip with the default rect resolves to exactly what it gets today.
 
-- [ ] **Step 3: The entry point**
+- [x] **Step 3: The entry point**
 
 Crop joins `_editMenu` — the clip's contextual menu, beside Filters and Effects, which is where per-clip things live. It opens the **existing** custom-crop surface with the clip's own rect, **freehand only**: no ratio row, because a per-clip ratio would fight the project canvas that every clip is fitted into.
 
-- [ ] **Step 4: The merge rule**
+- [x] **Step 4: The merge rule**
 
 `_canMergeForPlayback` refuses two clips cropped differently — a merged media item can only carry one rect. Same rule the transform and the grade already follow.
 
-- [ ] **Step 5: Tests**
+- [x] **Step 5: Tests**
 
 An uncropped clip composes identically to today; a cropped clip reaches the timeline clip; two differently-cropped clips do not merge; a crop survives a draft round-trip and a split (both halves keep it — they are the same footage).
 
-- [ ] **Step 6: Gates and commit**
+- [x] **Step 6: Gates and commit**
 
 ---
 

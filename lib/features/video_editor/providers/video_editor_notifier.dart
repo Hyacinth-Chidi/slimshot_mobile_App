@@ -12,6 +12,7 @@ import '../../../core/services/draft_service.dart';
 import '../../../core/utils/file_utils.dart';
 import '../logic/animation/animatable_double.dart';
 import '../logic/animation/clip_keyframes.dart';
+import '../logic/canvas_geometry.dart';
 import '../logic/animation/clip_keyframes.dart' as kf;
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
@@ -726,6 +727,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       canvasScale: segment.canvasScale,
       canvasOffsetX: segment.canvasOffsetX,
       canvasOffsetY: segment.canvasOffsetY,
+      // Built by hand rather than through `copyWith`, so every clip-owned
+      // field has to be named here — a rotated clip lost its angle on the
+      // right of a cut until this line existed.
+      canvasRotation: segment.canvasRotation,
+      // Same footage either side of the cut, so the same crop.
+      cropRect: segment.cropRect,
     );
 
     // Keyframes are clip-relative, so each half gets its own rescaled copy.
@@ -1152,6 +1159,30 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
   void setSelectedRatio(EditorCropRatio ratio) {
     state = state.copyWith(selectedRatio: ratio);
+  }
+
+  /// Writes the selected clip's own crop, live — the canvas calls this per
+  /// drag frame, having taken the undo snapshot once at the drag's start.
+  void setClipCropRect(Rect rect) {
+    final targetId = state.selectedSegmentId;
+    if (targetId == null) return;
+    state = state.copyWith(
+      segments: [
+        for (final segment in state.segments)
+          if (segment.id == targetId)
+            segment.copyWith(cropRect: clampNormalizedRect(rect))
+          else
+            segment,
+      ],
+    );
+  }
+
+  /// Puts the selected clip back to its whole frame, undoably.
+  void resetClipCropRect() {
+    final targetId = state.selectedSegmentId;
+    if (targetId == null) return;
+    saveStateForUndo();
+    setClipCropRect(kFullFrameRect);
   }
 
   void setCustomCropRect(Rect rect) {

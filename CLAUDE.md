@@ -1345,6 +1345,93 @@ and **not** the effects sheet, which is the mistake the keyframe row already mad
 is GLSL, so neither `flutter analyze` nor `compileDebugKotlin` can verify it; both sampler variants
 (`sampler2D` for photos, `samplerExternalOES` for video) need a device check.
 
+### Transform — a tool with a sheet, and a clip that can rotate
+
+**Awaiting device verification.** Plan: `docs/superpowers/plans/2026-09-16-transform-sheet-and-per-clip-crop.md`.
+
+**Transform's children are root tools and Transform is a tool of its own.** Crop, Zoom and
+Background moved out of the submenu onto the root toolbar; the dead `rotate` tool — a menu entry
+with no handler — was deleted. Transform opens a sheet (`panels/transform_sheet.dart`) with three
+tabs, Scale / Rotate / Position, each a `ValueRuler`. It is on the root menu **and** the clip menu:
+the root menu is hidden while a clip is selected, and a tool reachable only by deselecting the
+clip you want to transform is not reachable. From the root menu nothing is selected, so
+`selectSegmentAtPlayhead` picks the clip under the playhead, resolved through `segmentIndexAt`.
+
+**The ruler is per pixel, not per widget width** (`panels/value_ruler.dart`). A slider spreads its
+range across whatever width it gets, so precision depends on the phone; a ruler moves a fixed
+amount per pixel and reaches a large range by dragging more than once. Right raises the value —
+the user's specification — and the ticks travel *with* the finger; they carry no labels, so there
+is nothing for that to contradict. Anchor-based like every drag here. **Its change guard compares
+against the value it last reported, never `widget.value`**: the parent may not have rebuilt
+between frames, and guarding on the given value swallowed the report that brought a value back to
+its start, leaving the caller holding a stale extreme. The anchor test caught it.
+
+**The sheet has no keyframe control and needs none.** Every ruler writes through
+`updateClipCanvasTransform` — the edit rule — and shows `clipEditValue`, so on a keyframed clip a
+drag keyframes itself and the ruler reads the value at the playhead. One property moves per drag
+and the other three are handed back as *shown*, so on a keyframed clip they write their own
+resolved value to the same diamond, a no-op. The engine hears every frame through the
+`setClipTransform` override channel exactly as the pinch does, and the screen catches up once on
+release. Tapping a readout resets that value through `setClipProperty`, undoably.
+
+**Rotation is the sixth keyframable property, and it did not exist before.** `canvasRotation` is
+an `AnimatableDouble` in **degrees** (what the ruler shows, what a draft should read as); the
+engine converts to radians once, at the uniform. Unrotated clips serialise a bare `0.0`.
+`normaliseDegrees` folds any angle into (-180, 180] so a clip dragged round twice reads as its
+actual orientation and equal angles compare equal for the merge rule.
+
+**The shader rotates in an aspect-true space, or it shears.** The canvas is 9:16, so a unit of u
+is not a unit of v; rotating raw uv squashes the picture into a rhombus at 45°. `rotateCanvas`
+scales x by `uCanvasAspect` first, rotates, scales back — the identical trap
+`OverlayRenderer.writeCorners` documents for overlays. **Order: remove the pan, rotate, un-fit** —
+sampling undoes the transform in reverse of how the clip was built. Rotating before removing the
+pan spins the clip about the *canvas* centre rather than its own, and a clip dragged to a corner
+orbits instead of turning. The sign is the inverse of the intuitive one because it is the sampled
+point being turned, not the clip.
+
+**The split's right half is built by hand, so every clip-owned field has to be named there.** A
+rotated clip lost its angle on the right of a cut until `canvasRotation` was added to that
+constructor; a test now checks the split carries both rotation and crop to both halves. Anything
+new on `VideoSegment` has to be added to that constructor, or a split silently drops it.
+
+### Per-clip crop — the sampling rect became per lane
+
+**Awaiting device verification**, and this one changes the sampling path for every clip while
+meaning to change nothing, so an existing project's crop, zoom and pan — on video *and* photos, in
+preview *and* export — is the first thing to check.
+
+**`contentRect` is per clip now.** It was one rect on `EditorTimelineCanvas`, bound once in
+`bindCanvas` and sampled by every lane through a single `uContentRect` — so a transition had one
+rect and two clips, which is what made a per-clip crop impossible. Each `EditorTimelineVideoClip`
+carries its own, the shader has `uContentRectIncoming`/`uContentRectOutgoing`, the renderer holds
+it on the `Lane` beside fit and pan, and both engines push it per lane (`setLaneContentRect`). The
+canvas field survives for the Flutter side; the engine no longer reads it. **Export used to inherit
+whatever rect the preview engine had last left on the renderer** — right by accident, because a
+`setTimeline` always preceded an export; it now sets the clip's rect per frame, which is correct
+and no longer accidental.
+
+**A clip's crop composes *inside* the project's** (`composeCropRects`): cropping a clip to its
+middle half means the middle half of what the project already shows. Then the same
+`resolveContentRect` applies zoom and pan — one geometry definition, as `canvas_geometry.dart`
+requires. **Freehand only, no ratio**: a per-clip ratio would fight the project canvas every clip
+is fitted into. **A plain `Rect`, deliberately not animatable**: an animated crop is a pan-and-scan
+with its own design, and four coupled numbers rather than one parameter. While the clip-crop tool
+is open *on a clip*, that clip's own crop is suspended so the whole frame shows under the handles
+— only that clip; the rest of the project must not change shape while one is edited.
+
+**One editor, two targets.** The canvas's crop handles and painter serve both the project crop and
+a clip's; `_cropTarget` decides which rect is read and written from `activeToolId` (`crop` versus
+`clip_crop`), so there is no second editor to drift from the first. The clip tool is on the clip
+menu with the same label as the root menu's Crop and a different id — to the user it is the same
+verb applied to a smaller thing. Both now take **one undo snapshot per drag**, at pan start; the
+project crop had none before.
+
+**`clampNormalizedRect` threw on a rect pushed wholly past an edge.** `right.clamp(left + min,
+1.0)` with `left == 1.0` gives a lower bound above its upper bound, which Dart rejects with
+`Invalid argument(s): 1.0001` — inside compose, which takes the whole timeline down. Found by the
+`composeCropRects` junk-input test; the near edge now stops one minimum extent short of the far
+side. A hand-edited draft could have hit this before any of this work existed.
+
 **The rejected design is entry 23 in `docs/dead-ends.md`** — a keyframe row under the clip, opened
 from a button on the effects sheet. Read it before proposing anywhere else for a keyframe control.
 

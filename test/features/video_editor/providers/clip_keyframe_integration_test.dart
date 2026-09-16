@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
@@ -182,6 +183,63 @@ void main() {
         jsonEncode(VideoSegment.fromJson(jsonDecode(once)).toJson()),
         once,
       );
+    });
+  });
+
+  group('a clip\'s own crop', () {
+    test('writes the selected clip only', () {
+      final n = notifierWith([
+        VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 5),
+        VideoSegment(id: 'b', sourceStart: 5, sourceEnd: 10),
+      ], selectedSegmentId: 'b');
+      n.setClipCropRect(const Rect.fromLTWH(0.1, 0.1, 0.5, 0.5));
+      expect(n.state.segments[0].isCropped, isFalse);
+      expect(n.state.segments[1].cropRect, const Rect.fromLTWH(0.1, 0.1, 0.5, 0.5));
+    });
+
+    test('is clamped into the frame', () {
+      final n = notifierWith([
+        VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 5),
+      ], selectedSegmentId: 'a');
+      n.setClipCropRect(const Rect.fromLTWH(-0.5, 0.0, 2.0, 1.0));
+      final r = n.state.segments.first.cropRect;
+      expect(r.left, greaterThanOrEqualTo(0.0));
+      expect(r.right, lessThanOrEqualTo(1.0));
+    });
+
+    test('reset returns the whole frame, undoably', () {
+      final n = notifierWith([
+        VideoSegment(
+          id: 'a',
+          sourceStart: 0,
+          sourceEnd: 5,
+          cropRect: const Rect.fromLTWH(0.1, 0.1, 0.5, 0.5),
+        ),
+      ], selectedSegmentId: 'a');
+      n.resetClipCropRect();
+      expect(n.state.segments.first.isCropped, isFalse);
+      n.undo();
+      expect(n.state.segments.first.cropRect, const Rect.fromLTWH(0.1, 0.1, 0.5, 0.5));
+    });
+
+    test('a split carries the crop and the rotation to both halves', () {
+      // Same footage either side of the cut. The right half is built by hand
+      // rather than through copyWith, so every clip-owned field has to be
+      // named — a rotated clip lost its angle on the right until it was.
+      final n = notifierWith([
+        VideoSegment(
+          id: 'a',
+          sourceStart: 0,
+          sourceEnd: 10,
+          cropRect: const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
+          canvasRotation: const AnimatableDouble(baseValue: 15.0),
+        ),
+      ], selectedSegmentId: 'a');
+      n.splitAtPosition(5.0);
+      for (final half in n.state.segments) {
+        expect(half.cropRect, const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8), reason: half.id);
+        expect(half.canvasRotationAt(0.5), 15.0, reason: half.id);
+      }
     });
   });
 }

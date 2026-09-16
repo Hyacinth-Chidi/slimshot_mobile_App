@@ -60,6 +60,12 @@ class VideoEditorTimelineComposer {
     // engine can never disagree about where clips sit.
     final transitionDurations = segmentTransitionDurations(segments);
 
+    // The project's sampling rect, resolved once. Every clip carries it — with
+    // its own crop composed inside, where one exists — because the engine
+    // samples each lane through the clip's rect and no longer through a canvas
+    // one. See `EditorTimelineVideoClip.contentRect`.
+    final projectContentRect = _resolveContentRect(state, previewCanvasSize);
+
     var timelineCursor = 0.0;
     var laneIndex = 0;
     final videoClips = <EditorTimelineVideoClip>[];
@@ -80,6 +86,12 @@ class VideoEditorTimelineComposer {
           timelineEnd: timelineEnd,
           laneIndex: laneIndex,
           resolvedTransitionDuration: transitionDuration,
+          contentRect: _clipContentRect(
+            state,
+            segment,
+            previewCanvasSize: previewCanvasSize,
+            projectContentRect: projectContentRect,
+          ),
         ),
       );
 
@@ -111,7 +123,7 @@ class VideoEditorTimelineComposer {
         aspectRatio: state.projectAspectRatio,
         width: state.projectCanvasSize.width,
         height: state.projectCanvasSize.height,
-        contentRect: _resolveContentRect(state, previewCanvasSize),
+        contentRect: projectContentRect,
         colorMatrix: state.selectedFilter?.getInterpolatedMatrix(
           state.filterIntensity,
         ),
@@ -144,6 +156,42 @@ class VideoEditorTimelineComposer {
       cropRect: state.selectedRatio == EditorCropRatio.custom
           ? state.customCropRect
           : const Rect.fromLTWH(0, 0, 1, 1),
+      videoScale: state.previewVideoScale ?? state.videoScale,
+      videoPan: state.previewVideoPan ?? state.videoPan,
+      previewCanvasSize: previewCanvasSize,
+    );
+  }
+
+  /// What one clip's frame shows: its own crop composed inside the project's,
+  /// then the project's zoom and pan on top of that.
+  ///
+  /// **The same [resolveContentRect] the project rect goes through**, fed a
+  /// composed crop rather than a second implementation of zoom and pan — one
+  /// geometry definition, as `canvas_geometry.dart` requires.
+  ///
+  /// While the clip-crop tool is open *on this clip*, its own crop is
+  /// suspended so the whole frame shows under the handles — the same rule the
+  /// project crop tool follows in [_resolveContentRect]. Other clips keep
+  /// theirs; a user cropping one clip should not see the rest of the project
+  /// change shape.
+  Rect _clipContentRect(
+    VideoEditorState state,
+    VideoSegment segment, {
+    required Size? previewCanvasSize,
+    required Rect projectContentRect,
+  }) {
+    final editingThisClip = state.activeToolId == 'clip_crop' &&
+        state.selectedSegmentId == segment.id;
+    if (!segment.isCropped || editingThisClip) return projectContentRect;
+
+    final projectCrop = state.activeToolId == 'crop'
+        ? const Rect.fromLTWH(0, 0, 1, 1)
+        : (state.selectedRatio == EditorCropRatio.custom
+            ? state.customCropRect
+            : const Rect.fromLTWH(0, 0, 1, 1));
+
+    return resolveContentRect(
+      cropRect: composeCropRects(projectCrop, segment.cropRect),
       videoScale: state.previewVideoScale ?? state.videoScale,
       videoPan: state.previewVideoPan ?? state.videoPan,
       previewCanvasSize: previewCanvasSize,
@@ -354,6 +402,7 @@ class VideoEditorTimelineComposer {
       canvasOffsetX: previous.canvasOffsetX,
       canvasOffsetY: previous.canvasOffsetY,
       canvasRotation: previous.canvasRotation,
+      contentRect: previous.contentRect,
     );
   }
 
@@ -426,6 +475,12 @@ class VideoEditorTimelineComposer {
     // that the merge destroys.
     if (previous.hasKeyframes || next.hasKeyframes) return false;
 
+    // A merged media item samples through one rect, so two clips that show
+    // different parts of their frames cannot share one. Identical today for
+    // every clip in a project — the rect is the project's — until a clip
+    // carries its own crop, which is what this check exists for.
+    if (!_sameRect(previous.contentRect, next.contentRect)) return false;
+
     // Same for the canvas transform: a merged item can only carry one. Neither
     // clip is keyframed by the time this runs, so comparing base values is
     // comparing the whole parameter.
@@ -456,6 +511,14 @@ class VideoEditorTimelineComposer {
         (previous.volume.baseValue - next.volume.baseValue).abs() <= epsilon;
   }
 
+  bool _sameRect(Rect a, Rect b) {
+    const epsilon = 1e-6;
+    return (a.left - b.left).abs() <= epsilon &&
+        (a.top - b.top).abs() <= epsilon &&
+        (a.width - b.width).abs() <= epsilon &&
+        (a.height - b.height).abs() <= epsilon;
+  }
+
   bool _sameMatrix(List<double>? a, List<double>? b) {
     if (a == null || b == null) return a == null && b == null;
     if (a.length != b.length) return false;
@@ -474,6 +537,7 @@ class VideoEditorTimelineComposer {
     required double timelineEnd,
     required int laneIndex,
     required double? resolvedTransitionDuration,
+    required Rect contentRect,
   }) {
     final overrideVideoPath = segment.overrideVideoPath;
     final hasPreparedProxy =
@@ -527,6 +591,7 @@ class VideoEditorTimelineComposer {
       canvasOffsetX: segment.canvasOffsetX,
       canvasOffsetY: segment.canvasOffsetY,
       canvasRotation: segment.canvasRotation,
+      contentRect: contentRect,
     );
   }
 

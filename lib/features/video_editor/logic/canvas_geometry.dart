@@ -12,8 +12,13 @@ import 'dart:ui';
 
 /// Keeps a normalised rect inside `0..1` and non-degenerate.
 Rect clampNormalizedRect(Rect rect) {
-  final left = rect.left.clamp(0.0, 1.0).toDouble();
-  final top = rect.top.clamp(0.0, 1.0).toDouble();
+  // The near edge stops one minimum extent short of the far side, so the far
+  // edge's lower bound below can never exceed its upper bound. Without that, a
+  // rect pushed wholly past the frame — a hand-edited draft, or a crop dragged
+  // off the edge — made `clamp(1.0001, 1.0)` throw, and a throw inside compose
+  // takes the whole timeline with it.
+  final left = rect.left.clamp(0.0, 1.0 - _kMinExtent).toDouble();
+  final top = rect.top.clamp(0.0, 1.0 - _kMinExtent).toDouble();
   final right = rect.right.clamp(left + _kMinExtent, 1.0).toDouble();
   final bottom = rect.bottom.clamp(top + _kMinExtent, 1.0).toDouble();
   return Rect.fromLTRB(left, top, right, bottom);
@@ -33,6 +38,29 @@ bool isFullFrame(Rect rect) {
 /// [previewCanvasSize] is needed because pan is stored in preview-canvas
 /// pixels; without it, panning is ignored rather than applied at the wrong
 /// scale.
+/// [inner], expressed as fractions **of [outer]**, resolved to fractions of
+/// the whole frame.
+///
+/// A clip's own crop is drawn over what the project crop already shows, so it
+/// is a sub-rectangle of that rect rather than of the source frame: cropping a
+/// clip to its middle half means the middle half *of what the project lets
+/// through*. Composing here — and then handing the result to
+/// [resolveContentRect] for zoom and pan — keeps geometry in one place, which
+/// is what the constraint on this file demands.
+///
+/// Both inputs are clamped first, so a hand-edited draft cannot produce a rect
+/// outside the frame or one that is inside-out.
+Rect composeCropRects(Rect outer, Rect inner) {
+  final o = clampNormalizedRect(outer);
+  final i = clampNormalizedRect(inner);
+  return Rect.fromLTWH(
+    o.left + i.left * o.width,
+    o.top + i.top * o.height,
+    i.width * o.width,
+    i.height * o.height,
+  );
+}
+
 Rect resolveContentRect({
   required Rect cropRect,
   required double videoScale,

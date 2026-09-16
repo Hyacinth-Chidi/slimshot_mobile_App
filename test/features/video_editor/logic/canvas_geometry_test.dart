@@ -124,4 +124,31 @@ void main() {
       expect(contentAspectRatio(fullFrame, Size.zero), isNull);
     });
   });
+
+  group('composeCropRects', () {
+    test('inner is a fraction of outer, not of the frame', () {
+      const outer = Rect.fromLTWH(0.25, 0.0, 0.5, 1.0);
+      const inner = Rect.fromLTWH(0.5, 0.0, 0.5, 1.0);
+      final r = composeCropRects(outer, inner);
+      expect(r.left, closeTo(0.5, 1e-9));
+      expect(r.width, closeTo(0.25, 1e-9));
+    });
+
+    test('the identity crop changes nothing', () {
+      const outer = Rect.fromLTWH(0.1, 0.2, 0.5, 0.6);
+      final r = composeCropRects(outer, const Rect.fromLTWH(0, 0, 1, 1));
+      expect(r, outer);
+    });
+
+    test('never leaves the frame, even from junk', () {
+      final r = composeCropRects(
+        const Rect.fromLTWH(-1, -1, 5, 5),
+        const Rect.fromLTWH(2, 2, 2, 2),
+      );
+      expect(r.left, greaterThanOrEqualTo(0));
+      expect(r.top, greaterThanOrEqualTo(0));
+      expect(r.right, lessThanOrEqualTo(1));
+      expect(r.bottom, lessThanOrEqualTo(1));
+    });
+  });
 }
