@@ -1031,6 +1031,59 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     state = state.copyWith(adjustments: adjustments);
   }
 
+  /// Copies the selected clip's placement — scale, position and rotation with
+  /// their keyframes, and the mirror — onto every other clip, as one undo
+  /// step. Returns how many clips changed.
+  ///
+  /// **A copy, not a mode.** A live all-clips mode on a ruler drag would write
+  /// a keyframe into every clip at the same *relative* instant per frame,
+  /// which nobody means; set one clip up, then copy it.
+  int applyTransformToAllClips() => _copyToOtherClips(
+        (source, target) => target.copyWith(
+          canvasScale: source.canvasScale,
+          canvasOffsetX: source.canvasOffsetX,
+          canvasOffsetY: source.canvasOffsetY,
+          canvasRotation: source.canvasRotation,
+          flipHorizontal: source.flipHorizontal,
+          flipVertical: source.flipVertical,
+        ),
+      );
+
+  /// Copies the selected clip's own crop onto every other clip. One undo step.
+  int applyCropToAllClips() => _copyToOtherClips(
+        (source, target) => target.copyWith(cropRect: source.cropRect),
+      );
+
+  /// Copies the selected clip's effect and intensity (keyframes included) onto
+  /// every other clip; an unaffected clip clears the others. One undo step.
+  int applyEffectToAllClips() => _copyToOtherClips(
+        (source, target) => source.effectId == null
+            ? target.copyWith(
+                clearEffectId: true,
+                effectIntensity: source.effectIntensity,
+              )
+            : target.copyWith(
+                effectId: source.effectId,
+                effectIntensity: source.effectIntensity,
+              ),
+      );
+
+  /// Applies [copy] from the selected clip to every other clip, snapshotting
+  /// once. Zero, and no snapshot, with nothing selected or nothing else to
+  /// write — an undo entry that undoes nothing is a lie to the user.
+  int _copyToOtherClips(
+    VideoSegment Function(VideoSegment source, VideoSegment target) copy,
+  ) {
+    final source = state.selectedSegment;
+    if (source == null || state.segments.length < 2) return 0;
+    saveStateForUndo();
+    final updated = [
+      for (final s in state.segments) s.id == source.id ? s : copy(source, s),
+    ];
+    state = state.copyWith(segments: updated);
+    return updated.length - 1;
+  }
+
   /// Mirrors the selected clip across one axis: left for right when
   /// [horizontal], top for bottom otherwise. One undo step; nothing with no
   /// clip selected. A toggle, not a drag, so it commits through state and the

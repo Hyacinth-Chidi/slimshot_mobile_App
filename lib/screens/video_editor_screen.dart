@@ -57,6 +57,7 @@ import '../features/video_editor/widgets/panels/background_sheet.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
 import '../features/video_editor/widgets/editor_tool_tile.dart';
 import '../features/video_editor/widgets/panels/adjust_sheet.dart';
+import '../features/video_editor/widgets/panels/apply_to_all_button.dart';
 
 class EditorTool {
   final String id;
@@ -2142,6 +2143,18 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
             ),
           ),
           const SizedBox(width: 12),
+          ApplyToAllButton(
+            key: const Key('clip_crop_apply_all'),
+            enabled: editorState.segments.length > 1,
+            onPressed: () {
+              final count = notifier.applyCropToAllClips();
+              ToastUtils.show(
+                context,
+                'Crop applied to $count other clip${count == 1 ? '' : 's'}.',
+              );
+            },
+          ),
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: segment.isCropped
                 ? () {

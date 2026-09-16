@@ -1434,6 +1434,19 @@ the project background rather than to black was the open question; the backgroun
 that is what the bars already show and a fade that revealed a different colour would read as a
 flash.
 
+### Apply to all — a copy, not a mode
+
+Transform, the clip crop and Effects each carry an `ApplyToAllButton`: one tap copies the selected
+clip's placement (scale, position, rotation with their keyframes, and the mirror), its crop rect, or
+its effect and intensity onto every other clip, as one undo step, and says how many it reached.
+**Deliberately not the `ApplyToAllToggle` Filters and Transitions use.** Those edits are single
+choices that can sensibly write everywhere live; a placement is a ruler drag, and a live all-clips
+mode would write a keyframe into every clip at the same *relative* instant on every frame of the
+drag — which nobody means. Set one clip up, then copy it. All three go through
+`_copyToOtherClips`, which snapshots once and does nothing — no snapshot either — with nothing
+selected or nothing else to write, because an undo entry that undoes nothing is a lie. Disabled and
+dimmed, not hidden, in a one-clip project.
+
 ### Freeze frame — a still cut in where the playhead is
 
 `freezeFrameAtPlayhead` is built from parts that already existed: the frame under the playhead is

@@ -8,6 +8,8 @@ import '../../logic/animation/clip_keyframes.dart';
 import '../../logic/effects/effect_catalog.dart';
 import '../../providers/video_editor_notifier.dart';
 import 'editor_sheet.dart';
+import 'apply_to_all_button.dart';
+import '../../../../core/utils/toast_utils.dart';
 
 /// The clip's Effects sheet: a category row, a grid of effect tiles, and one
 /// intensity slider.
@@ -176,6 +178,33 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                   ),
                 )
               else ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Effects',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      ApplyToAllButton(
+                        key: const Key('effects_apply_all'),
+                        enabled: editorState.segments.length > 1,
+                        onPressed: () {
+                          final count = notifier.applyEffectToAllClips();
+                          ToastUtils.show(
+                            context,
+                            'Effect applied to $count other clip${count == 1 ? '' : 's'}.',
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
                 _categoryRow(),
                 const SizedBox(height: 10),
                 // Nothing to retune while no effect is applied, and a slider

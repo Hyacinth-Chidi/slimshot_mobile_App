@@ -472,4 +472,20 @@ void main() {
     expect(find.byType(Slider), findsNothing);
     expect(find.textContaining('Select a clip'), findsOneWidget);
   });
+
+
+  testWidgets('Apply to all copies the effect onto every other clip',
+      (tester) async {
+    final n = notifierWith(
+      [clip('a', effectId: 'vignette'), clip('b'), clip('c')],
+      selectedSegmentId: 'a',
+    );
+    await pumpPanel(tester, n);
+    await tester.tap(find.byKey(const Key('effects_apply_all')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+
+    expect(n.state.segments[1].effectId, 'vignette');
+    expect(n.state.segments[2].effectId, 'vignette');
+  });
 }

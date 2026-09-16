@@ -43,8 +43,8 @@ Grouped so each batch shares one device-verification pass.
   pass chain renders the active lane blurred, cover-fitted, as the letterbox fill. A third
   kind of tile in `BackgroundSheet`. Falls back to black **with a warning** where the chain
   cannot run.
-- [ ] **B3 Apply to all** for Transform, clip crop and Effects, using `ApplyToAllToggle` the
-  way Filters and Transitions do.
+- [x] **B3 Apply to all** for Transform, clip crop and Effects — as a one-shot copy
+  (`ApplyToAllButton`), not the live toggle; see CLAUDE.md for why.
 
 ### Batch C — timeline feel
 

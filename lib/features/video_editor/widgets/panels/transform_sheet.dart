@@ -11,6 +11,8 @@ import '../../models/video_segment.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../../services/native_timeline_preview_service.dart';
 import 'value_ruler.dart';
+import 'apply_to_all_button.dart';
+import '../../../../core/utils/toast_utils.dart';
 
 /// The Transform sheet: **Scale / Rotate / Position**, each driven by a ruler.
 ///
@@ -87,6 +89,33 @@ class _TransformSheetState extends ConsumerState<TransformSheet> {
                 ),
               )
             else ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(_kEdge, 0, _kEdge, 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Transform',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    ApplyToAllButton(
+                      key: const Key('transform_apply_all'),
+                      enabled: state.segments.length > 1,
+                      onPressed: () {
+                        final count = _notifier.applyTransformToAllClips();
+                        ToastUtils.show(
+                          context,
+                          'Placement applied to $count other clip${count == 1 ? '' : 's'}.',
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
               _tabRow(),
               const SizedBox(height: 14),
               Padding(

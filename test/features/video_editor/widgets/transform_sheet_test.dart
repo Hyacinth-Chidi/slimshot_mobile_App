@@ -112,6 +112,26 @@ void main() {
       expect(n.state.segments.single.flipHorizontal, isTrue);
     });
 
+    testWidgets('Apply to all copies the placement onto every other clip',
+        (tester) async {
+      final n = notifierWith(
+        [
+          clip('a').copyWith(canvasScale: const AnimatableDouble(baseValue: 2.0)),
+          clip('b'),
+          clip('c'),
+        ],
+        selectedSegmentId: 'a',
+      );
+      await pump(tester, n);
+      await tester.tap(find.byKey(const Key('transform_apply_all')));
+      await tester.pump();
+      // Let the confirmation toast run its course inside the test clock.
+      await tester.pump(const Duration(seconds: 5));
+
+      expect(n.state.segments[1].canvasScale.baseValue, 2.0);
+      expect(n.state.segments[2].canvasScale.baseValue, 2.0);
+    });
+
     testWidgets('with no clip selected it says so rather than lying',
         (tester) async {
       // Every tab writes a *clip* property, so with nothing selected there is
