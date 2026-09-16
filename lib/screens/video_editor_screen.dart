@@ -94,12 +94,19 @@ const EditorMenu _rootMenu = EditorMenu(
     // in `_menus`, so the flag was dead and contradictory.
     EditorTool(id: 'text', label: 'Text', icon: LucideIcons.type),
     EditorTool(id: 'overlay', label: 'Overlay', icon: LucideIcons.layers),
+    // **Transform's children are root tools now, and Transform is a tool of its
+    // own.** The submenu was a tap tax on four things a user reaches for
+    // directly — Crop especially, which is one of the most common edits and was
+    // two taps deep. Transform keeps the name because it is still what it does:
+    // scale, rotate and position the clip on the canvas, in one sheet.
+    EditorTool(id: 'crop', label: 'Crop', icon: LucideIcons.crop),
     EditorTool(
       id: 'transform',
       label: 'Transform',
       icon: LucideIcons.move,
-      hasSubMenu: true,
     ),
+    EditorTool(id: 'zoom', label: 'Zoom', icon: LucideIcons.zoomIn),
+    EditorTool(id: 'background', label: 'Background', icon: LucideIcons.image),
     EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
     EditorTool(id: 'animate', label: 'Animate', icon: LucideIcons.clapperboard),
     EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
@@ -144,16 +151,6 @@ const EditorMenu _audioMenu = EditorMenu(
   ],
 );
 
-const EditorMenu _transformMenu = EditorMenu(
-  id: 'transform',
-  tools: [
-    EditorTool(id: 'crop', label: 'Crop', icon: LucideIcons.crop),
-    EditorTool(id: 'zoom', label: 'Zoom', icon: LucideIcons.zoomIn),
-    EditorTool(id: 'rotate', label: 'Rotate', icon: LucideIcons.rotateCcw),
-    EditorTool(id: 'background', label: 'Background', icon: LucideIcons.image),
-  ],
-);
-
 const EditorMenu _imageOverlayMenu = EditorMenu(
   id: 'image_overlay',
   tools: [
@@ -193,7 +190,6 @@ final Map<String, EditorMenu> _menus = {
   'edit': _editMenu,
 
   'audio': _audioMenu,
-  'transform': _transformMenu,
   'image_overlay': _imageOverlayMenu,
   'video_overlay': _videoOverlayMenu,
   'transition': const EditorMenu(
