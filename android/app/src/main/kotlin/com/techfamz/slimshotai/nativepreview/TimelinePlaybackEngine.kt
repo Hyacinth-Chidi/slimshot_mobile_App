@@ -1051,16 +1051,10 @@ internal class TimelinePlaybackEngine(
         }
         renderer.setBackgroundColor(backgroundArgb)
 
-        val rect = canvas?.get("contentRect") as? Map<*, *>
-        if (rect != null) {
-            val left = (rect["left"] as? Number)?.toFloat() ?: 0f
-            val top = (rect["top"] as? Number)?.toFloat() ?: 0f
-            val width = (rect["width"] as? Number)?.toFloat() ?: 1f
-            val height = (rect["height"] as? Number)?.toFloat() ?: 1f
-            renderer.setContentRect(left, top, width, height)
-        } else {
-            renderer.setContentRect(0f, 0f, 1f, 1f)
-        }
+        // The canvas rect is no longer read here: each clip carries its own
+        // composed rect and `applyLaneFits` pushes it per lane, the same way
+        // the fit and pan travel. One rect for two lanes was what made a
+        // per-clip crop impossible.
 
         val matrix = (canvas?.get("colorMatrix") as? List<*>)
             ?.mapNotNull { (it as? Number)?.toFloat() }
@@ -1103,6 +1097,12 @@ internal class TimelinePlaybackEngine(
             val rotationDegrees =
                 override?.getOrNull(3) ?: clip.canvasRotationAt(clipProgress)
             val rotation = Math.toRadians(rotationDegrees).toFloat()
+
+            // The part of this clip's frame that reaches the canvas — per lane,
+            // for both a decoder lane and a photo lane, since both sample
+            // through it. Change-guarded in the renderer like every lane setter.
+            val r = clip.contentRect
+            renderer.setLaneContentRect(lane.index, r[0], r[1], r[2], r[3])
 
             if (renderer.laneShowingImage(lane.index)) {
                 // A photo's contain fit is derived by the renderer from the

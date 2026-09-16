@@ -91,6 +91,13 @@ internal class TransitionRenderer(
         var rotation = 0f
 
         /**
+         * The part of this lane's source frame that reaches the canvas, as
+         * `[l, t, w, h]` fractions. Per lane, like the fit and pan.
+         */
+        @Volatile
+        var contentRect = floatArrayOf(0f, 0f, 1f, 1f)
+
+        /**
          * Set once the decoder has delivered at least one frame. Sampling a
          * lane before this would read undefined texture memory, so a
          * transition falls back to the outgoing lane alone until it flips.
@@ -272,10 +279,6 @@ internal class TransitionRenderer(
 
     @Volatile
     private var transition: TransitionDraw? = null
-
-    /** Crop, zoom and pan resolved into one source rect: x, y, width, height. */
-    @Volatile
-    private var contentRect = floatArrayOf(0f, 0f, 1f, 1f)
 
     /** Column-major 4×4 colour matrix, or null when no filter is applied. */
     @Volatile
@@ -721,12 +724,15 @@ internal class TransitionRenderer(
      * The part of each source frame that reaches the canvas, with crop, zoom
      * and pan already resolved into one rect by the Dart side.
      */
-    fun setContentRect(x: Float, y: Float, width: Float, height: Float) {
+    fun setLaneContentRect(laneIndex: Int, x: Float, y: Float, width: Float, height: Float) {
         if (released) return
+        val lane = lanes.getOrNull(laneIndex) ?: return
+        // A zero-area rect would collapse the clip onto one texel; refuse it
+        // rather than draw it.
         if (width <= 0f || height <= 0f) return
         val next = floatArrayOf(x, y, width, height)
-        if (next.contentEquals(contentRect)) return
-        contentRect = next
+        if (next.contentEquals(lane.contentRect)) return
+        lane.contentRect = next
         requestRender()
     }
 
@@ -1033,7 +1039,7 @@ internal class TransitionRenderer(
         val program = programFor(PASSTHROUGH, incomingIsImage = true, outgoingIsImage = true)
             ?: return
         program.use()
-        program.bindCanvas(FULL_FRAME_RECT, null, NO_COLOR_OFFSET, backgroundColor, viewportAspect)
+        program.bindCanvas(null, NO_COLOR_OFFSET, backgroundColor, viewportAspect)
         program.bindIncoming(
             textureId,
             GLES20.GL_TEXTURE_2D,
@@ -1078,7 +1084,7 @@ internal class TransitionRenderer(
             )
             if (program != null) {
                 program.use()
-                program.bindCanvas(contentRect, colorMatrix, colorOffset, backgroundColor, viewportAspect)
+                program.bindCanvas(colorMatrix, colorOffset, backgroundColor, viewportAspect)
                 bindLaneAsIncoming(program, incoming)
                 bindLaneAsOutgoing(program, outgoing)
                 program.setProgress(draw.progress)
@@ -1095,7 +1101,7 @@ internal class TransitionRenderer(
                 val program = programFor(PASSTHROUGH, lane.showingImage, lane.showingImage)
                 if (program != null) {
                     program.use()
-                    program.bindCanvas(contentRect, colorMatrix, colorOffset, backgroundColor, viewportAspect)
+                    program.bindCanvas(colorMatrix, colorOffset, backgroundColor, viewportAspect)
                     bindLaneAsIncoming(program, lane)
                     drawQuad(program)
                 }
@@ -1154,6 +1160,7 @@ internal class TransitionRenderer(
                 lane.panX,
                 lane.panY,
                 lane.rotation,
+                lane.contentRect,
             )
         } else {
             program.bindIncoming(
@@ -1165,6 +1172,7 @@ internal class TransitionRenderer(
                 lane.panX,
                 lane.panY,
                 lane.rotation,
+                lane.contentRect,
             )
         }
         program.bindIncomingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1182,6 +1190,7 @@ internal class TransitionRenderer(
                 lane.panX,
                 lane.panY,
                 lane.rotation,
+                lane.contentRect,
             )
         } else {
             program.bindOutgoing(
@@ -1193,6 +1202,7 @@ internal class TransitionRenderer(
                 lane.panX,
                 lane.panY,
                 lane.rotation,
+                lane.contentRect,
             )
         }
         program.bindOutgoingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1283,7 +1293,6 @@ internal class TransitionRenderer(
          * no texture transform. Shared and never written — the bind calls only
          * read them — so one copy each is enough.
          */
-        private val FULL_FRAME_RECT = floatArrayOf(0f, 0f, 1f, 1f)
         private val NO_COLOR_OFFSET = floatArrayOf(0f, 0f, 0f, 0f)
         private val IDENTITY_MATRIX = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
     }
@@ -1310,7 +1319,10 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glGetUniformLocation(handle, "uRotationOutgoing")
     private val uCanvasAspect = GLES20.glGetUniformLocation(handle, "uCanvasAspect")
     private val uBackground = GLES20.glGetUniformLocation(handle, "uBackground")
-    private val uContentRect = GLES20.glGetUniformLocation(handle, "uContentRect")
+    private val uContentRectIncoming =
+        GLES20.glGetUniformLocation(handle, "uContentRectIncoming")
+    private val uContentRectOutgoing =
+        GLES20.glGetUniformLocation(handle, "uContentRectOutgoing")
     private val uColorMatrix = GLES20.glGetUniformLocation(handle, "uColorMatrix")
     private val uColorOffset = GLES20.glGetUniformLocation(handle, "uColorOffset")
     private val uColorEnabled = GLES20.glGetUniformLocation(handle, "uColorEnabled")
@@ -1374,21 +1386,17 @@ internal class TransitionProgram(private val handle: Int) {
         )
     }
 
-    /** Project-wide state: what part of the frame is shown, and the grade. */
+    /**
+     * Project-wide state: the background, the grade and the canvas shape. What
+     * part of each frame is shown is **per lane** now — see `bindIncoming` /
+     * `bindOutgoing` — so it no longer travels here.
+     */
     fun bindCanvas(
-        contentRect: FloatArray,
         colorMatrix: FloatArray?,
         colorOffset: FloatArray,
         background: FloatArray,
         canvasAspect: Float = 1f,
     ) {
-        GLES20.glUniform4f(
-            uContentRect,
-            contentRect[0],
-            contentRect[1],
-            contentRect[2],
-            contentRect[3],
-        )
         GLES20.glUniform3f(uBackground, background[0], background[1], background[2])
         // The rotation helper needs the canvas shape to rotate without shearing.
         // Guarded against zero: a viewport that has not been sized yet would
@@ -1420,6 +1428,7 @@ internal class TransitionProgram(private val handle: Int) {
         panX: Float,
         panY: Float,
         rotationRadians: Float = 0f,
+        contentRect: FloatArray = FULL_FRAME,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(target, textureId)
@@ -1428,6 +1437,13 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glUniform2f(uFitIncoming, fitX, fitY)
         GLES20.glUniform2f(uPanIncoming, panX, panY)
         GLES20.glUniform1f(uRotationIncoming, rotationRadians)
+        GLES20.glUniform4f(
+            uContentRectIncoming,
+            contentRect[0],
+            contentRect[1],
+            contentRect[2],
+            contentRect[3],
+        )
     }
 
     fun bindOutgoing(
@@ -1439,6 +1455,7 @@ internal class TransitionProgram(private val handle: Int) {
         panX: Float,
         panY: Float,
         rotationRadians: Float = 0f,
+        contentRect: FloatArray = FULL_FRAME,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
         GLES20.glBindTexture(target, textureId)
@@ -1447,6 +1464,17 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glUniform2f(uFitOutgoing, fitX, fitY)
         GLES20.glUniform2f(uPanOutgoing, panX, panY)
         GLES20.glUniform1f(uRotationOutgoing, rotationRadians)
+        GLES20.glUniform4f(
+            uContentRectOutgoing,
+            contentRect[0],
+            contentRect[1],
+            contentRect[2],
+            contentRect[3],
+        )
+    }
+
+    private companion object {
+        val FULL_FRAME = floatArrayOf(0f, 0f, 1f, 1f)
     }
 
     fun setProgress(progress: Float) {

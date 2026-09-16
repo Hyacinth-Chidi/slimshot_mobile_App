@@ -55,6 +55,16 @@ internal data class NativeTimelineClip(
      */
     val canvasRotation: AnimatableDouble,
     /**
+     * The part of this clip's source frame that reaches the canvas, as
+     * `[left, top, width, height]` fractions with crop, zoom and pan already
+     * collapsed into one rectangle by the Dart side.
+     *
+     * **Per clip.** Each lane samples through its own rect, the same way it
+     * has its own fit and pan; a single canvas rect made a per-clip crop
+     * impossible because a transition had one rect for two lanes.
+     */
+    val contentRect: FloatArray,
+    /**
      * This clip's visual effect, as an id from `effect_catalog.dart`, or null
      * for an unaffected clip — which is every project written before effects
      * existed and every clip the user has not touched.
@@ -292,6 +302,10 @@ internal data class NativeTimelineClip(
                 canvasOffsetY = AnimatableDouble.fromWire(map["canvasOffsetY"], fallback = 0.0),
                 // Absent from every timeline composed before clips could rotate.
                 canvasRotation = AnimatableDouble.fromWire(map["canvasRotation"], fallback = 0.0),
+                // Absent from timelines composed before clips carried their
+                // own rect: the whole frame, which is what the canvas rect was
+                // for every clip that never had a project crop either.
+                contentRect = map.rect("contentRect") ?: floatArrayOf(0f, 0f, 1f, 1f),
                 effectId = (map["effectId"] as? String)?.takeIf { it.isNotBlank() },
                 // Either shape the composer writes: a **bare number** while the
                 // intensity is flat — which is what every clip sends and what
@@ -322,6 +336,24 @@ internal data class NativeTimelineClip(
 
         private fun Map<*, *>.number(key: String): Double? {
             return (this[key] as? Number)?.toDouble()
+        }
+
+        /**
+         * A `{left, top, width, height}` rect as `[l, t, w, h]`, or null if
+         * absent or degenerate. A zero-area rect is refused rather than
+         * sampled: it would collapse the whole clip onto one texel.
+         */
+        private fun Map<*, *>.rect(key: String): FloatArray? {
+            val m = this[key] as? Map<*, *> ?: return null
+            val w = (m["width"] as? Number)?.toFloat() ?: return null
+            val h = (m["height"] as? Number)?.toFloat() ?: return null
+            if (w <= 0f || h <= 0f) return null
+            return floatArrayOf(
+                (m["left"] as? Number)?.toFloat() ?: 0f,
+                (m["top"] as? Number)?.toFloat() ?: 0f,
+                w,
+                h,
+            )
         }
 
         /** A 4x5 colour matrix, or null if absent or the wrong shape. */

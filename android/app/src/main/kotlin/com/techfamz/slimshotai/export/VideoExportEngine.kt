@@ -523,6 +523,13 @@ internal class VideoExportEngine(
         // the codecs allow, so anything self-timed would render differently.
         val clipProgress = clip.clipProgressAt(t)
 
+        // Export used to inherit whatever canvas rect the *preview* engine had
+        // last left on the renderer — right by accident, since a `setTimeline`
+        // always preceded an export. It now sets the clip's own rect per
+        // frame, which is both correct and no longer accidental.
+        val r = clip.contentRect
+        renderer.setLaneContentRect(clip.laneIndex, r[0], r[1], r[2], r[3])
+
         if (clip.isImage) {
             // A photo's contain fit is derived by the renderer from the
             // decoded bitmap at draw time, against the viewport actually being

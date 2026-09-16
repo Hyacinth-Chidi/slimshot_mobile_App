@@ -70,7 +70,8 @@ uniform float uRotationIncoming;
 uniform float uRotationOutgoing;
 uniform float uCanvasAspect;
 uniform vec3 uBackground;
-uniform vec4 uContentRect;
+uniform vec4 uContentRectIncoming;
+uniform vec4 uContentRectOutgoing;
 uniform mat4 uColorMatrix;
 uniform vec4 uColorOffset;
 uniform float uColorEnabled;
@@ -101,15 +102,18 @@ vec4 gradeClip(vec4 c, mat4 m, vec4 o, float enabled) {
 // matches the canvas is (1,1); a landscape clip in a portrait canvas is
 // (1, canvasAspect/clipAspect), leaving bars above and below.
 //
-// uContentRect is the part of the source frame that reaches the canvas, with
-// crop, zoom and pan already resolved into one rectangle. Sampling through it
-// here means zoom magnifies the picture rather than the letterbox bars.
+// uContentRect* is the part of *that lane's* source frame that reaches the
+// canvas, with crop, zoom and pan already resolved into one rectangle. Sampling
+// through it here means zoom magnifies the picture rather than the letterbox
+// bars. **One per lane**, like the fit and the pan: a single canvas rect gave a
+// transition one rect for two clips, which is what made a per-clip crop
+// impossible.
 //
 // The two functions are identical apart from their sampler type — see
 // fragmentHeader.
 // uPan* is the clip's own position on the canvas, in canvas fractions — the
 // user dragging a selected clip around. It moves where the picture *sits*,
-// where uContentRect moves what part of the source is *shown*.
+// where uContentRect* moves what part of the source is *shown*.
 //
 // Pan is stored y-DOWN, like every other canvas coordinate in the contract
 // (overlay centres, drag deltas, bitmap rows). This sampling space runs y-UP —
@@ -149,7 +153,7 @@ vec4 incomingAt(vec2 uv) {
     if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
         return vec4(uBackground, 1.0);
     }
-    vec2 source = uContentRect.xy + fitted * uContentRect.zw;
+    vec2 source = uContentRectIncoming.xy + fitted * uContentRectIncoming.zw;
     vec4 texel = texture2D(uIncoming, (uTexMatrixIncoming * vec4(source, 0.0, 1.0)).xy);
     return gradeClip(texel, uClipMatrixIncoming, uClipOffsetIncoming, uClipColorIncoming);
 }
@@ -160,7 +164,7 @@ vec4 outgoingAt(vec2 uv) {
     if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
         return vec4(uBackground, 1.0);
     }
-    vec2 source = uContentRect.xy + fitted * uContentRect.zw;
+    vec2 source = uContentRectOutgoing.xy + fitted * uContentRectOutgoing.zw;
     vec4 texel = texture2D(uOutgoing, (uTexMatrixOutgoing * vec4(source, 0.0, 1.0)).xy);
     return gradeClip(texel, uClipMatrixOutgoing, uClipOffsetOutgoing, uClipColorOutgoing);
 }

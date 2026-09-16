@@ -136,6 +136,9 @@ class EditorTimelineCanvas {
   /// source coordinates, with crop, zoom and pan already resolved into it.
   ///
   /// Full-frame `(0, 0, 1, 1)` means no cropping.
+  /// The **project's** sampling rect — crop, zoom and pan with no clip's own
+  /// crop folded in. Kept on the contract for the Flutter side; **the engine
+  /// samples through each clip's own `contentRect`**, not this.
   final Rect contentRect;
 
   /// 4×5 colour matrix for the selected filter, row-major, in Flutter's
@@ -222,6 +225,7 @@ class EditorTimelineVideoClip {
     this.canvasOffsetX = const AnimatableDouble(baseValue: 0.0),
     this.canvasOffsetY = const AnimatableDouble(baseValue: 0.0),
     this.canvasRotation = const AnimatableDouble(baseValue: 0.0),
+    this.contentRect = const Rect.fromLTWH(0, 0, 1, 1),
   });
 
   final String id;
@@ -330,6 +334,17 @@ class EditorTimelineVideoClip {
   /// Rotation about the clip's centre, in degrees. See `VideoSegment`.
   final AnimatableDouble canvasRotation;
 
+  /// The part of **this clip's** source frame that reaches the canvas, as
+  /// fractions — crop, zoom and pan already collapsed into one rectangle.
+  ///
+  /// **Per clip, not per canvas.** It used to be one rect on
+  /// `EditorTimelineCanvas` that every lane sampled through, which made a
+  /// per-clip crop impossible: two lanes blending through a transition had one
+  /// rect and two answers. Now each lane samples through its own, mirroring
+  /// what the fit and pan already do. A project with no per-clip crop composes
+  /// the identical rect onto every clip, so nothing changes for it.
+  final Rect contentRect;
+
   double get timelineDuration => timelineEnd - timelineStart;
 
   /// This clip's 0..1 position at a timeline instant.
@@ -407,6 +422,14 @@ class EditorTimelineVideoClip {
       'canvasOffsetX': canvasOffsetX.toJson(),
       'canvasOffsetY': canvasOffsetY.toJson(),
       'canvasRotation': canvasRotation.toJson(),
+      // The same shape the canvas rect crosses in, so the Kotlin reader is one
+      // helper for both.
+      'contentRect': {
+        'left': contentRect.left,
+        'top': contentRect.top,
+        'width': contentRect.width,
+        'height': contentRect.height,
+      },
     };
   }
 }
