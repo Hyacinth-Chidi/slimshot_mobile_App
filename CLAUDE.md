@@ -1330,6 +1330,21 @@ Three engine-side subtleties worth not rediscovering:
 keyframes (that parameter belongs to the effect) and leaves transform and volume keyframes
 standing.
 
+**Opacity is planned, not built** — the sixth keyframable property, and the design is settled even
+though no code exists yet. **It cannot be alpha**: the clip pass has no GL blending enabled and
+`glClear` uses an opaque background, and the shader already returns `uBackground` for letterbox
+pixels rather than transparency — so an alpha would be a value nothing reads, and enabling blending
+would change how all eleven transitions composite. It is a **mix toward `uBackground`** at the end
+of `incomingAt`/`outgoingAt` (two uniforms, two lines), which every transition inherits for free
+because all of them sample through those two functions. It must sit **after `gradeClip`** (fading a
+graded clip is fading what the user sees; fading first would push a filter's colour offset onto a
+vanishing clip) and **before the effect chain** (a blurred clip at 50% should be a blurred clip,
+half-present). Two open questions: whether a fade goes to the project background or always to
+black, and where the control lives — the clip's contextual menu beside Volume is the obvious home,
+and **not** the effects sheet, which is the mistake the keyframe row already made. The shader half
+is GLSL, so neither `flutter analyze` nor `compileDebugKotlin` can verify it; both sampler variants
+(`sampler2D` for photos, `samplerExternalOES` for video) need a device check.
+
 **The rejected design is entry 23 in `docs/dead-ends.md`** — a keyframe row under the clip, opened
 from a button on the effects sheet. Read it before proposing anywhere else for a keyframe control.
 
@@ -1362,6 +1377,22 @@ untouched — its reorder is horizontal-only by design.
 is `Expanded`, so any pixel the timeline does not claim the canvas absorbs — a simple project
 used to collapse the track area and balloon the canvas. CapCut-style: keep a workable track area,
 size the canvas from what is left.
+
+**The transition marker is its own widget** (`timeline/transition_marker.dart`), drawn over the
+filmstrip on each seam. Three faults were fixed together after a device report. Its tap set
+`currentMenuId: 'transition'` — whose tool list is **deliberately empty**, because the drawer
+replaces it — while `onTransitionTapped` was declared, called, and **never wired by the screen**, so
+a tap surfaced an empty submenu and no way to choose anything. The timeline now selects the seam and
+the screen owns the modal, which is the right split: a widget deep in the timeline should not reach
+for a sheet. Its colours were hard-coded Slate (`0xFF1E293B`/`0xFF0F172A`) beside the app's Zinc
+surfaces — the grey-blue that read as another app — and are now all from `AppColors`. **The applied
+state is carried by the fill, not by a ring**: an earlier pass changed only the border and the ink,
+and 1.5px of tint is the first thing to vanish against a busy frame, so "has a transition" and
+"empty" looked alike exactly where it mattered. The accent fill is `Color.alphaBlend(highlight,
+surface)` rather than `highlight` raw, because `highlight` is 15% alpha — right over a panel, washed
+out over bright footage. The glyph is `arrowLeftRight`, not `sparkles`: sparkles is the language of
+*effects*, something applied to a picture, where a transition is two clips meeting. An empty seam
+shows a `plus` — it is an invitation, not a state.
 
 **Lane identity gutter** (`_buildLaneGutter`): the run-in before 00:00 carries a 2px vertical
 line marking the timeline's start and, left of it, one icon per kind of thing each lane holds

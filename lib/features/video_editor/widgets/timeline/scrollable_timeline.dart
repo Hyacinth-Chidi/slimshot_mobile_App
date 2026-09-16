@@ -23,6 +23,7 @@ import '../../services/video_thumbnail_service.dart';
 import '../panels/cover_picker_sheet.dart';
 import 'clip_filmstrip.dart';
 import 'clip_keyframe_diamonds.dart';
+import 'transition_marker.dart';
 
 class _WaveformPainter extends CustomPainter {
   final Color color;
@@ -1469,64 +1470,29 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
 
         widgets.add(
           Positioned(
-            top:
-                topOffset +
+            top: topOffset +
                 _filmstripHeight / 2 -
-                18, // Centered vertically with 36px touch target
-            left:
-                accumulatedPx +
+                TransitionMarker.hitSize / 2,
+            left: accumulatedPx +
                 segmentWidthPx -
-                18, // Centered horizontally on the seam
-            width: 36,
-            height: 36,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
+                TransitionMarker.hitSize / 2,
+            width: TransitionMarker.hitSize,
+            height: TransitionMarker.hitSize,
+            child: TransitionMarker(
+              hasTransition: hasTransition,
+              isSelected: isTransitionSelected,
               onTap: () {
-                HapticFeedback.selectionClick();
+                // **Select, then tell the screen to open the sheet.**
+                // `selectTransition` sets `currentMenuId: 'transition'`, whose
+                // tool list is deliberately empty because the drawer replaces
+                // it — so on its own the tap surfaced an empty submenu and
+                // nothing else. The screen owns the sheet, because a widget
+                // deep in the timeline should not be reaching for a modal.
                 ref
                     .read(videoEditorProvider.notifier)
                     .selectTransition(segment.id);
                 widget.onTransitionTapped?.call(segment.id);
               },
-              child: Center(
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: isTransitionSelected
-                        ? AppColors.primaryStart
-                        : (hasTransition
-                              ? const Color(0xFF1E293B)
-                              : const Color(0xFF0F172A)),
-                    border: Border.all(
-                      color: isTransitionSelected
-                          ? Colors.white
-                          : (hasTransition
-                                ? AppColors.primaryStart
-                                : Colors.white30),
-                      width: isTransitionSelected || hasTransition ? 1.5 : 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (isTransitionSelected || hasTransition)
-                            ? AppColors.primaryStart.withValues(alpha: 0.4)
-                            : Colors.black.withValues(alpha: 0.5),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    hasTransition ? LucideIcons.sparkles : LucideIcons.split,
-                    color: isTransitionSelected
-                        ? Colors.white
-                        : (hasTransition
-                              ? AppColors.primaryStart
-                              : Colors.white70),
-                    size: 13,
-                  ),
-                ),
-              ),
             ),
           ),
         );

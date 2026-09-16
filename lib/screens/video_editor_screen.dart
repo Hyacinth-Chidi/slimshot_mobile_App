@@ -2110,6 +2110,19 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       segments: displaySegments,
       selectedSegmentId: editorState.selectedSegmentId,
       onSegmentTapped: _selectSegment,
+      // **Tapping the seam opens the transitions sheet.** The timeline selects
+      // the seam and calls this; the screen owns the modal. Without it the tap
+      // only set `currentMenuId: 'transition'`, whose tool list is empty by
+      // design — the drawer replaces it — so the user got an empty submenu and
+      // no way to choose anything.
+      onTransitionTapped: (_) {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => const TransitionsDrawer(),
+        );
+      },
       onTrimChanged: editorState.isExporting ? null : _setTrimRange,
       textOverlays: editorState.textOverlays,
       selectedTextId: editorState.selectedTextId,
