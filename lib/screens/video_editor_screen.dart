@@ -51,6 +51,7 @@ import '../features/video_editor/widgets/panels/zoom_panel.dart';
 import '../features/video_editor/widgets/panels/background_panel.dart';
 import '../features/video_editor/widgets/panels/opacity_panel.dart';
 import '../features/video_editor/widgets/panels/animation_drawer.dart';
+import '../features/video_editor/widgets/panels/editor_sheet.dart';
 
 class EditorTool {
   final String id;
@@ -228,6 +229,11 @@ class VideoEditorScreen extends ConsumerStatefulWidget {
 
 class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     with SingleTickerProviderStateMixin {
+  /// Height of the bottom toolbar, and the floor of the tool panel that
+  /// replaces it — one number, so opening a tool can never make the bottom
+  /// area shorter and drop the timeline.
+  static const double _kToolbarHeight = 60.0;
+
   final AudioPlayerManager _audioPlayerManager = AudioPlayerManager();
   final NativeTimelinePreviewService _nativePreviewService =
       NativeTimelinePreviewService();
@@ -1306,10 +1312,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// catch the first. The edit itself is already committed to state and is
   /// untouched by this; only the selection and the menu are transient.
   Future<void> _showTransitionsDrawer() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    await showEditorSheet<void>(
+      context,
       builder: (context) => const TransitionsDrawer(),
     );
     if (!mounted) return;
@@ -1330,10 +1334,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final notifier = ref.read(videoEditorProvider.notifier);
     final borrowed = ref.read(videoEditorProvider).selectedSegmentId == null &&
         notifier.selectSegmentAtPlayhead();
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    await showEditorSheet<void>(
+      context,
       builder: (context) => const TransformSheet(),
     );
     if (!mounted || !borrowed) return;
@@ -1368,7 +1370,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     ];
 
     return SizedBox(
-      height: 60,
+      height: _kToolbarHeight,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1507,7 +1509,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     }).toList();
 
     return SizedBox(
-      height: 60,
+      height: _kToolbarHeight,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1566,10 +1568,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                 onTap: () async {
                   HapticFeedback.selectionClick();
                   if (tool.id == 'audio') {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
+                    showEditorSheet<void>(
+                      context,
                       builder: (context) => const AudioDrawer(),
                     );
                   } else if (tool.id == 'filters') {
@@ -1583,10 +1583,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                         editorState.selectedSegmentId != null) {
                       notifier.setFilterAppliesToAll(false);
                     }
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
+                    showEditorSheet<void>(
+                      context,
                       builder: (context) => const FiltersDrawer(),
                     );
                   } else if (tool.id == 'transform') {
@@ -1597,17 +1595,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     // `effects` tool of their own (unbuilt, and deliberately
                     // left visible), and an effect without a clip has no
                     // target.
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
+                    showEditorSheet<void>(
+                      context,
                       builder: (context) => const EffectsPanel(),
                     );
                   } else if (tool.id == 'stickers') {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
+                    showEditorSheet<void>(
+                      context,
                       builder: (context) => const StickersDrawer(),
                     );
                   } else if (tool.id == 'text' &&
@@ -1722,10 +1716,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   } else if (tool.id == 'opacity') {
                     notifier.setActiveTool('opacity');
                   } else if (tool.id == 'animation') {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
+                    showEditorSheet<void>(
+                      context,
                       builder: (context) => const AnimationDrawer(),
                     );
                   } else if (tool.id == 'duplicate') {
@@ -1861,16 +1853,22 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         break;
     }
 
-    double panelHeight = 160;
-    if (activeToolId == 'background') {
-      panelHeight = 200;
-    }
-
+    // **The panel takes the height its content needs**, floored at the
+    // toolbar it replaces so the timeline never drops when a tool opens. It
+    // used to be a fixed 160 (200 for Background) with the body stretched to
+    // fill: the crop panel was a box holding one row of chips, and the empty
+    // rest read as a gap between the panel and the timeline. Every body
+    // therefore lays out under an unbounded height — see
+    // `tool_panel_sizing_test.dart` for the two that needed a bound of their
+    // own. The timeline gives up its idle slack at the same moment
+    // (`ScrollableTimeline.compact`), so what the panel adds over the toolbar
+    // comes out of empty track area before it comes out of the picture.
     return Container(
       key: ValueKey(activeToolId),
-      height: panelHeight,
+      constraints: const BoxConstraints(minHeight: _kToolbarHeight),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1947,7 +1945,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
             ],
           ),
           const SizedBox(height: 12),
-          Expanded(child: content),
+          content,
         ],
       ),
     );
@@ -2217,6 +2215,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     }
 
     return ScrollableTimeline(
+      // While a tool panel is open the track area releases its idle slack,
+      // so the panel's extra height comes out of empty rows, not the canvas.
+      compact: editorState.activeToolId != null,
       onPausePlayback: () {
         if (ref.read(videoEditorProvider).isPlaying) {
           ref.read(videoEditorProvider.notifier).setPlaying(false);

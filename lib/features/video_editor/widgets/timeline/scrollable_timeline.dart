@@ -24,6 +24,7 @@ import '../panels/cover_picker_sheet.dart';
 import 'clip_filmstrip.dart';
 import 'clip_keyframe_diamonds.dart';
 import 'transition_marker.dart';
+import '../panels/editor_sheet.dart';
 
 class _WaveformPainter extends CustomPainter {
   final Color color;
@@ -66,6 +67,40 @@ class _WaveformPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+/// Height of the track area, given the rows it holds.
+///
+/// With the toolbar showing it is **floored** at [kTimelineTrackFloor]: the
+/// editor's canvas is `Expanded`, so any pixel the timeline does not claim the
+/// canvas absorbs, and a sparse project used to collapse this area and balloon
+/// the picture — CapCut keeps a workable track area and sizes the canvas from
+/// what is left. Capped at [kTimelineTrackCap] so a busy project scrolls its
+/// lanes rather than eating the canvas.
+///
+/// With a tool panel open ([compact]) the floor is **released** and the area
+/// sizes to its content. The panel is taller than the toolbar it replaces, and
+/// that difference has to come from somewhere: taking it from the timeline's
+/// idle slack keeps the picture its size and the tracks where they were, where
+/// taking it from the canvas — the old behaviour — shrank the picture and shoved
+/// the timeline up by the panel's full height. Real rows are never given up;
+/// a timeline already at its content height is unchanged.
+double timelineTrackHeight({
+  required double contentHeight,
+  required bool compact,
+}) {
+  final natural = contentHeight + kTimelineTrackPadding;
+  final floor = compact ? 0.0 : kTimelineTrackFloor;
+  return natural.clamp(floor, kTimelineTrackCap).toDouble();
+}
+
+/// Vertical padding the track area adds around its rows.
+const double kTimelineTrackPadding = 16.0;
+
+/// Least height the track area keeps while the toolbar shows.
+const double kTimelineTrackFloor = 190.0;
+
+/// Most height the track area takes; lanes beyond it scroll.
+const double kTimelineTrackCap = 250.0;
+
 class ScrollableTimeline extends ConsumerStatefulWidget {
   /// Stops playback when a gesture takes over the timeline.
   ///
@@ -73,6 +108,14 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
   /// player, only to stop one, and taking the engine's own pause path keeps
   /// that true whichever engine is playing.
   final VoidCallback onPausePlayback;
+
+  /// True while a tool panel is open below the timeline.
+  ///
+  /// The track area then sizes to its content instead of holding its floor,
+  /// so the panel's extra height over the toolbar comes out of idle track
+  /// rows first and out of the canvas only if there are none to give. See
+  /// [timelineTrackHeight].
+  final bool compact;
   final String inputPath;
   final double durationSeconds;
   final double timelinePositionSeconds;
@@ -152,6 +195,7 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
   const ScrollableTimeline({
     super.key,
     required this.onPausePlayback,
+    this.compact = false,
     required this.inputPath,
     required this.durationSeconds,
     this.timelinePositionSeconds = 0.0,
@@ -1655,10 +1699,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final segments = List<VideoSegment>.from(widget.segments);
     if (segments.isEmpty) return;
 
-    final bytes = await showModalBottomSheet<Uint8List>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    final bytes = await showEditorSheet<Uint8List>(
+      context,
       builder: (_) => CoverPickerSheet(
         segments: segments,
         assetPathFor: (segment) =>
@@ -1734,8 +1776,10 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     // used to collapse this area to its content and the canvas ballooned;
     // CapCut instead keeps a workable track area and sizes the canvas from
     // what is left.
-    final double containerHeight =
-        (totalHeight + 16).clamp(190.0, 250.0).toDouble();
+    final double containerHeight = timelineTrackHeight(
+      contentHeight: totalHeight,
+      compact: widget.compact,
+    );
 
     // The scroll content fills the whole track area. Sized to the lanes
     // alone, the empty space under them belonged to the container's
@@ -1743,7 +1787,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     // nothing, and the timeline only responded on rows that held content.
     final double contentHeight = max(totalHeight, containerHeight - 16.0);
 
-    return Container(
+    return AnimatedContainer(
+      // Animated so the release of slack on a tool opening moves with the
+      // panel's own AnimatedSize rather than snapping ahead of it.
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
       height: containerHeight, // padding handled by containerHeight
       color: AppColors.background, // match dark theme
       child: Stack(

@@ -13,8 +13,20 @@ class CropPanel extends StatelessWidget {
   final EditorCropRatio selectedRatio;
   final ValueChanged<EditorCropRatio> onRatioSelected;
 
+  /// One row of chips: icon, gap, label, and the chip's own border.
+  static const double _kRowHeight = 64.0;
+
   @override
   Widget build(BuildContext context) {
+    // A horizontal list needs a height from somewhere, and the tool panel no
+    // longer hands one down — it sizes to its body. This is the body's own.
+    return SizedBox(
+      height: _kRowHeight,
+      child: _buildRow(),
+    );
+  }
+
+  Widget _buildRow() {
     return ListView.builder(
       scrollDirection: Axis.horizontal,
       itemCount: EditorCropRatio.values.length,
@@ -66,6 +78,11 @@ class CropPanel extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   ratio.label,
+                  // One line, always: the chip is one row tall and a label
+                  // that wrapped would push the row past its height.
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: isSelected ? Colors.white : Colors.white70,
                     fontSize: 11,

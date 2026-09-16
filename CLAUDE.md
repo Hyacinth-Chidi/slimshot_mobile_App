@@ -378,6 +378,12 @@ migration. Unknown names (e.g. `circleOpen` from old drafts) degrade to a hard c
 - **Serialisation:** hand-written `toJson`/`fromJson`, defensive on read
   (`(x as num?)?.toDouble() ?? default`).
 - Colours from `AppColors`, never hard-coded. Dark theme only. Lucide icons.
+- **Sheets open through `showEditorSheet`** (`widgets/panels/editor_sheet.dart`), never
+  `showModalBottomSheet` directly — a test scans `lib/` for strays. It paints **no barrier tint**:
+  a sheet here is a set of choices *about* the picture (a curve, a filter, a transition), and
+  Flutter's default `black54` dimmed the frame exactly while the user compared them. The barrier is
+  still there — a tap outside still closes — it just draws nothing. It also carries the two
+  settings every sheet shared (`isScrollControlled`, transparent route background).
 - `unawaited(...)` for fire-and-forget. `ToastUtils.show(context, msg, isError:)` for user feedback.
 
 ## Status
@@ -1515,10 +1521,24 @@ the lane-order flip every vertical drag landed on the opposite side. Lanes stack
 nearest the filmstrip): drag down = higher lane index, no negation. The main clip track is
 untouched — its reorder is horizontal-only by design.
 
-**The timeline area has a floor as well as a cap** (`containerHeight` clamps 190–250): the canvas
+**The timeline area has a floor as well as a cap** (`timelineTrackHeight`, 190–250): the canvas
 is `Expanded`, so any pixel the timeline does not claim the canvas absorbs — a simple project
 used to collapse the track area and balloon the canvas. CapCut-style: keep a workable track area,
-size the canvas from what is left.
+size the canvas from what is left. **While a tool panel is open the floor is released**
+(`ScrollableTimeline.compact`): the panel is taller than the toolbar it replaces, and that
+difference used to come out of the canvas while the track area kept its idle slack — the picture
+shrank and the timeline was shoved up by the panel's full height. Now the slack goes first and the
+canvas only pays if there are no empty rows to give; real rows are never taken. The container is an
+`AnimatedContainer` so the release moves with the panel's `AnimatedSize` instead of snapping ahead
+of it.
+
+**A tool panel takes the height its content needs**, floored at the toolbar's `_kToolbarHeight`
+so opening a tool can never drop the timeline. It was a fixed 160 (200 for Background) with the
+body in an `Expanded`, and the crop panel read as a box holding one row of chips with a gap under
+it. Every panel body therefore lays out under an **unbounded height**: a horizontal list or an
+`Expanded` inside one throws the moment the fixed box is gone, which is why `CropPanel` carries its
+own row height and `BackgroundPanel` bounds its swatch area. `tool_panel_sizing_test.dart` pumps
+each such body unbounded; a new panel with a list in it must be added there.
 
 **The transition marker is its own widget** (`timeline/transition_marker.dart`), drawn over the
 filmstrip on each seam. Three faults were fixed together after a device report. Its tap set

@@ -9,6 +9,9 @@ class BackgroundPanel extends ConsumerWidget {
 
   const BackgroundPanel({super.key, required this.onClose});
 
+  /// Two rows of 32px swatches with their 10px run spacing, plus a little.
+  static const double _kSwatchAreaMaxHeight = 92.0;
+
   static const List<Color> _backgroundColors = [
     Colors.black,
     Colors.white,
@@ -33,6 +36,7 @@ class BackgroundPanel extends ConsumerWidget {
     final isColor = state.backgroundType == EditorBackgroundType.color;
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           children: [
@@ -57,7 +61,11 @@ class BackgroundPanel extends ConsumerWidget {
         ),
         if (isColor) ...[
           const SizedBox(height: 8),
-          Expanded(
+          // Two rows of swatches at phone width; bounded rather than
+          // `Expanded` because the tool panel sizes to its body now, and
+          // still scrollable for a screen narrow enough to need a third row.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: _kSwatchAreaMaxHeight),
             child: SingleChildScrollView(
               child: Wrap(
                 spacing: 10,

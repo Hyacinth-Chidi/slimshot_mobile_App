@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../logic/animation/animatable_double.dart';
+import 'editor_sheet.dart';
 
 /// The curve sheet: four families across the top, four cells each.
 ///
@@ -28,12 +29,10 @@ Future<void> showKeyframeEasingSheet(
   required KeyframeInterpolation current,
   required ValueChanged<KeyframeInterpolation> onSelected,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: Colors.transparent,
+  return showEditorSheet<void>(
+    context,
     // The content is short enough to fit, but a landscape phone or a split
     // screen is not — and a clipped row of curves is worse than a scroll.
-    isScrollControlled: true,
     builder: (context) => _KeyframeEasingSheet(
       current: current,
       onSelected: onSelected,

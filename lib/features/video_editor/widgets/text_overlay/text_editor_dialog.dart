@@ -8,6 +8,7 @@ import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../../utils/font_utils.dart';
 import 'text_animation_panel.dart';
+import '../panels/editor_sheet.dart';
 
 /// Opens the text editor sheet for [overlay].
 ///
@@ -20,11 +21,8 @@ Future<void> showTextEditor({
   required WidgetRef ref,
   TextEditorTool initialTool = TextEditorTool.keyboard,
 }) async {
-  await showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.transparent,
+  await showEditorSheet<void>(
+    context,
     builder: (context) {
       return _TextEditorBottomSheet(
         overlay: overlay,
