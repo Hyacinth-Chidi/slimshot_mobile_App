@@ -120,14 +120,28 @@ void main() {
   });
 
   group('the photo tile', () {
-    testWidgets('leads the grid, with its label under it', (tester) async {
+    testWidgets('is the first cell of the grid, colours beside it',
+        (tester) async {
+      // Device-reported: a photo tile alone on its own row above the colours
+      // read as a separate section. It is one tile among the tiles — first,
+      // with the colours flowing on from it in the same row.
       await pump(tester, notifierWith());
-      expect(find.byKey(BackgroundSheet.photoTileKey), findsOneWidget);
-      expect(find.text('Photo'), findsOneWidget);
-      // The same footprint as a colour tile, so the grid reads as one family.
-      final size = tester.getSize(find.byKey(BackgroundSheet.photoTileKey));
-      expect(size.width, BackgroundSheet.kTileSize);
-      expect(size.height, BackgroundSheet.kTileSize);
+      final photo = tester.getRect(find.byKey(BackgroundSheet.photoTileKey));
+      final firstColour = tester.getRect(tile(kBackgroundPresets.first));
+      expect(photo.top, firstColour.top);
+      expect(photo.right, lessThan(firstColour.left));
+
+      // The same footprint as a colour tile, so the rows stay level — which
+      // is why its label sits inside the tile rather than hanging under it.
+      expect(photo.width, BackgroundSheet.kTileSize);
+      expect(photo.height, BackgroundSheet.kTileSize);
+      expect(
+        find.descendant(
+          of: find.byKey(BackgroundSheet.photoTileKey),
+          matching: find.text('Photo'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('with none chosen, a tap asks for a photo', (tester) async {
@@ -188,8 +202,13 @@ void main() {
   testWidgets('the sheet stops at 45% of the screen and scrolls', (tester) async {
     // The point of a sheet over a clear canvas is watching the picture change;
     // a sheet that climbs to half the screen hides the picture it is about.
-    // A short screen, so the cap is what decides the height: at 400×800 the
-    // whole grid fits under 45% and the sheet simply takes its content.
+    // A real 400×600 view — not just a reported size — so the grid wraps at
+    // phone width and outgrows the cap; on a wide, tall surface the whole
+    // grid fits under 45% and the sheet simply takes its content.
+    tester.view.physicalSize = const Size(400, 600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await pump(tester, notifierWith(), screen: const Size(400, 600));
     final sheet = tester.getSize(find.byType(BackgroundSheet));
     expect(sheet.height, closeTo(600 * kEditorSheetPreviewFraction, 0.5));

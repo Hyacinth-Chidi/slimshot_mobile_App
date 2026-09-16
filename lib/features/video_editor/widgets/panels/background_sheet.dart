@@ -61,13 +61,17 @@ Future<String?> _pickFromGallery() async {
 /// tile is the whole interaction. The `black` type survives in the model for
 /// drafts already written and shows here as the black tile being current.
 ///
-/// **The photo tile leads.** Empty, it is an invitation — a dashed frame with
-/// an add-photo glyph and "Photo" under it; with a photo chosen it shows that
-/// photo, and stays showing it while a colour is in use, so one tap brings the
-/// photo back without another trip to the picker (tapping it while it is
-/// already in use replaces it). Its box is a colour tile's size, so the grid
-/// reads as one family; only the label under it sets it apart, and that is the
-/// point — it is an action where the others are values.
+/// **The photo tile is the grid's first cell**, with the colours flowing on
+/// from it in the same row — alone on a row of its own it read as a separate
+/// section. Empty, it is an invitation: a dashed frame, an add-photo glyph and
+/// "Photo" beneath the glyph *inside* the tile. With a photo chosen it shows
+/// that photo with the caption along its foot, and keeps showing it while a
+/// colour is in use, so one tap brings the photo back without another trip to
+/// the picker (tapping it while already in use replaces it). It is exactly a
+/// colour tile's size — the label lives inside so the rows stay level; hanging
+/// under the tile it would make the first row taller and push the second row
+/// down. The caption is what sets it apart, and that is the point: it is an
+/// action where the others are values.
 ///
 /// **Tiles, not circles**, the width of the crop panel's ratio tiles and square
 /// because a colour needs no label. Every tap applies live and is one undo
@@ -160,32 +164,28 @@ class BackgroundSheet extends ConsumerWidget {
                 child: SingleChildScrollView(
                   padding:
                       const EdgeInsets.fromLTRB(_kEdge, 0, _kEdge, _kEdge),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  // One grid: the photo tile is its first cell and the
+                  // colours flow on from it in the same row. Alone on a row
+                  // above them it read as a separate section.
+                  child: Wrap(
+                    spacing: _kTileGap,
+                    runSpacing: _kTileGap,
                     children: [
                       _PhotoTile(
                         path: photoPath,
                         selected: usingPhoto,
                         onTap: () => _onPhotoTap(context, ref),
                       ),
-                      const SizedBox(height: 14),
-                      Wrap(
-                        spacing: _kTileGap,
-                        runSpacing: _kTileGap,
-                        children: [
-                          for (final colour in kBackgroundPresets)
-                            _ColourTile(
-                              key: tileKey(colour),
-                              colour: colour,
-                              selected: colour.toARGB32() == currentColour,
-                              onTap: () {
-                                HapticFeedback.selectionClick();
-                                notifier.setBackground(colour);
-                              },
-                            ),
-                        ],
-                      ),
+                      for (final colour in kBackgroundPresets)
+                        _ColourTile(
+                          key: tileKey(colour),
+                          colour: colour,
+                          selected: colour.toARGB32() == currentColour,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            notifier.setBackground(colour);
+                          },
+                        ),
                     ],
                   ),
                 ),
@@ -249,36 +249,30 @@ class _PhotoTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          KeyedSubtree(
-            key: BackgroundSheet.photoTileKey,
-            child: SizedBox(
-              width: BackgroundSheet.kTileSize,
-              height: BackgroundSheet.kTileSize,
-              child: photo == null
-                  ? const _EmptyPhotoTile()
-                  : _ChosenPhotoTile(path: photo, selected: selected),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Photo',
-            style: TextStyle(
-              color: selected ? AppColors.textPrimary : AppColors.textSecondary,
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ],
+      child: KeyedSubtree(
+        key: BackgroundSheet.photoTileKey,
+        child: SizedBox(
+          width: BackgroundSheet.kTileSize,
+          height: BackgroundSheet.kTileSize,
+          child: photo == null
+              ? const _EmptyPhotoTile()
+              : _ChosenPhotoTile(path: photo, selected: selected),
+        ),
       ),
     );
   }
 }
 
-/// No photo yet: a dashed frame with an add glyph — an invitation, drawn in
-/// the palette's quiet tones so the colour tiles beside it stay the loud ones.
+/// The caption inside the photo tile: small, so the glyph stays the subject.
+const TextStyle _kCaptionStyle = TextStyle(
+  fontSize: 10,
+  fontWeight: FontWeight.w600,
+  height: 1.0,
+);
+
+/// No photo yet: a dashed frame, the add glyph and its caption — an
+/// invitation, drawn in the palette's quiet tones so the colour tiles beside
+/// it stay the loud ones.
 class _EmptyPhotoTile extends StatelessWidget {
   const _EmptyPhotoTile();
 
@@ -295,11 +289,20 @@ class _EmptyPhotoTile extends StatelessWidget {
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
         ),
-        alignment: Alignment.center,
-        child: const Icon(
-          LucideIcons.imagePlus,
-          color: AppColors.textSecondary,
-          size: 24,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              LucideIcons.imagePlus,
+              color: AppColors.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Photo',
+              style: _kCaptionStyle.copyWith(color: AppColors.textSecondary),
+            ),
+          ],
         ),
       ),
     );
@@ -307,7 +310,8 @@ class _EmptyPhotoTile extends StatelessWidget {
 }
 
 /// The chosen photo, cover-fitted into the tile the way the engine cover-fits
-/// it onto the canvas; the accent border and a check when it is in use.
+/// it onto the canvas, its caption along the foot; the accent border and a
+/// check when it is in use.
 class _ChosenPhotoTile extends StatelessWidget {
   const _ChosenPhotoTile({required this.path, required this.selected});
 
@@ -340,7 +344,7 @@ class _ChosenPhotoTile extends StatelessWidget {
                 child: const Icon(
                   LucideIcons.image,
                   color: AppColors.textSecondary,
-                  size: 22,
+                  size: 20,
                 ),
               ),
             ),
@@ -350,6 +354,19 @@ class _ChosenPhotoTile extends StatelessWidget {
                 alignment: Alignment.center,
                 child: const Icon(LucideIcons.check, color: Colors.white, size: 22),
               ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Container(
+                width: double.infinity,
+                color: Colors.black54,
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Text(
+                  'Photo',
+                  textAlign: TextAlign.center,
+                  style: _kCaptionStyle.copyWith(color: Colors.white),
+                ),
+              ),
+            ),
           ],
         ),
       ),

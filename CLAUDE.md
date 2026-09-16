@@ -316,9 +316,12 @@ hid the frame the user was choosing for. Filters, Effects, Transitions and the c
 share the fraction; the audio and sticker *libraries* keep their own taller height.
 
 **A photo as the background** (`EditorBackgroundType.image`, **awaiting device verification** —
-the shader half is GLSL). The photo tile is an action where the colour tiles are values: empty, a
-dashed frame with an add glyph and "Photo" under it; chosen, the photo itself, and it keeps showing
-while a colour is in use so one tap brings it back with no second trip to the picker
+the shader half is GLSL). The photo tile is the grid's **first cell**, colours flowing on in the
+same row — alone on a row above them it read as a separate section — and an action where the
+colour tiles are values: empty, a dashed frame with an add glyph and "Photo" beneath it *inside*
+the tile (a label hanging under would make the first row taller and push the second down);
+chosen, the photo itself with the caption along its foot, and it keeps showing while a colour is
+in use so one tap brings it back with no second trip to the picker
 (`useBackgroundImage`); tapped while in use, it replaces. `importBackgroundImage` copies the picked
 file into the project folder as `bg_<draftId>_<ts>` like a cover — the picker's path is a cache the
 OS may reclaim, and a fresh name per pick defeats `FileImage`'s path cache — and deletes the
