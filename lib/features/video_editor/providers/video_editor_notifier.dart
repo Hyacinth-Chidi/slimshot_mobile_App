@@ -1913,6 +1913,28 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   }
 
 
+  /// One frame of a diamond drag: slides the diamond at [from] to [to] and
+  /// moves the playhead with it, so the diamond stays the selected one and the
+  /// canvas shows the instant being placed. **No undo snapshot** — the drag's
+  /// start takes the one for the whole gesture. Returns where the diamond now
+  /// is, or null when the move was refused (nothing near [from], or another
+  /// diamond at the destination), so the caller keeps dragging from where it
+  /// really is.
+  double? moveKeyframeLive(double from, double to) {
+    final segment = state.selectedSegment;
+    if (segment == null) return null;
+    final dest = to.clamp(0.0, 1.0).toDouble();
+    final moved = moveKeyframe(segment, from, dest, keyframeHitToleranceFor(segment));
+    if (identical(moved, segment)) return null;
+    state = state.copyWith(
+      segments: [
+        for (final s in state.segments) s.id == segment.id ? moved : s,
+      ],
+    );
+    seekToKeyframe(dest);
+    return dest;
+  }
+
   /// Moves the playhead onto a diamond.
   ///
   /// What makes tapping a diamond and then tapping minus remove it — the

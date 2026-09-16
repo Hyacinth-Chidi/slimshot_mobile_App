@@ -1330,6 +1330,15 @@ base, and a write goes to the base. The clip's own edges count as on it: a split
 playhead exactly on the seam, which is the right half's first instant. The pinch anchors to
 `clipEditValue` for the same reason — anchor and write must name the same target.
 
+**A diamond moves by long-press-drag** (`moveKeyframe`, `moveKeyframeLive`). Tap seeks, and a
+plain drag anywhere on the filmstrip scrubs or reorders, so moving is the gesture those leave free
+— the same one that picks up a clip. The move is of the *instant*: every property's keyframe at it
+travels together, keeping its value and curve, or the one mark would stop being an honest picture
+of the clip. The playhead rides along so the diamond stays the selected one and the canvas shows the
+instant being placed; one snapshot at pick-up covers the drag. **A diamond stops short of a
+neighbour rather than merging into it**: `moveKeyframe` returns the segment unchanged when another
+diamond sits at the destination, and the widget keeps dragging from where the diamond really is.
+
 **`kKeyframeHitSeconds` (0.05s) is seconds, not progress.** The same progress tolerance is a
 different number of frames on a 1s clip and a 30s one, so a fixed progress window would make
 diamonds unhittable on long clips and impossible to step off on short ones.

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -120,6 +121,37 @@ void main() {
     // Which is what makes the playback bar's control flip to minus.
     expect(notifier.state.currentPlaybackPosition, closeTo(7.5, 1e-6));
     expect(notifier.state.playheadIsOnKeyframe, isTrue);
+  });
+
+  testWidgets('a long press and drag moves the diamond, playhead riding along',
+      (tester) async {
+    // Tap seeks, and a plain drag on the filmstrip scrubs or reorders, so
+    // moving a diamond is the long-press-drag those leave free — the same
+    // gesture that picks up a clip.
+    final notifier = notifierWith(clip(), position: 5.0);
+    notifier.addKeyframeAtPlayhead();
+    await pump(tester, notifier);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(KeyframeDiamond)),
+    );
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+    await gesture.moveBy(const Offset(40, 0)); // 40 of 200px: +0.2
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(keyframeProgresses(notifier.state.segments.single),
+        [closeTo(0.7, 1e-6)]);
+    // The playhead followed, so the diamond stays the selected one and the
+    // canvas shows the instant being placed.
+    expect(notifier.state.currentPlaybackPosition, closeTo(7.0, 1e-6));
+    expect(notifier.state.playheadIsOnKeyframe, isTrue);
+
+    // One undo step for the whole drag.
+    notifier.undo();
+    expect(keyframeProgresses(notifier.state.segments.single),
+        [closeTo(0.5, 1e-6)]);
   });
 
   testWidgets('the diamond under the playhead reads as selected',

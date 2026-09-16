@@ -23,7 +23,13 @@ import '../../providers/video_editor_notifier.dart';
 /// **The selection is the playhead.** A diamond draws as selected when the
 /// playhead is on it; there is no stored selection that could fall out of step
 /// with the playback bar's plus/minus control.
-class ClipKeyframeDiamonds extends ConsumerWidget {
+///
+/// **Long-press-drag moves a diamond.** Tap seeks, and a plain drag anywhere
+/// on the filmstrip scrubs or reorders, so moving is the gesture those leave
+/// free — the same one that picks up a clip. The playhead rides along, one
+/// undo snapshot covers the drag, and the diamond stops short of a neighbour
+/// rather than merging into it (`moveKeyframe`).
+class ClipKeyframeDiamonds extends ConsumerStatefulWidget {
   const ClipKeyframeDiamonds({
     super.key,
     required this.segment,
@@ -50,7 +56,19 @@ class ClipKeyframeDiamonds extends ConsumerWidget {
   static const double _kDiamondSize = 11.0;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ClipKeyframeDiamonds> createState() => _ClipKeyframeDiamondsState();
+}
+
+class _ClipKeyframeDiamondsState extends ConsumerState<ClipKeyframeDiamonds> {
+  /// Where the dragged diamond was picked up, and where it is now. The
+  /// diamond's identity is its progress, so each accepted move re-anchors
+  /// [_dragCurrent]; a refused move leaves it, and the finger keeps dragging
+  /// from where the diamond really is.
+  double? _dragOrigin;
+  double? _dragCurrent;
+
+  @override
+  Widget build(BuildContext context) {
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
     final progresses = editorState.selectedClipKeyframes;
@@ -59,19 +77,19 @@ class ClipKeyframeDiamonds extends ConsumerWidget {
     final selected = editorState.playheadKeyframeProgress;
 
     return SizedBox(
-      width: widthPx,
-      height: height,
+      width: widget.widthPx,
+      height: widget.height,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           for (final progress in progresses)
             Positioned(
-              left: progress * widthPx - _kHitSize / 2,
+              left: progress * widget.widthPx - ClipKeyframeDiamonds._kHitSize / 2,
               // Vertically centred on the thumbnail — not above it and not
               // below it.
-              top: (height - _kHitSize) / 2,
-              width: _kHitSize,
-              height: _kHitSize,
+              top: (widget.height - ClipKeyframeDiamonds._kHitSize) / 2,
+              width: ClipKeyframeDiamonds._kHitSize,
+              height: ClipKeyframeDiamonds._kHitSize,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 // Tapping a diamond moves the playhead onto it, which is what
@@ -81,11 +99,37 @@ class ClipKeyframeDiamonds extends ConsumerWidget {
                   HapticFeedback.selectionClick();
                   notifier.seekToKeyframe(progress);
                 },
+                onLongPressStart: (_) {
+                  HapticFeedback.mediumImpact();
+                  // One snapshot for the whole drag; the frames write live.
+                  notifier.saveStateForUndo();
+                  _dragOrigin = progress;
+                  _dragCurrent = progress;
+                },
+                onLongPressMoveUpdate: (details) {
+                  final origin = _dragOrigin;
+                  final current = _dragCurrent;
+                  if (origin == null || current == null) return;
+                  // Pixels of travel since the pick-up, as a fraction of the
+                  // clip's drawn width — the same mapping the diamonds are
+                  // laid out with.
+                  final to = origin + details.offsetFromOrigin.dx / widget.widthPx;
+                  final moved = notifier.moveKeyframeLive(current, to);
+                  if (moved != null) _dragCurrent = moved;
+                },
+                onLongPressEnd: (_) {
+                  _dragOrigin = null;
+                  _dragCurrent = null;
+                },
+                onLongPressCancel: () {
+                  _dragOrigin = null;
+                  _dragCurrent = null;
+                },
                 child: Center(
                   child: KeyframeDiamond(
                     isSelected: selected != null &&
                         (selected - progress).abs() <= 1e-6,
-                    size: _kDiamondSize,
+                    size: ClipKeyframeDiamonds._kDiamondSize,
                   ),
                 ),
               ),

@@ -235,6 +235,60 @@ VideoSegment removeKeyframe(
   return out;
 }
 
+/// Slides the diamond nearest [from] to [to] on every property, each keyframe
+/// keeping its value and its curve.
+///
+/// A diamond is an *instant* of the clip, so the move is of the instant: the
+/// seven properties' keyframes at it travel together, or the filmstrip's one
+/// mark would stop being an honest picture of the clip's state. Clamped to the
+/// clip. Returns [s] itself — the same instance, so a caller can tell — when
+/// there is no diamond near [from], when the destination is where it already
+/// is, or when **another diamond already sits at the destination**: two
+/// instants must never collapse into one because a finger overshot, so the
+/// dragged diamond stops short of its neighbour instead.
+VideoSegment moveKeyframe(
+  VideoSegment s,
+  double from,
+  double to,
+  double tolerance,
+) {
+  final target = keyframeProgressNear(s, from, tolerance);
+  if (target == null) return s;
+  final dest = to.clamp(0.0, 1.0).toDouble();
+  if ((dest - target).abs() <= kKeyframeMatchProgress) return s;
+  final occupied = keyframeProgresses(s).any(
+    (p) => (p - target).abs() > kKeyframeMatchProgress &&
+        (p - dest).abs() <= kKeyframeMatchProgress,
+  );
+  if (occupied) return s;
+
+  var out = s;
+  for (final property in ClipProperty.values) {
+    final param = clipParameter(out, property);
+    if (param.keyframes.isEmpty) continue;
+    out = withClipParameter(
+      out,
+      property,
+      AnimatableDouble.sorted(
+        baseValue: param.baseValue,
+        envelope: param.envelope,
+        keyframes: [
+          for (final k in param.keyframes)
+            if ((k.progress - target).abs() <= kKeyframeMatchProgress)
+              Keyframe(
+                progress: dest,
+                value: k.value,
+                interpolation: k.interpolation,
+              )
+            else
+              k,
+        ],
+      ),
+    );
+  }
+  return out;
+}
+
 /// Which diamond's outgoing curve the curve control edits at [progress], or
 /// null when there is nothing to ease.
 ///
