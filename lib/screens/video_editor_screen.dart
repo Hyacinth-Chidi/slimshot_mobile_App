@@ -1282,6 +1282,31 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     );
   }
 
+  /// Opens the transitions sheet, and **leaves the transition menu when it
+  /// closes**.
+  ///
+  /// Selecting a seam sets `currentMenuId: 'transition'`, whose tool list is
+  /// deliberately empty because this drawer replaces it. Nothing put that back,
+  /// so dismissing the sheet left the user staring at an empty submenu — the
+  /// device report. `deselectAll` is the existing exit: it clears the seam
+  /// selection and returns to the root menu.
+  ///
+  /// **The `await` is what makes this correct for every way a sheet can close**
+  /// — the ✓, a tap on the scrim, or the system Back gesture all complete the
+  /// future, where an `onTap` handler on the sheet's own button would only
+  /// catch the first. The edit itself is already committed to state and is
+  /// untouched by this; only the selection and the menu are transient.
+  Future<void> _showTransitionsDrawer() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const TransitionsDrawer(),
+    );
+    if (!mounted) return;
+    ref.read(videoEditorProvider.notifier).deselectAll();
+  }
+
   void _openFullscreenPreview() {
     setState(() {
       _isFullscreen = !_isFullscreen;
@@ -1618,12 +1643,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       _deleteSelectedSegment();
                     }
                   } else if (tool.id == 'transition') {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (context) => const TransitionsDrawer(),
-                    );
+                    _showTransitionsDrawer();
                   } else if (tool.id == 'reverse') {
                     if (editorState.selectedSegmentId != null) {
                       final segment = editorState.segments.firstWhere(
@@ -2115,14 +2135,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       // only set `currentMenuId: 'transition'`, whose tool list is empty by
       // design — the drawer replaces it — so the user got an empty submenu and
       // no way to choose anything.
-      onTransitionTapped: (_) {
-        showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => const TransitionsDrawer(),
-        );
-      },
+      onTransitionTapped: (_) => _showTransitionsDrawer(),
       onTrimChanged: editorState.isExporting ? null : _setTrimRange,
       textOverlays: editorState.textOverlays,
       selectedTextId: editorState.selectedTextId,

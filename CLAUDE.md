@@ -1384,7 +1384,13 @@ filmstrip on each seam. Three faults were fixed together after a device report. 
 replaces it — while `onTransitionTapped` was declared, called, and **never wired by the screen**, so
 a tap surfaced an empty submenu and no way to choose anything. The timeline now selects the seam and
 the screen owns the modal, which is the right split: a widget deep in the timeline should not reach
-for a sheet. Its colours were hard-coded Slate (`0xFF1E293B`/`0xFF0F172A`) beside the app's Zinc
+for a sheet. **Both openers go through `_showTransitionsDrawer`, which `await`s the sheet and then
+calls `deselectAll()`** — entering the transition menu is a mode, and something has to leave it.
+Without that, dismissing the sheet left the empty submenu on screen, which was the same bug from
+the other end. The `await` is what covers *every* way a sheet closes — the scrim and the system Back
+gesture as well as a button — where an `onTap` on the drawer's own control would only catch one; the
+drawer never pops itself, so those are the only paths. Only the selection and the menu are
+transient, never the edit. Its colours were hard-coded Slate (`0xFF1E293B`/`0xFF0F172A`) beside the app's Zinc
 surfaces — the grey-blue that read as another app — and are now all from `AppColors`. **The applied
 state is carried by the fill, not by a ring**: an earlier pass changed only the border and the ink,
 and 1.5px of tint is the first thing to vanish against a busy frame, so "has a transition" and
