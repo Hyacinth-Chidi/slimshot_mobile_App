@@ -8,10 +8,15 @@ class OpacityPanel extends StatelessWidget {
     super.key,
     required this.opacity,
     required this.onChanged,
+    this.onChangeStart,
   });
 
   final double opacity;
   final ValueChanged<double> onChanged;
+
+  /// Fired once when a drag begins, so a caller writing live can take one undo
+  /// snapshot per drag — the shape the transform rulers have.
+  final VoidCallback? onChangeStart;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +43,8 @@ class OpacityPanel extends StatelessWidget {
                   value: opacity,
                   min: 0.0,
                   max: 1.0,
+                  onChangeStart:
+                      onChangeStart == null ? null : (_) => onChangeStart!(),
                   onChanged: onChanged,
                 ),
               ),

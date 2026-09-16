@@ -101,6 +101,16 @@ class VideoSegment {
   final bool flipHorizontal;
   final bool flipVertical;
 
+  /// How present the clip is, 0..1. The seventh keyframable property.
+  ///
+  /// **A mix toward the letterbox fill in the engine, never alpha.** The clip
+  /// pass has no blending and the fill is already what shows around a clip,
+  /// so an alpha would be a value nothing reads. Applied after the clip's own
+  /// grade (fading what the user sees) and before the effect chain (a blurred
+  /// clip at 50% is a blurred clip, half-present). Clamped where resolved,
+  /// because a keyframe can overshoot.
+  final AnimatableDouble opacity;
+
   /// Whether this clip carries a crop of its own.
   bool get isCropped => cropRect != kFullFrameRect;
 
@@ -178,6 +188,7 @@ class VideoSegment {
     this.cropRect = kFullFrameRect,
     this.flipHorizontal = false,
     this.flipVertical = false,
+    this.opacity = kUnitParameter,
   });
 
   double get duration => (sourceEnd - sourceStart) / speed;
@@ -213,6 +224,10 @@ class VideoSegment {
   /// The pinch scale at [progress].
   double canvasScaleAt(double progress) => canvasScale.resolveAt(progress);
 
+  /// How present the clip is at [progress], clamped to 0..1.
+  double opacityAt(double progress) =>
+      opacity.resolveAt(progress).clamp(0.0, 1.0).toDouble();
+
   /// The drag offsets at [progress].
   double canvasOffsetXAt(double progress) => canvasOffsetX.resolveAt(progress);
   double canvasOffsetYAt(double progress) => canvasOffsetY.resolveAt(progress);
@@ -237,7 +252,8 @@ class VideoSegment {
       canvasOffsetY.keyframes.isNotEmpty ||
       canvasRotation.keyframes.isNotEmpty ||
       volume.keyframes.isNotEmpty ||
-      effectIntensity.keyframes.isNotEmpty;
+      effectIntensity.keyframes.isNotEmpty ||
+      opacity.keyframes.isNotEmpty;
 
   /// Source position [secondsIntoClip] seconds into this clip's span on the
   /// timeline.
@@ -278,6 +294,7 @@ class VideoSegment {
     Rect? cropRect,
     bool? flipHorizontal,
     bool? flipVertical,
+    AnimatableDouble? opacity,
   }) {
     return VideoSegment(
       id: id ?? this.id,
@@ -301,6 +318,7 @@ class VideoSegment {
       cropRect: cropRect ?? this.cropRect,
       flipHorizontal: flipHorizontal ?? this.flipHorizontal,
       flipVertical: flipVertical ?? this.flipVertical,
+      opacity: opacity ?? this.opacity,
     );
   }
 
@@ -346,6 +364,7 @@ class VideoSegment {
       'canvasOffsetX': canvasOffsetX.toJson(),
       'canvasOffsetY': canvasOffsetY.toJson(),
       'canvasRotation': canvasRotation.toJson(),
+      'opacity': opacity.toJson(),
       // `[l, t, w, h]`, the shape the draft already uses for the project crop.
       // Omitted entirely for an uncropped clip, so a project that never
       // cropped a clip writes exactly what it always wrote.
@@ -418,6 +437,8 @@ class VideoSegment {
       // `== true`, so junk of any type reads as unflipped.
       flipHorizontal: json['flipHorizontal'] == true,
       flipVertical: json['flipVertical'] == true,
+      // Absent in every draft written before clips could fade.
+      opacity: AnimatableDouble.fromJson(json['opacity'], fallback: 1.0),
     );
   }
 }

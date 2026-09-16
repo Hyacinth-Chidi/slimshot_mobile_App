@@ -72,6 +72,12 @@ internal data class NativeTimelineClip(
     val flipHorizontal: Boolean = false,
     val flipVertical: Boolean = false,
     /**
+     * How present the clip is, 0..1 — a mix toward the letterbox fill in the
+     * shader, never alpha. Resolve through [opacityAt]. Fully present for every
+     * timeline composed before clips could fade.
+     */
+    val opacity: AnimatableDouble = AnimatableDouble(baseValue = 1.0),
+    /**
      * This clip's visual effect, as an id from `effect_catalog.dart`, or null
      * for an unaffected clip — which is every project written before effects
      * existed and every clip the user has not touched.
@@ -154,6 +160,9 @@ internal data class NativeTimelineClip(
 
     /** This clip's gain at [progress], clamped to what a player will accept. */
     fun volumeAt(progress: Double): Double = volume.resolveAt(progress).coerceIn(0.0, 1.0)
+
+    /** How present the clip is at [progress], clamped: a keyframe can overshoot. */
+    fun opacityAt(progress: Double): Double = opacity.resolveAt(progress).coerceIn(0.0, 1.0)
 
     /** The pinch scale at [progress], clamped to the range the gesture allows. */
     fun canvasScaleAt(progress: Double): Double =
@@ -334,6 +343,7 @@ internal data class NativeTimelineClip(
                 // Written only when set; absent reads as unflipped.
                 flipHorizontal = map["flipHorizontal"] == true,
                 flipVertical = map["flipVertical"] == true,
+                opacity = AnimatableDouble.fromWire(map["opacity"], fallback = 1.0),
                 effectId = (map["effectId"] as? String)?.takeIf { it.isNotBlank() },
                 // Either shape the composer writes: a **bare number** while the
                 // intensity is flat — which is what every clip sends and what

@@ -1280,8 +1280,8 @@ break.
 
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-09-15-clip-keyframes-design.md`.
 
-A clip carries six keyframable properties, all `AnimatableDouble`: `canvasScale`,
-`canvasOffsetX`, `canvasOffsetY`, `canvasRotation`, `volume` and `effectIntensity`. **`speed` cannot join them, and
+A clip carries seven keyframable properties, all `AnimatableDouble`: `canvasScale`,
+`canvasOffsetX`, `canvasOffsetY`, `canvasRotation`, `volume`, `effectIntensity` and `opacity`. **`speed` cannot join them, and
 the reason is structural**: every other property is read *at* a progress, while speed decides what
 progress means — `duration` is `(sourceEnd - sourceStart) / speed` and `clipProgressAt` divides by
 that duration, so a keyframed speed makes progress a function of itself and every diamond slides
@@ -1409,20 +1409,22 @@ Three engine-side subtleties worth not rediscovering:
 keyframes (that parameter belongs to the effect) and leaves transform and volume keyframes
 standing.
 
-**Opacity is planned, not built** — the sixth keyframable property, and the design is settled even
-though no code exists yet. **It cannot be alpha**: the clip pass has no GL blending enabled and
-`glClear` uses an opaque background, and the shader already returns `uBackground` for letterbox
-pixels rather than transparency — so an alpha would be a value nothing reads, and enabling blending
-would change how all eleven transitions composite. It is a **mix toward `uBackground`** at the end
-of `incomingAt`/`outgoingAt` (two uniforms, two lines), which every transition inherits for free
-because all of them sample through those two functions. It must sit **after `gradeClip`** (fading a
-graded clip is fading what the user sees; fading first would push a filter's colour offset onto a
-vanishing clip) and **before the effect chain** (a blurred clip at 50% should be a blurred clip,
-half-present). Two open questions: whether a fade goes to the project background or always to
-black, and where the control lives — the clip's contextual menu beside Volume is the obvious home,
-and **not** the effects sheet, which is the mistake the keyframe row already made. The shader half
-is GLSL, so neither `flutter analyze` nor `compileDebugKotlin` can verify it; both sampler variants
-(`sampler2D` for photos, `samplerExternalOES` for video) need a device check.
+**Opacity is the seventh keyframable property** (`VideoSegment.opacity`, `ClipProperty.opacity`,
+**awaiting device verification**). **It is a mix toward the letterbox fill, never alpha**: the clip
+pass has no GL blending, `glClear` uses an opaque background, and the sampling helpers already
+return `backgroundAt()` for letterbox pixels rather than transparency — so an alpha would be a
+value nothing reads, and enabling blending would change how all eleven transitions composite. The
+helpers end with `mix(backgroundAt(), graded, uOpacity*)`, which every transition inherits because
+all of them sample through those two functions. It sits **after `gradeClip`** (fading a graded
+clip is fading what the user sees; fading first would push a filter's colour offset onto a
+vanishing clip) and **before the effect chain** (a blurred clip at 50% is a blurred clip,
+half-present). Resolved per tick by both engines through `opacityAt`, clamped where resolved
+because a keyframe can overshoot; per-lane, change-guarded. The Opacity tool sits beside Volume on
+the clip menu — a fade of the picture next to a fade of the sound — and writes through
+`setClipProperty`, so a fade in is two diamonds. The overlay opacity path is untouched. Fading to
+the project background rather than to black was the open question; the background it is, since
+that is what the bars already show and a fade that revealed a different colour would read as a
+flash.
 
 ### Transform — a tool with a sheet, and a clip that can rotate
 

@@ -130,6 +130,9 @@ const EditorMenu _editMenu = EditorMenu(
     ),
     EditorTool(id: 'speed', label: 'Speed', icon: LucideIcons.gauge),
     EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
+    // The clip's own presence, beside Volume — a fade of the picture next to
+    // a fade of the sound. Keyframable like every clip property.
+    EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
     // Also on the root menu. Here because the root menu is hidden while a
     // clip is selected, and a tool reachable only by deselecting the clip you
     // want to transform is not reachable.
@@ -2043,6 +2046,25 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   Widget _buildOpacityPanel() {
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
+
+    // A clip's opacity goes through the edit rule like every clip property:
+    // base on an unkeyframed clip, the diamond under the playhead otherwise,
+    // and the slider shows what its write will target. Overlays keep their
+    // own path below.
+    final segment = editorState.selectedSegment;
+    if (segment != null &&
+        editorState.selectedImageId == null &&
+        editorState.selectedVideoOverlayId == null) {
+      return OpacityPanel(
+        opacity: editorState.clipEditValue(segment, ClipProperty.opacity),
+        onChangeStart: notifier.saveStateForUndo,
+        onChanged: (value) => notifier.setClipProperty(
+          ClipProperty.opacity,
+          value,
+          takeUndoSnapshot: false,
+        ),
+      );
+    }
 
     double currentOpacity = 1.0;
     if (editorState.selectedImageId != null) {

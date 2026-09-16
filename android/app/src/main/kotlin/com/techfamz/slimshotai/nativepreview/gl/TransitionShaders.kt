@@ -77,6 +77,8 @@ uniform vec4 uContentRectIncoming;
 uniform vec4 uContentRectOutgoing;
 uniform vec2 uFlipIncoming;
 uniform vec2 uFlipOutgoing;
+uniform float uOpacityIncoming;
+uniform float uOpacityOutgoing;
 uniform mat4 uColorMatrix;
 uniform vec4 uColorOffset;
 uniform float uColorEnabled;
@@ -178,7 +180,12 @@ vec4 incomingAt(vec2 uv) {
     fitted = mix(fitted, 1.0 - fitted, uFlipIncoming);
     vec2 source = uContentRectIncoming.xy + fitted * uContentRectIncoming.zw;
     vec4 texel = texture2D(uIncoming, (uTexMatrixIncoming * vec4(source, 0.0, 1.0)).xy);
-    return gradeClip(texel, uClipMatrixIncoming, uClipOffsetIncoming, uClipColorIncoming);
+    vec4 graded = gradeClip(texel, uClipMatrixIncoming, uClipOffsetIncoming, uClipColorIncoming);
+    // Opacity is a mix toward the letterbox fill, not alpha: nothing blends
+    // the clip pass, and the fill is already what shows around the clip. After
+    // the clip's own grade — fading what the user sees — and before the effect
+    // chain, so a blurred clip at 50% is a blurred clip, half-present.
+    return mix(backgroundAt(), graded, uOpacityIncoming);
 }
 
 vec4 outgoingAt(vec2 uv) {
@@ -190,7 +197,8 @@ vec4 outgoingAt(vec2 uv) {
     fitted = mix(fitted, 1.0 - fitted, uFlipOutgoing);
     vec2 source = uContentRectOutgoing.xy + fitted * uContentRectOutgoing.zw;
     vec4 texel = texture2D(uOutgoing, (uTexMatrixOutgoing * vec4(source, 0.0, 1.0)).xy);
-    return gradeClip(texel, uClipMatrixOutgoing, uClipOffsetOutgoing, uClipColorOutgoing);
+    vec4 graded = gradeClip(texel, uClipMatrixOutgoing, uClipOffsetOutgoing, uClipColorOutgoing);
+    return mix(backgroundAt(), graded, uOpacityOutgoing);
 }
 
 float ease(float t) {

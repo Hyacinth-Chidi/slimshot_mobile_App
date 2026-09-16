@@ -411,6 +411,7 @@ class VideoEditorTimelineComposer {
       contentRect: previous.contentRect,
       flipHorizontal: previous.flipHorizontal,
       flipVertical: previous.flipVertical,
+      opacity: previous.opacity,
     );
   }
 
@@ -508,6 +509,12 @@ class VideoEditorTimelineComposer {
     // A merged item can only be mirrored one way.
     if (previous.flipHorizontal != next.flipHorizontal ||
         previous.flipVertical != next.flipVertical) {
+      return false;
+    }
+
+    // And can only be one degree present. Neither is keyframed here.
+    if ((previous.opacity.baseValue - next.opacity.baseValue).abs() >
+        transformEpsilon) {
       return false;
     }
 
@@ -612,6 +619,7 @@ class VideoEditorTimelineComposer {
       // crop handles would land on the mirrored side.
       flipHorizontal: !plain && segment.flipHorizontal,
       flipVertical: !plain && segment.flipVertical,
+      opacity: segment.opacity,
       contentRect: contentRect,
     );
   }

@@ -21,7 +21,7 @@ Grouped so each batch shares one device-verification pass.
   in the clip-crop "plain" view like scale and pan, so the handles map. Merge rule refuses
   differing flips; split copies them; transform reset clears them. Two toggles on the
   Transform sheet's Rotate tab.
-- [ ] **A2 Clip opacity.** `VideoSegment.opacity` (AnimatableDouble, base 1.0), the seventh
+- [x] **A2 Clip opacity** (device check pending). `VideoSegment.opacity` (AnimatableDouble, base 1.0), the seventh
   keyframable property (`ClipProperty.opacity`). Per-lane `uOpacity*`; in the sampling
   helpers, `mix(backgroundAt(), graded, opacity)` **after `gradeClip`** (fading what the user
   sees) and **before the effect chain** (a blurred clip at 50% is a blurred clip,

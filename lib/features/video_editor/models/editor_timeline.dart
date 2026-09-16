@@ -236,6 +236,7 @@ class EditorTimelineVideoClip {
     this.contentRect = const Rect.fromLTWH(0, 0, 1, 1),
     this.flipHorizontal = false,
     this.flipVertical = false,
+    this.opacity = const AnimatableDouble(baseValue: 1.0),
   });
 
   final String id;
@@ -359,6 +360,9 @@ class EditorTimelineVideoClip {
   final bool flipHorizontal;
   final bool flipVertical;
 
+  /// How present the clip is, 0..1. See `VideoSegment.opacity`.
+  final AnimatableDouble opacity;
+
   double get timelineDuration => timelineEnd - timelineStart;
 
   /// This clip's 0..1 position at a timeline instant.
@@ -374,6 +378,8 @@ class EditorTimelineVideoClip {
   }
 
   double volumeAt(double progress) => volume.resolveAt(progress);
+  double opacityAt(double progress) =>
+      opacity.resolveAt(progress).clamp(0.0, 1.0).toDouble();
   double canvasScaleAt(double progress) => canvasScale.resolveAt(progress);
   double canvasOffsetXAt(double progress) => canvasOffsetX.resolveAt(progress);
   double canvasOffsetYAt(double progress) => canvasOffsetY.resolveAt(progress);
@@ -386,7 +392,8 @@ class EditorTimelineVideoClip {
       canvasOffsetY.keyframes.isNotEmpty ||
       canvasRotation.keyframes.isNotEmpty ||
       volume.keyframes.isNotEmpty ||
-      effectIntensity.keyframes.isNotEmpty;
+      effectIntensity.keyframes.isNotEmpty ||
+      opacity.keyframes.isNotEmpty;
 
   bool get needsReverseProxy {
     return isReversed && !hasPreparedProxy;
@@ -436,6 +443,7 @@ class EditorTimelineVideoClip {
       'canvasOffsetX': canvasOffsetX.toJson(),
       'canvasOffsetY': canvasOffsetY.toJson(),
       'canvasRotation': canvasRotation.toJson(),
+      'opacity': opacity.toJson(),
       // Only when set, so an older engine reads the payload it always did.
       if (flipHorizontal) 'flipHorizontal': true,
       if (flipVertical) 'flipVertical': true,

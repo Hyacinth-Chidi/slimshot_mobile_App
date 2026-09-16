@@ -103,6 +103,10 @@ internal class TransitionRenderer(
         @Volatile
         var flip = floatArrayOf(0f, 0f)
 
+        /** How present the clip is, 0..1: a mix toward the letterbox fill. */
+        @Volatile
+        var opacity = 1f
+
         /**
          * Set once the decoder has delivered at least one frame. Sampling a
          * lane before this would read undefined texture memory, so a
@@ -813,6 +817,20 @@ internal class TransitionRenderer(
     }
 
     /**
+     * How present the lane's clip is, resolved per tick by the engines from
+     * the clip's keyframes. Change-guarded so a clip that does not fade costs
+     * nothing per tick.
+     */
+    fun setLaneOpacity(laneIndex: Int, opacity: Float) {
+        if (released) return
+        val lane = lanes.getOrNull(laneIndex) ?: return
+        val next = opacity.coerceIn(0f, 1f)
+        if (kotlin.math.abs(next - lane.opacity) < OPACITY_EPSILON) return
+        lane.opacity = next
+        requestRender()
+    }
+
+    /**
      * Sets the project colour filter.
      *
      * [matrix] is Flutter's 4×5 `ColorFilter.matrix` layout — 20 row-major
@@ -1327,6 +1345,7 @@ internal class TransitionRenderer(
                 lane.rotation,
                 lane.contentRect,
                 lane.flip,
+                lane.opacity,
             )
         } else {
             program.bindIncoming(
@@ -1340,6 +1359,7 @@ internal class TransitionRenderer(
                 lane.rotation,
                 lane.contentRect,
                 lane.flip,
+                lane.opacity,
             )
         }
         program.bindIncomingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1359,6 +1379,7 @@ internal class TransitionRenderer(
                 lane.rotation,
                 lane.contentRect,
                 lane.flip,
+                lane.opacity,
             )
         } else {
             program.bindOutgoing(
@@ -1372,6 +1393,7 @@ internal class TransitionRenderer(
                 lane.rotation,
                 lane.contentRect,
                 lane.flip,
+                lane.opacity,
             )
         }
         program.bindOutgoingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1479,6 +1501,9 @@ internal class TransitionRenderer(
          * texture memory spent on pixels no frame can show.
          */
         private const val BACKGROUND_IMAGE_MAX_PX = 2048
+
+        /** Below this an opacity change is not worth a redraw. */
+        private const val OPACITY_EPSILON = 0.001f
     }
 }
 
@@ -1512,6 +1537,8 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glGetUniformLocation(handle, "uContentRectOutgoing")
     private val uFlipIncoming = GLES20.glGetUniformLocation(handle, "uFlipIncoming")
     private val uFlipOutgoing = GLES20.glGetUniformLocation(handle, "uFlipOutgoing")
+    private val uOpacityIncoming = GLES20.glGetUniformLocation(handle, "uOpacityIncoming")
+    private val uOpacityOutgoing = GLES20.glGetUniformLocation(handle, "uOpacityOutgoing")
     private val uColorMatrix = GLES20.glGetUniformLocation(handle, "uColorMatrix")
     private val uColorOffset = GLES20.glGetUniformLocation(handle, "uColorOffset")
     private val uColorEnabled = GLES20.glGetUniformLocation(handle, "uColorEnabled")
@@ -1629,6 +1656,7 @@ internal class TransitionProgram(private val handle: Int) {
         rotationRadians: Float = 0f,
         contentRect: FloatArray = FULL_FRAME,
         flip: FloatArray = NO_FLIP,
+        opacity: Float = 1f,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(target, textureId)
@@ -1645,6 +1673,7 @@ internal class TransitionProgram(private val handle: Int) {
             contentRect[3],
         )
         GLES20.glUniform2f(uFlipIncoming, flip[0], flip[1])
+        GLES20.glUniform1f(uOpacityIncoming, opacity)
     }
 
     fun bindOutgoing(
@@ -1658,6 +1687,7 @@ internal class TransitionProgram(private val handle: Int) {
         rotationRadians: Float = 0f,
         contentRect: FloatArray = FULL_FRAME,
         flip: FloatArray = NO_FLIP,
+        opacity: Float = 1f,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
         GLES20.glBindTexture(target, textureId)
@@ -1674,6 +1704,7 @@ internal class TransitionProgram(private val handle: Int) {
             contentRect[3],
         )
         GLES20.glUniform2f(uFlipOutgoing, flip[0], flip[1])
+        GLES20.glUniform1f(uOpacityOutgoing, opacity)
     }
 
     private companion object {

@@ -530,6 +530,7 @@ internal class VideoExportEngine(
         val r = clip.contentRect
         renderer.setLaneContentRect(clip.laneIndex, r[0], r[1], r[2], r[3])
         renderer.setLaneFlip(clip.laneIndex, clip.flipMask())
+        renderer.setLaneOpacity(clip.laneIndex, clip.opacityAt(clipProgress).toFloat())
 
         if (clip.isImage) {
             // A photo's contain fit is derived by the renderer from the

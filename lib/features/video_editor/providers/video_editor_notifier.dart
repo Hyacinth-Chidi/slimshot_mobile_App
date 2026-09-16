@@ -753,6 +753,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       cropRect: segment.cropRect,
       flipHorizontal: segment.flipHorizontal,
       flipVertical: segment.flipVertical,
+      opacity: segment.opacity,
     );
 
     // Keyframes are clip-relative, so each half gets its own rescaled copy.
