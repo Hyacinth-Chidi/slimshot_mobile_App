@@ -79,6 +79,13 @@ class VideoEditorTimelineComposer {
       // The clip under the crop handles shows **plain** — see [_clipContentRect].
       final plain = state.activeToolId == 'clip_crop' &&
           state.selectedSegmentId == segment.id;
+      // The clip under the mask handles shows **unplaced**: its own crop
+      // stays (the window is over the cropped picture) but scale, pan,
+      // rotation and mirror are suspended, so the canvas maps a drag through
+      // the fit alone. The crop tool's rule, one step gentler.
+      final unplaced = plain ||
+          (state.activeToolId == 'mask' &&
+              state.selectedSegmentId == segment.id);
 
       videoClips.add(
         _composeVideoClip(
@@ -91,6 +98,7 @@ class VideoEditorTimelineComposer {
           laneIndex: laneIndex,
           resolvedTransitionDuration: transitionDuration,
           plain: plain,
+          unplaced: unplaced,
           contentRect: _clipContentRect(
             state,
             segment,
@@ -411,6 +419,7 @@ class VideoEditorTimelineComposer {
       flipHorizontal: previous.flipHorizontal,
       flipVertical: previous.flipVertical,
       opacity: previous.opacity,
+      mask: previous.mask,
     );
   }
 
@@ -517,6 +526,9 @@ class VideoEditorTimelineComposer {
       return false;
     }
 
+    // And wear one window.
+    if (previous.mask != next.mask) return false;
+
     return !previous.needsReverseProxy &&
         !next.needsReverseProxy &&
         !previous.isReversed &&
@@ -569,6 +581,7 @@ class VideoEditorTimelineComposer {
     required double? resolvedTransitionDuration,
     required Rect contentRect,
     required bool plain,
+    required bool unplaced,
   }) {
     final overrideVideoPath = segment.overrideVideoPath;
     final hasPreparedProxy =
@@ -621,15 +634,16 @@ class VideoEditorTimelineComposer {
       effectIntroSeconds: segment.effect?.introSeconds,
       // Plain under the crop handles: identity, so the fit alone places the
       // picture and the canvas can invert it. See [_clipContentRect].
-      canvasScale: plain ? kUnitParameter : segment.canvasScale,
-      canvasOffsetX: plain ? kZeroParameter : segment.canvasOffsetX,
-      canvasOffsetY: plain ? kZeroParameter : segment.canvasOffsetY,
-      canvasRotation: plain ? kZeroParameter : segment.canvasRotation,
-      // A mirror is a placement too: plain shows the frame as shot, or the
-      // crop handles would land on the mirrored side.
-      flipHorizontal: !plain && segment.flipHorizontal,
-      flipVertical: !plain && segment.flipVertical,
+      canvasScale: unplaced ? kUnitParameter : segment.canvasScale,
+      canvasOffsetX: unplaced ? kZeroParameter : segment.canvasOffsetX,
+      canvasOffsetY: unplaced ? kZeroParameter : segment.canvasOffsetY,
+      canvasRotation: unplaced ? kZeroParameter : segment.canvasRotation,
+      // A mirror is a placement too: unplaced shows the frame as shot, or the
+      // crop or mask handles would land on the mirrored side.
+      flipHorizontal: !unplaced && segment.flipHorizontal,
+      flipVertical: !unplaced && segment.flipVertical,
       opacity: segment.opacity,
+      mask: segment.mask,
       contentRect: contentRect,
     );
   }

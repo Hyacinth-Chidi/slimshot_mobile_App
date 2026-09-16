@@ -78,6 +78,13 @@ internal data class NativeTimelineClip(
      */
     val opacity: AnimatableDouble = AnimatableDouble(baseValue = 1.0),
     /**
+     * The clip's mask as the shader's two vec4s: `(shape, centerX, centerY,
+     * feather)` then `(width, height, inverted, 0)`, shape 0 none / 1
+     * rectangle / 2 circle / 3 linear — the order Dart's `maskUniforms`
+     * writes. [NO_MASK] for every clip that carries none.
+     */
+    val mask: FloatArray = NO_MASK,
+    /**
      * This clip's visual effect, as an id from `effect_catalog.dart`, or null
      * for an unaffected clip — which is every project written before effects
      * existed and every clip the user has not touched.
@@ -160,6 +167,9 @@ internal data class NativeTimelineClip(
 
     /** This clip's gain at [progress], clamped to what a player will accept. */
     fun volumeAt(progress: Double): Double = volume.resolveAt(progress).coerceIn(0.0, 1.0)
+
+    /** The mask's two vec4s for the shader. See [mask]. */
+    fun maskUniforms(): FloatArray = mask
 
     /** How present the clip is at [progress], clamped: a keyframe can overshoot. */
     fun opacityAt(progress: Double): Double = opacity.resolveAt(progress).coerceIn(0.0, 1.0)
@@ -264,6 +274,39 @@ internal data class NativeTimelineClip(
         /** Shortest source span a clamped clip is given, in seconds. */
         private const val MIN_SOURCE_SPAN = 0.05
 
+        /** No mask: shape 0, centred, no extent. */
+        val NO_MASK = floatArrayOf(0f, 0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f)
+
+        /**
+         * The wire's mask map into the shader's two vec4s, defensively: an
+         * unknown or absent shape is no mask, a malformed number takes the
+         * default, and every number is clamped to the range the tool makes —
+         * the same reading Dart's `ClipMask.fromJson` does.
+         */
+        fun parseMask(raw: Any?): FloatArray {
+            val map = raw as? Map<*, *> ?: return NO_MASK
+            val shape = when (map["shape"]) {
+                "rectangle" -> 1f
+                "circle" -> 2f
+                "linear" -> 3f
+                else -> return NO_MASK
+            }
+            fun read(key: String, fallback: Double, lo: Double, hi: Double): Float {
+                val v = (map[key] as? Number)?.toDouble() ?: fallback
+                return v.coerceIn(lo, hi).toFloat()
+            }
+            return floatArrayOf(
+                shape,
+                read("centerX", 0.5, 0.0, 1.0),
+                read("centerY", 0.5, 0.0, 1.0),
+                read("feather", 0.05, 0.0, 0.5),
+                read("width", 0.6, 0.001, 2.0),
+                read("height", 0.6, 0.001, 2.0),
+                if (map["inverted"] == true) 1f else 0f,
+                0f,
+            )
+        }
+
         fun fromMap(map: Map<*, *>, fallbackSource: String): NativeTimelineClip? {
             val id = map["id"] as? String ?: return null
             val sourceVideoPath = (map["sourceVideoPath"] as? String)
@@ -344,6 +387,7 @@ internal data class NativeTimelineClip(
                 flipHorizontal = map["flipHorizontal"] == true,
                 flipVertical = map["flipVertical"] == true,
                 opacity = AnimatableDouble.fromWire(map["opacity"], fallback = 1.0),
+                mask = parseMask(map["mask"]),
                 effectId = (map["effectId"] as? String)?.takeIf { it.isNotBlank() },
                 // Either shape the composer writes: a **bare number** while the
                 // intensity is flat — which is what every clip sends and what

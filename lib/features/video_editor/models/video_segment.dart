@@ -4,6 +4,7 @@ import '../logic/animation/animatable_double.dart';
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 import '../logic/color/color_adjustments.dart';
+import '../logic/mask/clip_mask.dart';
 
 /// A parameter resting at 1.0 — an ungained volume, an unpinched scale.
 ///
@@ -120,6 +121,11 @@ class VideoSegment {
   /// levels may coexist, unlike filters.
   final ColorAdjustments adjustments;
 
+  /// This clip's mask: a window over the picture, outside which the letterbox
+  /// fill shows through. Authored in fractions of the fitted frame, like the
+  /// crop rect. See `logic/mask/clip_mask.dart`.
+  final ClipMask mask;
+
   /// Whether this clip carries a crop of its own.
   bool get isCropped => cropRect != kFullFrameRect;
 
@@ -199,6 +205,7 @@ class VideoSegment {
     this.flipVertical = false,
     this.opacity = kUnitParameter,
     this.adjustments = ColorAdjustments.none,
+    this.mask = ClipMask.none,
   });
 
   double get duration => (sourceEnd - sourceStart) / speed;
@@ -306,6 +313,7 @@ class VideoSegment {
     bool? flipVertical,
     AnimatableDouble? opacity,
     ColorAdjustments? adjustments,
+    ClipMask? mask,
   }) {
     return VideoSegment(
       id: id ?? this.id,
@@ -331,6 +339,7 @@ class VideoSegment {
       flipVertical: flipVertical ?? this.flipVertical,
       opacity: opacity ?? this.opacity,
       adjustments: adjustments ?? this.adjustments,
+      mask: mask ?? this.mask,
     );
   }
 
@@ -399,6 +408,7 @@ class VideoSegment {
       // Omitted while untouched, so a project nobody adjusted writes what it
       // always wrote.
       if (!adjustments.isIdentity) 'adjustments': adjustments.toJson(),
+      if (!mask.isNone) 'mask': mask.toJson(),
     };
   }
 
@@ -466,6 +476,7 @@ class VideoSegment {
       // Absent in every draft written before clips could fade.
       opacity: AnimatableDouble.fromJson(json['opacity'], fallback: 1.0),
       adjustments: ColorAdjustments.fromJson(json['adjustments']),
+      mask: ClipMask.fromJson(json['mask']),
     );
   }
 }

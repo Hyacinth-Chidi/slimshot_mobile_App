@@ -13,6 +13,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import com.techfamz.slimshotai.nativepreview.LaneFit
+import com.techfamz.slimshotai.nativepreview.NativeTimelineClip
 import com.techfamz.slimshotai.nativepreview.gl.effects.BlurPass
 import com.techfamz.slimshotai.thumbnails.StillImageDecoder
 import java.util.concurrent.Executors
@@ -107,6 +108,10 @@ internal class TransitionRenderer(
         /** How present the clip is, 0..1: a mix toward the letterbox fill. */
         @Volatile
         var opacity = 1f
+
+        /** The clip's mask as the shader's two vec4s. See `NativeTimelineClip.mask`. */
+        @Volatile
+        var mask = NativeTimelineClip.NO_MASK
 
         /**
          * Set once the decoder has delivered at least one frame. Sampling a
@@ -839,6 +844,15 @@ internal class TransitionRenderer(
         requestRender()
     }
 
+    /** The lane's mask, change-guarded like every other lane setter. */
+    fun setLaneMask(laneIndex: Int, mask: FloatArray) {
+        if (released) return
+        val lane = lanes.getOrNull(laneIndex) ?: return
+        if (mask.size < 8 || mask.contentEquals(lane.mask)) return
+        lane.mask = mask.copyOf()
+        requestRender()
+    }
+
     /**
      * How present the lane's clip is, resolved per tick by the engines from
      * the clip's keyframes. Change-guarded so a clip that does not fade costs
@@ -1483,6 +1497,7 @@ internal class TransitionRenderer(
                 lane.contentRect,
                 lane.flip,
                 p.opacity,
+                lane.mask,
             )
         } else {
             program.bindIncoming(
@@ -1497,6 +1512,7 @@ internal class TransitionRenderer(
                 lane.contentRect,
                 lane.flip,
                 p.opacity,
+                lane.mask,
             )
         }
         program.bindIncomingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1517,6 +1533,7 @@ internal class TransitionRenderer(
                 lane.contentRect,
                 lane.flip,
                 p.opacity,
+                lane.mask,
             )
         } else {
             program.bindOutgoing(
@@ -1531,6 +1548,7 @@ internal class TransitionRenderer(
                 lane.contentRect,
                 lane.flip,
                 p.opacity,
+                lane.mask,
             )
         }
         program.bindOutgoingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1685,6 +1703,10 @@ internal class TransitionProgram(private val handle: Int) {
     private val uFlipOutgoing = GLES20.glGetUniformLocation(handle, "uFlipOutgoing")
     private val uOpacityIncoming = GLES20.glGetUniformLocation(handle, "uOpacityIncoming")
     private val uOpacityOutgoing = GLES20.glGetUniformLocation(handle, "uOpacityOutgoing")
+    private val uMaskAIncoming = GLES20.glGetUniformLocation(handle, "uMaskAIncoming")
+    private val uMaskBIncoming = GLES20.glGetUniformLocation(handle, "uMaskBIncoming")
+    private val uMaskAOutgoing = GLES20.glGetUniformLocation(handle, "uMaskAOutgoing")
+    private val uMaskBOutgoing = GLES20.glGetUniformLocation(handle, "uMaskBOutgoing")
     private val uColorMatrix = GLES20.glGetUniformLocation(handle, "uColorMatrix")
     private val uColorOffset = GLES20.glGetUniformLocation(handle, "uColorOffset")
     private val uColorEnabled = GLES20.glGetUniformLocation(handle, "uColorEnabled")
@@ -1806,6 +1828,7 @@ internal class TransitionProgram(private val handle: Int) {
         contentRect: FloatArray = FULL_FRAME,
         flip: FloatArray = NO_FLIP,
         opacity: Float = 1f,
+        mask: FloatArray = NativeTimelineClip.NO_MASK,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(target, textureId)
@@ -1823,6 +1846,8 @@ internal class TransitionProgram(private val handle: Int) {
         )
         GLES20.glUniform2f(uFlipIncoming, flip[0], flip[1])
         GLES20.glUniform1f(uOpacityIncoming, opacity)
+        GLES20.glUniform4f(uMaskAIncoming, mask[0], mask[1], mask[2], mask[3])
+        GLES20.glUniform4f(uMaskBIncoming, mask[4], mask[5], mask[6], mask[7])
     }
 
     fun bindOutgoing(
@@ -1837,6 +1862,7 @@ internal class TransitionProgram(private val handle: Int) {
         contentRect: FloatArray = FULL_FRAME,
         flip: FloatArray = NO_FLIP,
         opacity: Float = 1f,
+        mask: FloatArray = NativeTimelineClip.NO_MASK,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
         GLES20.glBindTexture(target, textureId)
@@ -1854,6 +1880,8 @@ internal class TransitionProgram(private val handle: Int) {
         )
         GLES20.glUniform2f(uFlipOutgoing, flip[0], flip[1])
         GLES20.glUniform1f(uOpacityOutgoing, opacity)
+        GLES20.glUniform4f(uMaskAOutgoing, mask[0], mask[1], mask[2], mask[3])
+        GLES20.glUniform4f(uMaskBOutgoing, mask[4], mask[5], mask[6], mask[7])
     }
 
     private companion object {

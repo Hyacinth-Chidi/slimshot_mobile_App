@@ -1135,6 +1135,7 @@ internal class TimelinePlaybackEngine(
             val r = clip.contentRect
             renderer.setLaneContentRect(lane.index, r[0], r[1], r[2], r[3])
             renderer.setLaneFlip(lane.index, clip.flipMask())
+            renderer.setLaneMask(lane.index, clip.maskUniforms())
             renderer.setLaneOpacity(lane.index, clip.opacityAt(clipProgress).toFloat())
 
             if (renderer.laneShowingImage(lane.index)) {

@@ -29,6 +29,7 @@ import '../services/media_import_service.dart';
 import '../services/video_editor_service.dart';
 import '../services/video_thumbnail_service.dart';
 import '../logic/color/color_adjustments.dart';
+import '../logic/mask/clip_mask.dart';
 
 /// True when a stored crop rect is the whole frame — i.e. not a crop at all.
 ///
@@ -783,8 +784,9 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       flipHorizontal: segment.flipHorizontal,
       flipVertical: segment.flipVertical,
       opacity: segment.opacity,
-      // Same footage, same grade.
+      // Same footage, same grade, same window.
       adjustments: segment.adjustments,
+      mask: segment.mask,
     );
 
     // Keyframes are clip-relative, so each half gets its own rescaled copy.
@@ -1029,6 +1031,20 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   }) {
     if (takeUndoSnapshot) saveStateForUndo();
     state = state.copyWith(adjustments: adjustments);
+  }
+
+  /// The selected clip's mask. [takeUndoSnapshot] false for the live frames of
+  /// a drag whose start already took one.
+  void setClipMask(ClipMask mask, {bool takeUndoSnapshot = true}) {
+    final targetId = state.selectedSegmentId;
+    if (targetId == null) return;
+    if (takeUndoSnapshot) saveStateForUndo();
+    state = state.copyWith(
+      segments: [
+        for (final s in state.segments)
+          if (s.id == targetId) s.copyWith(mask: mask) else s,
+      ],
+    );
   }
 
   /// Swaps the media under the selected clip for [asset], keeping the edit.

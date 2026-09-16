@@ -58,6 +58,7 @@ import '../features/video_editor/widgets/panels/editor_sheet.dart';
 import '../features/video_editor/widgets/editor_tool_tile.dart';
 import '../features/video_editor/widgets/panels/adjust_sheet.dart';
 import '../features/video_editor/widgets/panels/apply_to_all_button.dart';
+import '../features/video_editor/widgets/panels/mask_panel.dart';
 
 class EditorTool {
   final String id;
@@ -150,6 +151,9 @@ const EditorMenu _editMenu = EditorMenu(
     // and the two rects cannot be confused; the same label because to the
     // user it is the same verb applied to a smaller thing.
     EditorTool(id: 'clip_crop', label: 'Crop', icon: LucideIcons.crop),
+    // A window over the picture, placed on the canvas — an in-place panel like
+    // Crop, for the same reason.
+    EditorTool(id: 'mask', label: 'Mask', icon: LucideIcons.scan),
     EditorTool(
       id: 'transition',
       label: 'Transition',
@@ -1866,6 +1870,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         break;
       case 'clip_crop':
         content = _buildClipCropPanel();
+        break;
+      case 'mask':
+        content = const MaskPanel();
         break;
       case 'zoom':
         content = _buildZoomPanel();

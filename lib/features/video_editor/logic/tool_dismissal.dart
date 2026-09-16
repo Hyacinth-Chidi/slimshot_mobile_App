@@ -15,7 +15,7 @@ library;
 /// Tools whose editing happens **on the canvas** — handles dragged there, or a
 /// pinch on it. A tap on the canvas is part of using them, not a request to
 /// leave, so empty-space dismissal does not apply.
-const Set<String> kCanvasEditingTools = {'crop', 'clip_crop', 'zoom'};
+const Set<String> kCanvasEditingTools = {'crop', 'clip_crop', 'zoom', 'mask'};
 
 /// Whether a tap on the canvas's empty space dismisses the open [toolId].
 bool toolClosesOnCanvasTap(String toolId) =>

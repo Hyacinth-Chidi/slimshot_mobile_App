@@ -57,7 +57,7 @@ Grouped so each batch shares one device-verification pass.
 
 ### Batch D — larger
 
-- [ ] **D1 Mask** (rectangle, circle, linear) with feather, per clip, on the sampling
+- [x] **D1 Mask** (device check pending; rotation deferred) (rectangle, circle, linear) with feather, per clip, on the sampling
   helpers; handles on the canvas like crop.
 - [ ] **D2 Chroma key** for video overlays, on the overlay pass.
 - [ ] **D3 Speed curves.** Source time as the integral of a speed curve — its own model,

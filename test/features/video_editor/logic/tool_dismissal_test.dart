@@ -23,7 +23,7 @@ void main() {
     test('leaves a canvas-editing tool open', () {
       // Crop and clip crop drag handles on the canvas; zoom pinches it. A
       // stray tap there is part of using the tool, not a request to leave it.
-      for (final id in ['crop', 'clip_crop', 'zoom']) {
+      for (final id in ['crop', 'clip_crop', 'zoom', 'mask']) {
         expect(toolClosesOnCanvasTap(id), isFalse, reason: id);
       }
     });

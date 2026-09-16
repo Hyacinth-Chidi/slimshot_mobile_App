@@ -13,6 +13,7 @@ import '../../providers/video_editor_notifier.dart';
 import '../image_overlay/image_overlay_layer.dart';
 import '../video_overlay/video_overlay_layer.dart';
 import '../text_overlay/text_overlay_layer.dart';
+import '../../logic/mask/clip_mask.dart';
 
 enum CropDragMode { none, top, bottom, left, right, topLeft, topRight, bottomLeft, bottomRight, center }
 
@@ -312,6 +313,37 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                           ),
                         ),
 
+                        // Mask overlay: the window's outline over the fitted
+                        // picture, dragged to move and pinched to resize. The
+                        // composer shows the clip unplaced while this tool is
+                        // open, so the fit is the only transform between the
+                        // handles and the frame — the crop editor's rule.
+                        if (editorState.activeToolId == 'mask' &&
+                            editorState.selectedSegment != null &&
+                            !editorState.selectedSegment!.mask.isNone)
+                          Positioned.fill(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final frame =
+                                    _maskFrame(editorState, constraints.biggest);
+                                final mask = editorState.selectedSegment!.mask;
+                                return GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onScaleStart: (_) => _beginMaskGesture(mask),
+                                  onScaleUpdate: (details) =>
+                                      _updateMaskGesture(details, frame),
+                                  onScaleEnd: (_) => _maskGestureStart = null,
+                                  child: CustomPaint(
+                                    painter: _MaskOutlinePainter(
+                                      mask: mask,
+                                      frame: frame,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
                         // Crop overlay: the project crop tool, or a clip's own.
                         // **One editor, two targets.** The clip-crop tool reuses
                         // the project crop's handles and painter rather than
@@ -440,6 +472,53 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     _cropDragMode = CropDragMode.none;
   }
 
+  /// The mask gesture: the window as it was when the finger landed, and the
+  /// pan accumulated since, in frame fractions. Anchor-based like every drag
+  /// here — `start + total displacement`, never a running sum of deltas.
+  ClipMask? _maskGestureStart;
+  double _maskPanX = 0.0;
+  double _maskPanY = 0.0;
+
+  void _beginMaskGesture(ClipMask mask) {
+    _maskGestureStart = mask;
+    _maskPanX = 0.0;
+    _maskPanY = 0.0;
+    // One undo step for the whole gesture.
+    ref.read(videoEditorProvider.notifier).saveStateForUndo();
+  }
+
+  void _updateMaskGesture(ScaleUpdateDetails details, Rect frame) {
+    final start = _maskGestureStart;
+    if (start == null || frame.width <= 0 || frame.height <= 0) return;
+    _maskPanX += details.focalPointDelta.dx / frame.width;
+    _maskPanY += details.focalPointDelta.dy / frame.height;
+    final next = start.copyWith(
+      centerX: (start.centerX + _maskPanX).clamp(0.0, 1.0).toDouble(),
+      centerY: (start.centerY + _maskPanY).clamp(0.0, 1.0).toDouble(),
+      width: (start.width * details.scale).clamp(kMaskMinExtent, 2.0).toDouble(),
+      height: (start.height * details.scale).clamp(kMaskMinExtent, 2.0).toDouble(),
+    );
+    ref.read(videoEditorProvider.notifier).setClipMask(next, takeUndoSnapshot: false);
+  }
+
+  /// Where the selected clip's picture sits while the mask tool is open: the
+  /// contain fit of its **cropped** content — the composer keeps the clip's
+  /// own crop under the mask handles, unlike under the crop handles, because
+  /// the window is over the picture as it will play.
+  Rect _maskFrame(VideoEditorState state, Size box) {
+    final whole = Offset.zero & box;
+    final segment = state.selectedSegment;
+    final asset = segment == null ? null : state.assetFor(segment);
+    if (segment == null || asset == null) return whole;
+    return fittedFrameRect(
+      contentAspect: contentAspectRatio(
+        composeCropRects(state.projectCropRect, segment.cropRect),
+        Size(asset.width, asset.height),
+      ),
+      canvasSize: box,
+    );
+  }
+
   /// Where the picture the handles edit sits inside the canvas box, in pixels.
   ///
   /// The project's crop is a fraction of every clip's frame and its handles
@@ -533,6 +612,70 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     }
     return maxLane;
   }
+}
+
+/// The mask window's outline over the fitted frame: the edge, and a fainter
+/// line one feather out to show how far the soft edge reaches. The picture
+/// itself already shows the mask live through the engine, so this draws only
+/// what the engine cannot — where to grab.
+class _MaskOutlinePainter extends CustomPainter {
+  const _MaskOutlinePainter({required this.mask, required this.frame});
+
+  final ClipMask mask;
+  final Rect frame;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (mask.isNone) return;
+    final edge = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    final soft = Paint()
+      ..color = Colors.white.withValues(alpha: 0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    Offset at(double fx, double fy) =>
+        Offset(frame.left + fx * frame.width, frame.top + fy * frame.height);
+    final centre = at(mask.centerX, mask.centerY);
+    final halfW = mask.width / 2 * frame.width;
+    final halfH = mask.height / 2 * frame.height;
+    final featherX = mask.feather * frame.width;
+    final featherY = mask.feather * frame.height;
+
+    switch (mask.shape) {
+      case ClipMaskShape.none:
+        return;
+      case ClipMaskShape.rectangle:
+        final r = Rect.fromCenter(center: centre, width: halfW * 2, height: halfH * 2);
+        canvas.drawRect(r, edge);
+        canvas.drawRect(r.inflate(featherX), soft);
+      case ClipMaskShape.circle:
+        final r = Rect.fromCenter(center: centre, width: halfW * 2, height: halfH * 2);
+        canvas.drawOval(r, edge);
+        canvas.drawOval(Rect.fromCenter(
+          center: centre,
+          width: halfW * 2 + featherX * 2,
+          height: halfH * 2 + featherY * 2,
+        ), soft);
+      case ClipMaskShape.linear:
+        final x = centre.dx;
+        canvas.drawLine(Offset(x, frame.top), Offset(x, frame.bottom), edge);
+        canvas.drawLine(Offset(x - featherX, frame.top), Offset(x - featherX, frame.bottom), soft);
+        canvas.drawLine(Offset(x + featherX, frame.top), Offset(x + featherX, frame.bottom), soft);
+    }
+    // A grab point at the centre, so the window reads as a thing to hold.
+    canvas.drawCircle(centre, 5, Paint()..color = Colors.white);
+    canvas.drawCircle(centre, 5, Paint()
+      ..color = Colors.black54
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MaskOutlinePainter old) =>
+      old.mask != mask || old.frame != frame;
 }
 
 class _CropBoundsPainter extends CustomPainter {

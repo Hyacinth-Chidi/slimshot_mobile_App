@@ -80,6 +80,10 @@ uniform vec2 uFlipIncoming;
 uniform vec2 uFlipOutgoing;
 uniform float uOpacityIncoming;
 uniform float uOpacityOutgoing;
+uniform vec4 uMaskAIncoming;
+uniform vec4 uMaskBIncoming;
+uniform vec4 uMaskAOutgoing;
+uniform vec4 uMaskBOutgoing;
 uniform mat4 uColorMatrix;
 uniform vec4 uColorOffset;
 uniform float uColorEnabled;
@@ -170,6 +174,32 @@ vec4 backgroundAt() {
     return texture2D(uBackgroundImage, vec2(bg.x, mix(bg.y, 1.0 - bg.y, uBackgroundImageFlip)));
 }
 
+// How much of the picture shows at p (fitted-frame fractions): 1 inside the
+// mask's window, 0 outside, a soft ramp across the feather. a = (shape,
+// centerX, centerY, feather), b = (width, height, inverted, 0); shape 0 is no
+// mask. The Dart twin is `maskCoverage` in logic/mask/clip_mask.dart — the
+// arithmetic here is the arithmetic there.
+float maskCoverage(vec2 p, vec4 a, vec4 b) {
+    if (a.x < 0.5) {
+        return 1.0;
+    }
+    vec2 c = a.yz;
+    float feather = max(a.w, 0.001);
+    vec2 halfSize = max(b.xy * 0.5, vec2(0.001));
+    float coverage;
+    if (a.x < 1.5) {
+        vec2 d = abs(p - c) - halfSize;
+        float outside = max(d.x, d.y);
+        coverage = 1.0 - smoothstep(0.0, feather, outside);
+    } else if (a.x < 2.5) {
+        float r = length((p - c) / halfSize);
+        coverage = 1.0 - smoothstep(1.0, 1.0 + feather / max(halfSize.x, halfSize.y), r);
+    } else {
+        coverage = 1.0 - smoothstep(c.x - feather, c.x + feather, p.x);
+    }
+    return mix(coverage, 1.0 - coverage, b.z);
+}
+
 vec4 incomingAt(vec2 uv) {
     vec2 centred = rotateCanvas(uv - uPanIncoming * vec2(1.0, -1.0), uRotationIncoming);
     vec2 fitted = (centred - 0.5) / uFitIncoming + 0.5;
@@ -177,6 +207,10 @@ vec4 incomingAt(vec2 uv) {
     if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
         return backgroundAt();
     }
+    // The mask is a window over the picture as displayed, so it reads the
+    // frame position before the mirror: flipping the clip does not move the
+    // window.
+    vec2 windowIncoming = fitted;
     // Mirror inside the fitted frame — after placement, before the content
     // rect — so the picture flips where it sits and the frame does not move.
     // uFlip* is 0/1 per axis; mix with a 0/1 weight is a select.
@@ -188,7 +222,14 @@ vec4 incomingAt(vec2 uv) {
     // the clip pass, and the fill is already what shows around the clip. After
     // the clip's own grade — fading what the user sees — and before the effect
     // chain, so a blurred clip at 50% is a blurred clip, half-present.
-    return mix(backgroundAt(), graded, uOpacityIncoming);
+    // Outside the window is the letterbox fill, exactly as a letterbox pixel
+    // is, so every transition inherits the mask. Multiplies the opacity: a
+    // masked clip fading is a masked clip, fading.
+    return mix(
+        backgroundAt(),
+        graded,
+        uOpacityIncoming * maskCoverage(windowIncoming, uMaskAIncoming, uMaskBIncoming)
+    );
 }
 
 vec4 outgoingAt(vec2 uv) {
@@ -197,11 +238,16 @@ vec4 outgoingAt(vec2 uv) {
     if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
         return backgroundAt();
     }
+    vec2 windowOutgoing = fitted;
     fitted = mix(fitted, 1.0 - fitted, uFlipOutgoing);
     vec2 source = uContentRectOutgoing.xy + fitted * uContentRectOutgoing.zw;
     vec4 texel = texture2D(uOutgoing, (uTexMatrixOutgoing * vec4(source, 0.0, 1.0)).xy);
     vec4 graded = gradeClip(texel, uClipMatrixOutgoing, uClipOffsetOutgoing, uClipColorOutgoing);
-    return mix(backgroundAt(), graded, uOpacityOutgoing);
+    return mix(
+        backgroundAt(),
+        graded,
+        uOpacityOutgoing * maskCoverage(windowOutgoing, uMaskAOutgoing, uMaskBOutgoing)
+    );
 }
 
 float ease(float t) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../logic/animation/animatable_double.dart';
+import '../logic/mask/clip_mask.dart';
 
 /// A resolved editor timeline, ready to hand to the native preview engine.
 ///
@@ -237,6 +238,7 @@ class EditorTimelineVideoClip {
     this.flipHorizontal = false,
     this.flipVertical = false,
     this.opacity = const AnimatableDouble(baseValue: 1.0),
+    this.mask = ClipMask.none,
   });
 
   final String id;
@@ -363,6 +365,9 @@ class EditorTimelineVideoClip {
   /// How present the clip is, 0..1. See `VideoSegment.opacity`.
   final AnimatableDouble opacity;
 
+  /// The window over the picture. See `VideoSegment.mask`.
+  final ClipMask mask;
+
   double get timelineDuration => timelineEnd - timelineStart;
 
   /// This clip's 0..1 position at a timeline instant.
@@ -444,6 +449,7 @@ class EditorTimelineVideoClip {
       'canvasOffsetY': canvasOffsetY.toJson(),
       'canvasRotation': canvasRotation.toJson(),
       'opacity': opacity.toJson(),
+      if (!mask.isNone) 'mask': mask.toJson(),
       // Only when set, so an older engine reads the payload it always did.
       if (flipHorizontal) 'flipHorizontal': true,
       if (flipVertical) 'flipVertical': true,

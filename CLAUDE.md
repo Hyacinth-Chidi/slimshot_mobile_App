@@ -1449,6 +1449,30 @@ the project background rather than to black was the open question; the backgroun
 that is what the bars already show and a fade that revealed a different colour would read as a
 flash.
 
+### Mask — a window over the picture
+
+**Awaiting device verification** (the coverage half is GLSL). `VideoSegment.mask` (`logic/mask/clip_mask.dart`)
+is a shape — rectangle, circle (an ellipse of the window's size) or linear (keeps the left of the
+centre, fades to the right) — with a centre, a size, a feather and an invert, **authored in
+fractions of the clip's fitted frame** like the crop rect, so it travels with the clip's placement
+and a draft renders identically anywhere. In the shader `maskCoverage` multiplies the clip's opacity
+in the sampling helpers: outside the window is the letterbox fill exactly as a letterbox pixel is,
+so every transition inherits the mask. It reads the fitted coordinate **before the mirror** — the
+window is over the picture as displayed, and flipping the clip must not move it. `maskCoverage` in
+Dart is the shader's twin, pinned by tests; if one changes the other must. The two vec4s
+`(shape, centerX, centerY, feather)` / `(width, height, inverted, 0)` are encoded once on each side
+(`maskUniforms`, `NativeTimelineClip.maskUniforms`) in a fixed order and tested to match.
+
+**Mask is an in-place panel, not a sheet**: the window is placed on the canvas — drag to move,
+pinch to resize, with the outline and a grab point drawn by `_MaskOutlinePainter` — and a sheet
+would cover the surface being edited. The panel holds only what the canvas cannot: shape, feather,
+invert. While the tool is open the composer shows the clip **unplaced but cropped**: scale, pan,
+rotation and mirror suspended so the canvas maps a drag through the fit alone, the clip's own crop
+kept because the window is over the picture as it will play — the crop tool's rule, one step
+gentler (`unplaced` vs `plain`). It joins `kCanvasEditingTools`. Switching shape keeps the window
+where it was. Plain values, not animatable yet: a moving mask is four coupled numbers with a design
+of its own.
+
 ### Replace clip — swap the file, keep the edit
 
 `replaceClipAsset` puts a picked file under the selected clip. Everything the user did to the clip
