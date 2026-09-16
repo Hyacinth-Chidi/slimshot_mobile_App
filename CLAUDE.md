@@ -378,6 +378,13 @@ migration. Unknown names (e.g. `circleOpen` from old drafts) degrade to a hard c
 - **Serialisation:** hand-written `toJson`/`fromJson`, defensive on read
   (`(x as num?)?.toDouble() ?? default`).
 - Colours from `AppColors`, never hard-coded. Dark theme only. Lucide icons.
+- **Motion comes from `AppMotion`** (`core/theme/app_motion.dart`): Material 3 emphasized —
+  380ms decelerate in, 260ms accelerate out, leaving always quicker than arriving. Sheets
+  (`showEditorSheet`), the bottom-area switcher (`EditorPanelSwitcher`), the `AnimatedSize` around
+  it and the timeline's compact resize all read it, because they used to run on three clocks and
+  a height that lands before or after its content reads as a stutter. The sheet route fixes its
+  own curve, so it takes only the durations. A panel slides in from *fully* below, like a sheet,
+  not the old 40% nudge.
 - **Sheets open through `showEditorSheet`** (`widgets/panels/editor_sheet.dart`), never
   `showModalBottomSheet` directly — a test scans `lib/` for strays. It paints **no barrier tint**:
   a sheet here is a set of choices *about* the picture (a curve, a filter, a transition), and
@@ -1703,6 +1710,7 @@ Drag-and-drop lives in `ScrollableTimeline`. The shape of it:
 | Filter scope | Both: a project look **and** per-clip looks, switched by one "apply to all" toggle and kept mutually exclusive so nothing grades twice. |
 | Transition scope | Same toggle in the transition sheet; "all" writes every seam except the last. |
 | Transition frame source | Two live decoders. Freeze-frame was built, reviewed and rejected. |
+| Panels vs sheets | **A tool that edits on the canvas or the timeline is an in-place panel; a set of choices about the picture is a sheet.** Crop, clip crop, Trim, Zoom and Speed stay panels — a sheet is modal and would cover the very surface they edit (handles on the canvas, handles and the stretching clip on the timeline). Curve, Transform, Filters, Effects and Transitions are sheets. Volume and Background could go either way and stay panels so the family reads as one rule; the two kinds share `AppMotion` and the same look instead. |
 
 Fuller detail, ordering, and the test matrix are in `docs/roadmap.md`. Approaches already tried and
 rejected are in `docs/dead-ends.md` â€” read it before proposing an architecture.

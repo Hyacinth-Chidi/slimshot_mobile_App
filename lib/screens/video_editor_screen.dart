@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_motion.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/permission_dialog.dart';
 import '../core/services/ad_service.dart';
@@ -51,6 +52,7 @@ import '../features/video_editor/widgets/panels/zoom_panel.dart';
 import '../features/video_editor/widgets/panels/background_panel.dart';
 import '../features/video_editor/widgets/panels/opacity_panel.dart';
 import '../features/video_editor/widgets/panels/animation_drawer.dart';
+import '../features/video_editor/widgets/panels/editor_panel_switcher.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
 
 class EditorTool {
@@ -2488,8 +2490,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
               // 3 & 4. Scrollable Timeline Area and Bottom Toolbar
               AnimatedSize(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
+                // On the editor's motion, like the panel switcher and the
+                // timeline inside it: this wraps both, so its height is their
+                // sum, and a different clock here lags or leads them.
+                duration: AppMotion.enter,
+                curve: AppMotion.enterCurve,
                 alignment: Alignment.topCenter,
                 child: Offstage(
                   offstage: _isFullscreen,
@@ -2543,44 +2548,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                               : BorderRadius.zero,
                           child: SafeArea(
                             top: false,
-                            child: AnimatedSize(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOutCubic,
-                              alignment: Alignment.bottomCenter,
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 300),
-                                reverseDuration: const Duration(
-                                  milliseconds: 250,
-                                ),
-                                layoutBuilder:
-                                    (currentChild, previousChildren) {
-                                      return Stack(
-                                        alignment: Alignment.bottomCenter,
-                                        children: <Widget>[
-                                          ...previousChildren,
-                                          if (currentChild != null)
-                                            currentChild,
-                                        ],
-                                      );
-                                    },
-                                transitionBuilder: (child, animation) {
-                                  return SlideTransition(
-                                    position:
-                                        Tween<Offset>(
-                                          begin: const Offset(0, 0.4),
-                                          end: Offset.zero,
-                                        ).animate(
-                                          CurvedAnimation(
-                                            parent: animation,
-                                            curve: Curves.easeOutCubic,
-                                          ),
-                                        ),
-                                    child: FadeTransition(
-                                      opacity: animation,
-                                      child: child,
-                                    ),
-                                  );
-                                },
+                            // Toolbar, panel and context menu swap with the
+                            // motion a sheet has — see EditorPanelSwitcher.
+                            child: EditorPanelSwitcher(
                                 child: editorState.activeToolId == null
                                     ? (editorState.selectedAudioId != null
                                           ? _buildAudioContextMenu()
@@ -2604,7 +2574,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                                             ),
                                         ],
                                       ),
-                              ),
                             ),
                           ),
                         ),

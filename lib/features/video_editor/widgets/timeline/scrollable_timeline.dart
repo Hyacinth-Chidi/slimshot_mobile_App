@@ -8,6 +8,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/utils/toast_utils.dart';
 import '../../logic/timeline/timeline_geometry.dart';
 import '../../logic/transitions/transition_catalog.dart';
@@ -1788,10 +1789,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final double contentHeight = max(totalHeight, containerHeight - 16.0);
 
     return AnimatedContainer(
-      // Animated so the release of slack on a tool opening moves with the
-      // panel's own AnimatedSize rather than snapping ahead of it.
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
+      // Animated on the editor's motion, so the release of slack on a tool
+      // opening moves with the panel's own growth rather than snapping ahead
+      // of it or trailing behind.
+      duration: AppMotion.enter,
+      curve: AppMotion.enterCurve,
       height: containerHeight, // padding handled by containerHeight
       color: AppColors.background, // match dark theme
       child: Stack(

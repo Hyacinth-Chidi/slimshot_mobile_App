@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_motion.dart';
+
 /// Opens a sheet over the editor, and **the canvas stays clear behind it**.
 ///
 /// Every editor sheet — transitions, transform, filters, effects, the curve
@@ -12,12 +14,14 @@ import 'package:flutter/material.dart';
 /// The barrier is still there — a tap outside still closes the sheet — it
 /// simply paints nothing.
 ///
-/// Also fixes the two settings every editor sheet already shared: the sheet
-/// draws its own background (the sheet widget owns its colour, radius and grab
-/// handle, so the route paints nothing), and it is scroll-controlled so a
-/// sheet may take the height it needs on a short screen. A test scans `lib/`
-/// for stray `showModalBottomSheet` calls, because a new sheet opened directly
-/// would bring the tint back without anyone having chosen it.
+/// Also fixes the settings every editor sheet already shared: the sheet draws
+/// its own background (the sheet widget owns its colour, radius and grab
+/// handle, so the route paints nothing), it is scroll-controlled so a sheet
+/// may take the height it needs on a short screen, and it moves on
+/// [AppMotion] — the same timing the bottom tool panels use, so a sheet and a
+/// panel arrive and leave as one family. A test scans `lib/` for stray
+/// `showModalBottomSheet` calls, because a new sheet opened directly would
+/// bring the tint and the stock timing back without anyone having chosen them.
 Future<T?> showEditorSheet<T>(
   BuildContext context, {
   required WidgetBuilder builder,
@@ -27,6 +31,7 @@ Future<T?> showEditorSheet<T>(
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.transparent,
+    sheetAnimationStyle: AppMotion.sheet,
     builder: builder,
   );
 }

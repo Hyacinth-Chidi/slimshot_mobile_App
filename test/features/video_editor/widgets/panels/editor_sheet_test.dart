@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/theme/app_motion.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/editor_sheet.dart';
 
 /// Every sheet in the editor opens over a **clear** canvas.
@@ -81,6 +82,38 @@ void main() {
     expect(find.byKey(const Key('sheet_body')), findsNothing);
   });
 
+  testWidgets("the sheet route runs on the editor's motion", (tester) async {
+    // Flutter's stock sheet is 250ms in, 200ms out — brisk next to the
+    // panels, and the two read as different apps. Both now take their timing
+    // from AppMotion. (The route fixes its own curve; only the durations are
+    // ours to set.)
+    ModalRoute<void>? route;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showEditorSheet<void>(
+                context,
+                builder: (sheetContext) {
+                  route = ModalRoute.of<void>(sheetContext);
+                  return const SizedBox(height: 120);
+                },
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(route, isNotNull);
+    expect(route!.transitionDuration, AppMotion.enter);
+    expect(route!.reverseTransitionDuration, AppMotion.exit);
+  });
+
   test('every sheet in the editor opens through the one opener', () {
     // A source scan, because the rule is a UX decision the compiler cannot
     // hold: a direct `showModalBottomSheet` anywhere in the editor gets
@@ -91,7 +124,10 @@ void main() {
       final normalised = entity.path.replaceAll('\\', '/');
       if (normalised.endsWith('/widgets/panels/editor_sheet.dart')) continue;
       final source = entity.readAsStringSync();
-      if (source.contains('showModalBottomSheet')) offenders.add(normalised);
+      // The call, not the word: a doc comment may name what not to use.
+      if (RegExp(r'showModalBottomSheet\s*[<(]').hasMatch(source)) {
+        offenders.add(normalised);
+      }
     }
     expect(offenders, isEmpty,
         reason: 'open sheets with showEditorSheet, not showModalBottomSheet');
