@@ -28,6 +28,7 @@ import '../core/models/draft_project.dart';
 import '../features/video_editor/logic/animation/clip_keyframes.dart';
 import '../features/video_editor/widgets/editor_playback_controls.dart';
 import '../features/video_editor/widgets/panels/keyframe_easing_sheet.dart';
+import '../features/video_editor/widgets/panels/transform_sheet.dart';
 import '../features/video_editor/widgets/timeline/scrollable_timeline.dart';
 import 'package:flutter/scheduler.dart';
 import '../features/video_editor/widgets/video_editor_top_bar.dart';
@@ -124,6 +125,10 @@ const EditorMenu _editMenu = EditorMenu(
     ),
     EditorTool(id: 'speed', label: 'Speed', icon: LucideIcons.gauge),
     EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
+    // Also on the root menu. Here because the root menu is hidden while a
+    // clip is selected, and a tool reachable only by deselecting the clip you
+    // want to transform is not reachable.
+    EditorTool(id: 'transform', label: 'Transform', icon: LucideIcons.move),
     EditorTool(
       id: 'transition',
       label: 'Transition',
@@ -1551,6 +1556,20 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       isScrollControlled: true,
                       backgroundColor: Colors.transparent,
                       builder: (context) => const FiltersDrawer(),
+                    );
+                  } else if (tool.id == 'transform') {
+                    // From the root menu nothing is selected, so the clip
+                    // meant is the one under the playhead. With none — an
+                    // empty project — the sheet says so rather than opening
+                    // on nothing.
+                    if (editorState.selectedSegmentId == null) {
+                      notifier.selectSegmentAtPlayhead();
+                    }
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const TransformSheet(),
                     );
                   } else if (tool.id == 'effects' &&
                       editorState.currentMenuId == 'edit') {

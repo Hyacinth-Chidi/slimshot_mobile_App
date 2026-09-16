@@ -533,6 +533,21 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
+  /// Selects the clip under the playhead, if there is one.
+  ///
+  /// For tools on the **root** menu that act on a clip — Transform is the
+  /// first. The root menu shows when nothing is selected, so "the clip the
+  /// user means" is the one they are looking at: the one under the playhead.
+  /// Resolved through `segmentIndexAt`, the same geometry the filmstrip and
+  /// playback use, so a transition overlap resolves to the clip actually on
+  /// screen. Returns whether a clip was selected.
+  bool selectSegmentAtPlayhead() {
+    final index = segmentIndexAt(state.currentPlaybackPosition, state.segments);
+    if (index < 0 || index >= state.segments.length) return false;
+    selectSegment(state.segments[index].id);
+    return true;
+  }
+
   void selectSegment(String id) {
     if (state.selectedSegmentId == id && state.isClipSelected) return;
     state = state.copyWith(
@@ -824,6 +839,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     required double scale,
     required double offsetX,
     required double offsetY,
+    double? rotation,
   }) {
     // **Three properties, one instant.** Routed through the edit rule like
     // every other control, so the gesture keyframes itself on a clip carrying
@@ -848,10 +864,20 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
           offsetX.clamp(-1.5, 1.5).toDouble(),
           playheadProgress: progress,
         );
-        return _writeClipValue(
+        out = _writeClipValue(
           out,
           ClipProperty.canvasOffsetY,
           offsetY.clamp(-1.5, 1.5).toDouble(),
+          playheadProgress: progress,
+        );
+        // Optional on purpose: the pinch gesture has no angle to give, and
+        // writing zero for it would silently un-rotate a clip the moment it
+        // was moved.
+        if (rotation == null) return out;
+        return _writeClipValue(
+          out,
+          ClipProperty.canvasRotation,
+          normaliseDegrees(rotation),
           playheadProgress: progress,
         );
       },
@@ -878,6 +904,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
               canvasScale: kUnitParameter,
               canvasOffsetX: kZeroParameter,
               canvasOffsetY: kZeroParameter,
+              canvasRotation: kZeroParameter,
             )
           else
             segment,
