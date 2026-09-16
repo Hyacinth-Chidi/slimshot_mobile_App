@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/draft_project.dart';
 import 'draft_refresh_notifier.dart';
+import 'draft_files.dart';
 
 class DraftService {
   static const _storageKey = 'video_drafts';
@@ -95,6 +96,9 @@ class DraftService {
     
     final itemToRemove = items.firstWhere((item) => item.id == id, orElse: () => throw Exception('Draft not found'));
     _deleteThumbnail(itemToRemove.thumbnailPath);
+    // The draft's folder and every file named for it: proxies, cover, frozen
+    // frames, background photo.
+    await DraftFiles.deleteAll(id);
 
     items.removeWhere((item) => item.id == id);
     await _saveAll(items, prefs);
@@ -106,6 +110,7 @@ class DraftService {
     final items = await getDrafts();
     for (final item in items) {
        _deleteThumbnail(item.thumbnailPath);
+       await DraftFiles.deleteAll(item.id);
     }
     await prefs.remove(_storageKey);
     DraftRefreshNotifier.instance.refresh();

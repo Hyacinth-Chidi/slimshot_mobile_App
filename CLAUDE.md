@@ -1879,8 +1879,31 @@ Drag-and-drop lives in `ScrollableTimeline`. The shape of it:
   audio (dead-ends entry 22); the linear resampler that replaced it does rate conversion and speed
   with no dependency that can throw, at the cost of pitch on a sped-up clip. The preview preserves
   it, so the two differ.
-- **Proxy/cache files live in `getTemporaryDirectory()`** but are referenced from draft JSON, so
-  reopening an old draft can point at deleted files. Draft cache management is unbuilt.
+
+### Draft files — a draft owns its folder
+
+A draft is JSON in preferences that *points at* files, and until now those files were scattered
+and orphaned: proxies went to `getTemporaryDirectory()`, which `FileUtils.cleanupStartup` sweeps
+by prefix at every launch — so a draft reopened after a restart pointed its reversed clips at
+nothing — and `DraftService.deleteDraft` deleted only the thumbnail, leaving the proxies, cover,
+frozen frames and background photo behind for good.
+
+`lib/core/services/draft_files.dart` is the one place that knows where a draft's files live.
+Proxies render into `drafts/<id>/proxies/` under the documents directory (both proxy methods on
+`VideoEditorService` take an `outputDir`; the notifier passes the draft's — a project with no
+draft yet still falls back to temp). `DraftFiles.deleteAll(id)` removes that folder **and** the
+root-level files named for the draft (`cover_<id>_*`, `freeze_<id>_*`, `bg_<id>_*`), and is called
+from `deleteDraft` and `clearAll`. It matches on `<kind>_<id>_` so a look-alike id (`d1` versus
+`d10`) cannot take another draft's files — a test pins that.
+
+**A reopened draft heals itself and says so once.** `loadDraft` drops any `overrideVideoPath`
+whose file is gone (`_healMissingProxies`): the clip is fine — it plays from its source — and a
+reversed clip **keeps its reversal**, losing only the dead file. The screen toasts one notice
+(`takeLoadNotice`, consumed on read) and the reversed clips' proxies are rendered again in the
+background (`_renderReverseProxy`, the second half of `toggleReverse` on its own). Until that
+render lands the clip plays forward, and export still refuses a reversed clip without a proxy by
+name, which is the honest state. `rerenderMissingProxies: false` exists only so tests, which have
+no FFmpeg, can exercise the heal.
 
 ### Decisions already made â€” don't re-litigate
 

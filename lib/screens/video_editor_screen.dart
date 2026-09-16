@@ -430,6 +430,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final notifier = ref.read(videoEditorProvider.notifier);
     try {
       await notifier.loadDraft(draft);
+      final notice = notifier.takeLoadNotice();
+      if (notice != null && mounted) ToastUtils.show(context, notice);
       await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
     } catch (e) {
       if (!mounted) return;

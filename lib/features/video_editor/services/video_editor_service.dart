@@ -31,15 +31,19 @@ class VideoEditorService {
     required double sourceStart,
     required double sourceEnd,
     void Function(double progress)? onProgress,
+    Directory? outputDir,
   }) async {
     final duration = sourceEnd - sourceStart;
     if (duration <= 0) {
       throw ArgumentError('Playback proxy duration must be greater than zero.');
     }
 
-    final tempDir = await getTemporaryDirectory();
+    // Into the draft's own folder when the caller has one — the temp
+    // directory is swept by prefix at startup, which is how a reopened draft
+    // came to point at proxies that no longer existed.
+    final dir = outputDir ?? await getTemporaryDirectory();
     final outputPath =
-        '${tempDir.path}/${FileUtils.filePrefix}clip_proxy_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        '${dir.path}/${FileUtils.filePrefix}clip_proxy_${DateTime.now().millisecondsSinceEpoch}.mp4';
     final hasAudio = await _hasAudioStream(inputPath);
 
     final args = <String>[
@@ -118,15 +122,16 @@ class VideoEditorService {
     required double sourceStart,
     required double sourceEnd,
     void Function(double progress)? onProgress,
+    Directory? outputDir,
   }) async {
     final duration = sourceEnd - sourceStart;
     if (duration <= 0) {
       throw ArgumentError('Reverse proxy duration must be greater than zero.');
     }
 
-    final tempDir = await getTemporaryDirectory();
+    final dir = outputDir ?? await getTemporaryDirectory();
     final outputPath =
-        '${tempDir.path}/${FileUtils.filePrefix}reverse_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        '${dir.path}/${FileUtils.filePrefix}reverse_${DateTime.now().millisecondsSinceEpoch}.mp4';
     final hasAudio = await _hasAudioStream(inputPath);
 
     final args = <String>[

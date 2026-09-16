@@ -30,6 +30,7 @@ import '../services/video_editor_service.dart';
 import '../services/video_thumbnail_service.dart';
 import '../logic/color/color_adjustments.dart';
 import '../logic/mask/clip_mask.dart';
+import '../../../core/services/draft_files.dart';
 
 /// True when a stored crop rect is the whole frame — i.e. not a crop at all.
 ///
@@ -369,9 +370,103 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
   static const _migratedAssetId = 'asset_migrated_source';
 
-  Future<void> loadDraft(DraftProject draft) async {
+  /// What a reopened draft had to give up, for the screen to say once.
+  String? _loadNotice;
+
+  /// The notice from the last [loadDraft], once; null when there was none or
+  /// it has already been taken.
+  String? takeLoadNotice() {
+    final notice = _loadNotice;
+    _loadNotice = null;
+    return notice;
+  }
+
+  /// The draft's own proxies folder, or null for a project with no draft yet
+  /// (the service then falls back to the temp directory, as before).
+  Future<Directory?> _proxiesDir() async {
+    final id = state.draftId;
+    if (id == null) return null;
+    try {
+      return await DraftFiles.proxiesDir(id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Clips whose rendered proxy is gone stop pointing at it.
+  ///
+  /// The clip itself is fine — it plays from its source — and a reversed clip
+  /// keeps its reversal; only the file is dead. Returns how many were healed,
+  /// and the ids of reversed clips that need their proxy rendered again.
+  ({List<VideoSegment> segments, int healed, List<String> reversedToRender})
+      _healMissingProxies(List<VideoSegment> segments) {
+    var healed = 0;
+    final reversed = <String>[];
+    final out = [
+      for (final s in segments)
+        if (s.overrideVideoPath != null && !DraftFiles.exists(s.overrideVideoPath))
+          () {
+            healed++;
+            if (s.isReversed) reversed.add(s.id);
+            return s.copyWith(clearOverrideVideoPath: true);
+          }()
+        else
+          s,
+    ];
+    return (segments: out, healed: healed, reversedToRender: reversed);
+  }
+
+  /// Renders the reverse proxy for a clip that is already marked reversed —
+  /// the second half of [toggleReverse], for a reopened draft whose proxy is
+  /// gone. Leaves the clip as it is on any failure; it still plays forward
+  /// from its source, and export names the problem.
+  Future<void> _renderReverseProxy(String segmentId) async {
+    final index = state.segments.indexWhere((s) => s.id == segmentId);
+    if (index == -1) return;
+    final segment = state.segments[index];
+    if (!segment.isReversed || segment.overrideVideoPath != null) return;
+    final asset = state.assetFor(segment);
+    if (asset == null || asset.isImage || asset.path.isEmpty) return;
+    try {
+      final proxyPath = await _editorService.createReverseProxy(
+        inputPath: asset.path,
+        sourceStart: segment.sourceStart,
+        sourceEnd: segment.sourceEnd,
+        outputDir: await _proxiesDir(),
+      );
+      final currentIndex = state.segments.indexWhere((s) => s.id == segmentId);
+      if (currentIndex == -1) {
+        await FileUtils.deleteFile(proxyPath);
+        return;
+      }
+      final current = state.segments[currentIndex];
+      if (!current.isReversed ||
+          current.overrideVideoPath != null ||
+          (current.sourceStart - segment.sourceStart).abs() > 0.001 ||
+          (current.sourceEnd - segment.sourceEnd).abs() > 0.001) {
+        await FileUtils.deleteFile(proxyPath);
+        return;
+      }
+      final updated = [...state.segments];
+      updated[currentIndex] = current.copyWith(overrideVideoPath: proxyPath);
+      state = state.copyWith(segments: updated);
+    } catch (_) {
+      // Left as it is; export refuses a reversed clip without a proxy by name.
+    }
+  }
+
+  /// [rerenderMissingProxies] exists for tests, which have no FFmpeg.
+  Future<void> loadDraft(
+    DraftProject draft, {
+    bool rerenderMissingProxies = true,
+  }) async {
     final assets = _restoreAssets(draft);
-    final segments = _restoreSegments(draft, assets);
+    final healed = _healMissingProxies(_restoreSegments(draft, assets));
+    final segments = healed.segments;
+    _loadNotice = healed.healed == 0
+        ? null
+        : 'Some cached files for this project were missing and have been '
+            'reset. Reversed clips are being re-rendered.';
 
     state = state.copyWith(
       draftId: draft.id,
@@ -436,6 +531,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedTransitionSegmentId: true,
       isClipSelected: false,
     );
+
+    if (rerenderMissingProxies) {
+      for (final id in healed.reversedToRender) {
+        unawaited(_renderReverseProxy(id));
+      }
+    }
 
     // Update trimRange based on first segment to give a valid initial state
     if (state.segments.isNotEmpty) {
@@ -1285,6 +1386,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       inputPath: sourceVideoPath,
       sourceStart: segment.sourceStart,
       sourceEnd: segment.sourceEnd,
+      outputDir: await _proxiesDir(),
     );
 
     final currentIndex = state.segments.indexWhere((s) => s.id == segmentId);
@@ -1403,6 +1505,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       inputPath: sourceVideoPath,
       sourceStart: segment.sourceStart,
       sourceEnd: segment.sourceEnd,
+      outputDir: await _proxiesDir(),
     );
 
     final currentIndex = state.segments.indexWhere((s) => s.id == segmentId);

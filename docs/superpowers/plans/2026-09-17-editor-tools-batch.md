@@ -68,7 +68,7 @@ Grouped so each batch shares one device-verification pass.
 
 ### Housekeeping
 
-- [ ] **H1 Draft cache.** Proxies and caches move out of `getTemporaryDirectory()` into the
+- [x] **H1 Draft cache.** Proxies and caches move out of `getTemporaryDirectory()` into the
   documents dir per draft, deleted with the draft; a draft whose files are gone says so and
   re-renders them rather than pointing at nothing.
 
