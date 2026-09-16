@@ -151,4 +151,45 @@ void main() {
       expect(r.bottom, lessThanOrEqualTo(1));
     });
   });
+
+
+  group('fittedFrameRect', () {
+    // The Dart half of Kotlin's `LaneFit.of`: where a clip's picture lands
+    // inside the canvas box once contain-fitted. The clip-crop editor draws
+    // its handles over *this* rect, not the whole box — a rectangle drawn over
+    // a letterboxed clip's bars would crop a region the user never pointed at.
+    const box = Size(360, 640);
+
+    test('a wide picture in a tall box keeps full width, bars above and below',
+        () {
+      final r = fittedFrameRect(contentAspect: 16 / 9, canvasSize: box);
+      expect(r.left, closeTo(0, 1e-9));
+      expect(r.width, closeTo(360, 1e-9));
+      expect(r.height, closeTo(202.5, 1e-9));
+      expect(r.top, closeTo(218.75, 1e-9));
+    });
+
+    test('a tall picture in a wide box keeps full height, bars either side',
+        () {
+      final r = fittedFrameRect(
+          contentAspect: 9 / 16, canvasSize: const Size(640, 360));
+      expect(r.top, closeTo(0, 1e-9));
+      expect(r.height, closeTo(360, 1e-9));
+      expect(r.width, closeTo(202.5, 1e-9));
+      expect(r.left, closeTo(218.75, 1e-9));
+    });
+
+    test('a matching shape fills the box', () {
+      final r = fittedFrameRect(contentAspect: 9 / 16, canvasSize: box);
+      expect(r, const Rect.fromLTWH(0, 0, 360, 640));
+    });
+
+    test('an unknown shape fills the box rather than guessing one', () {
+      // The same rule `LaneFit.of` follows for an unprobed clip.
+      expect(fittedFrameRect(contentAspect: null, canvasSize: box),
+          const Rect.fromLTWH(0, 0, 360, 640));
+      expect(fittedFrameRect(contentAspect: 0, canvasSize: box),
+          const Rect.fromLTWH(0, 0, 360, 640));
+    });
+  });
 }

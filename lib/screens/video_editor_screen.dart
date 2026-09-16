@@ -1267,6 +1267,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       // playhead is standing on.
       showsKeyframeControls: editorState.keyframeClipId != null,
       isOnKeyframe: editorState.playheadIsOnKeyframe,
+      // Dim while the playhead is on another clip: there is no instant of the
+      // selected clip to pin, and the old clamp pinned its edge instead.
+      canToggleKeyframe: editorState.selectedClipProgress != null,
       onToggleKeyframe: () {
         HapticFeedback.selectionClick();
         final notifier = ref.read(videoEditorProvider.notifier);
@@ -1311,6 +1314,30 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     );
     if (!mounted) return;
     ref.read(videoEditorProvider.notifier).deselectAll();
+  }
+
+  /// Opens the transform sheet on the selected clip — or, from the root menu,
+  /// on the clip under the playhead — and **puts back what it borrowed**.
+  ///
+  /// From the root menu nothing is selected, so the sheet selects the clip
+  /// under the playhead itself. That selection is the sheet's, not the user's:
+  /// the toolbar is chosen by `currentMenuId`, which stays on root, so leaving
+  /// the clip selected showed root tools beside a selected clip and its
+  /// keyframe controls — a half state the user never entered. Awaiting the
+  /// sheet covers every way it closes, the same reason
+  /// [_showTransitionsDrawer] awaits. A selection the user made stays.
+  Future<void> _showTransformSheet() async {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final borrowed = ref.read(videoEditorProvider).selectedSegmentId == null &&
+        notifier.selectSegmentAtPlayhead();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const TransformSheet(),
+    );
+    if (!mounted || !borrowed) return;
+    notifier.deselectAll();
   }
 
   void _openFullscreenPreview() {
@@ -1563,19 +1590,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       builder: (context) => const FiltersDrawer(),
                     );
                   } else if (tool.id == 'transform') {
-                    // From the root menu nothing is selected, so the clip
-                    // meant is the one under the playhead. With none — an
-                    // empty project — the sheet says so rather than opening
-                    // on nothing.
-                    if (editorState.selectedSegmentId == null) {
-                      notifier.selectSegmentAtPlayhead();
-                    }
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (context) => const TransformSheet(),
-                    );
+                    _showTransformSheet();
                   } else if (tool.id == 'effects' &&
                       editorState.currentMenuId == 'edit') {
                     // Gated on the clip menu: the root and audio menus carry an

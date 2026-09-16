@@ -543,7 +543,9 @@ internal class VideoExportEngine(
                 Math.toRadians(clip.canvasRotationAt(clipProgress)).toFloat(),
             )
         } else {
-            val (fitX, fitY) = LaneFit.of(clip.sourceAspect, renderAspect)
+            // Fitted by what the lane shows through its rect, not by the
+            // whole frame — the same rule the preview engine applies.
+            val (fitX, fitY) = LaneFit.of(clip.contentAspect, renderAspect)
             renderer.setLaneFit(
                 clip.laneIndex,
                 fitX * clip.canvasScaleAt(clipProgress).toFloat(),

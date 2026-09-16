@@ -18,6 +18,7 @@ void main() {
     bool showsKeyframeControls = true,
     bool isOnKeyframe = false,
     bool canEditCurve = true,
+    bool canToggleKeyframe = true,
     VoidCallback? onToggleKeyframe,
     VoidCallback? onOpenEasing,
   }) {
@@ -35,6 +36,7 @@ void main() {
             showsKeyframeControls: showsKeyframeControls,
             isOnKeyframe: isOnKeyframe,
             canEditCurve: canEditCurve,
+            canToggleKeyframe: canToggleKeyframe,
             onToggleKeyframe: onToggleKeyframe,
             onOpenEasing: onOpenEasing,
           ),
@@ -97,6 +99,27 @@ void main() {
       await pumpControls(tester, onOpenEasing: () => opened++);
       await tester.tap(find.byKey(const Key('keyframe_easing')));
       expect(opened, 1);
+    });
+
+    testWidgets('with the playhead off the clip the toggle is dim and inert',
+        (tester) async {
+      // A clip stays selected while the playhead moves onto its neighbour.
+      // There is no instant of *this* clip under the playhead then, so there
+      // is nothing for a plus to pin — it dims rather than acting on an edge.
+      var toggled = 0;
+      await pumpControls(
+        tester,
+        canToggleKeyframe: false,
+        onToggleKeyframe: () => toggled++,
+      );
+
+      await tester.tap(find.byKey(const Key('keyframe_toggle')));
+      expect(toggled, 0);
+
+      expect(find.byKey(const Key('keyframe_toggle')), findsOneWidget);
+      final icon =
+          tester.widget<KeyframeToggleIcon>(find.byType(KeyframeToggleIcon));
+      expect(icon.enabled, isFalse);
     });
 
     testWidgets('with nothing to ease the curve icon is dim and inert',

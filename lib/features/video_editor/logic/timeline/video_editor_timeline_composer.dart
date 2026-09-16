@@ -75,6 +75,9 @@ class VideoEditorTimelineComposer {
       final timelineStart = timelineCursor;
       final timelineEnd = timelineStart + segment.duration;
       final transitionDuration = transitionDurations[index];
+      // The clip under the crop handles shows **plain** — see [_clipContentRect].
+      final plain = state.activeToolId == 'clip_crop' &&
+          state.selectedSegmentId == segment.id;
 
       videoClips.add(
         _composeVideoClip(
@@ -86,11 +89,13 @@ class VideoEditorTimelineComposer {
           timelineEnd: timelineEnd,
           laneIndex: laneIndex,
           resolvedTransitionDuration: transitionDuration,
+          plain: plain,
           contentRect: _clipContentRect(
             state,
             segment,
             previewCanvasSize: previewCanvasSize,
             projectContentRect: projectContentRect,
+            plain: plain,
           ),
         ),
       );
@@ -153,9 +158,7 @@ class VideoEditorTimelineComposer {
     }
 
     return resolveContentRect(
-      cropRect: state.selectedRatio == EditorCropRatio.custom
-          ? state.customCropRect
-          : const Rect.fromLTWH(0, 0, 1, 1),
+      cropRect: state.projectCropRect,
       videoScale: state.previewVideoScale ?? state.videoScale,
       videoPan: state.previewVideoPan ?? state.videoPan,
       previewCanvasSize: previewCanvasSize,
@@ -169,29 +172,27 @@ class VideoEditorTimelineComposer {
   /// composed crop rather than a second implementation of zoom and pan — one
   /// geometry definition, as `canvas_geometry.dart` requires.
   ///
-  /// While the clip-crop tool is open *on this clip*, its own crop is
-  /// suspended so the whole frame shows under the handles — the same rule the
-  /// project crop tool follows in [_resolveContentRect]. Other clips keep
-  /// theirs; a user cropping one clip should not see the rest of the project
-  /// change shape.
+  /// While the clip-crop tool is open *on this clip* ([plain]), it shows the
+  /// project's crop and **nothing else** — no zoom, no scale, no pan, no
+  /// rotation, and not its own crop. The clip's rect is a fraction of the
+  /// project-cropped frame, so that frame, contain-fitted and otherwise
+  /// untouched, is what has to sit under the handles for the canvas to map a
+  /// handle to a source point through nothing but the fit. A clip scaled 3×
+  /// has most of its frame off-canvas, where no handle could reach it. Other
+  /// clips keep everything; a user cropping one clip should not see the rest
+  /// of the project change shape while one is edited.
   Rect _clipContentRect(
     VideoEditorState state,
     VideoSegment segment, {
     required Size? previewCanvasSize,
     required Rect projectContentRect,
+    required bool plain,
   }) {
-    final editingThisClip = state.activeToolId == 'clip_crop' &&
-        state.selectedSegmentId == segment.id;
-    if (!segment.isCropped || editingThisClip) return projectContentRect;
-
-    final projectCrop = state.activeToolId == 'crop'
-        ? const Rect.fromLTWH(0, 0, 1, 1)
-        : (state.selectedRatio == EditorCropRatio.custom
-            ? state.customCropRect
-            : const Rect.fromLTWH(0, 0, 1, 1));
+    if (plain) return state.projectCropRect;
+    if (!segment.isCropped) return projectContentRect;
 
     return resolveContentRect(
-      cropRect: composeCropRects(projectCrop, segment.cropRect),
+      cropRect: composeCropRects(state.projectCropRect, segment.cropRect),
       videoScale: state.previewVideoScale ?? state.videoScale,
       videoPan: state.previewVideoPan ?? state.videoPan,
       previewCanvasSize: previewCanvasSize,
@@ -538,6 +539,7 @@ class VideoEditorTimelineComposer {
     required int laneIndex,
     required double? resolvedTransitionDuration,
     required Rect contentRect,
+    required bool plain,
   }) {
     final overrideVideoPath = segment.overrideVideoPath;
     final hasPreparedProxy =
@@ -587,10 +589,12 @@ class VideoEditorTimelineComposer {
       // saved project without a draft migration. Null for a static look, which
       // is every effect that existed before the clock.
       effectIntroSeconds: segment.effect?.introSeconds,
-      canvasScale: segment.canvasScale,
-      canvasOffsetX: segment.canvasOffsetX,
-      canvasOffsetY: segment.canvasOffsetY,
-      canvasRotation: segment.canvasRotation,
+      // Plain under the crop handles: identity, so the fit alone places the
+      // picture and the canvas can invert it. See [_clipContentRect].
+      canvasScale: plain ? kUnitParameter : segment.canvasScale,
+      canvasOffsetX: plain ? kZeroParameter : segment.canvasOffsetX,
+      canvasOffsetY: plain ? kZeroParameter : segment.canvasOffsetY,
+      canvasRotation: plain ? kZeroParameter : segment.canvasRotation,
       contentRect: contentRect,
     );
   }

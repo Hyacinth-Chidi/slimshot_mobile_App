@@ -16,6 +16,7 @@ class EditorPlaybackControls extends StatelessWidget {
     this.showsKeyframeControls = false,
     this.isOnKeyframe = false,
     this.canEditCurve = false,
+    this.canToggleKeyframe = true,
     this.onToggleKeyframe,
     this.onOpenEasing,
   });
@@ -48,6 +49,13 @@ class EditorPlaybackControls extends StatelessWidget {
   /// place a second diamond and it lights up.
   final bool canEditCurve;
 
+  /// Whether the playhead is on an instant of the selected clip at all.
+  ///
+  /// A clip stays selected while the playhead moves onto its neighbour. There
+  /// is then no instant of *this* clip to pin, so the toggle dims — the same
+  /// disabled-not-hidden rule as the curve — rather than acting on an edge.
+  final bool canToggleKeyframe;
+
   final VoidCallback? onToggleKeyframe;
   final VoidCallback? onOpenEasing;
 
@@ -72,12 +80,15 @@ class EditorPlaybackControls extends StatelessWidget {
                 const SizedBox(width: 18),
                 GestureDetector(
                   key: const Key('keyframe_toggle'),
-                  onTap: onToggleKeyframe,
+                  onTap: canToggleKeyframe ? onToggleKeyframe : null,
                   // **One control, not two.** "Place a diamond here" and
                   // "remove this one" are never both available at the same
                   // instant, so a second button would always have one of them
                   // dead.
-                  child: KeyframeToggleIcon(isOnKeyframe: isOnKeyframe),
+                  child: KeyframeToggleIcon(
+                    isOnKeyframe: isOnKeyframe,
+                    enabled: canToggleKeyframe,
+                  ),
                 ),
                 const SizedBox(width: 18),
                 GestureDetector(
@@ -146,19 +157,30 @@ class EditorPlaybackControls extends StatelessWidget {
 /// unrelated icon was the other option and is worse: the diamond is how the
 /// control is recognised, and it has to match the diamonds on the thumbnail.
 class KeyframeToggleIcon extends StatelessWidget {
-  const KeyframeToggleIcon({super.key, required this.isOnKeyframe});
+  const KeyframeToggleIcon({
+    super.key,
+    required this.isOnKeyframe,
+    this.enabled = true,
+  });
 
   /// True when the playhead is on a diamond, so the control removes rather than
   /// places.
   final bool isOnKeyframe;
+
+  /// False when there is no instant of the clip under the playhead; drawn dim,
+  /// the same way the curve icon dims with nothing to shape.
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     // On a diamond the mark is "live" — it is the one thing on screen the
     // control is about — so it fills; off one it is an outline, the same
     // unselected/selected language the diamonds on the filmstrip use.
-    final colour =
-        isOnKeyframe ? AppColors.primaryStart : AppColors.textPrimary;
+    final colour = !enabled
+        ? AppColors.textTertiary.withValues(alpha: 0.3)
+        : isOnKeyframe
+            ? AppColors.primaryStart
+            : AppColors.textPrimary;
     return SizedBox(
       width: 24,
       height: 24,

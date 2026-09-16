@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/animation/clip_keyframes.dart';
+import '../../logic/canvas_geometry.dart';
 import '../../logic/timeline/timeline_geometry.dart';
 import '../../models/media_asset.dart';
 import '../../models/video_editor_state.dart';
@@ -69,10 +71,15 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     // `anchorValue + displacement`, and on a keyframed clip the value on screen
     // is the resolved one — anchoring to the base would make the picture jump
     // to a different scale the instant the finger moved.
-    final progress = state.selectedClipProgress ?? 0.0;
-    _clipGestureStartScale = segment.canvasScaleAt(progress);
-    _clipGestureStartOffsetX = segment.canvasOffsetXAt(progress);
-    _clipGestureStartOffsetY = segment.canvasOffsetYAt(progress);
+    // `clipEditValue` is "what the write will target": the value at the
+    // playhead on a keyframed clip, the base when the playhead is off the
+    // clip — where the write goes to the base too, so anchor and write agree.
+    _clipGestureStartScale =
+        state.clipEditValue(segment, ClipProperty.canvasScale);
+    _clipGestureStartOffsetX =
+        state.clipEditValue(segment, ClipProperty.canvasOffsetX);
+    _clipGestureStartOffsetY =
+        state.clipEditValue(segment, ClipProperty.canvasOffsetY);
     _clipGesturePanX = 0.0;
     _clipGesturePanY = 0.0;
     ref.read(videoEditorProvider.notifier).beginClipCanvasTransform();
@@ -123,12 +130,6 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     final editorState = ref.watch(videoEditorProvider);
     final previewSurface = widget.videoSurface;
 
-    final bool isCustom = editorState.selectedRatio == EditorCropRatio.custom;
-    final bool isCropToolActive = editorState.activeToolId == 'crop';
-    final bool showCroppedView = isCustom &&
-        !isCropToolActive &&
-        editorState.customCropRect.width > 0 &&
-        editorState.customCropRect.height > 0;
     final videoDuration = videoTimelineDuration(editorState.segments);
     final totalEditedDuration = ref.watch(totalEditedDurationProvider);
     final isAudioTail =
@@ -145,16 +146,13 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
           child: Padding(
             padding: const EdgeInsets.all(4.0),
             child: AspectRatio(
-              // The project canvas decides the frame — the tallest imported
-              // clip, or an explicit ratio. Taking it from the media_kit
-              // player meant the box kept the first video's shape while the
-              // renderer had already moved to the project's, so the picture
-              // was squeezed the moment a differently-shaped clip was added.
-              aspectRatio: showCroppedView
-                  ? editorState.projectAspectRatio *
-                      (editorState.customCropRect.width /
-                          editorState.customCropRect.height)
-                  : editorState.projectAspectRatio,
+              // The project canvas decides the frame, and **this box is the
+              // texture's shape, nothing else**. Under a custom crop the box
+              // used to be reshaped by the rect while the texture stayed 9:16
+              // — which un-stretched the picture on screen and left the export,
+              // which has no box, stretched. The reshaping now lives in
+              // `projectAspectRatio`, where the texture and the file read it.
+              aspectRatio: editorState.projectAspectRatio,
               child: LayoutBuilder(
                 builder: (context, canvasConstraints) {
                   final newSize = Size(canvasConstraints.maxWidth, canvasConstraints.maxHeight);
@@ -331,6 +329,8 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                                   child: CustomPaint(
                                     painter: _CropBoundsPainter(
                                       cropRect: _editingCropRect(editorState),
+                                      frame: _cropFrame(
+                                          editorState, constraints.biggest),
                                       // A clip crop is always freehand — there
                                       // is no ratio to lock it to.
                                       isCustom: _cropIsFreehand(editorState),
@@ -356,18 +356,17 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     final editorState = ref.read(videoEditorProvider);
     if (!_cropIsFreehand(editorState)) return;
 
-    final width = constraints.maxWidth;
-    final height = constraints.maxHeight;
+    final frame = _cropFrame(editorState, constraints.biggest);
 
     final dx = details.localPosition.dx;
     final dy = details.localPosition.dy;
 
     final editing = _editingCropRect(editorState);
     final rect = Rect.fromLTRB(
-      editing.left * width,
-      editing.top * height,
-      editing.right * width,
-      editing.bottom * height,
+      frame.left + editing.left * frame.width,
+      frame.top + editing.top * frame.height,
+      frame.left + editing.right * frame.width,
+      frame.top + editing.bottom * frame.height,
     );
 
     const hit = 40.0;
@@ -405,11 +404,10 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     final editorState = ref.read(videoEditorProvider);
     if (_cropDragMode == CropDragMode.none) return;
 
-    final width = constraints.maxWidth;
-    final height = constraints.maxHeight;
-
-    final dx = details.delta.dx / width;
-    final dy = details.delta.dy / height;
+    // Deltas are fractions of the *picture*, not of the box — see [_cropFrame].
+    final frame = _cropFrame(editorState, constraints.biggest);
+    final dx = details.delta.dx / frame.width;
+    final dy = details.delta.dy / frame.height;
 
     final editing = _editingCropRect(editorState);
     double left = editing.left;
@@ -440,6 +438,36 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
 
   void _handleCropPanEnd(DragEndDetails details) {
     _cropDragMode = CropDragMode.none;
+  }
+
+  /// Where the picture the handles edit sits inside the canvas box, in pixels.
+  ///
+  /// The project's crop is a fraction of every clip's frame and its handles
+  /// cover the whole box. A clip's crop is a fraction of **that clip's**
+  /// picture, which sits contain-fitted inside the canvas with bars around it
+  /// — so its handles cover the fitted picture. Drawn over the whole box they
+  /// agreed with the source only for a clip that happened to fill the canvas;
+  /// on a letterboxed clip a rectangle drawn over the bars cropped a region the
+  /// user never pointed at.
+  ///
+  /// The composer shows the edited clip *plain* — the project's crop and
+  /// nothing else — so the fit is the only transform between this rect and
+  /// the source, and [fittedFrameRect] is the same contain rule the engine
+  /// applies. An unprobed asset falls back to the whole box, as the engine
+  /// does.
+  Rect _cropFrame(VideoEditorState state, Size box) {
+    final whole = Offset.zero & box;
+    if (_cropTarget(state) != _CropTarget.clip) return whole;
+    final segment = state.selectedSegment;
+    final asset = segment == null ? null : state.assetFor(segment);
+    if (asset == null) return whole;
+    return fittedFrameRect(
+      contentAspect: contentAspectRatio(
+        state.projectCropRect,
+        Size(asset.width, asset.height),
+      ),
+      canvasSize: box,
+    );
   }
 
   /// Which rect the crop editor is pointed at, from the open tool.
@@ -509,9 +537,18 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
 
 class _CropBoundsPainter extends CustomPainter {
   final Rect cropRect;
+
+  /// The picture the rect is a fraction of, in the same pixels as the paint
+  /// size — the whole box for the project's crop, the fitted picture for a
+  /// clip's. See `_cropFrame`.
+  final Rect frame;
   final bool isCustom;
 
-  _CropBoundsPainter({required this.cropRect, required this.isCustom});
+  _CropBoundsPainter({
+    required this.cropRect,
+    required this.frame,
+    required this.isCustom,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -521,13 +558,14 @@ class _CropBoundsPainter extends CustomPainter {
     Rect drawRect;
     if (isCustom) {
       drawRect = Rect.fromLTRB(
-        cropRect.left * width,
-        cropRect.top * height,
-        cropRect.right * width,
-        cropRect.bottom * height,
+        frame.left + cropRect.left * frame.width,
+        frame.top + cropRect.top * frame.height,
+        frame.left + cropRect.right * frame.width,
+        frame.top + cropRect.bottom * frame.height,
       );
 
-      // Draw dim overlay outside the crop area
+      // Dim everything outside the crop — bars included, so the kept region
+      // reads as the one bright thing on the canvas.
       final overlayPath = Path()
         ..addRect(Rect.fromLTWH(0, 0, width, height))
         ..addRect(drawRect)
@@ -535,7 +573,7 @@ class _CropBoundsPainter extends CustomPainter {
 
       canvas.drawPath(overlayPath, Paint()..color = Colors.black.withOpacity(0.6));
     } else {
-      drawRect = Rect.fromLTWH(0, 0, width, height);
+      drawRect = frame;
     }
     
     drawRect = drawRect.deflate(1.5);
@@ -587,6 +625,8 @@ class _CropBoundsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CropBoundsPainter oldDelegate) {
-    return oldDelegate.cropRect != cropRect || oldDelegate.isCustom != isCustom;
+    return oldDelegate.cropRect != cropRect ||
+        oldDelegate.frame != frame ||
+        oldDelegate.isCustom != isCustom;
   }
 }

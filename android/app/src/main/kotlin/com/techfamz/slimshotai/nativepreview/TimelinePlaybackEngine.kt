@@ -1120,7 +1120,9 @@ internal class TimelinePlaybackEngine(
                     rotation,
                 )
             } else {
-                val (fitX, fitY) = LaneFit.of(clip.sourceAspect, canvasAspect)
+                // Fitted by what the lane shows through its rect, not by the
+                // whole frame — a cropped clip is a different shape.
+                val (fitX, fitY) = LaneFit.of(clip.contentAspect, canvasAspect)
                 renderer.setLaneFit(
                     lane.index,
                     fitX * scale.toFloat(),

@@ -116,10 +116,10 @@ Clamping across assets is meaningless and was a real bug.
 published in â€” and an explicit `selectedRatio` from the crop tool overrides it. It is **not** derived
 from the imported media.
 
-**`selectedRatio` defaults to `ratio9x16`, not `custom`.** Custom is the freeform-crop path: it
-reshapes the preview box from the crop rect and turns the rect into export sampling geometry, so
-resting on it as the default distorted exports ("thin and stretched") even when nothing was actually
-cropped. The crop panel opens with 9:16 active (enum declaration order is panel order, 9:16 first,
+**`selectedRatio` defaults to `ratio9x16`, not `custom`.** Custom is the freeform-crop path: the
+canvas takes the crop rect's shape (`projectAspectRatio`, see the canvas section) and the rect
+becomes sampling geometry, so resting on it as the default distorted exports ("thin and stretched")
+even when nothing was actually cropped. The crop panel opens with 9:16 active (enum declaration order is panel order, 9:16 first,
 Custom last; persistence is by name so reordering was safe), and a draft that stored `custom` with a
 full-frame rect â€” the old implicit default â€” reopens as 9:16 via `_ratioFromDraft`; only a real
 crop rect keeps a draft on the custom path. `_resolveExportGeometry` now applies zoom/pan under
@@ -278,10 +278,28 @@ lane fit wrong the moment another clip has a different shape.
 
 Crop, zoom and pan are three controls that all narrow the same thing, so
 `logic/canvas_geometry.dart` collapses them into **one source rect**
-(`resolveContentRect`) which travels as `canvas.contentRect` and becomes the `uContentRect`
-uniform. The shader samples through it, so zoom magnifies the picture rather than the letterbox
-bars. While the crop tool is open the composer deliberately sends a full-frame rect, because the
-preview shows the whole frame with the crop rectangle drawn over it.
+(`resolveContentRect`). It travels **per clip** as `videoClips[].contentRect` — a clip's own crop
+composed inside the project's — and becomes the `uContentRectIncoming`/`uContentRectOutgoing`
+uniforms (the per-clip crop section has the history; `canvas.contentRect` is still written but the
+engine no longer reads it). The shader samples through it, so zoom magnifies the picture rather
+than the letterbox bars. While the crop tool is open the composer deliberately sends a full-frame
+rect, because the preview shows the whole frame with the crop rectangle drawn over it.
+
+**The fit is of the content, not the frame** (`LaneFit.contentAspect`). A lane samples through its
+rect, so what reaches the canvas has the frame's shape times the rect's own proportions, and the
+letterbox fit has to be computed from *that* — fitting by the frame's shape while sampling through
+a differently shaped rect squeezes the picture into a box of the wrong shape. Both engines and the
+renderer's photo path (`imageFit`) read the one function. A full-frame or uniformly zoomed rect
+gives exactly the old fit, which is how this changed nothing for an uncropped project.
+
+**Under Custom, the canvas takes the crop's shape** (`projectAspectRatio` = 9:16 × width/height of
+`projectCropRect`; full while the crop tool is open, so the whole frame shows under the handles).
+The preview used to keep the texture at 9:16 and reshape only the Flutter `AspectRatio` box by the
+rect — which un-stretched the picture on screen while the export, which has no box to reshape,
+kept the stretched texture. One frame shape, read by the texture and the file alike, is what makes
+the export match the canvas; the widget's box is now `projectAspectRatio` and nothing else.
+`projectCropRect` is the one definition of "what the project shows" for the composer, the canvas
+shape and the clip-crop editor.
 
 **The letterbox background** is `canvas.backgroundType`/`backgroundColor` from the background tool,
 carried through the timeline contract into the shader (`uBackground`) and `glClearColor`, so bars
@@ -1210,8 +1228,8 @@ break.
 
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-09-15-clip-keyframes-design.md`.
 
-A clip carries five keyframable properties, all `AnimatableDouble`: `canvasScale`,
-`canvasOffsetX`, `canvasOffsetY`, `volume` and `effectIntensity`. **`speed` cannot join them, and
+A clip carries six keyframable properties, all `AnimatableDouble`: `canvasScale`,
+`canvasOffsetX`, `canvasOffsetY`, `canvasRotation`, `volume` and `effectIntensity`. **`speed` cannot join them, and
 the reason is structural**: every other property is read *at* a progress, while speed decides what
 progress means — `duration` is `(sourceEnd - sourceStart) / speed` and `clipProgressAt` divides by
 that duration, so a keyframed speed makes progress a function of itself and every diamond slides
@@ -1242,6 +1260,15 @@ exactly how the rejected design ended up able to animate a single number.
 playhead is standing on (`playheadKeyframeProgress`). That is what keeps the plus/minus flip, the
 easing sheet and the filmstrip agreeing about what "here" means without a third piece of state to
 fall out of step. Tapping a diamond seeks onto it, which is what makes tap-then-minus remove it.
+
+**`selectedClipProgress` is null, never clamped, while the playhead is on another clip.** A clip
+stays selected as the playhead moves onto its neighbour, and clamping resolved that as progress 0
+or 1 — so a plus tapped there pinned a diamond at the edge of a clip the user was not looking at,
+and the curve icon lit for a segment the playhead was nowhere near. With null the toggle dims
+(`canToggleKeyframe`, the same disabled-not-hidden rule as the curve), `clipEditValue` shows the
+base, and a write goes to the base. The clip's own edges count as on it: a split parks the
+playhead exactly on the seam, which is the right half's first instant. The pinch anchors to
+`clipEditValue` for the same reason — anchor and write must name the same target.
 
 **`kKeyframeHitSeconds` (0.05s) is seconds, not progress.** The same progress tolerance is a
 different number of frames on a 1s clip and a 30s one, so a fixed progress window would make
@@ -1355,7 +1382,12 @@ with no handler — was deleted. Transform opens a sheet (`panels/transform_shee
 tabs, Scale / Rotate / Position, each a `ValueRuler`. It is on the root menu **and** the clip menu:
 the root menu is hidden while a clip is selected, and a tool reachable only by deselecting the
 clip you want to transform is not reachable. From the root menu nothing is selected, so
-`selectSegmentAtPlayhead` picks the clip under the playhead, resolved through `segmentIndexAt`.
+`selectSegmentAtPlayhead` picks the clip under the playhead, resolved through `segmentIndexAt` —
+and **`_showTransformSheet` puts that selection back when the sheet closes.** The toolbar is
+chosen by `currentMenuId`, which stays on root, so leaving the borrowed selection showed root
+tools beside a selected clip and its keyframe controls: a half state the user never entered. It
+`await`s the sheet for the same reason `_showTransitionsDrawer` does — every way of closing — and
+a selection the user made themselves stays.
 
 **The ruler is per pixel, not per widget width** (`panels/value_ruler.dart`). A slider spreads its
 range across whatever width it gets, so precision depends on the phone; a ruler moves a fixed
@@ -1373,6 +1405,10 @@ and the other three are handed back as *shown*, so on a keyframed clip they writ
 resolved value to the same diamond, a no-op. The engine hears every frame through the
 `setClipTransform` override channel exactly as the pinch does, and the screen catches up once on
 release. Tapping a readout resets that value through `setClipProperty`, undoably.
+
+**`beginClipCanvasTransform` pauses playback first.** A ruler drag or a pinch writes at the
+playhead every frame, so on a keyframed clip a moving playhead turned one drag into a trail of
+diamonds. The sheet and the pinch share the one entry point, so both inherit the pause.
 
 **Rotation is the sixth keyframable property, and it did not exist before.** `canvasRotation` is
 an `AnimatableDouble` in **degrees** (what the ruler shows, what a draft should read as); the
@@ -1415,9 +1451,28 @@ middle half means the middle half of what the project already shows. Then the sa
 `resolveContentRect` applies zoom and pan — one geometry definition, as `canvas_geometry.dart`
 requires. **Freehand only, no ratio**: a per-clip ratio would fight the project canvas every clip
 is fitted into. **A plain `Rect`, deliberately not animatable**: an animated crop is a pan-and-scan
-with its own design, and four coupled numbers rather than one parameter. While the clip-crop tool
-is open *on a clip*, that clip's own crop is suspended so the whole frame shows under the handles
-— only that clip; the rest of the project must not change shape while one is edited.
+with its own design, and four coupled numbers rather than one parameter.
+
+**The first device build stretched every cropped clip.** The lane was still fitted by
+`sourceAspect`, the whole frame's shape, while it sampled through a smaller rect of a different
+shape. `LaneFit.contentAspect` (canvas section) is the fix, in both engines and the renderer's
+photo fit; `LaneFitTest` pins it. The same arithmetic is why a custom *project* crop exported
+stretched — the preview had hidden it by reshaping the Flutter box — and why the canvas now takes
+the crop's shape instead.
+
+**While the clip-crop tool is open *on a clip*, that clip shows plain**: the project's crop and
+nothing else — not its own crop, no zoom, no scale, no pan, no rotation (the composer passes
+identity parameters for it). Only that clip; the rest of the project must not change shape while
+one is edited. Plain is what makes the handles honest: a clip's rect is a fraction of the clip's
+*picture*, which sits contain-fitted inside the canvas with bars around it, and the canvas draws
+the handles over that fitted rect (`_cropFrame`, via `fittedFrameRect` — the Dart half of
+`LaneFit.of`) and measures drags in fractions of it. Spread over the whole box, as the project
+crop's handles are, they agreed with the source only for a clip that happened to fill the canvas;
+on a letterboxed clip a rectangle drawn over the bars cropped a region the user never pointed at.
+With the clip plain, the fit is the only transform between the handles and the source, so the
+mapping is exact; with scale and pan in play most of a 3× clip would be off-canvas where no handle
+can reach. The project crop keeps whole-box handles: it applies to every clip at once, and clips
+of different shapes have no single picture to map through.
 
 **One editor, two targets.** The canvas's crop handles and painter serve both the project crop and
 a clip's; `_cropTarget` decides which rect is read and written from `activeToolId` (`crop` versus

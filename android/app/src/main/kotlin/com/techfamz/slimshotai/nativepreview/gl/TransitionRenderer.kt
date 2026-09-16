@@ -1143,7 +1143,13 @@ internal class TransitionRenderer(
             // Nothing measured yet — fall back to the engine-pushed fit.
             return Pair(lane.fitX, lane.fitY)
         }
-        val aspect = lane.imageWidth.toDouble() / lane.imageHeight
+        // The bitmap's own shape, narrowed by the rect the lane samples
+        // through: a cropped photo is fitted by what it shows, as a video
+        // lane is (`LaneFit.contentAspect`).
+        val aspect = LaneFit.contentAspect(
+            lane.imageWidth.toDouble() / lane.imageHeight,
+            lane.contentRect,
+        )
         val (fitX, fitY) = LaneFit.of(aspect, viewportAspect.toDouble())
         return Pair(fitX * lane.imageScale, fitY * lane.imageScale)
     }

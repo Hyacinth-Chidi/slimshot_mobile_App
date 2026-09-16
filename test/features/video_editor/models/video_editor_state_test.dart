@@ -165,4 +165,89 @@ void main() {
       expect(state.assetFor(state.segments.first)?.id, 'a');
     });
   });
+
+
+  group('a custom crop shapes the canvas', () {
+    // **The canvas takes the crop's shape.** The preview used to keep the
+    // texture at 9:16 and reshape only the Flutter *box* around it by the
+    // rect's proportions — which un-stretched the picture on screen while the
+    // export, which has no box to reshape, kept the stretched texture. One
+    // frame shape, read by both, is what makes the file match the canvas.
+    test('custom with a real rect reshapes the frame by the rect', () {
+      const state = VideoEditorState(
+        selectedRatio: EditorCropRatio.custom,
+        customCropRect: Rect.fromLTWH(0.25, 0, 0.5, 1),
+      );
+      expect(state.projectAspectRatio, closeTo(9 / 16 * 0.5, 1e-9));
+    });
+
+    test('while the crop tool is open the frame is the whole 9:16', () {
+      // The handles are drawn over the whole frame, so the whole frame shows.
+      const state = VideoEditorState(
+        selectedRatio: EditorCropRatio.custom,
+        customCropRect: Rect.fromLTWH(0.25, 0, 0.5, 1),
+        activeToolId: 'crop',
+      );
+      expect(state.projectAspectRatio, closeTo(9 / 16, 1e-9));
+    });
+
+    test('a full-frame custom rect is the plain default', () {
+      const state = VideoEditorState(
+        selectedRatio: EditorCropRatio.custom,
+        customCropRect: Rect.fromLTWH(0, 0, 1, 1),
+      );
+      expect(state.projectAspectRatio, closeTo(9 / 16, 1e-9));
+    });
+
+    test('a fixed ratio ignores the rect', () {
+      const state = VideoEditorState(
+        selectedRatio: EditorCropRatio.ratio1x1,
+        customCropRect: Rect.fromLTWH(0.25, 0, 0.5, 1),
+      );
+      expect(state.projectAspectRatio, closeTo(1.0, 1e-9));
+    });
+
+    test('the texture follows the frame shape', () {
+      const state = VideoEditorState(
+        selectedRatio: EditorCropRatio.custom,
+        customCropRect: Rect.fromLTWH(0.25, 0, 0.5, 1),
+      );
+      final size = state.projectCanvasSize;
+      expect(size.width / size.height, closeTo(state.projectAspectRatio, 0.01));
+    });
+  });
+
+  group('selectedClipProgress', () {
+    VideoEditorState twoClips({required double position}) => VideoEditorState(
+          segments: [
+            VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 5),
+            VideoSegment(id: 'b', sourceStart: 5, sourceEnd: 10),
+          ],
+          selectedSegmentId: 'b',
+          isClipSelected: true,
+          currentPlaybackPosition: position,
+        );
+
+    test('is null while the playhead is on another clip', () {
+      // **Null, not clamped to the edge.** Clamping made a plus tapped here
+      // place a diamond at the start of a clip the user was not looking at,
+      // and lit the curve icon for a segment the playhead was nowhere near.
+      expect(twoClips(position: 2.0).selectedClipProgress, isNull);
+    });
+
+    test('is null past the clip\'s end', () {
+      expect(twoClips(position: 12.0).selectedClipProgress, isNull);
+    });
+
+    test('resolves inside the clip', () {
+      expect(twoClips(position: 7.0).selectedClipProgress, closeTo(0.4, 1e-9));
+    });
+
+    test('the clip\'s own edges count as on it', () {
+      // A split parks the playhead exactly on the seam, which is the right
+      // half's first instant — and where a Ken Burns start is placed.
+      expect(twoClips(position: 5.0).selectedClipProgress, closeTo(0.0, 1e-9));
+      expect(twoClips(position: 10.0).selectedClipProgress, closeTo(1.0, 1e-9));
+    });
+  });
 }

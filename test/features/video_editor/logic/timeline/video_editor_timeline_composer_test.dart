@@ -928,5 +928,56 @@ void main() {
       expect(timeline.videoClips[1].contentRect,
           const Rect.fromLTWH(0.2, 0.2, 0.6, 0.6));
     });
+
+    test('while the clip-crop tool is open on a clip, the clip shows plain',
+        () {
+      // Plain: the project's crop and nothing else — no zoom, no scale, no
+      // pan, no rotation. The clip's rect is a fraction of the project-cropped
+      // frame, so that frame, contain-fitted and otherwise untouched, is what
+      // has to sit under the handles for the editor to map a handle to a
+      // source point through nothing but the fit. A clip scaled 3× has most of
+      // its frame off-canvas, where no handle could reach it. The neighbour
+      // keeps everything.
+      final timeline = composer.compose(
+        stateWith([
+          VideoSegment(
+            id: 'a',
+            sourceStart: 0,
+            sourceEnd: 4,
+            cropRect: const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
+            canvasScale: const AnimatableDouble(baseValue: 2.0),
+            canvasOffsetX: const AnimatableDouble(baseValue: 0.2),
+            canvasRotation: const AnimatableDouble(baseValue: 45.0),
+          ),
+          VideoSegment(
+            id: 'b',
+            sourceStart: 4,
+            sourceEnd: 8,
+            canvasScale: const AnimatableDouble(baseValue: 1.5),
+          ),
+        ]).copyWith(
+          selectedSegmentId: 'a',
+          isClipSelected: true,
+          activeToolId: 'clip_crop',
+          selectedRatio: EditorCropRatio.custom,
+          customCropRect: const Rect.fromLTWH(0.25, 0, 0.5, 1),
+          videoScale: 2.0,
+        ),
+        // Zoom only applies with a canvas to measure the pan against; giving
+        // one makes the neighbour's zoom real, so "plain" is tested against a
+        // zoom that is genuinely on.
+        previewCanvasSize: const Size(360, 640),
+      );
+      final a = timeline.videoClips[0];
+      expect(a.canvasScaleAt(0.5), 1.0);
+      expect(a.canvasOffsetXAt(0.5), 0.0);
+      expect(a.canvasRotationAt(0.5), 0.0);
+      expect(a.contentRect, const Rect.fromLTWH(0.25, 0, 0.5, 1));
+
+      final b = timeline.videoClips[1];
+      expect(b.canvasScaleAt(0.5), 1.5);
+      // Still the zoomed project rect: half of the project's half.
+      expect(b.contentRect.width, closeTo(0.25, 1e-9));
+    });
   });
 }

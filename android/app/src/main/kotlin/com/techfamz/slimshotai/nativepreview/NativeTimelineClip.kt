@@ -114,6 +114,14 @@ internal data class NativeTimelineClip(
             sourceWidth / sourceHeight
         }
 
+    /**
+     * Shape of what this clip *shows*: its frame narrowed by [contentRect].
+     * This, not [sourceAspect], is what the lane is fitted by — see
+     * [LaneFit.contentAspect].
+     */
+    val contentAspect: Double
+        get() = LaneFit.contentAspect(sourceAspect, contentRect)
+
     val timelineDuration: Double
         get() = timelineEnd - timelineStart
 

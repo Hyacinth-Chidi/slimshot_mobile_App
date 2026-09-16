@@ -834,7 +834,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   void beginClipCanvasTransform() {
     if (state.selectedSegmentId == null) return;
     saveStateForUndo();
-    state = state.copyWith(isClipTransformActive: true);
+    // **Pause first.** A ruler drag or a pinch writes at the playhead every
+    // frame, and on a keyframed clip a moving playhead turns one drag into a
+    // trail of diamonds. The screen reacts to `isPlaying` and holds the engine.
+    state = state.copyWith(isClipTransformActive: true, isPlaying: false);
   }
 
   /// Live values from the gesture, written into the selected clip.

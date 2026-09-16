@@ -111,6 +111,35 @@ double? contentAspectRatio(Rect contentRect, Size sourceSize) {
   return width / height;
 }
 
+/// Where a picture of [contentAspect] sits inside a canvas box of
+/// [canvasSize] once scaled to *contain* — full width with bars above and
+/// below when it is wider than the box, full height with bars either side when
+/// taller. The Dart half of Kotlin's `LaneFit.of`, in box pixels rather than
+/// canvas fractions.
+///
+/// The clip-crop editor draws its handles over this rect: a clip's crop is a
+/// fraction of the clip's *picture*, and handles spread over the whole box
+/// would map a rectangle drawn on the letterbox bars to a region of the source
+/// the user never pointed at. An unknown shape (`null` or `<= 0`) fills the
+/// box, the same rule the engine follows for an unprobed clip.
+Rect fittedFrameRect({
+  required double? contentAspect,
+  required Size canvasSize,
+}) {
+  final whole = Offset.zero & canvasSize;
+  if (contentAspect == null || contentAspect <= 0) return whole;
+  if (canvasSize.width <= 0 || canvasSize.height <= 0) return whole;
+  final canvasAspect = canvasSize.width / canvasSize.height;
+  if (contentAspect > canvasAspect) {
+    final height = canvasSize.width / contentAspect;
+    return Rect.fromLTWH(
+        0, (canvasSize.height - height) / 2, canvasSize.width, height);
+  }
+  final width = canvasSize.height * contentAspect;
+  return Rect.fromLTWH(
+      (canvasSize.width - width) / 2, 0, width, canvasSize.height);
+}
+
 const double _kEpsilon = 0.0001;
 const double _kMinExtent = 0.0001;
 const double _kMaxZoom = 5.0;

@@ -13,6 +13,11 @@ import 'video_overlay_model.dart';
 import 'video_segment.dart';
 import 'audio_track_model.dart';
 
+/// How far outside a clip's timeline span the playhead may sit and still count
+/// as on it — float slack for positions that arrive as event doubles, not a
+/// tolerance anyone should feel.
+const double kOnClipToleranceSeconds = 1e-6;
+
 /// Declaration order is display order in the crop panel: the 9:16 default
 /// leads and freeform Custom sits last. Persistence is by [Enum.name], so
 /// reordering is safe; renaming a value needs a draft migration.
@@ -208,7 +213,20 @@ class VideoEditorState {
     final starts = segmentTimelineStarts(segments);
     final index = segments.indexWhere((s) => s.id == segment.id);
     if (index < 0 || index >= starts.length) return null;
-    return segment.clipProgressAt(currentPlaybackPosition, starts[index]);
+    final start = starts[index];
+    final position = currentPlaybackPosition;
+    // **Null, never clamped**, when the playhead is on another clip. A clip
+    // stays selected while the playhead moves onto its neighbour, and clamping
+    // resolved that as progress 0 or 1 — so a plus tapped there pinned a
+    // diamond at the edge of a clip the user was not looking at, and the
+    // curve icon lit for a segment the playhead was nowhere near. The edges
+    // themselves count as on the clip: a split parks the playhead exactly on
+    // the seam, which is the right half's first instant.
+    if (position < start - kOnClipToleranceSeconds ||
+        position > start + segment.duration + kOnClipToleranceSeconds) {
+      return null;
+    }
+    return segment.clipProgressAt(position, start);
   }
 
   /// The clip the keyframe controls act on: the selected one.
@@ -320,16 +338,46 @@ class VideoEditorState {
     return assetById(segment.assetId) ?? (assets.isEmpty ? null : assets.first);
   }
 
+  /// The project's crop, as fractions of every clip's source frame.
+  ///
+  /// The custom rect under the Custom ratio, else the whole frame. **Full while
+  /// the crop tool is open**, because the preview then shows the whole frame
+  /// with the rectangle drawn over it — cropping takes effect when the tool
+  /// closes. The composer, the canvas shape and the clip-crop editor all read
+  /// this one definition, so none of them can disagree about what "the project
+  /// shows" is.
+  Rect get projectCropRect {
+    if (activeToolId == 'crop' || selectedRatio != EditorCropRatio.custom) {
+      return kFullFrameRect;
+    }
+    if (customCropRect.width <= 0 || customCropRect.height <= 0) {
+      return kFullFrameRect;
+    }
+    return customCropRect;
+  }
+
   /// Shape of the output frame.
   ///
   /// [kDefaultCanvasAspectRatio] (9:16) unless the user has chosen a ratio in
   /// the crop tool. Every clip is fitted inside it and the leftover space is
   /// filled with the project background.
   ///
+  /// **Under Custom, the canvas takes the crop's shape**: the default frame
+  /// reshaped by the rect's own proportions. A clip's fit is computed from the
+  /// shape of what it *shows* — its frame narrowed by the crop — so the canvas
+  /// has to be shaped to match or every clip letterboxes against the wrong
+  /// frame. The preview used to keep the texture at 9:16 and reshape only the
+  /// Flutter box around it, which un-stretched the picture on screen while the
+  /// export, which has no box to reshape, kept the stretched texture. One frame
+  /// shape, read by both, is what makes the file match the canvas.
+  ///
   /// It is deliberately **not** derived from the imported media. See
   /// [kDefaultCanvasAspectRatio] for why.
   double get projectAspectRatio {
-    return selectedRatio.ratio ?? kDefaultCanvasAspectRatio;
+    final ratio = selectedRatio.ratio;
+    if (ratio != null) return ratio;
+    final crop = projectCropRect;
+    return kDefaultCanvasAspectRatio * (crop.width / crop.height);
   }
 
   /// Pixel size of the output frame.
