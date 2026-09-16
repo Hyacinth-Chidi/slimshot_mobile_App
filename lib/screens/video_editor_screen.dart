@@ -156,6 +156,8 @@ const EditorMenu _editMenu = EditorMenu(
       icon: LucideIcons.arrowLeftRight,
     ),
     EditorTool(id: 'reverse', label: 'Reverse', icon: LucideIcons.rewind),
+    // Swap the media under this clip, keeping the edit.
+    EditorTool(id: 'replace', label: 'Replace', icon: LucideIcons.replace),
     // Same tool as the root menu, but reached with a clip selected — opening it
     // from here grades that clip rather than the whole project.
     EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
@@ -670,6 +672,24 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     _isTrimming = false;
 
     unawaited(_syncNativePreviewTimeline(ref.read(videoEditorProvider)));
+  }
+
+  /// Replace: pick one file and put it under the selected clip, keeping the
+  /// edit. The same picker Add uses; only the first pick is taken, since one
+  /// clip has one file.
+  Future<void> _replaceSelectedClip() async {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    if (ref.read(videoEditorProvider).selectedSegment == null) return;
+    try {
+      final assets = await _mediaImportService.pickMedia();
+      if (assets.isEmpty || !mounted) return;
+      notifier.replaceClipAsset(assets.first);
+      await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
+      if (mounted) HapticFeedback.selectionClick();
+    } catch (e) {
+      if (!mounted) return;
+      ToastUtils.show(context, 'Could not replace the clip: $e', isError: true);
+    }
   }
 
   /// Freeze: the frame under the playhead becomes a still clip. Async because
@@ -1671,6 +1691,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     unawaited(_addMedia());
                   } else if (tool.id == 'freeze') {
                     unawaited(_freezeFrameAtPlayhead());
+                  } else if (tool.id == 'replace') {
+                    unawaited(_replaceSelectedClip());
                   } else if (tool.id == 'split') {
                     if (editorState.selectedVideoOverlayId != null) {
                       try {

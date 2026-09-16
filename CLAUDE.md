@@ -1449,6 +1449,18 @@ the project background rather than to black was the open question; the backgroun
 that is what the bars already show and a fade that revealed a different colour would read as a
 flash.
 
+### Replace clip — swap the file, keep the edit
+
+`replaceClipAsset` puts a picked file under the selected clip. Everything the user did to the clip
+is about the *slot* on the timeline, not the file — speed, placement and its keyframes (clip-relative,
+so they still mean the same instants), crop, mirror, opacity, adjustments, filter, effect,
+transition — and survives. The trim survives where it fits: a shorter file pulls the end in and
+slides the start back to keep as much of the clip's length as the file allows; a photo has no
+source length and is given the clip's on-screen length at 1×. **What cannot survive is what
+belonged to the old file**: the proxy rendered from it, and a reversal that depended on that
+proxy. One undo step; the file joins the asset pool once, and the old asset stays for anything else
+using it. The screen takes the first pick from the same picker Add uses and re-syncs the preview.
+
 ### Apply to all — a copy, not a mode
 
 Transform, the clip crop and Effects each carry an `ApplyToAllButton`: one tap copies the selected

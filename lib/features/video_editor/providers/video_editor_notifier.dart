@@ -1031,6 +1031,59 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     state = state.copyWith(adjustments: adjustments);
   }
 
+  /// Swaps the media under the selected clip for [asset], keeping the edit.
+  ///
+  /// Everything the user did to the clip is about the *slot* on the timeline,
+  /// not the file — speed, placement and its keyframes (clip-relative, so they
+  /// still mean the same instants), crop, mirror, opacity, adjustments,
+  /// filter, effect, transition — and survives. The trim survives where it
+  /// still fits; a shorter file pulls the end in and slides the start back to
+  /// keep as much of the clip's length as the file allows. A photo has no
+  /// source length and is given the clip's on-screen length at 1×. What cannot
+  /// survive is what belonged to the old file: a proxy rendered from it, and a
+  /// reversal that depended on that proxy. One undo step; the file joins the
+  /// asset pool once, and the old asset stays for anything else that uses it.
+  void replaceClipAsset(MediaAsset asset) {
+    final segment = state.selectedSegment;
+    if (segment == null) return;
+
+    final double start;
+    final double end;
+    final double speed;
+    if (asset.isImage) {
+      start = 0.0;
+      end = segment.duration;
+      speed = 1.0;
+    } else {
+      final length = segment.sourceEnd - segment.sourceStart;
+      final maxEnd = asset.durationSeconds;
+      end = segment.sourceEnd <= maxEnd ? segment.sourceEnd : maxEnd;
+      start = (end - length).clamp(0.0, end - kMinClipDurationSeconds)
+          .clamp(0.0, segment.sourceStart)
+          .toDouble();
+      speed = segment.speed;
+    }
+
+    final replaced = segment.copyWith(
+      assetId: asset.id,
+      sourceStart: start,
+      sourceEnd: end,
+      speed: speed,
+      isReversed: false,
+      clearOverrideVideoPath: true,
+    );
+
+    saveStateForUndo();
+    state = state.copyWith(
+      assets: state.assets.any((a) => a.id == asset.id)
+          ? state.assets
+          : [...state.assets, asset],
+      segments: [
+        for (final s in state.segments) s.id == segment.id ? replaced : s,
+      ],
+    );
+  }
+
   /// Copies the selected clip's placement — scale, position and rotation with
   /// their keyframes, and the mirror — onto every other clip, as one undo
   /// step. Returns how many clips changed.
