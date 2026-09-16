@@ -41,8 +41,14 @@ void main() {
     return tester.getSize(find.byKey(const Key('body')));
   }
 
-  testWidgets('the crop panel sizes itself to one row of chips',
+  testWidgets('the crop panel sizes itself to one row of tiles, at full height',
       (tester) async {
+    // Device-reported after the panel began sizing to its body: the ratio
+    // tiles came out squat, because the row had been pinned at 64 where the
+    // old fixed panel stretched them to 80. The row is the tile's height, and
+    // the tile is tall enough to carry its glyph and label with air around
+    // them — the same 80 the tiles always had, now owned by the panel body
+    // instead of falling out of the box around it.
     final size = await pumpUnbounded(
       tester,
       CropPanel(
@@ -50,8 +56,14 @@ void main() {
         onRatioSelected: (_) {},
       ),
     );
-    expect(size.height, greaterThan(40));
-    expect(size.height, lessThan(80));
+    expect(size.height, CropPanel.kRowHeight);
+    expect(CropPanel.kRowHeight, 80);
+
+    // Every tile stands the full row, so a row of them reads as one band.
+    for (final tile in find.byType(GestureDetector).evaluate()) {
+      expect(tester.getSize(find.byWidget(tile.widget)).height,
+          CropPanel.kRowHeight);
+    }
   });
 
   testWidgets('the background panel sizes itself to its swatches',

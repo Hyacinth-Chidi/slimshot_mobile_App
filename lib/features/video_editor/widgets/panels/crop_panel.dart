@@ -13,15 +13,28 @@ class CropPanel extends StatelessWidget {
   final EditorCropRatio selectedRatio;
   final ValueChanged<EditorCropRatio> onRatioSelected;
 
-  /// One row of chips: icon, gap, label, and the chip's own border.
-  static const double _kRowHeight = 64.0;
+  /// The height of a ratio tile, and so of the row.
+  ///
+  /// **The tile owns its height now.** The old fixed 160px panel stretched a
+  /// horizontal list to the 80px left under its header, and the tiles were
+  /// simply whatever fell out of that box. When the panel began sizing to its
+  /// body the row was first pinned at 64, and the tiles came out squat —
+  /// device-reported. This is the 80 they always had, decided here rather
+  /// than by the box around them, with the glyph and label given room to fill
+  /// it instead of floating in it.
+  static const double kRowHeight = 80.0;
+
+  /// The box the ratio glyph is drawn in, and the base edge a glyph's longer
+  /// side is scaled to.
+  static const double _kGlyphBox = 36.0;
+  static const double _kGlyphEdge = 26.0;
 
   @override
   Widget build(BuildContext context) {
     // A horizontal list needs a height from somewhere, and the tool panel no
     // longer hands one down — it sizes to its body. This is the body's own.
     return SizedBox(
-      height: _kRowHeight,
+      height: kRowHeight,
       child: _buildRow(),
     );
   }
@@ -36,15 +49,16 @@ class CropPanel extends StatelessWidget {
 
         Widget ratioIcon;
         if (ratio == EditorCropRatio.custom) {
-          ratioIcon = const Icon(LucideIcons.crop, color: Colors.white, size: 24);
+          ratioIcon = const Icon(LucideIcons.crop,
+              color: Colors.white, size: _kGlyphEdge);
         } else {
           final r = ratio.ratio!;
-          double width = 24;
-          double height = 24;
+          double width = _kGlyphEdge;
+          double height = _kGlyphEdge;
           if (r > 1) {
-            height = 24 / r;
+            height = _kGlyphEdge / r;
           } else if (r < 1) {
-            width = 24 * r;
+            width = _kGlyphEdge * r;
           }
           ratioIcon = Container(
             width: width,
@@ -72,7 +86,7 @@ class CropPanel extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 SizedBox(
-                  height: 32,
+                  height: _kGlyphBox,
                   child: Center(child: ratioIcon),
                 ),
                 const SizedBox(height: 8),
@@ -85,7 +99,7 @@ class CropPanel extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: isSelected ? Colors.white : Colors.white70,
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
