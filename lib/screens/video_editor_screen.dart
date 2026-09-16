@@ -55,6 +55,7 @@ import '../features/video_editor/widgets/panels/animation_drawer.dart';
 import '../features/video_editor/widgets/panels/editor_panel_switcher.dart';
 import '../features/video_editor/widgets/panels/background_sheet.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
+import '../features/video_editor/widgets/editor_tool_tile.dart';
 
 class EditorTool {
   final String id;
@@ -1450,27 +1451,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                 }
               }
             },
-            child: Container(
-              width: 56,
-              margin: const EdgeInsets.only(right: 4),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(tool.icon, color: Colors.white, size: 24),
-                  const SizedBox(height: 4),
-                  Text(
-                    tool.label,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
+            child: EditorToolTile(icon: tool.icon, label: tool.label),
           );
         },
       ),
@@ -1784,27 +1765,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     }
                   }
                 },
-                child: Container(
-                  width: 56,
-                  margin: const EdgeInsets.only(right: 4),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(tool.icon, color: Colors.white, size: 24),
-                      const SizedBox(height: 4),
-                      Text(
-                        tool.label,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
+                child: EditorToolTile(icon: tool.icon, label: tool.label),
               );
             },
           );
