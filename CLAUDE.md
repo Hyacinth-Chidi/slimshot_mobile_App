@@ -1403,6 +1403,12 @@ the move silently freezes.
 
 Three engine-side subtleties worth not rediscovering:
 
+- **The volume slider is audible while dragged** through `setClipVolume`, an override the engine
+  applies in `applyAudio` in place of the clip's keyframed gain until the next `setTimeline`
+  clears it — the same shape as `setClipTransform`, for the same reason (a recomposed timeline per
+  slider frame would re-prepare the players). **✕ has to lift it explicitly** (`clearClipVolume`):
+  a discard pushes no timeline, so without that the engine kept the dragged level until the next
+  edit happened to push one. ✓ lifts it too, ahead of the push that carries the committed value.
 - **`Lane.applyVolume` change-guards on `VOLUME_EPSILON`, and that guard is what makes a
   keyframed fade safe.** Setting an unchanged volume every tick makes ExoPlayer rebuild its
   `AudioTrack` — fault 10 in this engine's history.

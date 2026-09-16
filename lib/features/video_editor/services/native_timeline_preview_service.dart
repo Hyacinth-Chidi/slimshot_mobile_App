@@ -157,6 +157,27 @@ class NativeTimelinePreviewService {
     });
   }
 
+  /// The clip volume slider's live value, applied per tick until the next
+  /// `setTimeline` carries the committed one — the same lightweight override
+  /// the pinch uses through `setClipTransform`, for the same reason: pushing
+  /// a recomposed timeline per slider frame would re-prepare the players.
+  /// Device-reported: the slider set a level the user could not hear.
+  Future<void> setClipVolume({required String clipId, required double volume}) {
+    return _methodChannel.invokeMethod<void>('setClipVolume', {
+      'clipId': clipId,
+      'volume': volume,
+    });
+  }
+
+  /// Lifts a live volume override. ✕ discards the preview value in state
+  /// without pushing a timeline, so without this the engine would keep the
+  /// dragged level until the next edit happened to push one.
+  Future<void> clearClipVolume({required String clipId}) {
+    return _methodChannel.invokeMethod<void>('clearClipVolume', {
+      'clipId': clipId,
+    });
+  }
+
   /// Tells the engine a timeline drag is in progress.
   ///
   /// While this is on, the engine coalesces the seeks the drag produces

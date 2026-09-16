@@ -377,6 +377,24 @@ class NativeTimelinePreviewManager(
                 )
             }
 
+            "setClipVolume" -> {
+                val clipId = call.argument<String>("clipId")
+                if (clipId.isNullOrBlank()) {
+                    result.error("invalid_volume", "Volume needs a clip id.", null)
+                    return
+                }
+                engine?.setClipVolume(clipId, (call.argument<Number>("volume") ?: 1.0).toDouble())
+                result.success(null)
+            }
+            "clearClipVolume" -> {
+                val clipId = call.argument<String>("clipId")
+                if (clipId.isNullOrBlank()) {
+                    result.error("invalid_volume", "Volume needs a clip id.", null)
+                    return
+                }
+                engine?.clearClipVolume(clipId)
+                result.success(null)
+            }
             "setClipTransform" -> {
                 val clipId = call.argument<String>("clipId")
                 if (clipId.isNullOrBlank()) {

@@ -686,6 +686,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     }
   }
 
+  /// Drops the engine's live volume override for the clip being edited, so
+  /// the committed (or unchanged) value takes over. Harmless when none is held.
+  void _liftLiveVolume() {
+    final segment = ref.read(videoEditorProvider.notifier).getActiveSegment();
+    if (segment == null) return;
+    unawaited(_nativePreviewService.clearClipVolume(clipId: segment.id));
+  }
+
   void _splitAtPlayhead() {
     final notifier = ref.read(videoEditorProvider.notifier);
     final state = ref.read(videoEditorProvider);
@@ -1879,9 +1887,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
               GestureDetector(
                 onTap: () {
                   HapticFeedback.lightImpact();
-                  // Discarding a preview needs no player call: the engine
-                  // reapplies each clip's committed volume and speed from the
-                  // timeline on its next tick.
+                  // Discarding a preview needs no player call for speed, but
+                  // the live volume override has to be lifted explicitly: the
+                  // engine holds it until a timeline push, and a discard pushes
+                  // none.
+                  _liftLiveVolume();
                   notifier.closeActiveTool();
                 },
                 child: const Padding(
@@ -1954,6 +1964,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         notifier.commitPreviewVolume();
       }
     }
+    if (activeToolId == 'volume') _liftLiveVolume();
     if (activeToolId == 'speed' && editorState.previewSpeed != null) {
       notifier.commitPreviewSpeed();
     }
@@ -2055,9 +2066,18 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       emptyMessage: activeSegment == null
           ? 'Select a clip to adjust volume'
           : null,
-      // The preview value reaches the engine through the timeline's per-tick
-      // volume application, so the slider only has to write state.
-      onChanged: notifier.setPreviewVolume,
+      // State for the ✓ to commit through the edit rule; the override channel
+      // so the engine plays the level being dragged. Device-reported: the
+      // slider set a level the user could not hear until they confirmed it.
+      onChanged: (value) {
+        notifier.setPreviewVolume(value);
+        if (activeSegment != null) {
+          unawaited(_nativePreviewService.setClipVolume(
+            clipId: activeSegment.id,
+            volume: value,
+          ));
+        }
+      },
     );
   }
 

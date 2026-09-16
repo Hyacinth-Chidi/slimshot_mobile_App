@@ -52,7 +52,7 @@ Grouped so each batch shares one device-verification pass.
   within a pixel tolerance, with a haptic tick; hold to override.
 - [ ] **C2 Keyframe drag-to-move.** Long-press-drag a diamond along the filmstrip; every
   property's keyframe at that progress moves together.
-- [ ] **C3 Live volume.** The volume slider is audible while dragging, through an override
+- [x] **C3 Live volume.** The volume slider is audible while dragging, through an override
   channel shaped like `setClipTransform`.
 
 ### Batch D — larger
