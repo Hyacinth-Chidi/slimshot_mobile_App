@@ -370,7 +370,16 @@ internal class AudioExportMixer(
                 continue
             }
 
-            val reader = PcmAudioSource(clip.playbackVideoPath, clip.speed, SAMPLE_RATE)
+            // A curved clip's sound follows its curve in source time, the same
+            // clock the video decoder is stepped by.
+            val curve = clip.speedCurve
+            val span = clip.sourceEnd - clip.sourceStart
+            val speedAtSource: ((Double) -> Double)? = if (curve == null || span <= 0.0) {
+                null
+            } else {
+                { s -> curve.speedAtSource(((s - clip.sourceStart) / span).coerceIn(0.0, 1.0)) }
+            }
+            val reader = PcmAudioSource(clip.playbackVideoPath, clip.speed, SAMPLE_RATE, speedAtSource)
             if (!reader.open()) {
                 skipped += (reader.failureReason ?: "${clip.id}:openFailed")
                 continue

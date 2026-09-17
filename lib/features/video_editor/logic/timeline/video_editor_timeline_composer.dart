@@ -399,6 +399,7 @@ class VideoEditorTimelineComposer {
       timelineStart: previous.timelineStart,
       timelineEnd: next.timelineEnd,
       speed: previous.speed,
+      speedCurve: previous.speedCurve,
       volume: previous.volume,
       isReversed: previous.isReversed,
       hasPreparedProxy: previous.hasPreparedProxy,
@@ -540,6 +541,10 @@ class VideoEditorTimelineComposer {
         (previous.sourceEnd - next.sourceStart).abs() <= epsilon &&
         (previous.timelineEnd - next.timelineStart).abs() <= epsilon &&
         (previous.speed - next.speed).abs() <= epsilon &&
+        // A ramp is a function of the clip's own range; a merged item would
+        // have a different range and the curve would land on other frames.
+        previous.speedCurve == null &&
+        next.speedCurve == null &&
         (previous.volume.baseValue - next.volume.baseValue).abs() <= epsilon;
   }
 
@@ -599,6 +604,7 @@ class VideoEditorTimelineComposer {
       timelineStart: timelineStart,
       timelineEnd: timelineEnd,
       speed: segment.speed,
+      speedCurve: segment.speedCurve,
       volume: segment.volume,
       laneIndex: laneIndex,
       // Report the resolved duration, not the raw request, so every consumer

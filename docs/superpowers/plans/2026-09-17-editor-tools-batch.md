@@ -60,7 +60,7 @@ Grouped so each batch shares one device-verification pass.
 - [x] **D1 Mask** (device check pending; rotation deferred) (rectangle, circle, linear) with feather, per clip, on the sampling
   helpers; handles on the canvas like crop.
 - [ ] **D2 Chroma key** for video overlays, on the overlay pass.
-- [ ] **D3 Speed curves.** Source time as the integral of a speed curve — its own model,
+- [x] **D3 Speed curves.** Source time as the integral of a speed curve — its own model,
   Kotlin port and fixture, and its own sheet. See the CLAUDE.md note on why speed cannot
   be a keyframe.
 - [x] **D4 Replace clip.** Swap a clip's asset keeping trims (clamped), transform, crop,

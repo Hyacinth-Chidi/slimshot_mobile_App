@@ -57,6 +57,7 @@ import '../features/video_editor/widgets/panels/background_sheet.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
 import '../features/video_editor/widgets/editor_tool_tile.dart';
 import '../features/video_editor/widgets/panels/adjust_sheet.dart';
+import '../features/video_editor/widgets/panels/speed_curve_sheet.dart';
 import '../features/video_editor/widgets/panels/apply_to_all_button.dart';
 import '../features/video_editor/widgets/panels/mask_panel.dart';
 
@@ -138,6 +139,14 @@ const EditorMenu _editMenu = EditorMenu(
     // Hold the frame under the playhead as a 3s still, cut in where it is.
     EditorTool(id: 'freeze', label: 'Freeze', icon: LucideIcons.snowflake),
     EditorTool(id: 'speed', label: 'Speed', icon: LucideIcons.gauge),
+    // A ramp, which the Speed slider structurally cannot express — and which
+    // keyframes cannot hold either, because speed decides what progress means.
+    // Its own tool beside Speed, so the common case stays one drag.
+    EditorTool(
+      id: 'speed_curve',
+      label: 'Curve',
+      icon: LucideIcons.trendingUp,
+    ),
     EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
     // The clip's own presence, beside Volume — a fade of the picture next to
     // a fade of the sound. Keyframable like every clip property.
@@ -1406,6 +1415,23 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     notifier.deselectAll();
   }
 
+  /// The speed curve sheet, on the clip under the playhead.
+  ///
+  /// Borrows a selection the way [_showTransformSheet] does, and hands it back
+  /// when the sheet closes: the toolbar is chosen by `currentMenuId`, so a
+  /// selection left behind would show root tools beside a selected clip.
+  Future<void> _showSpeedCurveSheet() async {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final borrowed = ref.read(videoEditorProvider).selectedSegmentId == null &&
+        notifier.selectSegmentAtPlayhead();
+    await showEditorSheet<void>(
+      context,
+      builder: (context) => const SpeedCurveSheet(),
+    );
+    if (!mounted || !borrowed) return;
+    notifier.deselectAll();
+  }
+
   void _openFullscreenPreview() {
     setState(() {
       _isFullscreen = !_isFullscreen;
@@ -1640,6 +1666,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     );
                   } else if (tool.id == 'transform') {
                     _showTransformSheet();
+                  } else if (tool.id == 'speed_curve') {
+                    _showSpeedCurveSheet();
                   } else if (tool.id == 'effects' &&
                       editorState.currentMenuId == 'edit') {
                     // Gated on the clip menu: the root and audio menus carry an

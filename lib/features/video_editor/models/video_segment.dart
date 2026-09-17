@@ -5,6 +5,7 @@ import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 import '../logic/color/color_adjustments.dart';
 import '../logic/mask/clip_mask.dart';
+import '../logic/speed/speed_curve.dart';
 
 /// A parameter resting at 1.0 — an ungained volume, an unpinched scale.
 ///
@@ -44,6 +45,17 @@ class VideoSegment {
   final AnimatableDouble volume;
 
   final double speed;
+
+  /// A speed that ramps across the clip, or null for the flat [speed].
+  ///
+  /// **The two are exclusive.** With a curve set, [speed] is written to 1 and
+  /// ignored: the curve decides how long the clip is and which source frame is
+  /// due when. Setting a flat speed clears the curve. Not an
+  /// [AnimatableDouble], for the reason the keyframes section of CLAUDE.md
+  /// gives: every keyframed property is read *at* a progress, while speed
+  /// decides what progress means — so source time has to be the curve's
+  /// integral, which is what [SpeedCurve] is.
+  final SpeedCurve? speedCurve;
   final String? transitionType;
   final double? transitionDuration;
   final String? overrideVideoPath;
@@ -188,6 +200,7 @@ class VideoSegment {
     required this.sourceEnd,
     this.volume = kUnitParameter,
     this.speed = 1.0,
+    this.speedCurve,
     this.transitionType,
     this.transitionDuration,
     this.overrideVideoPath,
@@ -208,7 +221,13 @@ class VideoSegment {
     this.mask = ClipMask.none,
   });
 
-  double get duration => (sourceEnd - sourceStart) / speed;
+  /// Timeline length. A curve decides it through its integral — the source
+  /// span times [SpeedCurve.durationFactor] — and a flat speed by division.
+  double get duration {
+    final span = sourceEnd - sourceStart;
+    final curve = speedCurve;
+    return curve == null ? span / speed : span * curve.durationFactor;
+  }
 
   /// This clip's 0..1 position at a timeline instant, given where it starts.
   ///
@@ -279,9 +298,28 @@ class VideoSegment {
   /// the filmstrip especially — stays aligned to the playhead through trims,
   /// speed changes, reversal, and transition overlaps.
   double sourceAtOffset(double secondsIntoClip) {
-    final offset = secondsIntoClip.clamp(0.0, duration) * speed;
+    final span = sourceEnd - sourceStart;
+    final into = secondsIntoClip.clamp(0.0, duration).toDouble();
+    final curve = speedCurve;
+    // A curve inverts its integral; a flat speed is the product it always
+    // was. Both give source seconds in **play order**, which reversal then
+    // mirrors — so a curve's `x = 0` is what plays first either way.
+    final offset = curve == null
+        ? into * speed
+        : (span <= 0 ? 0.0 : curve.sourceAtTime(into / span) * span);
     final source = isReversed ? sourceEnd - offset : sourceStart + offset;
     return source.clamp(sourceStart, sourceEnd).toDouble();
+  }
+
+  /// Playback rate [secondsIntoClip] into the clip — the flat [speed], or the
+  /// curve's value at the source frame due there.
+  double speedAtOffset(double secondsIntoClip) {
+    final curve = speedCurve;
+    if (curve == null) return speed;
+    final span = sourceEnd - sourceStart;
+    if (span <= 0) return 1.0;
+    final into = secondsIntoClip.clamp(0.0, duration).toDouble();
+    return curve.speedAtSource(curve.sourceAtTime(into / span));
   }
 
   VideoSegment copyWith({
@@ -291,6 +329,8 @@ class VideoSegment {
     double? sourceEnd,
     AnimatableDouble? volume,
     double? speed,
+    SpeedCurve? speedCurve,
+    bool clearSpeedCurve = false,
     String? transitionType,
     bool clearTransitionType = false,
     double? transitionDuration,
@@ -322,6 +362,7 @@ class VideoSegment {
       sourceEnd: sourceEnd ?? this.sourceEnd,
       volume: volume ?? this.volume,
       speed: speed ?? this.speed,
+      speedCurve: clearSpeedCurve ? null : (speedCurve ?? this.speedCurve),
       transitionType: clearTransitionType ? null : (transitionType ?? this.transitionType),
       transitionDuration: clearTransitionDuration ? null : (transitionDuration ?? this.transitionDuration),
       overrideVideoPath: clearOverrideVideoPath ? null : (overrideVideoPath ?? this.overrideVideoPath),
@@ -380,6 +421,8 @@ class VideoSegment {
       // these fields exactly as it always has.
       'volume': volume.toJson(),
       'speed': speed,
+      // Only when set, so a project nobody ramped writes what it always wrote.
+      if (speedCurve != null) 'speedCurve': speedCurve!.toJson(),
       'transitionType': transitionType,
       'transitionDuration': transitionDuration,
       'overrideVideoPath': overrideVideoPath,
@@ -439,6 +482,9 @@ class VideoSegment {
       // loads fully, and anything else falls back rather than throwing.
       volume: AnimatableDouble.fromJson(json['volume'], fallback: 1.0),
       speed: (json['speed'] as num?)?.toDouble() ?? 1.0,
+      // Absent in every draft written before speed could ramp; junk reads as
+      // no curve rather than a throw.
+      speedCurve: SpeedCurve.fromJson(json['speedCurve']),
       transitionType: json['transitionType'] as String?,
       transitionDuration: (json['transitionDuration'] as num?)?.toDouble(),
       overrideVideoPath: json['overrideVideoPath'] as String?,

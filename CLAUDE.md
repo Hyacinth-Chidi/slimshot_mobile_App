@@ -1905,6 +1905,70 @@ render lands the clip plays forward, and export still refuses a reversed clip wi
 name, which is the honest state. `rerenderMissingProxies: false` exists only so tests, which have
 no FFmpeg, can exercise the heal.
 
+### Speed curves — source time as an integral
+
+**Awaiting device verification.** A clip's speed can ramp:
+`VideoSegment.speedCurve` (`logic/speed/speed_curve.dart`) is speed as a function of **where in
+the footage** the clip is, and the flat `speed` and a curve are **exclusive** — setting a curve
+resets `speed` to 1, and committing the Speed slider clears the curve.
+
+**This is why speed was never a keyframable property.** Every other one is read *at* a progress,
+while speed decides what progress *means*: `duration` divides by it and `clipProgressAt` divides
+by `duration`, so a keyframed speed makes progress a function of itself. A ramp needs source time
+to be the **integral** of the speed curve, which is its own model — the same reason CapCut ships
+speed as a separate curve tool.
+
+The curve is parametrised over the **source**, not the timeline, so a point placed on a moment of
+the footage stays on that moment however the curve around it is reshaped. Speed interpolates
+linearly between points, which keeps both directions closed-form per segment: reaching source
+fraction `x` takes `∫ dx/v(x)` of timeline — a **logarithm** where the speed ramps, a division
+where it is flat (`timeToSource`, and `durationFactor` for the whole clip) — and the frame due at a
+timeline instant is that integral's **inverse**, an exponential (`sourceAtTime`). Everything that
+asks "how long" or "which frame" goes through the segment: `duration`, `sourceAtOffset`,
+`speedAtOffset`, and `timelineTimeToSourceTime`, which now delegates to `sourceAtOffset` rather
+than carrying a second copy of the mapping.
+
+**The Kotlin port is pinned by `test/fixtures/speed_curve_fixture.json`** (regenerate with
+`dart run tool/generate_speed_curve_fixture.dart`, then re-run **both** sides), the same mechanism
+and the same caveat as the animation fixtures: it catches divergence tomorrow, never a wrong curve
+today. What pins the arithmetic *today* is `speed_curve_test.dart`, which checks `timeToSource`
+against a **numeric trapezoid integral** of `1/v` on every preset — a sign slip in the logarithm
+cannot pass as "roughly right".
+
+**The engine sets the player's rate quantised to `SPEED_CURVE_STEP` (5%)**, while the exact
+integral still decides where the clip *is* (`sourceOffsetAt`). Handing ExoPlayer new
+`PlaybackParameters` sixty times a second is the `AudioTrack`-churn fault (item 10) in another
+costume; 5% steps are inaudible and drift correction absorbs the residual against the exact
+integral. The master clock inverts with `timelineOffsetForSource`, since a curved clip's player
+position no longer divides by a scalar.
+
+**Export audio follows the curve in source time.** `PcmAudioSource` takes an optional
+`speedAtSource` and recomputes its resample `step` per output frame from the source seconds it has
+consumed, so the sound tracks the same clock the video decoder is stepped by — a fixed step would
+slide against the picture through the ramp. (The pitch caveat above is unchanged: the linear
+resampler shifts pitch where the preview's Sonic does not.)
+
+**A curved clip never merges with its neighbour** (`_canMergeForPlayback` refuses on either side
+carrying a curve): a merged media item has a different source range, and the curve would land on
+other frames. **A split cuts the curve** (`SpeedCurve.splitAt`): each half is rescaled into its own
+0..1 and both read the original's speed at the seam, so the halves add up to the whole length and
+play through the cut unchanged.
+
+**The sheet is presets first, the graph second** (`panels/speed_curve_sheet.dart`). Seven named
+curves plus Normal, each tile drawing its own shape — "Montage" and "Bullet" are words for
+pictures. A tap is the whole interaction for most users; dragging any point makes the curve the
+clip's own (`presetId` goes null, so nothing is highlighted, which is the truth about what it is).
+**Only the speed moves**: dragging a point sideways would slide the moment being shaped out from
+under the finger. Speed maps to height **logarithmically**, because linearly 1× would sit at a
+tenth of a 0.1×–10× graph. A drag is one undo step (`beginClipSpeedCurve` snapshots and pauses —
+reshaping the curve changes the clip's length under a running playhead — then
+`setClipSpeedCurveLive` writes per frame).
+
+**The graph claims the pointer on pointer-down** (`_ImmediateVerticalDragRecognizer`). It sits
+inside the sheet's `SingleChildScrollView`, and against a *vertical* competitor the scroll view
+simply wins the arena — the graph was undraggable in the sheet while working perfectly in
+isolation. Third occurrence of this fault, after the trim handles and the `ValueRuler`.
+
 ### Decisions already made â€” don't re-litigate
 
 | Question | Decision |

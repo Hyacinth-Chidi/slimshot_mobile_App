@@ -31,6 +31,7 @@ import '../services/video_thumbnail_service.dart';
 import '../logic/color/color_adjustments.dart';
 import '../logic/mask/clip_mask.dart';
 import '../../../core/services/draft_files.dart';
+import '../logic/speed/speed_curve.dart';
 
 /// True when a stored crop rect is the whole frame — i.e. not a crop at all.
 ///
@@ -842,9 +843,24 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         ? (start: segment.sourceStart, end: sourceSplit)
         : (start: sourceSplit, end: segment.sourceEnd);
 
+    // A curve is a function of the clip's source range, so each half takes
+    // its own rescaled piece and both read the same speed at the seam. The
+    // cut fraction is in play order, like the curve's x.
+    final sourceSpan = segment.sourceEnd - segment.sourceStart;
+    final cutFraction = sourceSpan <= 0
+        ? 0.5
+        : ((segment.isReversed
+                    ? segment.sourceEnd - sourceSplit
+                    : sourceSplit - segment.sourceStart) /
+                sourceSpan)
+            .clamp(0.0, 1.0)
+            .toDouble();
+    final curveHalves = segment.speedCurve?.splitAt(cutFraction);
+
     final leftSegment = segment.copyWith(
       sourceStart: leftRange.start,
       sourceEnd: leftRange.end,
+      speedCurve: curveHalves?.left,
       // The outgoing transition belongs to the boundary this clip used to have
       // with the *next* clip. That boundary is now the right half's, and the
       // new seam between the halves is a hard cut — splitting a clip must not
@@ -863,6 +879,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       sourceStart: rightRange.start,
       sourceEnd: rightRange.end,
       speed: segment.speed,
+      speedCurve: curveHalves?.right,
       volume: segment.volume,
       isReversed: segment.isReversed,
       transitionType: segment.transitionType,
@@ -1603,10 +1620,63 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
     saveStateForUndo();
     final updatedSegments = [...state.segments];
+    // A flat speed and a curve are exclusive: dragging the slider is the
+    // user choosing a fixed rate over the ramp.
     updatedSegments[index] = updatedSegments[index].copyWith(
       speed: state.previewSpeed!,
+      clearSpeedCurve: true,
     );
     state = state.copyWith(segments: updatedSegments, clearPreviewSpeed: true);
+  }
+
+  /// Takes the undo snapshot for a whole curve drag, once, and pauses.
+  ///
+  /// The same rule as [beginClipCanvasTransform]: a drag writes per frame, and
+  /// going through [setClipSpeedCurve] would push an undo entry for every one
+  /// of them. Pausing matters more here than elsewhere — reshaping the curve
+  /// changes the clip's length under a running playhead.
+  void beginClipSpeedCurve() {
+    if (state.selectedSegmentId == null) return;
+    saveStateForUndo();
+    if (state.isPlaying) {
+      state = state.copyWith(isPlaying: false);
+    }
+  }
+
+  /// Writes the curve with no snapshot — the per-frame half of a drag that
+  /// [beginClipSpeedCurve] opened.
+  void setClipSpeedCurveLive(SpeedCurve curve) {
+    final targetId = state.selectedSegmentId;
+    if (targetId == null) return;
+    state = state.copyWith(
+      segments: [
+        for (final s in state.segments)
+          if (s.id == targetId)
+            s.copyWith(speedCurve: curve, speed: 1.0)
+          else
+            s,
+      ],
+      clearPreviewSpeed: true,
+    );
+  }
+
+  /// Gives the selected clip a speed curve, or removes it with null. One undo
+  /// step. With a curve the flat speed is reset to 1, so the curve alone
+  /// decides the clip's rate and length; without one the clip keeps whatever
+  /// flat speed it had.
+  void setClipSpeedCurve(SpeedCurve? curve) {
+    final targetId = state.selectedSegmentId;
+    if (targetId == null) return;
+    final index = state.segments.indexWhere((s) => s.id == targetId);
+    if (index == -1) return;
+    final current = state.segments[index];
+    if (current.speedCurve == curve) return;
+    saveStateForUndo();
+    final updated = [...state.segments];
+    updated[index] = curve == null
+        ? current.copyWith(clearSpeedCurve: true)
+        : current.copyWith(speedCurve: curve, speed: 1.0);
+    state = state.copyWith(segments: updated, clearPreviewSpeed: true);
   }
 
   void setSelectedRatio(EditorCropRatio ratio) {

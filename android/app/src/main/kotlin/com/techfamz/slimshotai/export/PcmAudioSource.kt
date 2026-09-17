@@ -38,6 +38,13 @@ internal class PcmAudioSource(
     private val path: String,
     private val speed: Double,
     private val outputSampleRate: Int,
+    /**
+     * Rate as a function of **source seconds**, for a clip whose speed ramps;
+     * null for the flat [speed]. Read per output frame, so the step follows
+     * the curve exactly where the video decoder does — a fixed step would
+     * leave the sound sliding against the picture through the ramp.
+     */
+    private val speedAtSource: ((Double) -> Double)? = null,
 ) {
 
     private var extractor: MediaExtractor? = null
@@ -51,6 +58,15 @@ internal class PcmAudioSource(
 
     /** Source frames consumed per output frame: rate conversion and speed in one. */
     private var step = 1.0
+
+    /** The rate-conversion half of [step], for a curve to multiply per frame. */
+    private var rateStep = 1.0
+
+    /** Source frames consumed so far since the last seek, for the curve's clock. */
+    private var sourceFramesConsumed = 0.0
+
+    /** Where the last seek landed, in source seconds; the curve's origin. */
+    private var seekSourceSeconds = 0.0
 
     /** Decoded source frames waiting to be resampled, interleaved stereo. */
     private var decoded = FloatArray(0)
@@ -123,7 +139,8 @@ internal class PcmAudioSource(
 
             sourceChannels = audioFormat.intOr(MediaFormat.KEY_CHANNEL_COUNT, 2)
             sourceSampleRate = audioFormat.intOr(MediaFormat.KEY_SAMPLE_RATE, outputSampleRate)
-            step = (sourceSampleRate.toDouble() / outputSampleRate) * speed
+            rateStep = sourceSampleRate.toDouble() / outputSampleRate
+            step = rateStep * speed
 
             Log.i(
                 TAG,
@@ -153,6 +170,8 @@ internal class PcmAudioSource(
         fraction = 0.0
         decodedOffset = 0
         decodedCount = 0
+        sourceFramesConsumed = 0.0
+        seekSourceSeconds = sourceUs / 1_000_000.0
 
         val ex = extractor ?: return
         val decoder = codec ?: return
@@ -197,7 +216,13 @@ internal class PcmAudioSource(
             dest[out] = curL + (nextL - curL) * t
             dest[out + 1] = curR + (nextR - curR) * t
 
+            val curve = speedAtSource
+            if (curve != null) {
+                val sourceSeconds = seekSourceSeconds + sourceFramesConsumed / sourceSampleRate
+                step = rateStep * curve(sourceSeconds)
+            }
             fraction += step
+            sourceFramesConsumed += step
             written++
         }
 
@@ -247,7 +272,8 @@ internal class PcmAudioSource(
                         // The decoder is the authority: a container can disagree
                         // with what actually comes out.
                         sourceSampleRate = rate
-                        step = (rate.toDouble() / outputSampleRate) * speed
+                        rateStep = rate.toDouble() / outputSampleRate
+                        step = rateStep * speed
                     }
                 }
 

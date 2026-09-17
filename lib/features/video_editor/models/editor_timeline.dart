@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../logic/animation/animatable_double.dart';
 import '../logic/mask/clip_mask.dart';
+import '../logic/speed/speed_curve.dart';
 
 /// A resolved editor timeline, ready to hand to the native preview engine.
 ///
@@ -219,6 +220,7 @@ class EditorTimelineVideoClip {
     required this.volume,
     required this.isReversed,
     required this.hasPreparedProxy,
+    this.speedCurve,
     this.isImage = false,
     this.sourceWidth = 0,
     this.sourceHeight = 0,
@@ -249,6 +251,11 @@ class EditorTimelineVideoClip {
   final double timelineStart;
   final double timelineEnd;
   final double speed;
+
+  /// A ramping speed, or null for the flat [speed]. See
+  /// `VideoSegment.speedCurve`; the engine resolves source position through
+  /// it in [sourceAt] and its Kotlin twin.
+  final SpeedCurve? speedCurve;
 
   /// This clip's own gain, and how it varies across the clip.
   ///
@@ -409,7 +416,12 @@ class EditorTimelineVideoClip {
   /// Both clips in a transition derive their source position from the one
   /// shared timeline clock through this, which is what keeps them in step.
   double sourceAt(double timelineSeconds) {
-    final offset = (timelineSeconds - timelineStart) * speed;
+    final curve = speedCurve;
+    final into = timelineSeconds - timelineStart;
+    final span = sourceEnd - sourceStart;
+    final offset = curve == null || span <= 0
+        ? into * speed
+        : curve.sourceAtTime(into / span) * span;
     return (sourceStart + offset).clamp(sourceStart, sourceEnd).toDouble();
   }
 
@@ -424,6 +436,9 @@ class EditorTimelineVideoClip {
       'timelineEnd': timelineEnd,
       'timelineDuration': timelineDuration,
       'speed': speed,
+      // Only when set: an engine reading a flat clip sees the payload it
+      // always did. Kotlin's `SpeedCurve.parse` reads the same shape.
+      if (speedCurve != null) 'speedCurve': speedCurve!.toJson(),
       // A bare number while flat, a map once keyframed — so a clip nobody has
       // animated crosses the channel exactly as it always has, and Kotlin's
       // `AnimatableDouble.fromWire` reads either shape.

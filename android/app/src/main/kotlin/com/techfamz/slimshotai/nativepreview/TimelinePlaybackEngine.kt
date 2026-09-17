@@ -786,8 +786,7 @@ internal class TimelinePlaybackEngine(
         val block = lane.blocks[blockIndex]
         val itemIndex = block.indexOfClipAt(timelineSeconds)
         val clip = block.clips[itemIndex]
-        val inClipSourceSeconds =
-            ((timelineSeconds - clip.timelineStart) * clip.speed).coerceAtLeast(0.0)
+        val inClipSourceSeconds = clip.sourceOffsetAt(timelineSeconds)
 
         lane.player?.seekTo(itemIndex, (inClipSourceSeconds * 1000.0).toLong())
     }
@@ -890,7 +889,7 @@ internal class TimelinePlaybackEngine(
         val lane = lanes.getOrNull(masterLane) ?: return 0.0
         val player = lane.player ?: return 0.0
         val clip = lane.currentClip() ?: return 0.0
-        val inClipSeconds = (player.currentPosition / 1000.0) / clip.speed
+        val inClipSeconds = clip.timelineOffsetForSource(player.currentPosition / 1000.0)
         return (clip.timelineStart + inClipSeconds).coerceIn(0.0, timelineDurationSeconds)
     }
 
@@ -1042,11 +1041,25 @@ internal class TimelinePlaybackEngine(
         )
     }
 
+    /**
+     * What to hand the player for [clip] at [position]: the flat speed as is,
+     * a curve's rate quantised to [SPEED_CURVE_STEP]. The exact integral still
+     * decides where the clip *is* — `sourceOffsetAt` — so the quantised rate
+     * only ever drifts a little from it, and drift correction pulls it back.
+     */
+    private fun playbackSpeedFor(clip: NativeTimelineClip, position: Double): Double {
+        if (clip.speedCurve == null) return clip.speed
+        val exact = clip.speedAt(position)
+        return (Math.round(exact / SPEED_CURVE_STEP) * SPEED_CURVE_STEP)
+            .coerceIn(SpeedCurve.MIN_SPEED, SpeedCurve.MAX_SPEED)
+    }
+
     private fun applyClipSpeeds() {
+        val position = timelinePositionSeconds()
         for (lane in lanes) {
             if (lane.player == null) continue
             val clip = lane.currentClip() ?: continue
-            lane.applySpeed(clip.speed)
+            lane.applySpeed(playbackSpeedFor(clip, position))
 
             // Moving off a photo onto a video: drop the still so the lane goes
             // back to decoder output. `ImageOutput.onDisabled` usually covers
@@ -1269,7 +1282,7 @@ internal class TimelinePlaybackEngine(
             lane.player
         } ?: return
 
-        lane.applySpeed(incoming.speed)
+        lane.applySpeed(playbackSpeedFor(incoming, position))
         // Give the lane a moment before drift correction is allowed to touch
         // it, so start-up latency is not mistaken for drift.
         lane.lastDriftSeekMs = SystemClock.elapsedRealtime()
@@ -1301,7 +1314,7 @@ internal class TimelinePlaybackEngine(
         if (clip.id != incoming.id) return
         if (!player.isPlaying || player.playbackState != Player.STATE_READY) return
 
-        val expectedSeconds = (position - incoming.timelineStart) * incoming.speed
+        val expectedSeconds = incoming.sourceOffsetAt(position)
         val actualSeconds = player.currentPosition / 1000.0
         if (abs(actualSeconds - expectedSeconds) <= DRIFT_TOLERANCE_SECONDS) return
 
@@ -1315,7 +1328,7 @@ internal class TimelinePlaybackEngine(
     private fun applyPlaybackState() {
         for (lane in lanes) {
             if (lane.player == null) continue
-            lane.currentClip()?.let { lane.applySpeed(it.speed) }
+            lane.currentClip()?.let { lane.applySpeed(playbackSpeedFor(it, timelinePositionSeconds())) }
         }
 
         lanes.getOrNull(masterLane)?.player?.playWhenReady = isPlaying
@@ -1472,6 +1485,7 @@ internal class TimelinePlaybackEngine(
                 a.timelineStart != b.timelineStart ||
                 a.timelineEnd != b.timelineEnd ||
                 a.speed != b.speed ||
+                a.speedCurve != b.speedCurve ||
                 a.laneIndex != b.laneIndex ||
                 a.isImage != b.isImage
             ) {
@@ -1559,6 +1573,16 @@ internal class TimelinePlaybackEngine(
 
         const val VOLUME_EPSILON = 0.01f
         const val SPEED_EPSILON = 0.001
+
+        /**
+         * A curved clip's rate is quantised to this before it reaches the
+         * player. The curve changes every tick; handing ExoPlayer a new
+         * `PlaybackParameters` sixty times a second is the volume-churn fault
+         * (item 10) in another costume. Steps of 5% are inaudible and
+         * invisible, and drift correction absorbs the residual against the
+         * exact integral.
+         */
+        const val SPEED_CURVE_STEP = 0.05
     }
 }
 

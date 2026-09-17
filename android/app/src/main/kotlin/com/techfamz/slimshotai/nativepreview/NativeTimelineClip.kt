@@ -17,6 +17,13 @@ internal data class NativeTimelineClip(
     val timelineEnd: Double,
     val speed: Double,
     /**
+     * A ramping speed, or null for the flat [speed]. With a curve, [sourceAt]
+     * inverts its integral and [speedAt] reads its rate; the flat [speed] is
+     * then 1 and unused. Parsed from the same `{points: [{x, speed}]}` the
+     * composer writes.
+     */
+    val speedCurve: SpeedCurve? = null,
+    /**
      * This clip's own gain, and how it varies across the clip.
      *
      * An [AnimatableDouble] so a diamond can fade a clip without touching the
@@ -261,9 +268,45 @@ internal data class NativeTimelineClip(
      * Both clips in a transition resolve their position through this from the
      * one shared clock, which is what keeps the two decoders in step.
      */
-    fun sourceAt(timelineSeconds: Double): Double {
-        val offset = (timelineSeconds - timelineStart) * speed
-        return (sourceStart + offset).coerceIn(sourceStart, sourceEnd)
+    fun sourceAt(timelineSeconds: Double): Double =
+        (sourceStart + sourceOffsetAt(timelineSeconds)).coerceIn(sourceStart, sourceEnd)
+
+    /**
+     * Seconds into the clip's **source** — proxy-relative for a proxied clip —
+     * at a timeline instant. The flat speed is the product it always was; a
+     * curve inverts its integral, the arithmetic Dart's `sourceAtOffset`
+     * shares.
+     */
+    fun sourceOffsetAt(timelineSeconds: Double): Double {
+        val into = (timelineSeconds - timelineStart).coerceAtLeast(0.0)
+        val curve = speedCurve
+        val span = sourceEnd - sourceStart
+        if (curve == null || span <= 0.0) return into * speed
+        return curve.sourceAtTime(into / span) * span
+    }
+
+    /**
+     * Timeline seconds into the clip for a **source** offset — the inverse of
+     * [sourceOffsetAt], which the master clock needs to turn the player's
+     * position back into timeline time.
+     */
+    fun timelineOffsetForSource(sourceSeconds: Double): Double {
+        val curve = speedCurve
+        val span = sourceEnd - sourceStart
+        if (curve == null || span <= 0.0) return sourceSeconds / speed
+        return curve.timeToSource((sourceSeconds / span).coerceIn(0.0, 1.0)) * span
+    }
+
+    /**
+     * Playback rate at a timeline instant: the flat [speed], or the curve's
+     * value at the source frame due there. The engine sets the player to this
+     * as it goes; export needs only [sourceAt].
+     */
+    fun speedAt(timelineSeconds: Double): Double {
+        val curve = speedCurve ?: return speed
+        val span = sourceEnd - sourceStart
+        if (span <= 0.0) return 1.0
+        return curve.speedAtSource(curve.sourceAtTime(sourceOffsetAt(timelineSeconds) / span))
     }
 
     fun contains(timelineSeconds: Double): Boolean {
@@ -326,8 +369,13 @@ internal data class NativeTimelineClip(
 
             val timelineStart = map.number("timelineStart") ?: 0.0
             val speed = (map.number("speed") ?: 1.0).coerceAtLeast(0.01)
+            val speedCurve = SpeedCurve.parse(map["speedCurve"])
             val timelineEnd = map.number("timelineEnd")
-                ?: (timelineStart + ((rawSourceEnd - sourceStart) / speed))
+                ?: if (speedCurve != null) {
+                    timelineStart + (rawSourceEnd - sourceStart) * speedCurve.durationFactor
+                } else {
+                    timelineStart + ((rawSourceEnd - sourceStart) / speed)
+                }
 
             // A degenerate source range must never remove the clip.
             //
@@ -361,6 +409,7 @@ internal data class NativeTimelineClip(
                 timelineStart = timelineStart,
                 timelineEnd = timelineEnd,
                 speed = speed,
+                speedCurve = speedCurve,
                 volume = volume,
                 isReversed = isReversed,
                 hasPreparedProxy = hasPreparedProxy,

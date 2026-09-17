@@ -165,13 +165,9 @@ double timelineTimeToSourceTime(
     final isFirst = index == 0;
 
     if (timelineSeconds >= start || isFirst) {
-      final withinSegment =
-          (timelineSeconds - start).clamp(0.0, segment.duration).toDouble();
-      final sourceOffset = withinSegment * segment.speed;
-      final sourceTime = segment.isReversed
-          ? segment.sourceEnd - sourceOffset
-          : segment.sourceStart + sourceOffset;
-      return sourceTime.clamp(segment.sourceStart, segment.sourceEnd).toDouble();
+      // The segment's own mapping — the one the filmstrip and playback use —
+      // so a speed curve, reversal and a trim all resolve in exactly one place.
+      return segment.sourceAtOffset(timelineSeconds - start);
     }
   }
 
