@@ -706,6 +706,10 @@ internal class TimelinePlaybackEngine(
     fun pause() {
         isPlaying = false
         lanes.forEach { it.player?.playWhenReady = false }
+        // Now, not on the next tick — and a pause in the tail, where the
+        // engine was already parked, has to end the tail's clock too.
+        lastTailClockMs = 0L
+        overlayAudio.pauseAll()
         emit("paused", "isReady" to isReady)
     }
 
@@ -844,6 +848,11 @@ internal class TimelinePlaybackEngine(
     fun detachSurfacesForExport() {
         isPlaying = false
         exportOwnsRenderer = true
+        // Released, not paused: `tick` stands still for the whole export, so
+        // nothing would drive them, and the export's own audio pass should not
+        // share the device's decoders with players nobody can hear. The first
+        // tick after the export reopens what the playhead needs.
+        overlayAudio.release()
         for (lane in lanes) {
             lane.player?.playWhenReady = false
             lane.player?.setVideoSurface(null)
@@ -891,6 +900,7 @@ internal class TimelinePlaybackEngine(
         // every effect program with it. Holding the objects past that would
         // leave passes naming program ids in a context that no longer exists.
         clipEffects.forget()
+        overlayAudio.release()
         for (lane in lanes) {
             lane.player?.setVideoSurface(null)
             lane.player?.release()
@@ -949,9 +959,24 @@ internal class TimelinePlaybackEngine(
         renderer.setPreviewOverlays(list)
     }
 
+    /**
+     * The sound of the video overlays — see [OverlayAudioPlayers] for why it
+     * lives here rather than beside the imported music in Flutter.
+     */
+    private val overlayAudio = OverlayAudioPlayers(context) { message ->
+        emit("warning", "message" to message)
+    }
+
+    /** The instant the overlays were last drawn at; their sound follows it. */
+    private var overlayClockNow = 0.0
+
+    /** When the editor last sent a tail position. See [applyOverlayAudio]. */
+    private var lastTailClockMs = 0L
+
     /** See [OverlayClock.override]. */
     fun setOverlayClock(seconds: Double) {
         overlayClockOverride = seconds
+        lastTailClockMs = SystemClock.elapsedRealtime()
         applyOverlays(timelinePositionSeconds())
     }
 
@@ -985,12 +1010,33 @@ internal class TimelinePlaybackEngine(
             tailActive = inTail
             renderer.setActiveLane(if (inTail) NO_ACTIVE_LANE else masterLane)
         }
-        if (overlays.isEmpty()) return
         val clock = tailClock ?: position
+        overlayClockNow = clock
+        if (overlays.isEmpty()) return
         val redraw = OverlayClock.needsFirstDraw(lastOverlayPosition) ||
             OverlayClock.needsRedraw(overlays, lastOverlayPosition, clock)
         lastOverlayPosition = clock
         renderer.setOverlayClock(clock, redraw)
+    }
+
+    /**
+     * Keeps each video overlay's sound on the clock its picture is drawn from.
+     *
+     * "Advancing" is the honest question, not "is play pressed": inside the
+     * video it is the master lane *genuinely* playing, so an overlay's sound
+     * cannot run on while the picture is stalled or still buffering its first
+     * frames. In the tail the engine is parked and the editor's ticker owns
+     * the playhead, so there it is whether tail positions are still arriving.
+     */
+    private fun applyOverlayAudio() {
+        val advancing = when {
+            isScrubbing -> false
+            tailActive -> OverlayAudioSync.tailIsAdvancing(
+                SystemClock.elapsedRealtime() - lastTailClockMs,
+            )
+            else -> isPlaying && lanes.getOrNull(masterLane)?.player?.isPlaying == true
+        }
+        overlayAudio.sync(overlays, overlayClockNow, advancing, volume)
     }
 
     private fun tick() {
@@ -1020,6 +1066,7 @@ internal class TimelinePlaybackEngine(
         applyClipSpeeds()
         applyAudio(position)
         applyOverlays(position)
+        applyOverlayAudio()
         sendPositionEventIfDue(position)
         logPlaybackIfDue(position)
     }

@@ -2040,6 +2040,36 @@ gesture and return on release. Corner-handle drags keep their chrome — the han
 held. The full fix is drawing the frame in GL with the picture; not worth it until something else
 needs it.
 
+**An overlay's sound is the engine's too** (`OverlayAudioPlayers`, `OverlayAudioSync`,
+**awaiting device verification**). Device-reported, and mine: the deleted `video_player`
+controller had been the overlay's picture *and* its sound, and `OverlayDrawBuilder` replaced only
+the picture — the canvas went silent while the export, which mixes overlays itself, stayed right.
+One `ExoPlayer` per audible overlay near the playhead, **video track disabled**
+(`setTrackTypeDisabled(C.TRACK_TYPE_VIDEO)`). That disabling is the reason this is not another
+`just_audio` player beside the imported music: `just_audio` cannot turn a video track off, and
+ExoPlayer keeps a video decoder on a placeholder surface when nothing shows it — a hidden
+hardware codec per overlay, on top of the two clip lanes and the picture decoders, which is what
+a low-end device runs out of first. Slaved to `overlayClockNow`, the instant the picture is drawn
+at, so sound and picture cannot part; speed goes through `PlaybackRate.pitchFor`, the rule that
+makes the preview sound like the export's resampler.
+
+**"Advancing" is asked honestly, and it is two questions.** Inside the video it is the master
+lane *genuinely* playing (`ExoPlayer.isPlaying`), so an overlay cannot be heard over a stalled or
+still-buffering picture — the "no playhead moving while the video is stalled" rule, applied to
+sound. In the tail the engine is parked and Flutter's ticker owns the playhead, so there it is
+whether tail positions are still arriving (`OverlayAudioSync.tailIsAdvancing`): the messages
+*are* the evidence of motion, so backgrounding or anything else that stops them stops the sound,
+with no second message needed to say so. Scrubbing is never advancing.
+
+`OverlayAudioSync` holds the decisions as pure functions because the players only run on a
+device. Its rules are the lanes' own, restated: seek only on a real jump and only while the
+player is actually playing (a buffering player's position stands still while the target advances
+— the seek loop of fault 9), never re-seek a player already parked on the instant it is starting
+from, and change-guard volume and rate (fault 10). Past `MAX_PLAYERS` (4) or on a file whose
+sound will not decode, the overlay is silent **and the user is told** through the same `warning`
+event the lane fallback uses. Export mixes every overlay regardless, so the cap costs nothing in
+the file.
+
 **What it unlocks**: an overlay chroma key and blend modes, each now a shader line rather than an
 impossibility, and an exact feather instead of a hard-edged clip.
 
