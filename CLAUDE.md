@@ -1925,7 +1925,10 @@ no FFmpeg, can exercise the heal.
 
 ### Speed curves — source time as an integral
 
-**Awaiting device verification.** A clip's speed can ramp:
+**Device-verified by the user:** the export is right, the preview's picture follows the curve, and
+after the pitch fix below the preview's sound matches the export's with the glitches gone. **Not
+yet checked on a device:** splitting a curved clip, and a curve on a reversed clip. A clip's speed
+can ramp:
 `VideoSegment.speedCurve` (`logic/speed/speed_curve.dart`) is speed as a function of **where in
 the footage** the clip is, and the flat `speed` and a curve are **exclusive** — setting a curve
 resets `speed` to 1, and committing the Speed slider clears the curve.
