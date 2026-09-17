@@ -109,6 +109,16 @@ internal data class NativeTimelineOverlay(
     /** Video overlays only. */
     val sourceStart: Double,
     val sourceEnd: Double,
+    /**
+     * How fast a video overlay's footage runs, 1.0 being natural.
+     *
+     * **Honoured by nothing until now.** The model carried it, the tool set
+     * it, the preview plugin ignored it and [sourceAt] walked the source at
+     * 1x — so a slowed overlay played at normal speed on the canvas *and* in
+     * the file. Both engines resolve source position through [sourceAt], so
+     * fixing it here fixes both.
+     */
+    val speed: Double,
     val volume: Double,
     val isMuted: Boolean,
     /** Text overlays only: one entry per drawn character. */
@@ -146,10 +156,22 @@ internal data class NativeTimelineOverlay(
 
     /** Source position of a video overlay at [timelineSeconds]. */
     fun sourceAt(timelineSeconds: Double): Double {
-        val offset = (timelineSeconds - startSeconds).coerceAtLeast(0.0)
+        val offset = (timelineSeconds - startSeconds).coerceAtLeast(0.0) * speed
         val end = if (sourceEnd > sourceStart) sourceEnd else Double.MAX_VALUE
         return (sourceStart + offset).coerceAtMost(end)
     }
+
+    /**
+     * Whether this overlay contributes sound to the mix.
+     *
+     * Only a video overlay has any, and a muted or silent one contributes
+     * nothing — asking a decoder for samples nobody will hear costs a codec
+     * instance for nothing.
+     */
+    val hasAudibleSound: Boolean get() = isVideo && !isMuted && volume > 0.0
+
+    /** The gain this overlay's sound is mixed at: zero once muted. */
+    val effectiveVolume: Double get() = if (isMuted) 0.0 else volume.coerceIn(0.0, 1.0)
 
     /** What the animations do to this overlay at one instant. */
     data class FrameState(
@@ -289,6 +311,9 @@ internal data class NativeTimelineOverlay(
                 speedIn = map.positiveRate("speedIn"),
                 speedOut = map.positiveRate("speedOut"),
                 speedLoop = map.positiveRate("speedLoop"),
+                // A zero or negative speed would park the overlay on one
+                // frame for ever, and a draft can hold anything.
+                speed = (map.number("speed") ?: 1.0).let { if (it > 0.0) it else 1.0 },
                 sourceStart = map.number("sourceStart") ?: 0.0,
                 sourceEnd = map.number("sourceEnd") ?: 0.0,
                 volume = (map.number("volume") ?: 1.0).coerceIn(0.0, 1.0),

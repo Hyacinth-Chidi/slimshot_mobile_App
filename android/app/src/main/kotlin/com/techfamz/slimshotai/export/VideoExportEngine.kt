@@ -164,6 +164,7 @@ internal class VideoExportEngine(
         val mixer = AudioExportMixer(
             clips = request.clips,
             audioTracks = request.audioTracks,
+            overlays = request.overlays,
             masterVolume = request.masterVolume,
             transitions = request.transitions,
             durationSeconds = duration,

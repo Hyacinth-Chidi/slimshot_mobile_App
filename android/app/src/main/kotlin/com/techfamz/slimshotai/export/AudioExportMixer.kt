@@ -12,6 +12,7 @@ import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+import com.techfamz.slimshotai.nativepreview.NativeTimelineOverlay
 
 /**
  * Mixes the timeline's audio and encodes it as AAC.
@@ -30,6 +31,15 @@ import kotlin.math.sin
 internal class AudioExportMixer(
     private val clips: List<NativeTimelineClip>,
     private val audioTracks: List<TimelineAudioTrack>,
+    /**
+     * Overlays, for the sound a **video** overlay carries.
+     *
+     * It was missing from the file entirely: clip audio and imported music
+     * were mixed, a video overlay's was not, so an overlay you could hear on
+     * the canvas was silent in the export. One more windowed source is all it
+     * needs — the same shape an imported track already is.
+     */
+    private val overlays: List<NativeTimelineOverlay> = emptyList(),
     private val masterVolume: Double,
     private val transitions: List<NativeTimelineTransitionIntent>,
     private val durationSeconds: Double,
@@ -400,6 +410,32 @@ internal class AudioExportMixer(
                             clip.volumeAt(clip.clipProgressAt(t)) *
                             crossfadeGain(clip, t)
                     },
+                ),
+            )
+        }
+
+        for (overlay in overlays) {
+            if (!overlay.hasAudibleSound) continue
+            if (!File(overlay.path).exists()) continue
+
+            // Its own speed, so the sound runs with the picture: the video
+            // decoder is stepped through `sourceAt`, which reads the same
+            // field.
+            val reader = PcmAudioSource(overlay.path, overlay.speed, SAMPLE_RATE)
+            if (!reader.open()) {
+                skipped += (reader.failureReason ?: "${overlay.id}:openFailed")
+                continue
+            }
+            reader.seekTo((overlay.sourceStart * 1_000_000L).toLong())
+
+            sources.add(
+                Source(
+                    reader = reader,
+                    timelineStart = overlay.startSeconds,
+                    timelineEnd = overlay.endSeconds,
+                    // The master volume applies, as it does to everything else
+                    // audible; the overlay's own mute already zeroed this.
+                    gainAt = { masterVolume * overlay.effectiveVolume },
                 ),
             )
         }

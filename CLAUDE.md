@@ -1885,25 +1885,6 @@ Drag-and-drop lives in `ScrollableTimeline`. The shape of it:
 
 ### Known broken / not yet done
 
-- **Video overlays still play through a Flutter player in the *preview*.**
-  `video_overlay_layer.dart` holds one `video_player` controller per overlay, kept in step with
-  `currentPlaybackPosition`. Export already draws the same overlays natively
-  (`gl/OverlayRenderer.kt`), so this is the last place preview and export use different code to
-  draw the same thing. Moving overlay playback into the engine deletes this layer and closes the
-  gap; until then, **the two must never both draw** (the GL overlay pass stays export-only).
-
-  **Its drift correction follows the engine's rules, and must keep doing so** (awaiting device
-  run). Preview overlays cracked while export was perfect: `_syncPlayback` runs on every position
-  event (~30Hz) but `VideoPlayerController.value.position` is **polled roughly twice a second**,
-  so between samples it reports a stale value while the target advances — drift crossed the
-  threshold, a seek flushed the decoder, and the same stale reading triggered it again. A seek
-  storm measuring the poll interval, not real divergence; **dead-ends entry 11 in a second
-  place**. Now: the position is extrapolated between samples (`_estimatedPosition`), drift must
-  persist `_kDriftStrikesBeforeSeek` ticks, a 600ms cooldown separates corrections, tolerance is
-  400ms playing (120ms paused, where there is no decoder churn to protect), `play()`/`pause()`
-  reset the tracking rather than being followed by a correction, and a completed seek seeds the
-  estimate with its *target* so the catch-up lag is not read as new drift. **A follower with a
-  coarse clock must never be corrected on one reading.**
 - **The preview's sound is assembled from three implementations, and the export uses none of
   the first two.** Clip sound comes from ExoPlayer, imported music from `just_audio` in Flutter
   (`audio_player_manager.dart`, re-seeked only when "massively out of sync"), and the file from
@@ -1931,6 +1912,63 @@ Drag-and-drop lives in `ScrollableTimeline`. The shape of it:
   pitch equal to speed (`PlaybackRate`), so they agree. A natural-pitch speed-up needs a
   time-stretcher in the **export**, at which point keeping pitch becomes a per-clip choice and
   `FLAT_SPEED_SHIFTS_PITCH` goes.
+
+### Overlays are drawn natively in the preview too
+
+**Awaiting device verification.** Spec:
+`docs/superpowers/specs/2026-09-17-native-preview-overlays-design.md`. Photo and video overlays
+used to be drawn **twice, by two implementations** — `OverlayRenderer` in the export, two Flutter
+widget layers in the preview — and that split was the direct cause of every overlay limitation:
+an approximate feather, no chroma key, no blend modes, and ~90 lines of drift correction that
+existed only because `video_player`'s clock is polled about twice a second.
+
+The native half was never the missing piece. `OverlayRenderer` already lived on the preview
+renderer, and the manager already parsed overlays on every `setTimeline`; the only thing out of
+the preview's reach was `VideoExportEngine.OverlayPass`, a **private inner class**. It was lifted
+verbatim into `gl/OverlayDrawBuilder.kt` (464 lines moved, the header and the engine-internal
+references the only changes) and both engines now call it, so there is one definition of which
+overlays are live and how they animate.
+
+**Overlays travel on their own channel**, `setOverlays`, never in `setTimeline`: a timeline push
+replaces every lane's media items and re-prepares the players, which is a decoder rebuild and a
+visible flash for an edit that changes nothing about what plays. It is light enough to send per
+frame of a drag, which is also why an overlay moved under the finger moves on the canvas —
+`_syncNativePreviewTimeline` deliberately bails out during a gesture, and `_syncNativeOverlays`
+does not.
+
+**`OverlayClock.needsRedraw` is what keeps this off the GPU.** The engine ticks ~60 times a second
+and almost none of those ticks can change an overlay, so a redraw is owed only where the drawn
+result differs: an overlay appearing or disappearing, or being inside an animation window. A test
+caught that the step landing exactly *on* rest was skipped — the window's far edge is a boundary
+like any other, and without crossing it an overlay parks one frame short of full opacity.
+
+**`OverlayClock.override` is the tail.** Past the last video frame the engine's clock parks and
+Flutter's ticker owns the playhead, so the screen sends that position for overlays alone — and the
+engine honours it **only beyond its own duration**. Inside the video, two clocks writing one
+playhead is dead-ends entry 12.
+
+**Stills load off the GL thread in the preview** (`StillSource`), where the export decodes inline.
+A decode inside a realtime draw is a visible hitch, so a just-added overlay is missing for a frame
+or two and the decode's completion asks for the redraw that shows it. `Pending` and `Failed` are
+separate answers because only one of them is worth telling the user about.
+
+**Two things that were quietly broken, fixed here.** `NativeTimelineOverlay.speed` was carried by
+the model, settable in the tool, and honoured by **nothing** — the plugin ignored it and
+`sourceAt` walked the source at 1×, so a slowed overlay played at normal speed on the canvas *and*
+in the file. It is now in `sourceAt`, which both engines resolve through. And **a video overlay's
+sound was never mixed into the export**: clip audio and imported music were, its was not, so an
+overlay you could hear on the canvas was silent in the file. `AudioExportMixer` now takes it as
+one more windowed source, at its own speed so the sound runs with the picture.
+
+**What the Flutter layers are now**: the box the user grabs. The selection frame, corner dots,
+rotate/scale handle and action bar, laid out from the same geometry the composer sends the engine
+so the handles and the picture agree. Gone with the drawing: one `video_player` controller per
+overlay — a decoder and a texture each, **with no cap at all**, where the engine enforces
+`OverlayDrawBuilder.MAX_OVERLAY_DECODERS` and warns — and the whole drift apparatus.
+`video_player` stays a dependency; three other screens use it.
+
+**What it unlocks**: an overlay chroma key and blend modes, each now a shader line rather than an
+impossibility, and an exact feather instead of a hard-edged clip.
 
 ### Draft files — a draft owns its folder
 

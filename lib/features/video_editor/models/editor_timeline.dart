@@ -596,6 +596,7 @@ class EditorTimelineOverlay {
     this.speedLoop = 1.0,
     this.sourceStart = 0,
     this.sourceEnd = 0,
+    this.speed = 1.0,
     this.volume = 1.0,
     this.isMuted = false,
     this.glyphs,
@@ -677,6 +678,10 @@ class EditorTimelineOverlay {
   /// Video overlays only: the range of the source to play, and its audio.
   final double sourceStart;
   final double sourceEnd;
+
+  /// How fast a video overlay's footage runs, 1.0 being natural. The engine
+  /// resolves which source frame is due through it.
+  final double speed;
   final double volume;
   final bool isMuted;
 
@@ -723,6 +728,8 @@ class EditorTimelineOverlay {
       'speedLoop': speedLoop,
       'sourceStart': sourceStart,
       'sourceEnd': sourceEnd,
+      // Video overlays only; the engine resolves which frame is due through it.
+      'speed': speed,
       'volume': volume,
       'isMuted': isMuted,
       'glyphs': glyphs?.map((glyph) => glyph.toJson()).toList(),

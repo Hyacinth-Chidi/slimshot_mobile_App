@@ -262,6 +262,7 @@ class VideoEditorTimelineComposer {
       required double animationOutSeconds,
       double sourceStart = 0,
       double sourceEnd = 0,
+      double speed = 1.0,
       double volume = 1.0,
       bool isMuted = false,
     }) {
@@ -290,6 +291,7 @@ class VideoEditorTimelineComposer {
         animationOutSeconds: animationOutSeconds,
         sourceStart: sourceStart,
         sourceEnd: sourceEnd,
+        speed: speed,
         volume: volume,
         isMuted: isMuted,
       );
@@ -335,6 +337,7 @@ class VideoEditorTimelineComposer {
           animationOutSeconds: overlay.animationOutDuration,
           sourceStart: overlay.sourceStart,
           sourceEnd: overlay.sourceEnd,
+          speed: overlay.speed,
           volume: overlay.volume,
           isMuted: overlay.isMuted,
         ),

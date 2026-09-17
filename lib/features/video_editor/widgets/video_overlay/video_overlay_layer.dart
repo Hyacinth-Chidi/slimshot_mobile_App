@@ -1,14 +1,10 @@
-import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:video_player/video_player.dart';
 
 import '../../models/video_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
-import '../overlay_mask_clip.dart';
 
 class VideoOverlayLayer extends ConsumerStatefulWidget {
   final Size videoCanvasSize;
@@ -25,47 +21,20 @@ class VideoOverlayLayer extends ConsumerStatefulWidget {
 }
 
 class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
-  /// One player per video overlay, on `video_player` (ExoPlayer underneath).
+  /// Gesture state only — this layer no longer plays or draws anything.
   ///
-  /// The preview draws overlays as Flutter widgets; **export renders them in
-  /// the GL pass instead** (`OverlayRenderer`), which is why the two must not
-  /// both draw. Moving preview overlays into the engine too would delete this
-  /// layer entirely — the right end state, and why this deliberately stays a
-  /// thin "keep it in step with the playhead" wrapper rather than growing.
-  final Map<String, VideoPlayerController> _controllers = {};
-  final Map<String, bool> _isSeeking = {};
-
-  /// When each overlay was last corrected, so a correction cannot be issued
-  /// again before the decoder has had time to actually land on the target.
-  final Map<String, int> _lastSeekMs = {};
-
-  /// The last position sample read from each controller, and the wall clock
-  /// when it changed. `VideoPlayerController.value.position` is **polled**
-  /// (roughly twice a second), not continuous, so between samples it reports a
-  /// stale value while the target keeps advancing. Extrapolating from the
-  /// sample is what makes a drift measurement mean anything at 30Hz.
-  final Map<String, Duration> _positionSample = {};
-  final Map<String, int> _positionSampleAtMs = {};
-
-  /// Drift must persist across this many consecutive checks before a seek is
-  /// issued. One bad reading is measurement lag; several in a row is real
-  /// divergence.
-  static const int _kDriftStrikesBeforeSeek = 3;
-  final Map<String, int> _driftStrikes = {};
-
-  /// Minimum gap between corrections on one overlay. A seek flushes the
-  /// decoder, which is far more visible than the skew it removes — the same
-  /// rule the engine's own lane drift correction follows (dead-ends 11).
-  static const int _kSeekCooldownMs = 600;
-
-  /// Only correct real divergence. Below this the picture is fine and a seek
-  /// would cost a flush for nothing.
-  static const Duration _kPlayingDriftTolerance = Duration(milliseconds: 400);
-
-  /// Paused, there is no decoder churn to protect and the frame under the
-  /// playhead should be exact.
-  static const Duration _kPausedDriftTolerance = Duration(milliseconds: 120);
-  
+  /// **Both the preview and the export now draw video overlays through
+  /// `OverlayRenderer`**, so what is left here is the box the user grabs: the
+  /// selection frame, the corner dots, the rotate/scale handle and the action
+  /// bar, laid out from the same geometry the composer sends the engine.
+  ///
+  /// What went with the players: one `video_player` controller per overlay
+  /// (a decoder and a texture each, with no cap), and the drift apparatus —
+  /// position sampling, extrapolation, strike counting, seek cooldowns — which
+  /// existed only because that plugin's clock is polled about twice a second.
+  /// The engine steps each overlay from the timeline clock instead, under
+  /// `OverlayDrawBuilder.MAX_OVERLAY_DECODERS`, and warns rather than
+  /// exhausting the device's codecs.
   Offset _basePan = Offset.zero;
   Offset _baseFocalPoint = Offset.zero;
   double _baseScale = 1.0;
@@ -76,214 +45,13 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
   double _accumulatedResizeDy = 0.0;
 
   @override
-  void dispose() {
-    for (final controller in _controllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _initializeController(VideoOverlayModel overlay) async {
-    if (_controllers.containsKey(overlay.id)) return;
-
-    final controller = VideoPlayerController.file(File(overlay.videoPath));
-    // Registered before initialize completes so a rebuild in the meantime
-    // cannot start a second controller for the same overlay.
-    _controllers[overlay.id] = controller;
-
-    try {
-      await controller.initialize();
-      await controller.setLooping(false);
-      await controller.setVolume(overlay.volume);
-    } catch (_) {
-      // An unreadable overlay simply does not draw; export reports its own.
-      _controllers.remove(overlay.id);
-      await controller.dispose();
-      return;
-    }
-
-    if (!mounted) {
-      await controller.dispose();
-      _controllers.remove(overlay.id);
-      return;
-    }
-    setState(() {});
-  }
-
-  /// Keeps every overlay player in step with the editor's own clock.
-  ///
-  /// Driven by `currentPlaybackPosition` from state — the native engine's
-  /// playhead — and never by another Flutter player's position stream. These
-  /// players are followers with no clock of their own; hanging them off a
-  /// second player's stream is what once left video overlays frozen in the
-  /// preview while the same overlays played correctly in the export.
-  void _syncPlayback() {
-    if (!mounted) return;
-
-    final editorState = ref.read(videoEditorProvider);
-    final mainPos = Duration(
-      milliseconds: (editorState.currentPlaybackPosition * 1000).round(),
-    );
-    final isPlaying = editorState.isPlaying;
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-
-
-    for (final overlay in editorState.videoOverlays) {
-      final controller = _controllers[overlay.id];
-      if (controller == null || !controller.value.isInitialized) continue;
-
-      final value = controller.value;
-
-      if (mainPos >= overlay.timelineStart && mainPos < overlay.timelineEnd) {
-        // We are within the active window
-        final targetPosition = mainPos -
-            overlay.timelineStart +
-            Duration(milliseconds: (overlay.sourceStart * 1000).round());
-
-        // Sync volume (in case it changed)
-        if ((value.volume - overlay.volume).abs() > 0.01) {
-          controller.setVolume(overlay.volume);
-        }
-
-        final estimated = _estimatedPosition(overlay.id, value, nowMs);
-        final drift = (estimated - targetPosition).abs();
-        final tolerance =
-            isPlaying ? _kPlayingDriftTolerance : _kPausedDriftTolerance;
-
-        if (isPlaying) {
-          // Start it before correcting: a player that has not been told to
-          // play has a position that cannot converge, so seeking it first
-          // just flushes a decoder that is about to start anyway.
-          if (!value.isPlaying && _isSeeking[overlay.id] != true) {
-            controller.play();
-            // Its own clock takes over from here; the stale sample must not
-            // be read as drift on the next tick.
-            _resetTracking(overlay.id, nowMs, value.position);
-            continue;
-          }
-        } else if (value.isPlaying) {
-          controller.pause();
-          _resetTracking(overlay.id, nowMs, value.position);
-          continue;
-        }
-
-        if (drift <= tolerance) {
-          _driftStrikes[overlay.id] = 0;
-          continue;
-        }
-
-        // Drift has to persist. `value.position` is polled roughly twice a
-        // second, so a single reading that looks wrong is usually just a
-        // stale sample — acting on it is what turned this into a seek storm
-        // and cracked the picture (the same failure as dead-ends entry 11).
-        final strikes = (_driftStrikes[overlay.id] ?? 0) + 1;
-        _driftStrikes[overlay.id] = strikes;
-        if (isPlaying && strikes < _kDriftStrikesBeforeSeek) continue;
-
-        if (_isSeeking[overlay.id] == true) continue;
-        final lastSeek = _lastSeekMs[overlay.id] ?? 0;
-        if (isPlaying && nowMs - lastSeek < _kSeekCooldownMs) continue;
-
-        _driftStrikes[overlay.id] = 0;
-        _lastSeekMs[overlay.id] = nowMs;
-        _performSeek(overlay.id, controller, targetPosition);
-      } else {
-        // Outside the active window
-        if (value.isPlaying) {
-          controller.pause();
-          _resetTracking(overlay.id, nowMs, value.position);
-        }
-      }
-    }
-  }
-
-  /// Where the overlay actually is now, filling in between its coarse
-  /// position samples.
-  ///
-  /// `value.position` only refreshes a couple of times a second. Comparing a
-  /// 30Hz target against it measures the poll interval, not real drift — so
-  /// while the sample is unchanged and the player is playing, the elapsed
-  /// wall time since it *did* change is added to it.
-  Duration _estimatedPosition(
-    String id,
-    VideoPlayerValue value,
-    int nowMs,
-  ) {
-    final sample = _positionSample[id];
-    if (sample != value.position) {
-      _positionSample[id] = value.position;
-      _positionSampleAtMs[id] = nowMs;
-      return value.position;
-    }
-    if (!value.isPlaying) return value.position;
-    final since = nowMs - (_positionSampleAtMs[id] ?? nowMs);
-    return value.position + Duration(milliseconds: since);
-  }
-
-  /// Forgets the tracking state for one overlay after a transport change, so
-  /// a sample taken under the old state cannot be read as drift.
-  void _resetTracking(String id, int nowMs, Duration position) {
-    _positionSample[id] = position;
-    _positionSampleAtMs[id] = nowMs;
-    _driftStrikes[id] = 0;
-  }
-
-  Future<void> _performSeek(
-    String id,
-    VideoPlayerController controller,
-    Duration position,
-  ) async {
-    _isSeeking[id] = true;
-    try {
-      await controller.seekTo(position);
-    } catch (_) {
-      // Ignore seek errors
-    } finally {
-      if (mounted) {
-        _isSeeking[id] = false;
-        // The player is at the target but its polled sample has not caught up
-        // yet. Seeding the estimate with where it was *told* to go stops the
-        // next tick reading that lag as fresh drift and seeking again.
-        _resetTracking(id, DateTime.now().millisecondsSinceEpoch, position);
-      }
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // The playhead and the transport state are the overlay players' clock.
-    ref.listen<double>(
-      videoEditorProvider.select((s) => s.currentPlaybackPosition),
-      (_, __) => _syncPlayback(),
-    );
-    ref.listen<bool>(
-      videoEditorProvider.select((s) => s.isPlaying),
-      (_, __) => _syncPlayback(),
-    );
-
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
 
-    // Clean up players for deleted overlays
-    final currentOverlayIds = editorState.videoOverlays.map((e) => e.id).toSet();
-    _controllers.keys
-        .where((id) => !currentOverlayIds.contains(id))
-        .toList()
-        .forEach((id) {
-      _controllers.remove(id)?.dispose();
-      _isSeeking.remove(id);
-      _lastSeekMs.remove(id);
-      _positionSample.remove(id);
-      _positionSampleAtMs.remove(id);
-      _driftStrikes.remove(id);
-    });
-
-    // Initialize new players
-    for (final overlay in editorState.videoOverlays) {
-      if (!_controllers.containsKey(overlay.id)) {
-        _initializeController(overlay);
-      }
-    }
+    // No players to start or stop here any more: the engine decodes every
+    // video overlay itself, under a cap, and this layer is only the box the
+    // user grabs.
 
     return Stack(
       clipBehavior: Clip.hardEdge,
@@ -320,11 +88,6 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
         continue;
       }
 
-      final controller = _controllers[overlay.id];
-      if (controller == null || !controller.value.isInitialized) {
-        continue;
-      }
-
       final isSelected = overlay.id == selectedOverlayId;
       final padXY = isSelected ? 64.0 / overlay.scale : 0.0;
       
@@ -337,15 +100,16 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
       final timeInOverlaySec = (currentPosMs - startMs) / 1000.0;
       final timeRemainingSec = (endMs - currentPosMs) / 1000.0;
 
+      // Scale and offset still place the selection frame and its handles, so
+      // they follow an animating overlay. Opacity does not: GL fades the
+      // picture, and fading the handles with it would hide them exactly when
+      // the user reaches for them.
       double animScale = 1.0;
-      double animOpacity = overlay.opacity;
       Offset animOffset = Offset.zero;
 
       if (overlay.animationIn != null && timeInOverlaySec < overlay.animationInDuration) {
         final progress = (timeInOverlaySec / overlay.animationInDuration).clamp(0.0, 1.0);
-        if (overlay.animationIn == 'fade_in') {
-          animOpacity *= progress;
-        } else if (overlay.animationIn == 'zoom_in') {
+        if (overlay.animationIn == 'zoom_in') {
           animScale *= progress;
         } else if (overlay.animationIn == 'zoom_out') {
           animScale *= (2.0 - progress);
@@ -362,9 +126,7 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
 
       if (overlay.animationOut != null && timeRemainingSec < overlay.animationOutDuration) {
         final progress = (1.0 - (timeRemainingSec / overlay.animationOutDuration)).clamp(0.0, 1.0);
-        if (overlay.animationOut == 'fade_out') {
-          animOpacity *= (1 - progress);
-        } else if (overlay.animationOut == 'zoom_in_out') {
+        if (overlay.animationOut == 'zoom_in_out') {
           animScale *= (1 + progress);
         } else if (overlay.animationOut == 'zoom_out_out') {
           animScale *= (1 - progress);
@@ -379,30 +141,17 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
         }
       }
 
-      // `aspectRatio` already accounts for any rotation tag, so portrait
-      // footage is not laid out sideways.
-      final videoRatio = controller.value.aspectRatio > 0
-          ? controller.value.aspectRatio
-          : 16 / 9;
-
-      Widget videoWidget = ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: 240,
-          maxHeight: 240,
-        ),
-        // Cut to the overlay's shape, from the same ClipMask the export
-        // resolves in its shader.
-        child: OverlayMaskClip(
-          mask: overlay.mask,
-          child: AspectRatio(
-            aspectRatio: videoRatio,
-            child: Opacity(
-              opacity: animOpacity.clamp(0.0, 1.0),
-              child: VideoPlayer(controller),
-            ),
-          ),
-        ),
-      );
+      // **The picture is drawn by GL, not here.** The engine decodes this
+      // overlay into its own texture and composites it with the renderer the
+      // export uses, so drawing it again in Flutter would show it twice — and
+      // would keep the second decoder, the second texture, and the drift
+      // machinery that existed only because `video_player`'s clock is polled
+      // about twice a second.
+      //
+      // What stays is the box: the gesture target, and the frame and handles
+      // that hang off it, laid out from the same geometry the composer sends
+      // the engine so the two agree.
+      Widget videoWidget = const SizedBox(width: 240, height: 240);
 
       final centerX = (canvasSize.width / 2) + clampedPosition.dx + animOffset.dx;
       final centerY = (canvasSize.height / 2) + clampedPosition.dy + animOffset.dy;
