@@ -2,6 +2,7 @@ package com.techfamz.slimshotai.nativepreview.gl
 
 import com.techfamz.slimshotai.export.ExportClipDecoder
 import com.techfamz.slimshotai.nativepreview.NativeTimelineOverlay
+import com.techfamz.slimshotai.nativepreview.OverlayClock
 import com.techfamz.slimshotai.nativepreview.TextAnimationCategory
 import com.techfamz.slimshotai.nativepreview.TextAnimationCurves
 import com.techfamz.slimshotai.nativepreview.TextGlyphState
@@ -33,6 +34,15 @@ internal class OverlayDrawBuilder(
     private val events: Events,
     private val frameWaitMs: Long,
     private val stills: StillSource = INLINE_STILLS,
+    /**
+     * True for the preview, whose clock can stand still, jump, and run
+     * backwards; false for the export, whose clock only ever walks forward.
+     * It switches on exactly three behaviours, each of which the export must
+     * not have: seeking a decoder the playhead has left behind, freeing a
+     * decoder when the playhead is *before* its overlay as well as after, and
+     * asking for another draw when a frame is still on its way.
+     */
+    private val realtime: Boolean = false,
 ) {
 
     /**
@@ -49,6 +59,14 @@ internal class OverlayDrawBuilder(
 
         /** A video overlay's frame did not arrive within [frameWaitMs]. */
         fun onLateFrame()
+
+        /**
+         * Realtime only: a video overlay's decoder has not reached the frame
+         * that is due — it was just seeked, and one draw's worth of decoding
+         * did not get there. The preview asks for another draw; the export
+         * never sees this, because it waits instead.
+         */
+        fun onFrameNotReady() {}
     }
 
     /** What [StillSource] has for a path right now. */
@@ -97,9 +115,12 @@ internal class OverlayDrawBuilder(
      */
     fun releaseExpired(t: Double) {
         for (overlay in overlays) {
-            if (overlay.isVideo && t >= overlay.endSeconds &&
-                videoStates.containsKey(overlay.id)
-            ) {
+            // The export's clock only walks forward, so "expired" means past
+            // the end. A preview playhead can also be scrubbed back to before
+            // the overlay starts, and a decoder kept open there holds one of
+            // the device's few codec instances for a picture nobody can see.
+            val gone = t >= overlay.endSeconds || (realtime && t < overlay.startSeconds)
+            if (overlay.isVideo && gone && videoStates.containsKey(overlay.id)) {
                 videoStates.remove(overlay.id)?.decoder?.release()
                 renderer.overlays.releaseVideoLane(overlay.id)
             }
@@ -342,10 +363,18 @@ internal class OverlayDrawBuilder(
 
         val lane = renderer.overlays.videoLane(overlay.id)
         val since = lane.frameSequence()
-        if (decoder.advanceTo((overlay.sourceAt(t) * 1_000_000L).toLong())) {
+        val targetUs = (overlay.sourceAt(t) * 1_000_000L).toLong()
+        // The decoder only walks forward; see [OverlayClock.shouldSeek] for
+        // why the preview has to seek and why ordinary playback never does.
+        if (realtime && OverlayClock.shouldSeek(decoder.lastRenderedUs, targetUs)) {
+            decoder.seekTo(targetUs)
+        }
+        if (decoder.advanceTo(targetUs)) {
             if (!lane.awaitFrameAfter(since, frameWaitMs)) {
                 events.onLateFrame()
             }
+        } else if (realtime && !decoder.isFinished && decoder.lastRenderedUs < targetUs) {
+            events.onFrameNotReady()
         }
         renderer.overlays.updateVideoLane(overlay.id)
 

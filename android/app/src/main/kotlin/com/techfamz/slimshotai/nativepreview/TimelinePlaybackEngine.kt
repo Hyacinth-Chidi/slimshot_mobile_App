@@ -24,7 +24,6 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
-import com.techfamz.slimshotai.nativepreview.gl.OverlayDrawBuilder
 
 /**
  * Drives timeline playback across two decoder lanes.
@@ -857,13 +856,6 @@ internal class TimelinePlaybackEngine(
         seek(timelinePositionSeconds())
     }
 
-    /** Frees the overlay decoders. Part of teardown. */
-    private fun releaseOverlays() {
-        overlayBuilder?.release()
-        overlayBuilder = null
-        overlays = emptyList()
-    }
-
     fun stopAll() {
         isPlaying = false
         isReady = false
@@ -922,16 +914,13 @@ internal class TimelinePlaybackEngine(
     // ------------------------------------------------------------------- tick
 
     /**
-     * The overlays the preview draws, and the builder that turns them into
-     * draws — the same one the export uses, so there is one definition of
-     * which overlays are live and how they animate.
-     *
-     * The builder is rebuilt when the list changes rather than per frame: it
-     * owns the video decoders, and a fresh one each tick would reopen them
-     * sixty times a second.
+     * The overlays the preview draws. The engine only *knows about* them — it
+     * supplies the list and the clock, and decides when a redraw is owed. The
+     * renderer builds the draws, on the GL thread, inside its own draw: the
+     * builder uploads textures and owns decoders, neither of which this
+     * thread may touch.
      */
     private var overlays: List<NativeTimelineOverlay> = emptyList()
-    private var overlayBuilder: OverlayDrawBuilder? = null
     private var lastOverlayPosition = Double.NaN
 
     /**
@@ -944,80 +933,35 @@ internal class TimelinePlaybackEngine(
     /** Replaces the overlay list. Cheap: no player is touched. */
     fun setOverlays(list: List<NativeTimelineOverlay>) {
         overlays = list
-        overlayBuilder?.release()
-        overlayBuilder = if (list.isEmpty()) {
-            null
-        } else {
-            OverlayDrawBuilder(
-                renderer = renderer,
-                overlays = list,
-                events = overlayEvents,
-                // A realtime draw must never block on a decoder: a late
-                // overlay frame shows the previous one, where export waits
-                // because a missing frame would be wrong in the file.
-                frameWaitMs = 0L,
-                stills = renderer.previewStillSource,
-            )
-        }
         lastOverlayPosition = Double.NaN
-        if (list.isEmpty()) renderer.setPreviewOverlayDraws(emptyList())
-        applyOverlays(timelinePositionSeconds(), force = true)
+        renderer.setPreviewOverlays(list)
+        applyOverlays(timelinePositionSeconds())
     }
 
     /** See [OverlayClock.override]. */
     fun setOverlayClock(seconds: Double) {
         overlayClockOverride = seconds
-        applyOverlays(timelinePositionSeconds(), force = false)
+        applyOverlays(timelinePositionSeconds())
     }
-
-    private val overlayEvents = object : OverlayDrawBuilder.Events {
-        override fun onOverlayFailed() {
-            // Once per list, not once per frame: the builder asks again every
-            // draw, and a toast per frame would bury the editor.
-            if (!hasWarnedOverlay) {
-                hasWarnedOverlay = true
-                emit("warning", "message" to "An overlay could not be drawn on this device.")
-            }
-        }
-
-        override fun onDecoderSkipped() {
-            if (!hasWarnedOverlayDecoder) {
-                hasWarnedOverlayDecoder = true
-                emit(
-                    "warning",
-                    "message" to "Too many video overlays at once; some are not shown in the preview.",
-                )
-            }
-        }
-
-        // A late frame is the realtime path's normal case — the previous frame
-        // shows — so it is not worth a word to the user.
-        override fun onLateFrame() = Unit
-    }
-
-    private var hasWarnedOverlay = false
-    private var hasWarnedOverlayDecoder = false
 
     /**
-     * Resolves the overlay draws for [position], when the picture can differ.
+     * Tells the renderer where the overlays' clock is, and whether the picture
+     * can differ because of it.
      *
-     * [OverlayClock.needsRedraw] is what keeps this off the GPU for a sticker
-     * sitting still: the engine ticks ~60 times a second and most of those
-     * ticks cannot change an overlay.
+     * [OverlayClock.needsRedraw] is what keeps a sticker sitting still off the
+     * GPU: this runs ~60 times a second and most of those ticks cannot change
+     * an overlay. The clock itself is always passed on, so a draw requested
+     * for any other reason — a clip frame, a still landing — uses the right
+     * instant.
      */
-    private fun applyOverlays(position: Double, force: Boolean) {
-        val builder = overlayBuilder ?: return
+    private fun applyOverlays(position: Double) {
+        if (overlays.isEmpty()) return
         val clock = OverlayClock.override(overlayClockOverride, timelineDurationSeconds)
             ?: position
-        if (!force &&
-            !lastOverlayPosition.isNaN() &&
-            !OverlayClock.needsRedraw(overlays, lastOverlayPosition, clock)
-        ) {
-            return
-        }
+        val redraw = lastOverlayPosition.isNaN() ||
+            OverlayClock.needsRedraw(overlays, lastOverlayPosition, clock)
         lastOverlayPosition = clock
-        builder.releaseExpired(clock)
-        renderer.setPreviewOverlayDraws(builder.drawsFor(clock))
+        renderer.setOverlayClock(clock, redraw)
     }
 
     private fun tick() {
@@ -1046,7 +990,7 @@ internal class TimelinePlaybackEngine(
         applyClipEffect(position)
         applyClipSpeeds()
         applyAudio(position)
-        applyOverlays(position, force = false)
+        applyOverlays(position)
         sendPositionEventIfDue(position)
         logPlaybackIfDue(position)
     }

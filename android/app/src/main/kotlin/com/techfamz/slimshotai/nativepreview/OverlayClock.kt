@@ -39,6 +39,12 @@ internal object OverlayClock {
 
             if (!overlay.contains(now)) continue
 
+            // A video overlay is a new picture whenever the clock moves, at
+            // rest or not. Over a photo clip nothing else asks for a draw, so
+            // without this its footage would freeze; a scrub backwards is a
+            // new frame too.
+            if (overlay.isVideo && previous != now) return true
+
             // Inside an animation window the overlay is different every frame.
             //
             // The window's own far edge is a boundary like any other: the step
@@ -62,6 +68,34 @@ internal object OverlayClock {
 
     private fun crosses(boundary: Double, from: Double, to: Double): Boolean =
         boundary > from && boundary <= to
+
+    /**
+     * Whether a realtime video overlay's decoder has to **seek** to reach
+     * [targetUs], rather than walk there.
+     *
+     * The decoder only steps forward — it returns early when the target is
+     * behind the frame it last showed — which is all the export ever needs,
+     * since its clock never runs backwards. A preview playhead does: scrub
+     * back and the overlay would keep showing a later frame for ever. And a
+     * long jump forward would decode every frame in between, on the GL thread.
+     *
+     * Deliberately conservative the other way. A seek flushes the codec, so
+     * ordinary playback must never trigger one — that is the decoder-flush
+     * storm of dead-ends entry 11 — and a decoder that has shown nothing yet
+     * is never seeked, because a flush before the first output is what lost
+     * the codec's config data in the export's one-clip-never-decoded bug.
+     */
+    fun shouldSeek(lastRenderedUs: Long, targetUs: Long): Boolean {
+        if (lastRenderedUs < 0L) return false
+        if (targetUs < lastRenderedUs - BACKWARD_SLACK_US) return true
+        return targetUs > lastRenderedUs + FORWARD_JUMP_US
+    }
+
+    /** Behind by less than this is the same frame, not a jump. */
+    private const val BACKWARD_SLACK_US = 50_000L
+
+    /** Ahead by more than this is cheaper to seek to than to decode through. */
+    private const val FORWARD_JUMP_US = 1_500_000L
 
     /**
      * The clock an overlay should read, when Flutter offers one.

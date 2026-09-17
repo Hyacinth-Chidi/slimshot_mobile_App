@@ -169,6 +169,18 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
     private val texCoordsTopDown: FloatBuffer = floatBufferOf(0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f)
     private val texCoordsBottomUp: FloatBuffer = floatBufferOf(0f, 1f, 1f, 1f, 0f, 0f, 1f, 0f)
 
+    /**
+     * Called, on the frame thread, whenever a video overlay's decoder hands
+     * over a frame.
+     *
+     * The export waits for that frame and needs no telling. The preview does
+     * not wait — a realtime draw must never block on a decoder — so the frame
+     * lands *after* the draw that asked for it, and unless something asks for
+     * another draw a paused overlay stays invisible until the playhead moves.
+     */
+    @Volatile
+    var onVideoFrameQueued: (() -> Unit)? = null
+
     /** Links both programs. Call once on the GL thread with a current context. */
     fun ensurePrograms() {
         if (program2d != 0) return
@@ -221,7 +233,13 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
         lane.textureId = GlUtil.createExternalTexture()
         Matrix.setIdentityM(lane.texMatrix, 0)
         val surfaceTexture = SurfaceTexture(lane.textureId)
-        surfaceTexture.setOnFrameAvailableListener({ lane.onFrameQueued() }, frameHandler)
+        surfaceTexture.setOnFrameAvailableListener(
+            {
+                lane.onFrameQueued()
+                onVideoFrameQueued?.invoke()
+            },
+            frameHandler,
+        )
         lane.surfaceTexture = surfaceTexture
         lane.surface = Surface(surfaceTexture)
         videoLanes[id] = lane

@@ -42,6 +42,13 @@ class NativeTimelinePreviewManager(
     private var engine: TimelinePlaybackEngine? = null
     private var pendingTimeline: Map<String, Any?>? = null
 
+    /**
+     * Overlays pushed before the engine existed. The Dart side remembers what
+     * it last sent and will not send it again, so dropping these would leave a
+     * reopened draft's overlays invisible until one of them was edited.
+     */
+    private var pendingOverlays: List<NativeTimelineOverlay>? = null
+
     private var canvasWidth = 0
     private var canvasHeight = 0
 
@@ -401,11 +408,11 @@ class NativeTimelinePreviewManager(
                 // decoder rebuild and a visible flash. An overlay edit changes
                 // nothing about what plays.
                 val raw = call.argument<List<*>>("overlays") ?: emptyList<Any?>()
-                engine?.setOverlays(
-                    raw.mapNotNull { entry ->
-                        (entry as? Map<*, *>)?.let { NativeTimelineOverlay.fromMap(it) }
-                    },
-                )
+                val parsed = raw.mapNotNull { entry ->
+                    (entry as? Map<*, *>)?.let { NativeTimelineOverlay.fromMap(it) }
+                }
+                val active = engine
+                if (active == null) pendingOverlays = parsed else active.setOverlays(parsed)
                 result.success(null)
             }
 
@@ -502,6 +509,10 @@ class NativeTimelinePreviewManager(
             resizeCanvas(it)
             activeEngine.setTimeline(it)
             pendingTimeline = null
+        }
+        pendingOverlays?.let {
+            activeEngine.setOverlays(it)
+            pendingOverlays = null
         }
 
         return entry.id()

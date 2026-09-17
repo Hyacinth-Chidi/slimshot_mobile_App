@@ -1947,6 +1947,33 @@ Flutter's ticker owns the playhead, so the screen sends that position for overla
 engine honours it **only beyond its own duration**. Inside the video, two clocks writing one
 playhead is dead-ends entry 12.
 
+**The draws are built inside the draw, on the GL thread — the way export builds them.**
+Device-found, and the first version got both halves wrong: it built them in the engine's ticker,
+on the **main** thread, and only when the playhead crossed an overlay boundary. The builder
+uploads textures and creates decode targets, which need a GL context the main thread does not
+have; and a still that had not decoded yet answered `Pending` **once**, after which nothing ever
+asked again — the decode finished, requested a redraw, and the redraw repainted the same empty
+list. Every overlay showed its handles and no picture. Now `TransitionRenderer` owns the builder
+and calls it in `renderFrame`, so a redraw of *any* cause re-asks it and a still or a video frame
+that lands late simply appears on the next draw. The engine supplies only the list and the clock.
+
+**Three things a realtime clock needs that an export's does not** (`realtime` on the builder,
+`OverlayClock.shouldSeek`). The export's clock only ever walks forward, so `ExportClipDecoder`
+never seeks during a run and "expired" means past the overlay's end. A preview playhead stands
+still, jumps and runs backwards: a decoder left behind by a backward scrub would show a later
+frame for ever, so it seeks — but only on a real jump, never on ordinary playback, because a seek
+flushes the codec (dead-ends entry 11) and never before the decoder's first output, because a
+flush that early is what lost the codec's config data in the export's one-clip-never-decoded bug.
+A decoder is also freed when the playhead is *before* its overlay, not only after, since a codec
+instance held for a picture nobody can see is one the clip lanes may need. And a **video** overlay
+asks for a redraw on every clock step, animation or not — over a photo clip nothing else asks for
+a draw, so its footage would otherwise freeze.
+
+**A frame that lands after the draw that asked for it** (`OverlayRenderer.onVideoFrameQueued`).
+The export waits for the frame; a realtime draw must never block on a decoder, so the preview does
+not — which means the frame arrives too late for the draw that requested it, and without something
+asking for another draw a paused overlay stays invisible until the playhead moves.
+
 **Stills load off the GL thread in the preview** (`StillSource`), where the export decodes inline.
 A decode inside a realtime draw is a visible hitch, so a just-added overlay is missing for a frame
 or two and the decode's completion asks for the redraw that shows it. `Pending` and `Failed` are

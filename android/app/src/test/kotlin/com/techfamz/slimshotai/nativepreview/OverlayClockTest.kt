@@ -25,10 +25,11 @@ class OverlayClockTest {
         animationOut: String? = null,
         inSeconds: Double = 0.5,
         outSeconds: Double = 0.5,
+        kind: String = "image",
     ): NativeTimelineOverlay = NativeTimelineOverlay.fromMap(
         mapOf(
             "id" to "o",
-            "kind" to "image",
+            "kind" to kind,
             "path" to "/p.png",
             "startSeconds" to start,
             "endSeconds" to end,
@@ -98,6 +99,49 @@ class OverlayClockTest {
         )
         assertFalse(OverlayClock.needsRedraw(list, 3.0, 3.016))
         assertTrue(OverlayClock.needsRedraw(list, 5.1, 5.116))
+    }
+
+    @Test
+    fun `a live video overlay is a new picture every step, animation or not`() {
+        // Device-found by reasoning from the first report: a photo overlay at
+        // rest needs no redraw, but a video overlay's frame changes with the
+        // clock. Over a photo clip nothing else asks for a draw, so without
+        // this rule the overlay's footage would freeze.
+        val list = listOf(overlay(kind = "video"))
+        assertTrue(OverlayClock.needsRedraw(list, 4.0, 4.016))
+        // A scrub backwards is a new frame too.
+        assertTrue(OverlayClock.needsRedraw(list, 5.0, 3.0))
+        // A clock that has not moved owes nothing.
+        assertFalse(OverlayClock.needsRedraw(list, 4.0, 4.0))
+        // Outside its window it is not on screen.
+        assertFalse(OverlayClock.needsRedraw(list, 9.0, 9.5))
+    }
+
+    @Test
+    fun `stepping forward a frame never seeks the overlay's decoder`() {
+        // A seek flushes the codec; doing it on ordinary playback would be the
+        // decoder-flush storm of dead-ends entry 11 in a third place.
+        assertFalse(OverlayClock.shouldSeek(lastRenderedUs = 1_000_000, targetUs = 1_033_000))
+        assertFalse(OverlayClock.shouldSeek(lastRenderedUs = 1_000_000, targetUs = 1_400_000))
+    }
+
+    @Test
+    fun `a playhead that went backwards seeks, because the decoder only walks forward`() {
+        assertTrue(OverlayClock.shouldSeek(lastRenderedUs = 5_000_000, targetUs = 2_000_000))
+        // A hair behind is the same frame, not a jump.
+        assertFalse(OverlayClock.shouldSeek(lastRenderedUs = 5_000_000, targetUs = 4_990_000))
+    }
+
+    @Test
+    fun `a long jump forward seeks rather than decoding every frame between`() {
+        assertTrue(OverlayClock.shouldSeek(lastRenderedUs = 1_000_000, targetUs = 9_000_000))
+    }
+
+    @Test
+    fun `a decoder that has shown nothing yet is never seeked`() {
+        // It was opened at its start position; a seek before its first output
+        // is the flush-after-start that loses the codec's config data.
+        assertFalse(OverlayClock.shouldSeek(lastRenderedUs = -1, targetUs = 3_000_000))
     }
 
     @Test

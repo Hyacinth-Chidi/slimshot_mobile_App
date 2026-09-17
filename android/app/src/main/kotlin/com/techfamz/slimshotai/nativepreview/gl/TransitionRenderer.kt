@@ -24,6 +24,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.RejectedExecutionException
+import com.techfamz.slimshotai.nativepreview.NativeTimelineOverlay
 
 /** Which decoder lane is being drawn, and how. */
 internal data class TransitionDraw(
@@ -353,73 +356,174 @@ internal class TransitionRenderer(
     private var exportHeight = 0
 
     /**
-     * Photo and video overlays, painted over the finished composite.
-     *
-     * **Both paths draw through here now.** It was export-only while the
-     * preview stacked Flutter widgets over this texture; drawing in both
-     * places would have shown every overlay twice. The preview engine now
-     * supplies [previewOverlayDraws] and the widgets no longer draw, so there
-     * is one implementation of what an overlay looks like. Owned by this class
-     * so its GL resources live and die with the context.
+     * Photo and video overlays, painted over the finished composite by both
+     * paths: the export passes its draws to `drawExportFrame`, the preview
+     * builds its own inside [renderFrame]. Owned by this class so its GL
+     * resources live and die with the context.
      */
-    val overlays: OverlayRenderer by lazy { OverlayRenderer(frameHandler) }
+    val overlays: OverlayRenderer by lazy {
+        OverlayRenderer(frameHandler).also {
+            // A preview overlay's frame lands after the draw that asked for
+            // it; this is what asks for the draw that shows it.
+            it.onVideoFrameQueued = { if (exportSurface == null) requestRender() }
+        }
+    }
 
-    /**
-     * What the preview draws over its composite, set by the engine each time
-     * the overlay picture can differ.
-     *
-     * `@Volatile` because the engine's ticker writes it on the main thread and
-     * the GL thread reads it in [composite] — the same crossing the lane
-     * bitmaps make. Export does **not** use this: it passes its draws straight
-     * into `drawExportFrame`, so an export's overlays can never be a frame
-     * behind the lane state it set for them.
-     */
+    // ── Preview overlays ─────────────────────────────────────────────────────
+    //
+    // **The draws are built inside the draw, on this thread — the way the
+    // export builds them.** The first version built them in the engine's
+    // ticker, on the main thread, when the playhead crossed an overlay
+    // boundary. Both halves of that were wrong, and a device found it at once:
+    // the builder uploads textures and creates decode targets, which need the
+    // GL context the main thread does not have; and a still that was not
+    // decoded yet answered "pending" *once*, after which nothing ever asked
+    // again — the decode finished, requested a redraw, and the redraw
+    // repainted the same empty list. Overlays showed their handles and no
+    // picture. Here a redraw of any cause re-asks the builder, so a still or a
+    // video frame that lands late simply appears on the next draw.
+
+    /** The list the engine last supplied, kept so an export can hand it back. */
     @Volatile
+    private var previewOverlayList: List<NativeTimelineOverlay> = emptyList()
+
+    /** A list waiting to be adopted on this thread, where GL is current. */
+    @Volatile
+    private var pendingPreviewOverlays: List<NativeTimelineOverlay>? = null
+
+    /** The timeline instant overlays are drawn at; written by the engine. */
+    @Volatile
+    private var overlayClockSeconds = 0.0
+
+    /** GL thread only: owns the preview's overlay decoders. */
+    private var previewOverlayBuilder: OverlayDrawBuilder? = null
+
+    /** GL thread only: what this frame paints over the composite. */
     private var previewOverlayDraws: List<OverlayRenderer.Draw> = emptyList()
 
-    /** The preview's overlays for the next draw. Cheap; call per tick. */
-    fun setPreviewOverlayDraws(draws: List<OverlayRenderer.Draw>) {
+    private var previewOverlayWarned = false
+
+    /** Replaces the overlays the preview draws. Cheap; touches no player. */
+    fun setPreviewOverlays(list: List<NativeTimelineOverlay>) {
         if (released) return
-        previewOverlayDraws = draws
+        previewOverlayList = list
+        pendingPreviewOverlays = list
         requestRender()
     }
 
     /**
-     * Stills for preview overlays: answered from the texture cache, otherwise
-     * decoded off the GL thread and uploaded when the bitmap lands.
-     *
-     * The export decodes inline because a frame drawn without its overlay is a
-     * wrong frame in the file. The preview must not: a decode inside a
-     * realtime draw is a visible hitch, so the first frame or two of a
-     * just-added overlay are simply without it, and the decode's completion
-     * asks for the redraw that shows it.
+     * Where the overlays' clock is. Always stored; [redraw] asks for a draw,
+     * which the engine requests only when the picture can differ — see
+     * [OverlayClock.needsRedraw].
      */
-    private val previewStills = mutableMapOf<String, Bitmap?>()
-    private val previewStillsLoading = mutableSetOf<String>()
+    fun setOverlayClock(seconds: Double, redraw: Boolean) {
+        if (released) return
+        overlayClockSeconds = seconds
+        if (redraw) requestRender()
+    }
 
-    val previewStillSource = OverlayDrawBuilder.StillSource { path, maxPx ->
-        val ready = previewStills[path]
+    private val previewOverlayEvents = object : OverlayDrawBuilder.Events {
+        override fun onOverlayFailed() = warnPreviewOverlayOnce(
+            "An overlay could not be drawn in the preview.",
+        )
+
+        override fun onDecoderSkipped() = warnPreviewOverlayOnce(
+            "Too many video overlays at once; some are not shown in the preview.",
+        )
+
+        // Realtime never waits, so "late" is its ordinary case: the previous
+        // frame shows for one more draw.
+        override fun onLateFrame() = Unit
+
+        override fun onFrameNotReady() = requestRender()
+    }
+
+    /** Once per list, not once per draw: the builder asks again every frame. */
+    private fun warnPreviewOverlayOnce(message: String) {
+        if (previewOverlayWarned) return
+        previewOverlayWarned = true
+        onWarning(message)
+    }
+
+    // Stills for preview overlays, decoded off this thread. The export decodes
+    // inline because a frame without its overlay is a wrong frame in the file;
+    // a decode inside a realtime draw is a visible hitch. Touched by the
+    // decoder thread and this one, hence the concurrent collections.
+    private val previewStillsReady = ConcurrentHashMap<String, Bitmap>()
+    private val previewStillsLoading = ConcurrentHashMap.newKeySet<String>()
+    private val previewStillsFailed = ConcurrentHashMap.newKeySet<String>()
+
+    private val previewStillSource = OverlayDrawBuilder.StillSource { path, maxPx ->
+        val ready = previewStillsReady.remove(path)
         when {
-            ready != null -> {
-                previewStills.remove(path)
-                OverlayDrawBuilder.Still.Ready(ready)
-            }
-            previewStills.containsKey(path) -> OverlayDrawBuilder.Still.Failed
-            path in previewStillsLoading -> OverlayDrawBuilder.Still.Pending
+            ready != null -> OverlayDrawBuilder.Still.Ready(ready)
+            path in previewStillsFailed -> OverlayDrawBuilder.Still.Failed
+            !previewStillsLoading.add(path) -> OverlayDrawBuilder.Still.Pending
             else -> {
-                previewStillsLoading.add(path)
-                backgroundDecoder.execute {
-                    val bitmap = try {
-                        StillImageDecoder.decode(path, maxPx, maxPx)
-                    } catch (error: Exception) {
-                        null
+                try {
+                    backgroundDecoder.execute {
+                        val bitmap = try {
+                            StillImageDecoder.decode(path, maxPx, maxPx)
+                        } catch (error: Exception) {
+                            null
+                        }
+                        if (bitmap == null) {
+                            previewStillsFailed.add(path)
+                        } else {
+                            previewStillsReady[path] = bitmap
+                        }
+                        previewStillsLoading.remove(path)
+                        // The draw this asks for re-asks the builder, which now
+                        // finds the still ready and uploads it on the GL thread.
+                        requestRender()
                     }
-                    previewStills[path] = bitmap
+                } catch (error: RejectedExecutionException) {
                     previewStillsLoading.remove(path)
-                    requestRender()
                 }
                 OverlayDrawBuilder.Still.Pending
             }
+        }
+    }
+
+    /** GL thread, context current. Frees the preview's overlay decoders. */
+    private fun releasePreviewOverlayBuilder() {
+        previewOverlayBuilder?.release()
+        previewOverlayBuilder = null
+        previewOverlayDraws = emptyList()
+    }
+
+    /** GL thread, context current. */
+    private fun buildPreviewOverlayDraws() {
+        pendingPreviewOverlays?.let { list ->
+            pendingPreviewOverlays = null
+            releasePreviewOverlayBuilder()
+            previewOverlayWarned = false
+            if (list.isNotEmpty()) {
+                previewOverlayBuilder = OverlayDrawBuilder(
+                    renderer = this,
+                    overlays = list,
+                    events = previewOverlayEvents,
+                    // A realtime draw must never block on a decoder.
+                    frameWaitMs = 0L,
+                    stills = previewStillSource,
+                    realtime = true,
+                )
+            }
+        }
+        val builder = previewOverlayBuilder
+        if (builder == null) {
+            previewOverlayDraws = emptyList()
+            return
+        }
+        val clock = overlayClockSeconds
+        previewOverlayDraws = try {
+            builder.releaseExpired(clock)
+            builder.drawsFor(clock)
+        } catch (error: Exception) {
+            // An overlay must never take the preview's frame down with it.
+            Log.w(TAG, "Preview overlays could not be drawn", error)
+            warnPreviewOverlayOnce("An overlay could not be drawn in the preview.")
+            emptyList()
         }
     }
 
@@ -515,6 +619,9 @@ internal class TransitionRenderer(
     fun beginExport(encoderSurface: Surface, width: Int, height: Int) {
         check(egl.isReady) { "GL context is not ready." }
         endExport()
+        // Codec instances are scarce and the export opens its own overlay
+        // decoders; the preview's must not be holding any while it runs.
+        releasePreviewOverlayBuilder()
         exportSurface = egl.createWindowSurface(encoderSurface)
         exportWidth = width
         exportHeight = height
@@ -589,9 +696,11 @@ internal class TransitionRenderer(
         exportSurface = null
         exportWidth = 0
         exportHeight = 0
-        // Overlay textures and decode targets are export-scoped; the next
-        // export re-uploads what it needs.
+        // Overlay textures and decode targets are shared with the preview, so
+        // this drops its uploads too; re-adopting the list makes the next draw
+        // rebuild the builder and reload what it needs.
         overlays.releaseAll()
+        pendingPreviewOverlays = previewOverlayList
         // The effect buffers are export-*sized* — up to three full frames at the
         // encode resolution, which is larger than the preview canvas. They would
         // be reallocated at the preview's size on the next effected frame
@@ -693,9 +802,8 @@ internal class TransitionRenderer(
     fun release() {
         backgroundDecoder.shutdownNow()
         released = true
-        previewOverlayDraws = emptyList()
-        for (bitmap in previewStills.values) bitmap?.recycle()
-        previewStills.clear()
+        for (bitmap in previewStillsReady.values) bitmap.recycle()
+        previewStillsReady.clear()
         val latch = CountDownLatch(1)
         val posted = handler.post {
             programs.values.forEach { it.release() }
@@ -1096,6 +1204,9 @@ internal class TransitionRenderer(
         if (exportSurface != null) return
         val surface = makeRenderTargetCurrent() ?: return
 
+        // On this thread with the context current, every draw — so a still or
+        // an overlay frame that landed since the last one simply appears.
+        buildPreviewOverlayDraws()
         updateLaneTextures()
         composite(surfaceWidth, surfaceHeight)
 
