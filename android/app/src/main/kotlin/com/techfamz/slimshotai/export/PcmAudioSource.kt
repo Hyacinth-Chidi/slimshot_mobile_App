@@ -26,9 +26,11 @@ import java.nio.ByteOrder
  * speed 1.0 — the step is exactly 1.0 and samples pass through untouched.
  *
  * **Known limitation:** because this resamples rather than time-stretches, a
- * clip with a changed speed shifts pitch in the export, where the preview (which
- * uses ExoPlayer's Sonic) preserves it. Worth closing once the path is proven,
- * but not at the cost of silence.
+ * clip with a changed speed shifts pitch in the export. The preview now does
+ * the same on purpose — it sends ExoPlayer a pitch equal to the speed, which
+ * makes Sonic resample instead of stretch (`PlaybackRate`) — so the two agree.
+ * A natural-pitch speed-up means a time-stretcher *here*, worth adding once it
+ * can be proven not to cost the export its sound.
  *
  * A file with no audio track is normal, not an error: [open] returns false and
  * the mixer treats the source as silence.

@@ -1875,10 +1875,13 @@ Drag-and-drop lives in `ScrollableTimeline`. The shape of it:
   hardware. Replace with `ExportClipDecoder` + `VideoFrameEncoder` (hardware, already built for
   export): decode GOPs forward, emit frames backward. Then the editor imports nothing from
   `ffmpeg_kit`, and FFmpeg belongs only to the compression feature.
-- **Speed change shifts pitch in export.** Sonic was removed after it silently killed all export
-  audio (dead-ends entry 22); the linear resampler that replaced it does rate conversion and speed
-  with no dependency that can throw, at the cost of pitch on a sped-up clip. The preview preserves
-  it, so the two differ.
+- **Speed change shifts pitch, in export and now in the preview too.** Sonic was removed from
+  export after it silently killed all export audio (dead-ends entry 22); the linear resampler that
+  replaced it does rate conversion and speed with no dependency that can throw, at the cost of
+  pitch on a sped-up clip. The preview used to preserve pitch, so the two differed; it now sends
+  pitch equal to speed (`PlaybackRate`), so they agree. A natural-pitch speed-up needs a
+  time-stretcher in the **export**, at which point keeping pitch becomes a per-clip choice and
+  `FLAT_SPEED_SHIFTS_PITCH` goes.
 
 ### Draft files — a draft owns its folder
 
@@ -1935,12 +1938,27 @@ today. What pins the arithmetic *today* is `speed_curve_test.dart`, which checks
 against a **numeric trapezoid integral** of `1/v` on every preset — a sign slip in the logarithm
 cannot pass as "roughly right".
 
-**The engine sets the player's rate quantised to `SPEED_CURVE_STEP` (5%)**, while the exact
-integral still decides where the clip *is* (`sourceOffsetAt`). Handing ExoPlayer new
-`PlaybackParameters` sixty times a second is the `AudioTrack`-churn fault (item 10) in another
-costume; 5% steps are inaudible and drift correction absorbs the residual against the exact
-integral. The master clock inverts with `timelineOffsetForSource`, since a curved clip's player
-position no longer divides by a scalar.
+**The engine steps the player's rate along a ratio ladder** (`PlaybackRate.quantise`, rungs 3%
+apart, 1.0 exactly on a rung), while the exact integral still decides where the clip *is*
+(`sourceOffsetAt`). Still a step rather than the exact value, because handing ExoPlayer new
+`PlaybackParameters` sixty times a second is the audio-pipeline churn of fault 10. **A ratio, not
+a fixed amount**: the first version stepped by 0.05, which is 2.5% at 2x and 12.5% at 0.4x — over
+a semitone per step, in exactly the slow-motion range a ramp lives in. The master clock inverts
+with `timelineOffsetForSource`, since a curved clip's player position no longer divides by a
+scalar.
+
+**In the preview, pitch follows speed** (`PlaybackRate.pitchFor`, device-reported). The export's
+audio path is a resampler, so a ramp is *heard* in the file: the sound drops through the slow
+section and rises through the fast one. The preview sent ExoPlayer a bare speed, which leaves
+pitch at 1 and makes Media3's Sonic **time-stretch** — a different sound, and one that restarts
+its stretcher on every rate step, audible as small glitches several times a second. The user's
+words: the export sounds right and the preview does not. With pitch equal to speed, Sonic's
+`processStreamInput` computes `speed / pitch == 1`, skips `changeSpeed` and runs only
+`adjustRate` — a plain resample, the export's own operation (checked in Media3's source, not
+assumed). `FLAT_SPEED_SHIFTS_PITCH` applies the same rule to flat-speed clips, so one statement
+holds everywhere: **the preview sounds like the export.** What remains is that the preview steps
+where the export glides sample by sample; closing that fully means the preview no longer playing
+audio through ExoPlayer.
 
 **Export audio follows the curve in source time.** `PcmAudioSource` takes an optional
 `speedAtSource` and recomputes its resample `step` per output frame from the source seconds it has
