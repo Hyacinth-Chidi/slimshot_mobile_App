@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../models/image_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
+import '../overlay_content_box.dart';
 
 class ImageOverlayLayer extends ConsumerStatefulWidget {
   final Size videoCanvasSize;
@@ -22,6 +23,17 @@ class ImageOverlayLayer extends ConsumerStatefulWidget {
 }
 
 class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
+  /// The overlay whose body is being dragged, pinched or turned right now.
+  ///
+  /// Its frame, handles and action bar are hidden for the length of the
+  /// gesture. They are Flutter widgets and the picture is drawn by GL — this
+  /// frame's position reaches the engine over the channel, is drawn on the GL
+  /// thread and composited a frame or two later — so on a fast drag the dashed
+  /// box ran visibly ahead of the picture it surrounds (device-reported). Two
+  /// drawings that cannot agree should not both be on screen; the frame comes
+  /// back on release, where the picture rests.
+  String? _movingId;
+
   Offset _imageBasePan = Offset.zero;
   Offset _imageBaseFocalPoint = Offset.zero;
   double _imageBaseScale = 1.0;
@@ -44,7 +56,7 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
         editorState.imageOverlays,
         editorState.selectedImageId,
         notifier.selectImageOverlay,
-        notifier.updateImageOverlay,
+        notifier.updateImageOverlayLive,
       ),
     );
   }
@@ -133,7 +145,13 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
       // What stays is the box: the gesture target, and the frame and handles
       // that hang off it. It is laid out from the same geometry the composer
       // sends the engine, so the handles and the picture agree.
-      Widget imageWidget = const SizedBox(width: 200, height: 200);
+      // The picture's own shape, not the 200px square it is fitted into, or
+      // the dotted frame stands off a wide photo with empty bands.
+      Widget imageWidget = OverlayContentBox(
+        path: overlay.imagePath,
+        isVideo: false,
+        box: 200,
+      );
 
       final centerX = (canvasSize.width / 2) + clampedPosition.dx + animOffset.dx;
       final centerY = (canvasSize.height / 2) + clampedPosition.dy + animOffset.dy;
@@ -148,10 +166,17 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
               onTap: () => onImageTapped(overlay.id),
               onScaleStart: (details) {
                 if (!isSelected) return;
+                // One undo step for the whole gesture; the frames in between
+                // go through the live write, which takes no snapshot.
+                ref.read(videoEditorProvider.notifier).saveStateForUndo();
                 _imageBasePan = overlay.position;
                 _imageBaseFocalPoint = details.focalPoint;
                 _imageBaseScale = overlay.scale;
                 _imageBaseRotation = overlay.rotation;
+                setState(() => _movingId = overlay.id);
+              },
+              onScaleEnd: (_) {
+                if (_movingId != null) setState(() => _movingId = null);
               },
               onScaleUpdate: (details) {
                 if (!isSelected) return;
@@ -186,7 +211,7 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
                         padding: EdgeInsets.all(padXY),
                         child: imageWidget,
                       ),
-                      if (isSelected) ...[
+                      if (isSelected && _movingId != overlay.id) ...[
                         Positioned(
                           top: padXY,
                           bottom: padXY,
@@ -248,6 +273,7 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
   }
 
   void _handleResizeStart(ImageOverlayModel overlay) {
+    ref.read(videoEditorProvider.notifier).saveStateForUndo();
     _resizeBaseScale = overlay.scale;
     _accumulatedResizeDx = 0.0;
     _accumulatedResizeDy = 0.0;

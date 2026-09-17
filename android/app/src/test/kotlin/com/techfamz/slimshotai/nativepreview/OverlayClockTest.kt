@@ -161,14 +161,41 @@ class OverlayClockTest {
         // Flutter walks the playhead through the tail, where the engine's clock
         // is parked. Inside the video the engine's clock is the authority and a
         // stale override must never fight it.
-        assertNull(OverlayClock.override(requested = 3.0, engineDuration = 10.0))
-        assertNull(OverlayClock.override(requested = 10.0, engineDuration = 10.0))
-        assertEquals(12.5, OverlayClock.override(requested = 12.5, engineDuration = 10.0)!!, 0.0)
+        assertNull(OverlayClock.override(requested = 3.0, enginePosition = 10.0, engineDuration = 10.0))
+        assertNull(OverlayClock.override(requested = 10.0, enginePosition = 10.0, engineDuration = 10.0))
+        assertEquals(
+            12.5,
+            OverlayClock.override(requested = 12.5, enginePosition = 10.0, engineDuration = 10.0)!!,
+            0.0,
+        )
+    }
+
+    @Test
+    fun `a tail position left over from earlier never outlives the tail`() {
+        // Device-reported: after one playback through the tail, a video overlay
+        // showed a frozen frame from 0:00 on, before its own start, and never
+        // moved again. The override was written during the tail and never
+        // cleared, so the overlays' clock stayed pinned past the end while the
+        // real playhead was back inside the video. It is honoured only while
+        // the engine itself is parked at its end.
+        assertNull(OverlayClock.override(requested = 18.0, enginePosition = 0.0, engineDuration = 10.0))
+        assertNull(OverlayClock.override(requested = 18.0, enginePosition = 6.0, engineDuration = 10.0))
+        assertEquals(
+            18.0,
+            OverlayClock.override(requested = 18.0, enginePosition = 9.99, engineDuration = 10.0)!!,
+            0.0,
+        )
     }
 
     @Test
     fun `junk never becomes an override`() {
-        assertNull(OverlayClock.override(requested = Double.NaN, engineDuration = 10.0))
-        assertNull(OverlayClock.override(requested = Double.POSITIVE_INFINITY, engineDuration = 10.0))
+        assertNull(OverlayClock.override(requested = Double.NaN, enginePosition = 10.0, engineDuration = 10.0))
+        assertNull(
+            OverlayClock.override(
+                requested = Double.POSITIVE_INFINITY,
+                enginePosition = 10.0,
+                engineDuration = 10.0,
+            ),
+        )
     }
 }

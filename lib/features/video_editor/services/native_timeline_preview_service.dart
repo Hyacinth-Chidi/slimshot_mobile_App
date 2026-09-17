@@ -96,12 +96,30 @@ class NativeTimelinePreviewService {
     VideoEditorState state, {
     Size? previewCanvasSize,
   }) {
+    return sendOverlayPayload(
+      overlayPayload(state, previewCanvasSize: previewCanvasSize),
+    );
+  }
+
+  /// What [setOverlays] sends, built once.
+  ///
+  /// The screen needs the payload twice per push — to decide whether anything
+  /// changed and then to send it — and composing it for each was the whole
+  /// overlay list normalised and encoded twice per frame of a drag.
+  List<Map<String, dynamic>> overlayPayload(
+    VideoEditorState state, {
+    Size? previewCanvasSize,
+  }) {
     final overlays = _timelineComposer.composeOverlays(
       state,
       previewCanvasSize: previewCanvasSize,
     );
+    return [for (final o in overlays) o.toJson()];
+  }
+
+  Future<void> sendOverlayPayload(List<Map<String, dynamic>> payload) {
     return _methodChannel.invokeMethod<void>('setOverlays', {
-      'overlays': [for (final o in overlays) o.toJson()],
+      'overlays': payload,
     });
   }
 
@@ -112,11 +130,9 @@ class NativeTimelinePreviewService {
     VideoEditorState state, {
     Size? previewCanvasSize,
   }) {
-    final overlays = _timelineComposer.composeOverlays(
-      state,
-      previewCanvasSize: previewCanvasSize,
+    return jsonEncode(
+      overlayPayload(state, previewCanvasSize: previewCanvasSize),
     );
-    return jsonEncode([for (final o in overlays) o.toJson()]);
   }
 
   /// The playhead for overlays while **Flutter** owns the clock.

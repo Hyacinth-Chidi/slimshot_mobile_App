@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../logic/animation/clip_keyframes.dart';
 import '../../logic/canvas_geometry.dart';
-import '../../logic/timeline/timeline_geometry.dart';
 import '../../models/media_asset.dart';
 import '../../models/video_editor_state.dart';
 import '../../services/native_timeline_preview_service.dart';
@@ -131,12 +130,6 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     final editorState = ref.watch(videoEditorProvider);
     final previewSurface = widget.videoSurface;
 
-    final videoDuration = videoTimelineDuration(editorState.segments);
-    final totalEditedDuration = ref.watch(totalEditedDurationProvider);
-    final isAudioTail =
-        totalEditedDuration > videoDuration + 0.05 &&
-        editorState.currentPlaybackPosition >= videoDuration - 0.02;
-
     return GestureDetector(
       onTap: widget.onDeadZoneTapped,
       child: Container(
@@ -203,8 +196,15 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                                 // scale recogniser handles both. With nothing
                                 // selected there are no recognisers at all,
                                 // so taps and the other tools are unaffected.
-                                if (!isAudioTail)
-                                  Builder(
+                                //
+                                // Shown through the tail as well. It used to be
+                                // hidden there, which was right while overlays
+                                // were widgets above it; they are drawn *in*
+                                // this texture now, and the engine draws no
+                                // lane past the last clip, so the texture is
+                                // the background plus the overlays — exactly
+                                // the exported frame.
+                                Builder(
                                     builder: (context) {
                                       final canTransform =
                                           editorState.selectedSegmentId != null;

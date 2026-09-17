@@ -496,6 +496,14 @@ internal class TransitionRenderer(
     private fun buildPreviewOverlayDraws() {
         pendingPreviewOverlays?.let { list ->
             pendingPreviewOverlays = null
+            val existing = previewOverlayBuilder
+            if (existing != null && list.isNotEmpty()) {
+                // Kept, not rebuilt: the list changes on every frame of a
+                // drag, and a new builder would reopen every video overlay's
+                // codec each time.
+                existing.updateOverlays(list)
+                return@let
+            }
             releasePreviewOverlayBuilder()
             previewOverlayWarned = false
             if (list.isNotEmpty()) {

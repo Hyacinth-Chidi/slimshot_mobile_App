@@ -2823,6 +2823,25 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     }
   }
 
+  /// One frame of a canvas gesture on a photo overlay: no undo snapshot.
+  ///
+  /// The gesture calls [saveStateForUndo] once when it starts and this per
+  /// pointer move, so a drag is one undo step. Going through
+  /// [updateImageOverlay] snapshotted the whole editor state sixty times a
+  /// second — work the drag paid for on every frame — and left an Undo that
+  /// walked the move back a pixel at a time. Same rule as
+  /// [updateTextOverlayLive].
+  void updateImageOverlayLive(
+    String id,
+    ImageOverlayModel Function(ImageOverlayModel) update,
+  ) {
+    final index = state.imageOverlays.indexWhere((img) => img.id == id);
+    if (index == -1) return;
+    final updated = [...state.imageOverlays];
+    updated[index] = update(updated[index]);
+    state = state.copyWith(imageOverlays: updated);
+  }
+
   void deleteImageOverlay(String id) {
     saveStateForUndo();
     state = state.copyWith(
@@ -2891,6 +2910,19 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     if (newLaneIndex != null && newLaneIndex != item.laneIndex) {
       _swapToLane(id, newLaneIndex, item.timelineStart, item.timelineEnd);
     }
+  }
+
+  /// One frame of a canvas gesture on a video overlay: no undo snapshot.
+  /// See [updateImageOverlayLive].
+  void updateVideoOverlayLive(
+    String id,
+    VideoOverlayModel Function(VideoOverlayModel) update,
+  ) {
+    final index = state.videoOverlays.indexWhere((vid) => vid.id == id);
+    if (index == -1) return;
+    final updated = [...state.videoOverlays];
+    updated[index] = update(updated[index]);
+    state = state.copyWith(videoOverlays: updated);
   }
 
   void deleteVideoOverlay(String id) {

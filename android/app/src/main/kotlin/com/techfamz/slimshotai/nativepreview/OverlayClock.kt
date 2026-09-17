@@ -120,9 +120,21 @@ internal object OverlayClock {
      *
      * Null means "use the engine's clock", which is every ordinary frame.
      */
-    fun override(requested: Double, engineDuration: Double): Double? {
+    fun override(requested: Double, enginePosition: Double, engineDuration: Double): Double? {
         if (!requested.isFinite()) return null
         if (requested <= engineDuration) return null
+        // **Only while the engine is itself parked at its end.** The value is
+        // written during a tail and nothing clears it, so without this a
+        // project that had once played through its tail kept its overlays'
+        // clock pinned past the end for ever: device-reported as a video
+        // overlay showing a frozen frame from 0:00, before its own start, and
+        // never moving again. Testing the engine's position makes a stale
+        // value harmless instead of relying on every path remembering to
+        // clear it.
+        if (enginePosition < engineDuration - PARKED_EPSILON_SECONDS) return null
         return requested
     }
+
+    /** How close to its end the engine counts as parked there. */
+    private const val PARKED_EPSILON_SECONDS = 0.05
 }

@@ -30,7 +30,7 @@ import com.techfamz.slimshotai.thumbnails.StillImageDecoder
  */
 internal class OverlayDrawBuilder(
     private val renderer: TransitionRenderer,
-    private val overlays: List<NativeTimelineOverlay>,
+    overlays: List<NativeTimelineOverlay>,
     private val events: Events,
     private val frameWaitMs: Long,
     private val stills: StillSource = INLINE_STILLS,
@@ -103,6 +103,32 @@ internal class OverlayDrawBuilder(
 
     private val videoStates = mutableMapOf<String, VideoState>()
 
+    /** Realtime only: one decode thread per live video overlay. */
+    private val realtimeDecoders = mutableMapOf<String, RealtimeOverlayDecoder>()
+
+    private var overlays: List<NativeTimelineOverlay> = overlays
+
+    /**
+     * Adopts an edited list **without** dropping the decoders of overlays that
+     * are still in it.
+     *
+     * The preview used to build a fresh builder for every list, and the list
+     * changes on every frame of a drag — so moving a video overlay closed and
+     * reopened its codec sixty times a second, which is what made dragging one
+     * crawl. Position, scale and mask are read from the list at draw time; a
+     * decoder only has to go when its overlay is gone or points at another
+     * file.
+     */
+    fun updateOverlays(list: List<NativeTimelineOverlay>) {
+        overlays = list
+        val paths = list.associate { it.id to it.path }
+        val stale = realtimeDecoders.filter { (id, d) -> paths[id] != d.path }.keys.toList()
+        for (id in stale) {
+            realtimeDecoders.remove(id)?.release()
+            renderer.overlays.releaseVideoLane(id)
+        }
+    }
+
     /**
      * Frees the decoder of every video overlay whose window has passed.
      *
@@ -122,6 +148,12 @@ internal class OverlayDrawBuilder(
             val gone = t >= overlay.endSeconds || (realtime && t < overlay.startSeconds)
             if (overlay.isVideo && gone && videoStates.containsKey(overlay.id)) {
                 videoStates.remove(overlay.id)?.decoder?.release()
+                renderer.overlays.releaseVideoLane(overlay.id)
+            }
+            if (overlay.isVideo && gone && realtimeDecoders.containsKey(overlay.id)) {
+                // Decoder first, and it returns only once the codec is freed:
+                // the lane's surface goes next.
+                realtimeDecoders.remove(overlay.id)?.release()
                 renderer.overlays.releaseVideoLane(overlay.id)
             }
         }
@@ -334,6 +366,7 @@ internal class OverlayDrawBuilder(
         t: Double,
         state: NativeTimelineOverlay.FrameState,
     ): OverlayRenderer.Draw? {
+        if (realtime) return realtimeVideoDraw(overlay, t, state)
         val videoState = videoStates.getOrPut(overlay.id) { VideoState() }
         if (videoState.failed) return null
 
@@ -363,18 +396,10 @@ internal class OverlayDrawBuilder(
 
         val lane = renderer.overlays.videoLane(overlay.id)
         val since = lane.frameSequence()
-        val targetUs = (overlay.sourceAt(t) * 1_000_000L).toLong()
-        // The decoder only walks forward; see [OverlayClock.shouldSeek] for
-        // why the preview has to seek and why ordinary playback never does.
-        if (realtime && OverlayClock.shouldSeek(decoder.lastRenderedUs, targetUs)) {
-            decoder.seekTo(targetUs)
-        }
-        if (decoder.advanceTo(targetUs)) {
+        if (decoder.advanceTo((overlay.sourceAt(t) * 1_000_000L).toLong())) {
             if (!lane.awaitFrameAfter(since, frameWaitMs)) {
                 events.onLateFrame()
             }
-        } else if (realtime && !decoder.isFinished && decoder.lastRenderedUs < targetUs) {
-            events.onFrameNotReady()
         }
         renderer.overlays.updateVideoLane(overlay.id)
 
@@ -388,6 +413,57 @@ internal class OverlayDrawBuilder(
             lane.textureId,
             isExternal = true,
             decoder.displayAspect,
+            lane.texMatrix,
+        )
+    }
+
+    /**
+     * The preview's video overlay: ask for the frame, draw whatever has
+     * already landed, never wait. See [RealtimeOverlayDecoder] for why the
+     * decode is not done here.
+     */
+    private fun realtimeVideoDraw(
+        overlay: NativeTimelineOverlay,
+        t: Double,
+        state: NativeTimelineOverlay.FrameState,
+    ): OverlayRenderer.Draw? {
+        var worker = realtimeDecoders[overlay.id]
+        if (worker == null) {
+            if (realtimeDecoders.size >= MAX_OVERLAY_DECODERS) {
+                events.onDecoderSkipped()
+                return null
+            }
+            val surface = renderer.overlays.videoLane(overlay.id).surface
+            if (surface == null) {
+                events.onOverlayFailed()
+                return null
+            }
+            worker = RealtimeOverlayDecoder(
+                path = overlay.path,
+                surface = surface,
+                startUs = (overlay.sourceStart * 1_000_000L).toLong(),
+            )
+            realtimeDecoders[overlay.id] = worker
+        }
+        if (worker.failed) {
+            events.onOverlayFailed()
+            return null
+        }
+
+        worker.request((overlay.sourceAt(t) * 1_000_000L).toLong())
+
+        val lane = renderer.overlays.videoLane(overlay.id)
+        renderer.overlays.updateVideoLane(overlay.id)
+        // Nothing to sample until the first frame lands; its arrival asks for
+        // the redraw that shows it.
+        if (lane.frameSequence() == 0L) return null
+
+        return draw(
+            overlay,
+            state,
+            lane.textureId,
+            isExternal = true,
+            worker.displayAspect,
             lane.texMatrix,
         )
     }
@@ -422,6 +498,11 @@ internal class OverlayDrawBuilder(
             renderer.overlays.releaseVideoLane(id)
         }
         videoStates.clear()
+        for ((id, worker) in realtimeDecoders) {
+            worker.release()
+            renderer.overlays.releaseVideoLane(id)
+        }
+        realtimeDecoders.clear()
     }
 
     companion object {

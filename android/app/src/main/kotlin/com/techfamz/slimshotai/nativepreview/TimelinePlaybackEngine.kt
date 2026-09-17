@@ -965,10 +965,28 @@ internal class TimelinePlaybackEngine(
      * for any other reason — a clip frame, a still landing — uses the right
      * instant.
      */
+    /** Whether the renderer is currently drawing the tail: no lane at all. */
+    private var tailActive = false
+
     private fun applyOverlays(position: Double) {
+        val tailClock = OverlayClock.override(
+            requested = overlayClockOverride,
+            enginePosition = position,
+            engineDuration = timelineDurationSeconds,
+        )
+        // **Past the last clip the frame is background plus overlays** — what
+        // the export draws there (`NO_ACTIVE_LANE`). The canvas used to hide
+        // the texture for the tail and paint a background widget, which was
+        // right while overlays were widgets stacked above it; now that they
+        // live *in* the texture, hiding it hid them too. Device-reported: the
+        // tail played and the overlay showed nothing.
+        val inTail = tailClock != null
+        if (inTail != tailActive) {
+            tailActive = inTail
+            renderer.setActiveLane(if (inTail) NO_ACTIVE_LANE else masterLane)
+        }
         if (overlays.isEmpty()) return
-        val clock = OverlayClock.override(overlayClockOverride, timelineDurationSeconds)
-            ?: position
+        val clock = tailClock ?: position
         val redraw = OverlayClock.needsFirstDraw(lastOverlayPosition) ||
             OverlayClock.needsRedraw(overlays, lastOverlayPosition, clock)
         lastOverlayPosition = clock
@@ -1653,6 +1671,9 @@ internal class TimelinePlaybackEngine(
 
         const val VOLUME_EPSILON = 0.01f
         const val SPEED_EPSILON = 0.001
+
+        /** No lane drawn: the tail past the last clip. The export's value. */
+        const val NO_ACTIVE_LANE = -1
 
     }
 }

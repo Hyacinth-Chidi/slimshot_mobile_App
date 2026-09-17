@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -577,6 +578,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
   /// What the engine was last told the overlays are. See [_syncNativeOverlays].
   String? _nativeOverlaySignature;
+  List<ImageOverlayModel>? _syncedImageOverlays;
+  List<VideoOverlayModel>? _syncedVideoOverlays;
+  Size? _syncedOverlayCanvasSize;
 
   /// Pushes the overlay list when it changes — and **only** then.
   ///
@@ -593,18 +597,31 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final canvasSize = ref.read(videoCanvasSizeProvider);
     if (canvasSize == null) return;
 
-    final signature = _nativePreviewService.overlaySignature(
+    // This runs on **every** state change, and during playback that is a
+    // position event ~30 times a second. The payload depends only on the two
+    // overlay lists and the canvas size, and the state is immutable — an
+    // untouched list keeps its identity through `copyWith` — so three
+    // identity checks answer "nothing changed" without composing anything.
+    if (_nativeOverlaySignature != null &&
+        identical(state.imageOverlays, _syncedImageOverlays) &&
+        identical(state.videoOverlays, _syncedVideoOverlays) &&
+        canvasSize == _syncedOverlayCanvasSize) {
+      return;
+    }
+    _syncedImageOverlays = state.imageOverlays;
+    _syncedVideoOverlays = state.videoOverlays;
+    _syncedOverlayCanvasSize = canvasSize;
+
+    final payload = _nativePreviewService.overlayPayload(
       state,
       previewCanvasSize: canvasSize,
     );
+    final signature = jsonEncode(payload);
     if (_nativeOverlaySignature == signature) return;
     _nativeOverlaySignature = signature;
 
     try {
-      await _nativePreviewService.setOverlays(
-        state,
-        previewCanvasSize: canvasSize,
-      );
+      await _nativePreviewService.sendOverlayPayload(payload);
     } catch (_) {
       // An overlay that cannot be pushed is not worth interrupting an edit
       // for; the engine warns for itself when it cannot draw one.

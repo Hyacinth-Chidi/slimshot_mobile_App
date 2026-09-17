@@ -1994,6 +1994,52 @@ overlay — a decoder and a texture each, **with no cap at all**, where the engi
 `OverlayDrawBuilder.MAX_OVERLAY_DECODERS` and warns — and the whole drift apparatus.
 `video_player` stays a dependency; three other screens use it.
 
+**Four faults from the second device run, all four confirmed in code before anything was changed**
+(fixes **awaiting device verification**; the export was right throughout, which is what pointed at
+the realtime half):
+
+- **A video overlay showed a frozen frame from 0:00, before its own start, and never moved.**
+  The tail's clock override was written while the tail played and *nothing cleared it*, so after
+  one playback through a tail the overlays' clock stayed pinned past the end while the real
+  playhead was back inside the video. `OverlayClock.override` now also takes the engine's
+  position and is honoured **only while the engine is itself parked at its end** — a stale value
+  is made harmless rather than relying on every path remembering to clear it.
+- **Nothing showed in the tail.** Two halves. `VideoPreviewCanvas` dropped the texture in the
+  tail and drew the background itself — right when overlays were Flutter widgets above it, wrong
+  the moment they moved into the texture. The texture now stays, and the engine draws the tail the
+  way the export does: `setActiveLane(NO_ACTIVE_LANE)`, so composite paints the background and the
+  live overlays and no stale last frame.
+- **The main clip played slowly with a video overlay on screen, and drags crawled.** The overlay's
+  `ExportClipDecoder` was stepped inside the draw, on the GL thread, as the export does — where a
+  single step can block for the 10ms dequeue timeout many times over, on the one thread that also
+  presents the clip lanes. `RealtimeOverlayDecoder` moves it to a thread of its own: the draw says
+  which frame it wants (`request`, latest wins) and never waits; the frame lands on the overlay's
+  `SurfaceTexture` and its arrival asks for the redraw. The codec is opened there too.
+  **The builder is kept across edits** (`updateOverlays`): the list changes on every frame of a
+  drag, and rebuilding the builder reopened every video overlay's codec each time.
+- **The dashed frame did not fit the picture.** It was the fixed 200/240 square the content is
+  fitted *into*; `OverlayContentBox` sizes it from the content's own aspect
+  (`fittedOverlayBox`, the Dart twin of the fit `OverlayRenderer.writeCorners` applies).
+
+**A drag is one undo step, and costs one composition** — the same report's "the dotted container
+moves faster than the picture". Every frame of a move went through `updateImageOverlay` /
+`updateVideoOverlay`, which snapshot the whole editor state for undo: sixty snapshots a second,
+and an Undo that walked the drag back a pixel at a time. The layers now snapshot once at gesture
+start and write through `updateImageOverlayLive` / `updateVideoOverlayLive` — the rule the text
+layer already had. `_syncNativeOverlays` composed and JSON-encoded the overlay list **twice** per
+push, and — because it runs on every state change — once per *position event* during playback to
+learn nothing had changed; it now identity-checks the two overlay lists and the canvas size
+(immutable state keeps an untouched list's identity through `copyWith`) and builds the payload
+once (`overlayPayload` / `sendOverlayPayload`).
+
+**The frame steps aside while the body is moved** (`_movingId`). What is left after all of the
+above is inherent to split rendering: the frame is a Flutter widget drawn this frame, the picture
+crosses the channel, is drawn on the GL thread and composited a frame or two later. Two drawings
+that cannot agree should not both be on screen, so the frame, handles and action bar hide for the
+gesture and return on release. Corner-handle drags keep their chrome — the handle is what is
+held. The full fix is drawing the frame in GL with the picture; not worth it until something else
+needs it.
+
 **What it unlocks**: an overlay chroma key and blend modes, each now a shader line rather than an
 impossibility, and an exact feather instead of a hard-edged clip.
 
