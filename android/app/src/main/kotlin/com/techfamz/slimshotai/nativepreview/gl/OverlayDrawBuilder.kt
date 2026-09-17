@@ -32,6 +32,7 @@ internal class OverlayDrawBuilder(
     private val overlays: List<NativeTimelineOverlay>,
     private val events: Events,
     private val frameWaitMs: Long,
+    private val stills: StillSource = INLINE_STILLS,
 ) {
 
     /**
@@ -48,6 +49,33 @@ internal class OverlayDrawBuilder(
 
         /** A video overlay's frame did not arrive within [frameWaitMs]. */
         fun onLateFrame()
+    }
+
+    /** What [StillSource] has for a path right now. */
+    sealed class Still {
+        /** Decoded; the builder uploads it and recycles the bitmap. */
+        class Ready(val bitmap: android.graphics.Bitmap) : Still()
+
+        /** Being loaded somewhere else. Skip the draw this frame, quietly. */
+        object Pending : Still()
+
+        /** Cannot be loaded. Counted once through [Events.onOverlayFailed]. */
+        object Failed : Still()
+    }
+
+    /**
+     * How a still that is not yet a texture is obtained.
+     *
+     * **This is the one thing the export and the preview must do differently.**
+     * The export decodes inline ([INLINE_STILLS]): it is not realtime, and a
+     * frame drawn without its overlay would be a wrong frame in the file. The
+     * preview cannot — a decode inside a realtime draw is a visible hitch — so
+     * its source answers [Still.Pending], loads off the GL thread, and uploads
+     * when the bitmap lands. "Not ready yet" and "failed" are different
+     * answers on purpose: only one of them is worth telling the user about.
+     */
+    fun interface StillSource {
+        fun obtain(path: String, maxPx: Int): Still
     }
 
     private class VideoState {
@@ -154,14 +182,13 @@ internal class OverlayDrawBuilder(
     ): OverlayRenderer.Draw? {
         val cached = renderer.overlays.cachedImageTexture(overlay.path)
         val (textureId, aspect) = cached ?: run {
-            val bitmap = StillImageDecoder.decode(
-                overlay.path,
-                OVERLAY_IMAGE_MAX_PX,
-                OVERLAY_IMAGE_MAX_PX,
-            )
-            if (bitmap == null) {
-                events.onOverlayFailed()
-                return null
+            val bitmap = when (val still = stills.obtain(overlay.path, OVERLAY_IMAGE_MAX_PX)) {
+                is Still.Ready -> still.bitmap
+                Still.Pending -> return null
+                Still.Failed -> {
+                    events.onOverlayFailed()
+                    return null
+                }
             }
             val uploaded = renderer.overlays.imageTexture(overlay.path, bitmap)
             // texImage2D copies the pixels; holding the bitmap as well
@@ -198,14 +225,13 @@ internal class OverlayDrawBuilder(
     ): List<OverlayRenderer.Draw> {
         val cached = renderer.overlays.cachedImageTexture(overlay.path)
         val (textureId, _) = cached ?: run {
-            val bitmap = StillImageDecoder.decode(
-                overlay.path,
-                TEXT_ATLAS_MAX_PX,
-                TEXT_ATLAS_MAX_PX,
-            )
-            if (bitmap == null) {
-                events.onOverlayFailed()
-                return emptyList()
+            val bitmap = when (val still = stills.obtain(overlay.path, TEXT_ATLAS_MAX_PX)) {
+                is Still.Ready -> still.bitmap
+                Still.Pending -> return emptyList()
+                Still.Failed -> {
+                    events.onOverlayFailed()
+                    return emptyList()
+                }
             }
             val uploaded = renderer.overlays.imageTexture(overlay.path, bitmap)
             bitmap.recycle()
@@ -377,6 +403,14 @@ internal class OverlayDrawBuilder(
          * warning rather than risking every codec on the device failing.
          */
         const val MAX_OVERLAY_DECODERS = 2
+
+        /** Largest side a preview overlay image is decoded at; the export's cap. */
+        const val IMAGE_MAX_PX = OVERLAY_IMAGE_MAX_PX
+
+        /** Decode where you stand: what the export has always done. */
+        val INLINE_STILLS = StillSource { path, maxPx ->
+            StillImageDecoder.decode(path, maxPx, maxPx)?.let { Still.Ready(it) } ?: Still.Failed
+        }
     }
 }
 

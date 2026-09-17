@@ -353,14 +353,75 @@ internal class TransitionRenderer(
     private var exportHeight = 0
 
     /**
-     * Photo and video overlays, painted over the composite during export.
+     * Photo and video overlays, painted over the finished composite.
      *
-     * Export-only for now: in the preview the same overlays are live Flutter
-     * widgets stacked above this texture, so drawing them here as well would
-     * show every overlay twice. Owned by this class so its GL resources live
-     * and die with the context.
+     * **Both paths draw through here now.** It was export-only while the
+     * preview stacked Flutter widgets over this texture; drawing in both
+     * places would have shown every overlay twice. The preview engine now
+     * supplies [previewOverlayDraws] and the widgets no longer draw, so there
+     * is one implementation of what an overlay looks like. Owned by this class
+     * so its GL resources live and die with the context.
      */
     val overlays: OverlayRenderer by lazy { OverlayRenderer(frameHandler) }
+
+    /**
+     * What the preview draws over its composite, set by the engine each time
+     * the overlay picture can differ.
+     *
+     * `@Volatile` because the engine's ticker writes it on the main thread and
+     * the GL thread reads it in [composite] — the same crossing the lane
+     * bitmaps make. Export does **not** use this: it passes its draws straight
+     * into `drawExportFrame`, so an export's overlays can never be a frame
+     * behind the lane state it set for them.
+     */
+    @Volatile
+    private var previewOverlayDraws: List<OverlayRenderer.Draw> = emptyList()
+
+    /** The preview's overlays for the next draw. Cheap; call per tick. */
+    fun setPreviewOverlayDraws(draws: List<OverlayRenderer.Draw>) {
+        if (released) return
+        previewOverlayDraws = draws
+        requestRender()
+    }
+
+    /**
+     * Stills for preview overlays: answered from the texture cache, otherwise
+     * decoded off the GL thread and uploaded when the bitmap lands.
+     *
+     * The export decodes inline because a frame drawn without its overlay is a
+     * wrong frame in the file. The preview must not: a decode inside a
+     * realtime draw is a visible hitch, so the first frame or two of a
+     * just-added overlay are simply without it, and the decode's completion
+     * asks for the redraw that shows it.
+     */
+    private val previewStills = mutableMapOf<String, Bitmap?>()
+    private val previewStillsLoading = mutableSetOf<String>()
+
+    val previewStillSource = OverlayDrawBuilder.StillSource { path, maxPx ->
+        val ready = previewStills[path]
+        when {
+            ready != null -> {
+                previewStills.remove(path)
+                OverlayDrawBuilder.Still.Ready(ready)
+            }
+            previewStills.containsKey(path) -> OverlayDrawBuilder.Still.Failed
+            path in previewStillsLoading -> OverlayDrawBuilder.Still.Pending
+            else -> {
+                previewStillsLoading.add(path)
+                backgroundDecoder.execute {
+                    val bitmap = try {
+                        StillImageDecoder.decode(path, maxPx, maxPx)
+                    } catch (error: Exception) {
+                        null
+                    }
+                    previewStills[path] = bitmap
+                    previewStillsLoading.remove(path)
+                    requestRender()
+                }
+                OverlayDrawBuilder.Still.Pending
+            }
+        }
+    }
 
     /**
      * Full-frame effect passes run over the composite, in order. Empty is the
@@ -632,6 +693,9 @@ internal class TransitionRenderer(
     fun release() {
         backgroundDecoder.shutdownNow()
         released = true
+        previewOverlayDraws = emptyList()
+        for (bitmap in previewStills.values) bitmap?.recycle()
+        previewStills.clear()
         val latch = CountDownLatch(1)
         val posted = handler.post {
             programs.values.forEach { it.release() }
@@ -1111,6 +1175,7 @@ internal class TransitionRenderer(
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
             GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
             drawScene(fill)
+            drawPreviewOverlays(viewportWidth, viewportHeight)
             return
         }
 
@@ -1132,6 +1197,23 @@ internal class TransitionRenderer(
         // which is the missing effect degrading to the plain picture rather than
         // to black.
         presentTexture(result)
+        drawPreviewOverlays(viewportWidth, viewportHeight)
+    }
+
+    /**
+     * The preview's overlays, over the finished frame and **after** the effect
+     * chain — so a sticker on a blurred clip stays sharp, exactly as export
+     * draws it.
+     *
+     * Skipped entirely while exporting: that path passes its own draws to
+     * `drawExportFrame`, and drawing the preview's here as well would put a
+     * stale set of overlays into the file.
+     */
+    private fun drawPreviewOverlays(viewportWidth: Int, viewportHeight: Int) {
+        if (exportSurface != null) return
+        val draws = previewOverlayDraws
+        if (draws.isEmpty()) return
+        overlays.draw(draws, viewportWidth, viewportHeight)
     }
 
     /**

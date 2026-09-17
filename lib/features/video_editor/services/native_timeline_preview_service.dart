@@ -86,6 +86,51 @@ class NativeTimelinePreviewService {
     return _methodChannel.invokeMethod<void>('setTimeline', timeline.toJson());
   }
 
+  /// Hands the engine the overlay list alone — no clips, no players touched.
+  ///
+  /// The engine draws photo overlays itself now, with the renderer the export
+  /// uses, so an overlay edit has to reach it; but it must not ride
+  /// [setTimeline], which re-prepares decoders. Small enough to send per frame
+  /// of a drag, the same shape as [setClipTransform].
+  Future<void> setOverlays(
+    VideoEditorState state, {
+    Size? previewCanvasSize,
+  }) {
+    final overlays = _timelineComposer.composeOverlays(
+      state,
+      previewCanvasSize: previewCanvasSize,
+    );
+    return _methodChannel.invokeMethod<void>('setOverlays', {
+      'overlays': [for (final o in overlays) o.toJson()],
+    });
+  }
+
+  /// Identity of what [setOverlays] would send. The playhead is not part of
+  /// it — the engine has its own clock — so a position event never re-sends
+  /// the list.
+  String overlaySignature(
+    VideoEditorState state, {
+    Size? previewCanvasSize,
+  }) {
+    final overlays = _timelineComposer.composeOverlays(
+      state,
+      previewCanvasSize: previewCanvasSize,
+    );
+    return jsonEncode([for (final o in overlays) o.toJson()]);
+  }
+
+  /// The playhead for overlays while **Flutter** owns the clock.
+  ///
+  /// The engine's clock parks at the end of the video; past it the editor's
+  /// ticker walks the playhead through the tail, so an overlay that outlives
+  /// the video would freeze on the engine's last position. The engine honours
+  /// this only beyond its own duration, so it can never fight the real clock.
+  Future<void> setOverlayClock(double seconds) {
+    return _methodChannel.invokeMethod<void>('setOverlayClock', {
+      'seconds': seconds,
+    });
+  }
+
   /// Identity of everything the native engine would need to rebuild playback.
   ///
   /// The editor pushes a new timeline only when this changes, so a signature

@@ -395,6 +395,27 @@ class NativeTimelinePreviewManager(
                 engine?.clearClipVolume(clipId)
                 result.success(null)
             }
+            "setOverlays" -> {
+                // Deliberately not part of `setTimeline`: that replaces every
+                // lane's media items and re-prepares the players, which is a
+                // decoder rebuild and a visible flash. An overlay edit changes
+                // nothing about what plays.
+                val raw = call.argument<List<*>>("overlays") ?: emptyList<Any?>()
+                engine?.setOverlays(
+                    raw.mapNotNull { entry ->
+                        (entry as? Map<*, *>)?.let { NativeTimelineOverlay.fromMap(it) }
+                    },
+                )
+                result.success(null)
+            }
+
+            "setOverlayClock" -> {
+                engine?.setOverlayClock(
+                    (call.argument<Number>("seconds") ?: 0.0).toDouble(),
+                )
+                result.success(null)
+            }
+
             "setClipTransform" -> {
                 val clipId = call.argument<String>("clipId")
                 if (clipId.isNullOrBlank()) {

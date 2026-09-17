@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,7 +6,6 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../models/image_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
-import '../overlay_mask_clip.dart';
 
 class ImageOverlayLayer extends ConsumerStatefulWidget {
   final Size videoCanvasSize;
@@ -85,15 +83,16 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
       final timeInOverlaySec = (currentPosMs - startMs) / 1000.0;
       final timeRemainingSec = (endMs - currentPosMs) / 1000.0;
 
+      // Scale and offset still matter here: they place the selection frame
+      // and its handles, which have to follow an overlay that is animating.
+      // Opacity does not — GL fades the picture, and fading the handles with
+      // it would make them vanish exactly when the user needs to grab them.
       double animScale = 1.0;
-      double animOpacity = overlay.opacity;
       Offset animOffset = Offset.zero;
 
       if (overlay.animationIn != null && timeInOverlaySec < overlay.animationInDuration) {
         final progress = (timeInOverlaySec / overlay.animationInDuration).clamp(0.0, 1.0);
-        if (overlay.animationIn == 'fade_in') {
-          animOpacity *= progress;
-        } else if (overlay.animationIn == 'zoom_in') {
+        if (overlay.animationIn == 'zoom_in') {
           animScale *= progress;
         } else if (overlay.animationIn == 'zoom_out') {
           animScale *= (2.0 - progress);
@@ -110,9 +109,7 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
 
       if (overlay.animationOut != null && timeRemainingSec < overlay.animationOutDuration) {
         final progress = (1.0 - (timeRemainingSec / overlay.animationOutDuration)).clamp(0.0, 1.0);
-        if (overlay.animationOut == 'fade_out') {
-          animOpacity *= (1 - progress);
-        } else if (overlay.animationOut == 'zoom_in_out') {
+        if (overlay.animationOut == 'zoom_in_out') {
           animScale *= (1 + progress);
         } else if (overlay.animationOut == 'zoom_out_out') {
           animScale *= (1 - progress);
@@ -127,23 +124,16 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
         }
       }
 
-      Widget imageWidget = ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: 200,
-          maxHeight: 200,
-        ),
-        // Cut to the overlay's shape, from the same ClipMask the export
-        // resolves in its shader. See OverlayMaskClip for the one difference:
-        // a feather is a hard edge here.
-        child: OverlayMaskClip(
-          mask: overlay.mask,
-          child: Image.file(
-            File(overlay.imagePath),
-            fit: BoxFit.contain,
-            opacity: AlwaysStoppedAnimation(animOpacity),
-          ),
-        ),
-      );
+      // **The picture is drawn by GL, not here.** The engine composites this
+      // overlay with the same renderer the export uses, so drawing it again
+      // in Flutter would show every overlay twice — and would put back the
+      // approximations that came with a widget: a hard-edged mask where the
+      // shader feathers, and no way to key a colour at all.
+      //
+      // What stays is the box: the gesture target, and the frame and handles
+      // that hang off it. It is laid out from the same geometry the composer
+      // sends the engine, so the handles and the picture agree.
+      Widget imageWidget = const SizedBox(width: 200, height: 200);
 
       final centerX = (canvasSize.width / 2) + clampedPosition.dx + animOffset.dx;
       final centerY = (canvasSize.height / 2) + clampedPosition.dy + animOffset.dy;

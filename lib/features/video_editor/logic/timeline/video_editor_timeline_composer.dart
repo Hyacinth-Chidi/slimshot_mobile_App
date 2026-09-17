@@ -212,6 +212,21 @@ class VideoEditorTimelineComposer {
     );
   }
 
+  /// The overlay list on its own — exactly what [compose] puts in
+  /// `EditorTimeline.overlays`, without composing clips, transitions or audio.
+  ///
+  /// The native preview draws overlays itself, but overlays are deliberately
+  /// **not** in the playback signature: a whole timeline per overlay edit
+  /// re-prepared the players and flashed the canvas. So they travel on their
+  /// own light channel, and this is what it sends. It calls the same private
+  /// builder [compose] does, so there is one definition of an overlay's
+  /// geometry and a test holds the two equal.
+  List<EditorTimelineOverlay> composeOverlays(
+    VideoEditorState state, {
+    Size? previewCanvasSize,
+  }) =>
+      _composeOverlays(state, previewCanvasSize, const []);
+
   /// Normalises overlays out of preview-canvas pixels into canvas fractions.
   ///
   /// The editor lays overlays out in device pixels — an image inside a fixed

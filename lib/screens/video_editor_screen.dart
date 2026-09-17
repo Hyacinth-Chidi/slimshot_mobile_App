@@ -411,6 +411,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       return;
     }
 
+    // Past the last video frame the engine's clock has parked, so an overlay
+    // that outlives the video would freeze on it. The engine honours this only
+    // beyond its own duration, so it can never fight the real clock.
+    unawaited(_nativePreviewService.setOverlayClock(position));
+
     if (totalDuration <= videoDuration + 0.001) {
       // No audio past the end of the video; native reports completion itself.
       return;
@@ -555,6 +560,43 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       notifier.updatePlaybackPosition(videoDuration);
       notifier.setPlaying(false);
       _audioPlayerManager.pauseAll();
+    }
+  }
+
+  /// What the engine was last told the overlays are. See [_syncNativeOverlays].
+  String? _nativeOverlaySignature;
+
+  /// Pushes the overlay list when it changes — and **only** then.
+  ///
+  /// Overlays are deliberately absent from the playback signature: sending a
+  /// whole timeline for an overlay edit re-prepares every lane's player, which
+  /// is a decoder rebuild and a visible flash. This is the light channel
+  /// instead, and it runs during a drag where [_syncNativePreviewTimeline]
+  /// bails out, because moving an overlay must show while the finger is down.
+  Future<void> _syncNativeOverlays(VideoEditorState state) async {
+    if (!_canUseNativeTimelinePreview(state) || state.sourceVideo == null) {
+      _nativeOverlaySignature = null;
+      return;
+    }
+    final canvasSize = ref.read(videoCanvasSizeProvider);
+    if (canvasSize == null) return;
+
+    final signature = _nativePreviewService.overlaySignature(
+      state,
+      previewCanvasSize: canvasSize,
+    );
+    if (_nativeOverlaySignature == signature) return;
+    _nativeOverlaySignature = signature;
+
+    try {
+      await _nativePreviewService.setOverlays(
+        state,
+        previewCanvasSize: canvasSize,
+      );
+    } catch (_) {
+      // An overlay that cannot be pushed is not worth interrupting an edit
+      // for; the engine warns for itself when it cannot draw one.
+      _nativeOverlaySignature = null;
     }
   }
 
@@ -2513,6 +2555,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     );
 
     ref.listen<VideoEditorState>(videoEditorProvider, (prev, state) {
+      // Overlays go on their own light channel, so unlike the timeline they
+      // are pushed while playing and mid-drag too — an overlay moved under the
+      // finger has to move on the canvas.
+      unawaited(_syncNativeOverlays(state));
       if (_canUseNativeTimelinePreview(state) && !state.isPlaying) {
         // Adding or retuning a transition costs nothing now — it is a shader
         // uniform, not a render — so there is no cache to schedule here.
