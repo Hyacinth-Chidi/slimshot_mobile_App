@@ -59,7 +59,13 @@ Grouped so each batch shares one device-verification pass.
 
 - [x] **D1 Mask** (device check pending; rotation deferred) (rectangle, circle, linear) with feather, per clip, on the sampling
   helpers; handles on the canvas like crop.
-- [x] **D2 Chroma key** for video overlays, on the overlay pass.
+- [x] **D2 Chroma key** — built **per clip, in the sampling helpers**, not for video overlays on
+  the overlay pass as originally written. The overlay pass is export-only: preview overlays are
+  still Flutter widgets (see "Known broken"), so a key there would have worked in the exported file
+  and done nothing on the canvas — a preview/export mismatch, which is the one thing this pipeline
+  is built to avoid. On a clip it keys identically in both. A key for video overlays becomes
+  straightforward once overlay playback moves into the engine, and should reuse the same
+  `ChromaKey` model and shader helpers.
 - [x] **D3 Speed curves.** Source time as the integral of a speed curve — its own model,
   Kotlin port and fixture, and its own sheet. See the CLAUDE.md note on why speed cannot
   be a keyframe.
