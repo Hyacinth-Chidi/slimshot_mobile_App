@@ -460,6 +460,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       final notice = notifier.takeLoadNotice();
       if (notice != null && mounted) ToastUtils.show(context, notice);
       await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
+      // `ref.listen` fires only on a change, so a project that opens with
+      // overlays already on it would never push them — they would show their
+      // handles and no picture until one of them was edited.
+      await _syncNativeOverlays(ref.read(videoEditorProvider));
     } catch (e) {
       if (!mounted) return;
       ToastUtils.show(context, 'Error loading draft: $e', isError: true);
@@ -485,6 +489,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
       await notifier.loadProject(assets: assets);
       await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
+      // `ref.listen` fires only on a change, so a project that opens with
+      // overlays already on it would never push them — they would show their
+      // handles and no picture until one of them was edited.
+      await _syncNativeOverlays(ref.read(videoEditorProvider));
     } catch (e) {
       if (!mounted) return;
       ToastUtils.show(context, 'Error loading media: $e', isError: true);
@@ -500,6 +508,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
       notifier.addAssets(assets);
       await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
+      // `ref.listen` fires only on a change, so a project that opens with
+      // overlays already on it would never push them — they would show their
+      // handles and no picture until one of them was edited.
+      await _syncNativeOverlays(ref.read(videoEditorProvider));
       if (mounted) HapticFeedback.selectionClick();
     } catch (e) {
       if (!mounted) return;
@@ -755,6 +767,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       if (assets.isEmpty || !mounted) return;
       notifier.replaceClipAsset(assets.first);
       await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
+      // `ref.listen` fires only on a change, so a project that opens with
+      // overlays already on it would never push them — they would show their
+      // handles and no picture until one of them was edited.
+      await _syncNativeOverlays(ref.read(videoEditorProvider));
       if (mounted) HapticFeedback.selectionClick();
     } catch (e) {
       if (!mounted) return;

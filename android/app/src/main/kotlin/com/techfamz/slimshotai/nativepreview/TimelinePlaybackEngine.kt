@@ -319,11 +319,15 @@ internal class TimelinePlaybackEngine(
 
             // The committed timeline now carries whatever the gesture wrote.
             transformOverrides.clear()
-        volumeOverrides.clear()
             volumeOverrides.clear()
             // The next tick re-derives fits, grades, speeds and volumes from
             // the adopted clips; each setter is change-guarded, so unchanged
             // values cost nothing and changed ones apply without a reload.
+            // The hard path below ends in a `seek`, which refreshes the
+            // overlays; this one returns without one, so their instant would
+            // stay wherever it was until the playhead next moved.
+            lastOverlayPosition = Double.NaN
+            applyOverlays(timelinePositionSeconds())
             if (VERBOSE) Log.i(TAG, "setTimeline: soft update (properties only)")
             return
         }
@@ -750,6 +754,9 @@ internal class TimelinePlaybackEngine(
         // A seek can land anywhere, so the overlay picture is owed a redraw
         // whatever the clock says about crossings.
         lastOverlayPosition = Double.NaN
+        // And it has to be *pushed*: the tick that would otherwise carry it is
+        // up to 32ms away, and while paused there is no next tick at all.
+        applyOverlays(seconds.coerceIn(0.0, timelineDurationSeconds))
 
         val target = seconds.coerceIn(0.0, timelineDurationSeconds)
         val window = transitions.firstOrNull { it.contains(target) }
@@ -934,8 +941,12 @@ internal class TimelinePlaybackEngine(
     fun setOverlays(list: List<NativeTimelineOverlay>) {
         overlays = list
         lastOverlayPosition = Double.NaN
-        renderer.setPreviewOverlays(list)
+        // **The clock first.** `setPreviewOverlays` asks for a render, which
+        // runs on the GL thread while this one carries on — so a list adopted
+        // before the clock was written would be drawn at whatever instant was
+        // there before, usually zero.
         applyOverlays(timelinePositionSeconds())
+        renderer.setPreviewOverlays(list)
     }
 
     /** See [OverlayClock.override]. */
@@ -958,7 +969,7 @@ internal class TimelinePlaybackEngine(
         if (overlays.isEmpty()) return
         val clock = OverlayClock.override(overlayClockOverride, timelineDurationSeconds)
             ?: position
-        val redraw = lastOverlayPosition.isNaN() ||
+        val redraw = OverlayClock.needsFirstDraw(lastOverlayPosition) ||
             OverlayClock.needsRedraw(overlays, lastOverlayPosition, clock)
         lastOverlayPosition = clock
         renderer.setOverlayClock(clock, redraw)

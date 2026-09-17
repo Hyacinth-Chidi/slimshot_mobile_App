@@ -70,6 +70,17 @@ internal object OverlayClock {
         boundary > from && boundary <= to
 
     /**
+     * Whether the overlays are owed a draw regardless of the clock.
+     *
+     * True when there is no previous instant to compare against — a new list,
+     * a seek, a timeline push. [needsRedraw] answers "did the picture change
+     * between two instants", which is the wrong question before there is a
+     * first one: a clock that has not moved owes nothing, and the overlays
+     * would sit unpainted until the playhead happened to move.
+     */
+    fun needsFirstDraw(lastInstant: Double): Boolean = lastInstant.isNaN()
+
+    /**
      * Whether a realtime video overlay's decoder has to **seek** to reach
      * [targetUs], rather than walk there.
      *

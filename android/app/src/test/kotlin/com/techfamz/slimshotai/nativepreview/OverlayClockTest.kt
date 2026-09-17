@@ -145,6 +145,18 @@ class OverlayClockTest {
     }
 
     @Test
+    fun `a first draw is owed whenever there is no previous instant`() {
+        // The engine has no last position after a new list, a seek, or a
+        // timeline push. Whatever the clock says, that draw has to happen, or
+        // the overlays sit unpainted until the playhead happens to move.
+        val list = listOf(overlay())
+        assertTrue(OverlayClock.needsFirstDraw(Double.NaN))
+        assertFalse(OverlayClock.needsFirstDraw(4.0))
+        // And it is independent of whether the clock moved.
+        assertFalse(OverlayClock.needsRedraw(list, 4.0, 4.0))
+    }
+
+    @Test
     fun `the override is honoured only past the engine's own end`() {
         // Flutter walks the playhead through the tail, where the engine's clock
         // is parked. Inside the video the engine's clock is the authority and a
