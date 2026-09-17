@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../logic/chroma/chroma_key.dart';
 import '../logic/mask/clip_mask.dart';
 
 class VideoOverlayModel {
@@ -42,6 +43,16 @@ class VideoOverlayModel {
   /// there is one coverage function to keep preview and export agreeing.
   ClipMask mask;
 
+  /// The colour dropped out of this overlay so the picture behind shows
+  /// through — the clip's own [ChromaKey], deliberately the same model.
+  ///
+  /// A green screen means one thing everywhere, and one coverage function is
+  /// what keeps the preview and the export agreeing. It could not exist while
+  /// the preview drew overlays as Flutter widgets: a key is a per-pixel colour
+  /// decision no widget can make, so the export would have dropped the green
+  /// while the canvas still showed it. Now both sides run the same shader.
+  ChromaKey chromaKey;
+
   VideoOverlayModel({
     required this.id,
     required this.videoPath,
@@ -62,6 +73,7 @@ class VideoOverlayModel {
     this.isMuted = false,
     this.laneIndex = 0,
     this.mask = ClipMask.none,
+    this.chromaKey = ChromaKey.none,
   });
 
   VideoOverlayModel copyWith({
@@ -86,6 +98,7 @@ class VideoOverlayModel {
     bool? isMuted,
     int? laneIndex,
     ClipMask? mask,
+    ChromaKey? chromaKey,
   }) {
     return VideoOverlayModel(
       id: id ?? this.id,
@@ -107,6 +120,7 @@ class VideoOverlayModel {
       isMuted: isMuted ?? this.isMuted,
       laneIndex: laneIndex ?? this.laneIndex,
       mask: mask ?? this.mask,
+      chromaKey: chromaKey ?? this.chromaKey,
     );
   }
 
@@ -133,6 +147,7 @@ class VideoOverlayModel {
       'laneIndex': laneIndex,
       // Omitted while unset, as on the image overlay.
       if (!mask.isNone) 'mask': mask.toJson(),
+      if (!chromaKey.isNone) 'chromaKey': chromaKey.toJson(),
     };
   }
 
@@ -161,6 +176,7 @@ class VideoOverlayModel {
       laneIndex: json['laneIndex'] as int? ?? 0,
       // Absent in every overlay saved before shapes existed.
       mask: ClipMask.fromJson(json['mask']),
+      chromaKey: ChromaKey.fromJson(json['chromaKey']),
     );
   }
 }

@@ -132,7 +132,12 @@ internal data class NativeTimelineOverlay(
      * placed and scaled independently, so a mask measured against the canvas
      * would slide off the picture the moment the overlay moved.
      */
-    val mask: FloatArray = NativeTimelineClip.NO_MASK,
+    val mask: FloatArray,
+    /**
+     * The colour keyed out of this overlay, as the two vec4s a clip's key
+     * uses — `NativeTimelineClip.NO_CHROMA` when unkeyed.
+     */
+    val chromaKey: FloatArray = NativeTimelineClip.NO_CHROMA,
     val backgroundLeft: Double,
     val backgroundTop: Double,
     val backgroundRight: Double,
@@ -322,6 +327,9 @@ internal data class NativeTimelineOverlay(
                 // Absent on every overlay saved before shapes existed, and on
                 // every unmasked one; `parseMask` reads that as no mask.
                 mask = NativeTimelineClip.parseMask(map["mask"]),
+                // Absent on every overlay saved before keys existed and on
+                // every unkeyed one; `parseChroma` reads that as no key.
+                chromaKey = NativeTimelineClip.parseChroma(map["chromaKey"]),
                 backgroundLeft = map.number("backgroundLeft") ?: 0.0,
                 backgroundTop = map.number("backgroundTop") ?: 0.0,
                 backgroundRight = map.number("backgroundRight") ?: 0.0,

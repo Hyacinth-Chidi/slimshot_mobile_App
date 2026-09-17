@@ -601,6 +601,7 @@ class EditorTimelineOverlay {
     this.isMuted = false,
     this.glyphs,
     this.mask = ClipMask.none,
+    this.chromaKey = ChromaKey.none,
     this.backgroundLeft = 0,
     this.backgroundTop = 0,
     this.backgroundRight = 0,
@@ -616,6 +617,9 @@ class EditorTimelineOverlay {
   /// The shape this overlay is cut to, in its **own box**. See
   /// `ImageOverlayModel.mask`.
   final ClipMask mask;
+
+  /// The colour keyed out of this overlay. See `ImageOverlayModel.chromaKey`.
+  final ChromaKey chromaKey;
 
   final String path;
 
@@ -705,6 +709,9 @@ class EditorTimelineOverlay {
       // Only when set: an engine reading an unmasked overlay sees the payload
       // it always did.
       if (!mask.isNone) 'mask': mask.toJson(),
+      // Same rule as the mask: only when set, so an unkeyed overlay is the
+      // payload every build has always read.
+      if (!chromaKey.isNone) 'chromaKey': chromaKey.toJson(),
       'path': path,
       'centerX': centerX,
       'centerY': centerY,

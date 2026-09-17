@@ -211,6 +211,10 @@ const EditorMenu _imageOverlayMenu = EditorMenu(
     // model, one coverage function, so a circle is the same circle on a clip
     // and on an overlay.
     EditorTool(id: 'mask', label: 'Mask', icon: LucideIcons.scan),
+    // The same Chroma tool a clip has. It could not exist on an overlay while
+    // the preview drew them as widgets: a key is a per-pixel colour decision,
+    // so the export would have dropped the green while the canvas showed it.
+    EditorTool(id: 'chroma', label: 'Chroma', icon: LucideIcons.pipette),
     EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
     EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
     EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
@@ -235,6 +239,10 @@ const EditorMenu _videoOverlayMenu = EditorMenu(
     // model, one coverage function, so a circle is the same circle on a clip
     // and on an overlay.
     EditorTool(id: 'mask', label: 'Mask', icon: LucideIcons.scan),
+    // The same Chroma tool a clip has. It could not exist on an overlay while
+    // the preview drew them as widgets: a key is a per-pixel colour decision,
+    // so the export would have dropped the green while the canvas showed it.
+    EditorTool(id: 'chroma', label: 'Chroma', icon: LucideIcons.pipette),
     EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
     EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
     EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
@@ -1507,8 +1515,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// back a selection exactly as the transform and curve sheets do.
   Future<void> _showChromaKeySheet() async {
     final notifier = ref.read(videoEditorProvider.notifier);
-    final borrowed = ref.read(videoEditorProvider).selectedSegmentId == null &&
-        notifier.selectSegmentAtPlayhead();
+    final state = ref.read(videoEditorProvider);
+    // **Only borrow a clip when nothing at all is selected.** An overlay is a
+    // target in its own right now, and borrowing over it would key the clip
+    // under the playhead instead of the overlay the user opened the tool on.
+    final hasTarget = state.selectedSegmentId != null ||
+        state.selectedImageId != null ||
+        state.selectedVideoOverlayId != null;
+    final borrowed = !hasTarget && notifier.selectSegmentAtPlayhead();
     await showEditorSheet<void>(
       context,
       builder: (context) => const ChromaKeySheet(),

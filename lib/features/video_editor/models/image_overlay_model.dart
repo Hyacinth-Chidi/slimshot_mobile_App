@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../logic/chroma/chroma_key.dart';
 import '../logic/mask/clip_mask.dart';
 
 class ImageOverlayModel {
@@ -33,6 +34,16 @@ class ImageOverlayModel {
   /// there is one coverage function to keep preview and export agreeing.
   ClipMask mask;
 
+  /// The colour dropped out of this overlay so the picture behind shows
+  /// through — the clip's own [ChromaKey], deliberately the same model.
+  ///
+  /// A green screen means one thing everywhere, and one coverage function is
+  /// what keeps the preview and the export agreeing. It could not exist while
+  /// the preview drew overlays as Flutter widgets: a key is a per-pixel colour
+  /// decision no widget can make, so the export would have dropped the green
+  /// while the canvas still showed it. Now both sides run the same shader.
+  ChromaKey chromaKey;
+
   ImageOverlayModel({
     required this.id,
     required this.imagePath,
@@ -48,6 +59,7 @@ class ImageOverlayModel {
     this.endTime = const Duration(seconds: 5), // default 5 seconds
     this.laneIndex = 0,
     this.mask = ClipMask.none,
+    this.chromaKey = ChromaKey.none,
   });
 
   ImageOverlayModel copyWith({
@@ -67,6 +79,7 @@ class ImageOverlayModel {
     Duration? endTime,
     int? laneIndex,
     ClipMask? mask,
+    ChromaKey? chromaKey,
   }) {
     return ImageOverlayModel(
       id: id ?? this.id,
@@ -83,6 +96,7 @@ class ImageOverlayModel {
       endTime: endTime ?? this.endTime,
       laneIndex: laneIndex ?? this.laneIndex,
       mask: mask ?? this.mask,
+      chromaKey: chromaKey ?? this.chromaKey,
     );
   }
 
@@ -105,6 +119,7 @@ class ImageOverlayModel {
       // Omitted while unset, so an overlay nobody masked writes what it
       // always wrote.
       if (!mask.isNone) 'mask': mask.toJson(),
+      if (!chromaKey.isNone) 'chromaKey': chromaKey.toJson(),
     };
   }
 
@@ -129,6 +144,7 @@ class ImageOverlayModel {
       // Absent in every overlay saved before shapes existed; junk reads as no
       // mask rather than a throw.
       mask: ClipMask.fromJson(json['mask']),
+      chromaKey: ChromaKey.fromJson(json['chromaKey']),
     );
   }
 }

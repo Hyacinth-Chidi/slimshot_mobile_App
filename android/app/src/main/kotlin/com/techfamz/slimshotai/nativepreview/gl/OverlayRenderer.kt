@@ -62,6 +62,7 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
          * caller draws exactly as it did.
          */
         val mask: FloatArray = NativeTimelineClip.NO_MASK,
+        val chromaKey: FloatArray = NativeTimelineClip.NO_CHROMA,
         /**
          * Where to place the quad inside the overlay's box, as box fractions
          * (left, top, right, bottom), or null to contain-fit the whole box —
@@ -144,11 +145,15 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
     private var uAlpha2d = -1
     private var uMaskA2d = -1
     private var uMaskB2d = -1
+    private var uChromaA2d = -1
+    private var uChromaB2d = -1
     private var aPositionOes = -1
     private var aTexCoordOes = -1
     private var uAlphaOes = -1
     private var uMaskAOes = -1
     private var uMaskBOes = -1
+    private var uChromaAOes = -1
+    private var uChromaBOes = -1
     private var uTexMatrixOes = -1
 
     /** Uploaded bitmap textures, keyed by file path. */
@@ -191,6 +196,8 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
         uAlpha2d = GLES20.glGetUniformLocation(program2d, "uAlpha")
         uMaskA2d = GLES20.glGetUniformLocation(program2d, "uMaskA")
         uMaskB2d = GLES20.glGetUniformLocation(program2d, "uMaskB")
+        uChromaA2d = GLES20.glGetUniformLocation(program2d, "uChromaA")
+        uChromaB2d = GLES20.glGetUniformLocation(program2d, "uChromaB")
 
         programOes = GlUtil.createProgram(VERTEX, fragment(external = true))
         aPositionOes = GLES20.glGetAttribLocation(programOes, "aPosition")
@@ -198,6 +205,8 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
         uAlphaOes = GLES20.glGetUniformLocation(programOes, "uAlpha")
         uMaskAOes = GLES20.glGetUniformLocation(programOes, "uMaskA")
         uMaskBOes = GLES20.glGetUniformLocation(programOes, "uMaskB")
+        uChromaAOes = GLES20.glGetUniformLocation(programOes, "uChromaA")
+        uChromaBOes = GLES20.glGetUniformLocation(programOes, "uChromaB")
         uTexMatrixOes = GLES20.glGetUniformLocation(programOes, "uTexMatrix")
     }
 
@@ -290,6 +299,7 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, draw.textureId)
                 GLES20.glUniform1f(uAlphaOes, draw.opacity.toFloat())
                 bindMask(uMaskAOes, uMaskBOes, draw.mask)
+                bindChroma(uChromaAOes, uChromaBOes, draw.chromaKey)
                 GLES20.glUniformMatrix4fv(
                     uTexMatrixOes,
                     1,
@@ -304,6 +314,7 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
                 GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, draw.textureId)
                 GLES20.glUniform1f(uAlpha2d, draw.opacity.toFloat())
                 bindMask(uMaskA2d, uMaskB2d, draw.mask)
+                bindChroma(uChromaA2d, uChromaB2d, draw.chromaKey)
                 val texCoords = draw.srcRect?.let { writeGlyphTexCoords(it) }
                     ?: texCoordsTopDown
                 drawQuad(aPosition2d, aTexCoord2d, texCoords)
@@ -483,6 +494,8 @@ varying vec2 vTexCoord;
 uniform float uAlpha;
 uniform vec4 uMaskA;
 uniform vec4 uMaskB;
+uniform vec4 uChromaA;
+uniform vec4 uChromaB;
 
 // The overlay's shape, read in the overlay's own box. The same arithmetic as
 // `maskCoverage` in TransitionShaders and its Dart twin in
@@ -514,14 +527,93 @@ float overlayMaskCoverage(vec2 p, vec4 a, vec4 b) {
     return mix(coverage, 1.0 - coverage, b.z);
 }
 
+// The overlay's chroma key. Copied from `TransitionShaders`, where a clip's
+// key lives, so a green screen keys identically on a clip and on an overlay —
+// and both have the same Dart twin in logic/chroma/chroma_key.dart. **If one
+// changes they all must.**
+float chromaCoverage(vec3 c, vec4 a, vec4 b) {
+    if (b.z < 0.5) {
+        return 1.0;
+    }
+    float py = dot(c, vec3(0.299, 0.587, 0.114));
+    vec2 pv = vec2(c.b - py, c.r - py);
+    float plen = length(pv);
+
+    float ky = dot(a.rgb, vec3(0.299, 0.587, 0.114));
+    vec2 kv = vec2(a.b - ky, a.r - ky);
+    float klen = length(kv);
+    if (klen < 0.02) {
+        return 1.0;
+    }
+
+    // step(), not a ternary on a vector: ES 2.0 permits the ternary but the
+    // branchless form is what every other shader here uses, and the divide is
+    // guarded so a grey pixel cannot produce a NaN direction.
+    vec2 pdir = pv / max(plen, 0.02) * step(0.02, plen);
+    float hueDistance = length(pdir - kv / klen) * 0.5;
+    float saturation = clamp(plen / 0.25, 0.0, 1.0);
+    float distance = hueDistance + (1.0 - saturation);
+
+    float inner = a.w;
+    float outer = inner + max(b.x, 0.001);
+    return smoothstep(inner, outer, distance);
+}
+
+// A kept pixel with the key colour's bounce pulled out of it. A green screen
+// throws green onto the subject, and that fringe survives the key because it
+// is not green enough to drop — so it is removed separately or the subject
+// wears a halo. Only the key's dominant channel is touched, and only where it
+// exceeds the other two.
+vec3 despill(vec3 c, vec4 a, vec4 b) {
+    if (b.z < 0.5 || b.y <= 0.0) {
+        return c;
+    }
+    float maxKey = max(a.r, max(a.g, a.b));
+    if (maxKey <= 0.0) {
+        return c;
+    }
+    if (a.g >= maxKey) {
+        float neutral = (c.r + c.b) * 0.5;
+        return c.g > neutral ? vec3(c.r, c.g + (neutral - c.g) * b.y, c.b) : c;
+    }
+    if (a.b >= maxKey) {
+        float neutral = (c.r + c.g) * 0.5;
+        return c.b > neutral ? vec3(c.r, c.g, c.b + (neutral - c.b) * b.y) : c;
+    }
+    float neutral = (c.g + c.b) * 0.5;
+    return c.r > neutral ? vec3(c.r + (neutral - c.r) * b.y, c.g, c.b) : c;
+}
+
 void main() {
     // The quad's own 0..1, which is the overlay's box — the space the mask is
     // authored in. Premultiplied alpha, so the coverage multiplies the whole
     // texel exactly as uAlpha does.
     float keep = overlayMaskCoverage(vTexCoord, uMaskA, uMaskB);
-    gl_FragColor = $lookup * uAlpha * keep;
+    vec4 texel = $lookup;
+
+    // **The key reads unpremultiplied colour.** A bitmap arrives from Android
+    // premultiplied, so a half-transparent green texel is stored darker than
+    // the green it represents — keying that directly would compare the wrong
+    // colour and drop the wrong pixels. Undo the multiply, key, then put it
+    // back. A fully transparent texel has no colour to key, and dividing by
+    // its alpha would be a divide by zero, so it is left alone.
+    if (uChromaB.z >= 0.5 && texel.a > 0.003) {
+        vec3 straight = texel.rgb / texel.a;
+        float chromaKeep = chromaCoverage(straight, uChromaA, uChromaB);
+        straight = despill(straight, uChromaA, uChromaB);
+        texel = vec4(straight * texel.a, texel.a) * chromaKeep;
+    }
+
+    gl_FragColor = texel * uAlpha * keep;
 }
 """
+    }
+
+    /** The key's two vec4s; `enabled` at 0 is the shader's whole early-out. */
+    private fun bindChroma(uA: Int, uB: Int, chroma: FloatArray) {
+        if (uA < 0 || uB < 0 || chroma.size < 8) return
+        GLES20.glUniform4f(uA, chroma[0], chroma[1], chroma[2], chroma[3])
+        GLES20.glUniform4f(uB, chroma[4], chroma[5], chroma[6], chroma[7])
     }
 
     /** The mask's two vec4s, or a no-mask pair when the uniform is absent. */

@@ -65,16 +65,64 @@ internal object OverlayAudioSync {
             )
         }
 
-        // Running. A small steady offset is inaudible; the seek that would
-        // "fix" it is a click. Only a real jump is followed — and only while
-        // the player is genuinely playing, because a buffering player's
-        // position stands still while the target advances, which turns drift
-        // correction into a seek loop (fault 9 in the lanes' history).
+        // Running. **Ordinary drift is lived with, not corrected** — this is
+        // the crackling the device reported. The overlay player and the clip
+        // lane are two independent ExoPlayers with no shared clock, so they
+        // really do drift apart over a long overlay; the lanes answer that by
+        // seeking, which costs a dropped video frame nobody notices, but every
+        // audio seek flushes the codec and is heard. A few tenths of a second
+        // of skew against the picture is invisible; a click every time is not.
+        //
+        // Only a jump too large to be drift — a scrub, a loop round, a clip
+        // boundary — earns the flush, and only while the player is genuinely
+        // playing, because a buffering player's position stands still while
+        // the target advances (the seek loop of fault 9).
         val seek = playerIsPlaying &&
-            off > DRIFT_TOLERANCE_SECONDS &&
-            msSinceLastSeek >= DRIFT_SEEK_COOLDOWN_MS
+            off > JUMP_SECONDS &&
+            msSinceLastSeek >= JUMP_SEEK_COOLDOWN_MS
         return Command(playWhenReady = true, seekToSeconds = targetSeconds.takeIf { seek })
     }
+
+    /**
+     * [current] moved [step] ticks toward [target].
+     *
+     * **Device-reported as crackling**, and this is the second half of it. A
+     * player whose gain jumps from 0 to full — or full to 0 — between two
+     * buffers is a step discontinuity in the waveform, which is exactly what a
+     * click is. Every start, stop and seek did that. Ramping over
+     * [RAMP_TICKS] engine ticks (~80ms) removes the edge while staying far too
+     * short to read as a fade-in.
+     *
+     * The target is *reached exactly*, never approached asymptotically: a gain
+     * that settles at 0.999 leaves a player audible when it should be silent,
+     * and one that settles near 0 leaves it quietly on for ever.
+     */
+    fun rampedGain(current: Float, target: Float, step: Int): Float {
+        if (step <= 0) return current
+        val delta = target - current
+        // Rounding is why this compares with a slack rather than exactly: a
+        // ramp assembled from `step / RAMP_TICKS` strides lands a few 1e-8
+        // short of its target, and 3e-8 of gain is inaudible but is *not*
+        // zero — so `mayStop` would refuse for ever and the player could
+        // never stop or take its seek. Caught by the test, on the way down.
+        val stride = step.toFloat() / RAMP_TICKS
+        if (abs(delta) <= stride + SETTLE_EPSILON) return target
+        return (current + stride * if (delta > 0f) 1f else -1f).coerceIn(0f, 1f)
+    }
+
+    /**
+     * Whether a player at [currentGain] may be stopped now.
+     *
+     * Pausing at full gain is the same click as starting at it, so a stop
+     * waits for the ramp to reach silence first.
+     */
+    fun mayStop(currentGain: Float): Boolean = currentGain <= 0f
+
+    /** Engine ticks a gain change is spread over. 5 × 16ms ≈ 80ms. */
+    const val RAMP_TICKS = 5
+
+    /** Float slack so the last stride lands on the target exactly. */
+    private const val SETTLE_EPSILON = 1e-4f
 
     /** The project's volume times the overlay's own; zero once muted. */
     fun gain(masterVolume: Float, overlay: NativeTimelineOverlay): Float =
@@ -98,9 +146,16 @@ internal object OverlayAudioSync {
     private const val PARKED_SEEK_COOLDOWN_MS = 120L
     private const val START_TOLERANCE_SECONDS = 0.05
 
-    /** The lanes' own numbers, for the lanes' own reasons. */
-    private const val DRIFT_TOLERANCE_SECONDS = 0.25
-    private const val DRIFT_SEEK_COOLDOWN_MS = 600L
+    /**
+     * Past this the clock has *jumped* rather than drifted, so the sound is in
+     * the wrong place and a flush is the lesser evil. Deliberately much looser
+     * than the lanes' 0.25s: a video reseek costs a frame, an audio one costs
+     * a click.
+     */
+    private const val JUMP_SECONDS = 0.5
+
+    /** So a pathological case is an occasional tick, never a rattle. */
+    private const val JUMP_SEEK_COOLDOWN_MS = 2_000L
 
     /** The editor's ticker runs per frame; this is a dozen missed frames. */
     private const val TAIL_CLOCK_STALE_MS = 250L

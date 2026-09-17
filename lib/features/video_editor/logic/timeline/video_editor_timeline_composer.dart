@@ -7,6 +7,7 @@ import '../../models/video_segment.dart';
 import '../canvas_geometry.dart';
 import 'timeline_geometry.dart';
 import '../color/color_adjustments.dart';
+import '../chroma/chroma_key.dart';
 import '../mask/clip_mask.dart';
 
 /// Turns editor state into the timeline contract the native engine consumes.
@@ -253,6 +254,7 @@ class VideoEditorTimelineComposer {
       required double rotation,
       required double opacity,
       ClipMask mask = ClipMask.none,
+      ChromaKey chromaKey = ChromaKey.none,
       required double startSeconds,
       required double endSeconds,
       required int laneIndex,
@@ -278,6 +280,7 @@ class VideoEditorTimelineComposer {
         rotation: rotation,
         opacity: opacity,
         mask: mask,
+        chromaKey: chromaKey,
         startSeconds: startSeconds,
         endSeconds: endSeconds,
         laneIndex: laneIndex,
@@ -309,6 +312,7 @@ class VideoEditorTimelineComposer {
           rotation: overlay.rotation,
           opacity: overlay.opacity,
           mask: overlay.mask,
+          chromaKey: overlay.chromaKey,
           startSeconds: overlay.startTime.inMilliseconds / 1000.0,
           endSeconds: overlay.endTime.inMilliseconds / 1000.0,
           laneIndex: overlay.laneIndex,
@@ -328,6 +332,7 @@ class VideoEditorTimelineComposer {
           rotation: overlay.rotation,
           opacity: overlay.opacity,
           mask: overlay.mask,
+          chromaKey: overlay.chromaKey,
           startSeconds: overlay.timelineStart.inMilliseconds / 1000.0,
           endSeconds: overlay.timelineEnd.inMilliseconds / 1000.0,
           laneIndex: overlay.laneIndex,

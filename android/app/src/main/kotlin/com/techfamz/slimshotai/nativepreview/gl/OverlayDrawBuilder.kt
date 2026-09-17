@@ -489,6 +489,7 @@ internal class OverlayDrawBuilder(
             opacity = state.opacity,
             texMatrix = texMatrix,
             mask = overlay.mask,
+            chromaKey = overlay.chromaKey,
         )
     }
 

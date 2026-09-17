@@ -52,12 +52,12 @@ class _ChromaKeySheetState extends ConsumerState<ChromaKeySheet> {
     (id: 'black', label: 'Black', colour: Color(0xFF000000)),
   ];
 
-  ChromaKey get _key =>
-      ref.read(videoEditorProvider).selectedSegment?.chromaKey ??
-      ChromaKey.none;
+  /// Whatever is selected — a clip, a photo overlay or a video overlay. One
+  /// chroma editor for all three, so there is no second one to drift from it.
+  ChromaKey get _key => _notifier.chromaKeyOnSelection;
 
   void _write(ChromaKey key, {bool live = false}) =>
-      _notifier.setClipChromaKey(key, live: live);
+      _notifier.setChromaKeyOnSelection(key, live: live);
 
   void _toggle() {
     HapticFeedback.selectionClick();
@@ -99,9 +99,10 @@ class _ChromaKeySheetState extends ConsumerState<ChromaKeySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(videoEditorProvider);
-    final segment = state.selectedSegment;
-    final key = segment?.chromaKey ?? ChromaKey.none;
+    // Watched so the sheet rebuilds as the key is tuned; the value itself
+    // comes from the notifier, which resolves whichever thing is selected.
+    ref.watch(videoEditorProvider);
+    final key = _notifier.chromaKeyOnSelection;
     final maxHeight =
         MediaQuery.sizeOf(context).height * kEditorSheetPreviewFraction;
 
@@ -140,7 +141,7 @@ class _ChromaKeySheetState extends ConsumerState<ChromaKeySheet> {
                             min: 0,
                             max: 1,
                             unitsPerPixel: kChromaUnitsPerPixel,
-                            onChangeStart: _notifier.beginClipChromaKey,
+                            onChangeStart: _notifier.beginChromaKeyOnSelection,
                             onChanged: (v) =>
                                 _write(_withValue(_key, v), live: true),
                             format: (v) => v.toStringAsFixed(2),

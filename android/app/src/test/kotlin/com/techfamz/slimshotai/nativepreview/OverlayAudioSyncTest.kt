@@ -100,6 +100,35 @@ class OverlayAudioSyncTest {
     }
 
     @Test
+    fun `ordinary drift is never seeked, because a flush is audible`() {
+        // **Device-reported as crackling.** The overlay player and the clip
+        // lane are two independent ExoPlayers with no shared clock, so they
+        // genuinely drift apart by tenths of a second over a long overlay.
+        // The lanes tolerate 0.25s and then seek, which costs a dropped video
+        // frame nobody notices mid-blend; audio cannot pay that price — every
+        // seek flushes the audio codec, which is a click. So a drift this size
+        // is simply lived with: a few tens of ms of skew against the picture
+        // is invisible, and a click is not.
+        assertNull(decide(position = 3.0, target = 3.30).seekToSeconds)
+        assertNull(decide(position = 3.0, target = 2.70).seekToSeconds)
+        // Only a jump no one could mistake for drift — a scrub, a loop round,
+        // a clip boundary — is worth the flush.
+        assertEquals(6.0, decide(position = 3.0, target = 6.0).seekToSeconds!!, 0.0)
+    }
+
+    @Test
+    fun `a drift seek is rare even when it does fire`() {
+        // The cooldown is long enough that a pathological case degrades to an
+        // occasional tick rather than a rattle.
+        assertNull(decide(position = 3.0, target = 6.0, msSinceSeek = 1_500).seekToSeconds)
+        assertEquals(
+            6.0,
+            decide(position = 3.0, target = 6.0, msSinceSeek = 4_000).seekToSeconds!!,
+            0.0,
+        )
+    }
+
+    @Test
     fun `a player still buffering is not chased`() {
         // Its position stands still while the target advances — the same trap
         // the lanes' drift correction fell into.
@@ -136,6 +165,35 @@ class OverlayAudioSyncTest {
     }
 
     // -------------------------------------------------------------- the tail
+
+    @Test
+    fun `sound is ramped in and out rather than switched`() {
+        // A player started or stopped mid-waveform is a step discontinuity,
+        // which is a click. The gain is ramped over a few ticks instead; the
+        // ramp is short enough not to read as a fade.
+        assertEquals(0f, OverlayAudioSync.rampedGain(current = 0f, target = 1f, step = 0), 0f)
+        val first = OverlayAudioSync.rampedGain(current = 0f, target = 1f, step = 1)
+        assertTrue("moves toward the target", first > 0f && first < 1f)
+        // It arrives, exactly, in a bounded number of steps.
+        var gain = 0f
+        for (i in 1..OverlayAudioSync.RAMP_TICKS) {
+            gain = OverlayAudioSync.rampedGain(gain, 1f, 1)
+        }
+        assertEquals(1f, gain, 1e-6f)
+        // And down to true silence, so a stopped overlay is really silent.
+        var down = 1f
+        for (i in 1..OverlayAudioSync.RAMP_TICKS) {
+            down = OverlayAudioSync.rampedGain(down, 0f, 1)
+        }
+        assertEquals(0f, down, 0f)
+    }
+
+    @Test
+    fun `a player is only stopped once it is actually silent`() {
+        // Pausing at full gain is the same click as starting at it.
+        assertFalse(OverlayAudioSync.mayStop(currentGain = 0.5f))
+        assertTrue(OverlayAudioSync.mayStop(currentGain = 0f))
+    }
 
     @Test
     fun `in the tail the clock runs only while Flutter keeps sending it`() {

@@ -1481,10 +1481,11 @@ ramps over the feather, so a soft-edged mask looks very slightly crisper on the 
 file. That is the right way round — nothing appears in the export that the preview did not show —
 and it closes entirely when overlay playback moves into the engine.
 
-**A chroma key on an overlay is deliberately not built yet**, for the same reason inverted: a key
-is a per-pixel colour decision the widget layer cannot make, so the export would drop the green
-while the preview still showed it. That needs a real fragment shader in the preview overlay layer,
-fed by the same `ChromaKey` model — its own piece of work, not a bolt-on.
+**A chroma key on an overlay is built now** — see the native-preview overlays section. It was
+blocked for exactly the reason stated here: a key is a per-pixel colour decision the widget layer
+could not make, so the export would have dropped the green while the preview still showed it.
+Overlays being drawn in GL removed the blocker, and the key is the same `ChromaKey` model with the
+same shader functions.
 
 **`roundedRectangle` is the fourth shape**, appended to the enum on purpose: both sides read the
 shape as a **number** (the shader tests `a.x < 1.5`), so inserting a value would have turned every
@@ -2069,6 +2070,51 @@ from, and change-guard volume and rate (fault 10). Past `MAX_PLAYERS` (4) or on 
 sound will not decode, the overlay is silent **and the user is told** through the same `warning`
 event the lane fallback uses. Export mixes every overlay regardless, so the cap costs nothing in
 the file.
+
+**The overlay audio crackled, and both causes were in that first version**
+(**awaiting device verification**).
+
+- **Drift correction was seeking, and every audio seek is a click.** The overlay player and the
+  clip lane are two independent ExoPlayers with no shared clock, so they genuinely drift apart
+  over a long overlay. I gave the overlay the lanes' own 0.25s tolerance and 600ms cooldown —
+  but a video reseek costs a dropped frame nobody notices mid-blend, where an audio seek flushes
+  the codec and is *heard*, so the setting that is right for a lane is a crackle every 0.6s here.
+  Ordinary drift is now lived with (a few tenths of a second of skew against the picture is
+  invisible) and only a jump too large to be drift — `JUMP_SECONDS` 0.5, a scrub, a loop round —
+  earns the flush, at most every 2s.
+- **Gain was switched, not ramped.** Every start, stop and seek took the player from silence to
+  full between two buffers, which is a step discontinuity: a click. `OverlayAudioSync.rampedGain`
+  spreads a change over `RAMP_TICKS` (5 × 16ms ≈ 80ms) — too short to read as a fade — and
+  **every audible edge now sits behind it**: a seek is taken at silence (`mayStop`) and a stop
+  waits for the ramp, so the one unavoidable flush is inaudible. The ramp reaches its target
+  *exactly*, with a float slack, because a gain that settles at 3e-8 is silent to the ear and
+  non-zero to `mayStop`, which would then refuse to stop or seek for ever — a real bug the test
+  caught on the way down. `pauseAll` stays abrupt on purpose: it answers an explicit pause, and
+  stopping 80ms late would leave sound running past the button.
+
+**An overlay can be keyed on colour** (**awaiting device verification** — the keying half is
+GLSL). `ImageOverlayModel.chromaKey` / `VideoOverlayModel.chromaKey` are the clip's own
+`ChromaKey`, and `chromaCoverage`/`despill` are copied verbatim into `OverlayRenderer`'s
+fragment shader from `TransitionShaders` — so a green screen keys identically on a clip and on
+an overlay, against the one Dart twin. **If one changes they all must.** This is the feature
+CLAUDE.md recorded as "deliberately not built yet, for the same reason inverted": a key is a
+per-pixel colour decision a Flutter widget cannot make, so the export would have dropped the
+green while the preview still showed it. Drawing overlays in GL is what made it a shader line.
+
+**The key reads unpremultiplied colour, and this is the one thing the clip path did not have to
+think about.** A bitmap arrives from Android premultiplied, so a half-transparent green texel is
+*stored* darker than the green it represents; keying that directly compares the wrong colour and
+drops the wrong pixels. The shader divides the alpha out, keys, despills, and multiplies it back
+— and skips a fully transparent texel, which has no colour to key and would be a divide by zero.
+`enabled` at 0 is the whole early-out, so an unkeyed overlay costs one compare, and an unkeyed
+overlay writes no `chromaKey` at all, which is the payload every older build has always read.
+
+**The Chroma tool is on both overlay menus and the sheet serves the selection**
+(`chromaKeyOnSelection` / `setChromaKeyOnSelection`, a clip winning when several somehow are), so
+there is one chroma editor rather than a second to drift from the first. `_showChromaKeySheet`
+borrows a clip **only when nothing at all is selected** — it used to test `selectedSegmentId`
+alone, which with an overlay selected would have keyed the clip under the playhead instead of the
+overlay the user opened the tool on.
 
 **What it unlocks**: an overlay chroma key and blend modes, each now a shader line rather than an
 impossibility, and an exact feather instead of a hard-edged clip.

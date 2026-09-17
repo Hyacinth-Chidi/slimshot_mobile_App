@@ -1691,6 +1691,79 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
   /// Sets the selected clip's chroma key. One undo step; [live] skips the
   /// snapshot for the per-frame half of a slider drag.
+  /// The key on whatever is selected — a clip, a photo overlay or a video
+  /// overlay — so there is one chroma editor, not three.
+  ///
+  /// A clip wins if one is somehow selected alongside an overlay, the same
+  /// precedence [maskOnSelection] uses.
+  ChromaKey get chromaKeyOnSelection {
+    final segment = state.selectedSegment;
+    if (segment != null) return segment.chromaKey;
+    final imageId = state.selectedImageId;
+    if (imageId != null) {
+      for (final o in state.imageOverlays) {
+        if (o.id == imageId) return o.chromaKey;
+      }
+    }
+    final videoId = state.selectedVideoOverlayId;
+    if (videoId != null) {
+      for (final o in state.videoOverlays) {
+        if (o.id == videoId) return o.chromaKey;
+      }
+    }
+    return ChromaKey.none;
+  }
+
+  /// Writes [key] to whatever is selected. With nothing selected it does
+  /// nothing — and takes no snapshot either, because an undo entry that undoes
+  /// nothing is a lie.
+  ///
+  /// [live] is a slider frame: no snapshot, since
+  /// [beginChromaKeyOnSelection] took one when the drag started.
+  void setChromaKeyOnSelection(ChromaKey key, {bool live = false}) {
+    if (state.selectedSegmentId != null) {
+      setClipChromaKey(key, live: live);
+      return;
+    }
+
+    final imageId = state.selectedImageId;
+    if (imageId != null) {
+      final current = chromaKeyOnSelection;
+      if (current == key) return;
+      if (!live) saveStateForUndo();
+      state = state.copyWith(
+        imageOverlays: [
+          for (final o in state.imageOverlays)
+            if (o.id == imageId) o.copyWith(chromaKey: key) else o,
+        ],
+      );
+      return;
+    }
+
+    final videoId = state.selectedVideoOverlayId;
+    if (videoId != null) {
+      final current = chromaKeyOnSelection;
+      if (current == key) return;
+      if (!live) saveStateForUndo();
+      state = state.copyWith(
+        videoOverlays: [
+          for (final o in state.videoOverlays)
+            if (o.id == videoId) o.copyWith(chromaKey: key) else o,
+        ],
+      );
+    }
+  }
+
+  /// The undo snapshot for a whole chroma drag, on whatever is selected.
+  void beginChromaKeyOnSelection() {
+    if (state.selectedSegmentId == null &&
+        state.selectedImageId == null &&
+        state.selectedVideoOverlayId == null) {
+      return;
+    }
+    saveStateForUndo();
+  }
+
   void setClipChromaKey(ChromaKey key, {bool live = false}) {
     final targetId = state.selectedSegmentId;
     if (targetId == null) return;
