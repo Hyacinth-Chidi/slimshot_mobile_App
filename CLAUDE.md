@@ -1870,6 +1870,21 @@ Drag-and-drop lives in `ScrollableTimeline`. The shape of it:
   reset the tracking rather than being followed by a correction, and a completed seek seeds the
   estimate with its *target* so the catch-up lag is not read as new drift. **A follower with a
   coarse clock must never be corrected on one reading.**
+- **The preview's sound is assembled from three implementations, and the export uses none of
+  the first two.** Clip sound comes from ExoPlayer, imported music from `just_audio` in Flutter
+  (`audio_player_manager.dart`, re-seeked only when "massively out of sync"), and the file from
+  `AudioExportMixer`. That is why preview audio can only ever *approximate* the export: a speed
+  curve steps where the export glides, and music sync is loose. **The assessed way out is the
+  preview playing the export's own mix**: `AudioExportMixer` already builds the mix block by block
+  (`mixSource` into a 1024-frame buffer) and only its last step is export-specific — handing the
+  block to an encoder rather than to the speaker. With ExoPlayer decoding video only, its clock
+  also stops following an audio buffer, so a rate change lands immediately and a curved clip's
+  picture can follow the curve exactly instead of in steps. **Not started, and not a small job**:
+  it moves the engine's master clock onto the audio output, in the most device-verified part of
+  the app, and everything uncertain about it (underruns, Bluetooth latency, audio focus, pause and
+  scrub behaviour) only shows on hardware — it needs its own spec and device sessions. Replacing
+  ExoPlayer for *video* as well (the full CapCut architecture) is a further stage with the most
+  risk and the least audible gain; do the audio stage first and only then decide.
 - **The two clip proxies are the editor's last FFmpeg users.** `createReverseProxy` and
   `createClipPlaybackProxy` render with `libx264` software encoding — slow on exactly the target
   hardware. Replace with `ExportClipDecoder` + `VideoFrameEncoder` (hardware, already built for
