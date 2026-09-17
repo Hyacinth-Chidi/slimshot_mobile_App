@@ -92,6 +92,11 @@ internal data class NativeTimelineClip(
      */
     val mask: FloatArray = NO_MASK,
     /**
+     * The chroma key's two vec4s, or [NO_CHROMA]. A coverage keyed on colour,
+     * applied in the shader exactly where the mask is.
+     */
+    val chromaKey: FloatArray = NO_CHROMA,
+    /**
      * This clip's visual effect, as an id from `effect_catalog.dart`, or null
      * for an unaffected clip — which is every project written before effects
      * existed and every clip the user has not touched.
@@ -177,6 +182,9 @@ internal data class NativeTimelineClip(
 
     /** The mask's two vec4s for the shader. See [mask]. */
     fun maskUniforms(): FloatArray = mask
+
+    /** The chroma key's two vec4s for the shader. See [chromaKey]. */
+    fun chromaUniforms(): FloatArray = chromaKey
 
     /** How present the clip is at [progress], clamped: a keyframe can overshoot. */
     fun opacityAt(progress: Double): Double = opacity.resolveAt(progress).coerceIn(0.0, 1.0)
@@ -320,6 +328,38 @@ internal data class NativeTimelineClip(
         /** No mask: shape 0, centred, no extent. */
         val NO_MASK = floatArrayOf(0f, 0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f)
 
+        /** No chroma key: the enabled flag (index 6) is 0, which is all the
+         * shader tests. */
+        val NO_CHROMA = floatArrayOf(0f, 1f, 0f, 0.4f, 0.1f, 0f, 0f, 0f)
+
+        /**
+         * The wire's chroma key map into the shader's two vec4s, defensively:
+         * an absent or disabled key is [NO_CHROMA], a malformed number takes
+         * the default, and every number is clamped to 0..1 — the same reading
+         * Dart's `ChromaKey.fromJson` does.
+         *
+         * Order matches `ChromaKey.uniforms`: (r, g, b, similarity) then
+         * (smoothness, spill, enabled, 0).
+         */
+        fun parseChroma(raw: Any?): FloatArray {
+            val map = raw as? Map<*, *> ?: return NO_CHROMA
+            if (map["enabled"] != true) return NO_CHROMA
+            fun read(key: String, fallback: Double): Float {
+                val v = (map[key] as? Number)?.toDouble() ?: fallback
+                return (if (v.isFinite()) v else fallback).coerceIn(0.0, 1.0).toFloat()
+            }
+            return floatArrayOf(
+                read("r", 0.0),
+                read("g", 1.0),
+                read("b", 0.0),
+                read("similarity", 0.4),
+                read("smoothness", 0.1),
+                read("spill", 0.0),
+                1f,
+                0f,
+            )
+        }
+
         /**
          * The wire's mask map into the shader's two vec4s, defensively: an
          * unknown or absent shape is no mask, a malformed number takes the
@@ -437,6 +477,7 @@ internal data class NativeTimelineClip(
                 flipVertical = map["flipVertical"] == true,
                 opacity = AnimatableDouble.fromWire(map["opacity"], fallback = 1.0),
                 mask = parseMask(map["mask"]),
+                chromaKey = parseChroma(map["chromaKey"]),
                 effectId = (map["effectId"] as? String)?.takeIf { it.isNotBlank() },
                 // Either shape the composer writes: a **bare number** while the
                 // intensity is flat — which is what every clip sends and what

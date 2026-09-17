@@ -421,6 +421,7 @@ class VideoEditorTimelineComposer {
       flipVertical: previous.flipVertical,
       opacity: previous.opacity,
       mask: previous.mask,
+      chromaKey: previous.chromaKey,
     );
   }
 
@@ -545,6 +546,9 @@ class VideoEditorTimelineComposer {
         // have a different range and the curve would land on other frames.
         previous.speedCurve == null &&
         next.speedCurve == null &&
+        // A merged media item is one clip to the engine, so it carries one
+        // key; two differently keyed clips must stay apart.
+        previous.chromaKey == next.chromaKey &&
         (previous.volume.baseValue - next.volume.baseValue).abs() <= epsilon;
   }
 
@@ -650,6 +654,7 @@ class VideoEditorTimelineComposer {
       flipVertical: !unplaced && segment.flipVertical,
       opacity: segment.opacity,
       mask: segment.mask,
+      chromaKey: segment.chromaKey,
       contentRect: contentRect,
     );
   }

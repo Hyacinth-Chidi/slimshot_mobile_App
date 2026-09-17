@@ -32,6 +32,7 @@ import '../logic/color/color_adjustments.dart';
 import '../logic/mask/clip_mask.dart';
 import '../../../core/services/draft_files.dart';
 import '../logic/speed/speed_curve.dart';
+import '../logic/chroma/chroma_key.dart';
 
 /// True when a stored crop rect is the whole frame — i.e. not a crop at all.
 ///
@@ -905,6 +906,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       // Same footage, same grade, same window.
       adjustments: segment.adjustments,
       mask: segment.mask,
+      // Same footage either side of the cut, so the same key.
+      chromaKey: segment.chromaKey,
     );
 
     // Keyframes are clip-relative, so each half gets its own rescaled copy.
@@ -1627,6 +1630,26 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSpeedCurve: true,
     );
     state = state.copyWith(segments: updatedSegments, clearPreviewSpeed: true);
+  }
+
+  /// Sets the selected clip's chroma key. One undo step; [live] skips the
+  /// snapshot for the per-frame half of a slider drag.
+  void setClipChromaKey(ChromaKey key, {bool live = false}) {
+    final targetId = state.selectedSegmentId;
+    if (targetId == null) return;
+    final index = state.segments.indexWhere((s) => s.id == targetId);
+    if (index == -1) return;
+    if (state.segments[index].chromaKey == key) return;
+    if (!live) saveStateForUndo();
+    final updated = [...state.segments];
+    updated[index] = updated[index].copyWith(chromaKey: key);
+    state = state.copyWith(segments: updated);
+  }
+
+  /// The undo snapshot for a whole chroma slider drag.
+  void beginClipChromaKey() {
+    if (state.selectedSegmentId == null) return;
+    saveStateForUndo();
   }
 
   /// Takes the undo snapshot for a whole curve drag, once, and pauses.

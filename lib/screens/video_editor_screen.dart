@@ -57,6 +57,7 @@ import '../features/video_editor/widgets/panels/background_sheet.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
 import '../features/video_editor/widgets/editor_tool_tile.dart';
 import '../features/video_editor/widgets/panels/adjust_sheet.dart';
+import '../features/video_editor/widgets/panels/chroma_key_sheet.dart';
 import '../features/video_editor/widgets/panels/speed_curve_sheet.dart';
 import '../features/video_editor/widgets/panels/apply_to_all_button.dart';
 import '../features/video_editor/widgets/panels/mask_panel.dart';
@@ -163,6 +164,10 @@ const EditorMenu _editMenu = EditorMenu(
     // A window over the picture, placed on the canvas — an in-place panel like
     // Crop, for the same reason.
     EditorTool(id: 'mask', label: 'Mask', icon: LucideIcons.scan),
+    // Drop a colour so the project background shows through — the mask's
+    // sibling, and next to it for that reason: both decide which of the clip's
+    // pixels survive, one by place and one by colour.
+    EditorTool(id: 'chroma', label: 'Chroma', icon: LucideIcons.pipette),
     EditorTool(
       id: 'transition',
       label: 'Transition',
@@ -1415,6 +1420,20 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     notifier.deselectAll();
   }
 
+  /// The chroma key sheet, on the clip under the playhead. Borrows and hands
+  /// back a selection exactly as the transform and curve sheets do.
+  Future<void> _showChromaKeySheet() async {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final borrowed = ref.read(videoEditorProvider).selectedSegmentId == null &&
+        notifier.selectSegmentAtPlayhead();
+    await showEditorSheet<void>(
+      context,
+      builder: (context) => const ChromaKeySheet(),
+    );
+    if (!mounted || !borrowed) return;
+    notifier.deselectAll();
+  }
+
   /// The speed curve sheet, on the clip under the playhead.
   ///
   /// Borrows a selection the way [_showTransformSheet] does, and hands it back
@@ -1668,6 +1687,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     _showTransformSheet();
                   } else if (tool.id == 'speed_curve') {
                     _showSpeedCurveSheet();
+                  } else if (tool.id == 'chroma') {
+                    _showChromaKeySheet();
                   } else if (tool.id == 'effects' &&
                       editorState.currentMenuId == 'edit') {
                     // Gated on the clip menu: the root and audio menus carry an

@@ -1969,6 +1969,57 @@ inside the sheet's `SingleChildScrollView`, and against a *vertical* competitor 
 simply wins the arena — the graph was undraggable in the sheet while working perfectly in
 isolation. Third occurrence of this fault, after the trim handles and the `ValueRuler`.
 
+### Chroma key — a coverage keyed on colour
+
+**Awaiting device verification** (the keying half is GLSL). `VideoSegment.chromaKey`
+(`logic/chroma/chroma_key.dart`) drops a colour so the project background shows through: a key
+colour, a `similarity` window, a `smoothness` edge and a `spill` strength, off on every clip until
+someone turns it on.
+
+**It is the mask's sibling, and that decides where it lives.** A mask is a coverage keyed on
+*where* a pixel is; a key is a coverage keyed on *what colour* it is. Both multiply into the same
+`mix(backgroundAt(), graded, …)` at the end of `incomingAt`/`outgoingAt` — the only place in the
+pipeline where a clip pixel can be replaced by what is behind it, since the clip pass has no GL
+blending and `glClear` uses an opaque background, so an alpha would be a value nothing reads.
+Every transition inherits the key for free, and a keyed clip fading is a keyed clip, fading.
+
+**It cannot be an effect pass**, and this was checked before anything was written. The effect chain
+runs on `scene.textureId` — the finished composited frame, one texture in and one target out — by
+which point the clip's green has already been drawn over the background and there is nothing behind
+it to reveal.
+
+**The key reads the source texel, before `gradeClip`.** A green screen is a property of the
+footage; keying after a grade would change which pixels drop every time the user moved a colour
+slider. Despill runs on the source too, so the grade then treats the de-fringed picture exactly as
+it treats an unkeyed one.
+
+**Keyed on hue direction, with saturation as a second term — both halves measured.**
+
+- Plain RGB distance fails the basic case: a green screen is never evenly lit, and a 45% green sits
+  0.46 from a full green in raw Cb/Cr, as far as a sensible similarity window reaches, so the
+  shadowed corners of the screen survive the key. Normalising the chroma vector to a **direction**
+  fixes it — a shadowed green and a lit green now key identically, which a test pins.
+- But hue alone is **binary along the desaturation axis**: a full walk from green to grey gave 0.0
+  then 1.0 with no value between, so the soft edge where a hair or a motion-blurred arm lives
+  collapsed to a hard cut and `smoothness` did nothing at all. Weakly saturated pixels are
+  therefore pulled toward "keep" in proportion to how grey they are, which is what gives that edge
+  its ramp. A test walks the axis and fails if the gradient disappears again.
+
+Greys and near-blacks are never keyed — they have no hue to compare, and a shadow on set is not the
+screen. `similarity` at zero still takes the key's own hue (the saturation term carries it) and
+only widens into the neighbouring hues as it rises, which is what the slider is for.
+
+`chromaCoverage` and `despill` in Dart are the twins of the shader's, and exist because GLSL only
+runs on a device: **if one changes the other must.** The two vec4s are
+`(r, g, b, similarity)` / `(smoothness, spill, enabled, 0)`, encoded once on each side
+(`ChromaKey.uniforms`, `NativeTimelineClip.parseChroma`) and tested to match. `enabled` at 0 is the
+whole early-out, so an unkeyed clip costs the shader one compare.
+
+**Two differently keyed clips never merge** into one media item, and a split carries the key to
+both halves. The sheet is a toggle, four screen colours and three rulers behind pills, with the
+tuning hidden until the key is on; **turning it off keeps the tuning**, so comparing keyed against
+unkeyed is not destructive.
+
 ### Decisions already made â€” don't re-litigate
 
 | Question | Decision |

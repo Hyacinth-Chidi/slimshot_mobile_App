@@ -82,8 +82,12 @@ uniform float uOpacityIncoming;
 uniform float uOpacityOutgoing;
 uniform vec4 uMaskAIncoming;
 uniform vec4 uMaskBIncoming;
+uniform vec4 uChromaAIncoming;
+uniform vec4 uChromaBIncoming;
 uniform vec4 uMaskAOutgoing;
 uniform vec4 uMaskBOutgoing;
+uniform vec4 uChromaAOutgoing;
+uniform vec4 uChromaBOutgoing;
 uniform mat4 uColorMatrix;
 uniform vec4 uColorOffset;
 uniform float uColorEnabled;
@@ -200,6 +204,70 @@ float maskCoverage(vec2 p, vec4 a, vec4 b) {
     return mix(coverage, 1.0 - coverage, b.z);
 }
 
+// How much of a pixel survives the chroma key: 1 keeps the clip, 0 shows the
+// background. The Dart twin is `chromaCoverage` in logic/chroma/chroma_key.dart
+// — the arithmetic here is the arithmetic there.
+//
+// a = (r, g, b, similarity), b = (smoothness, spill, enabled, 0).
+//
+// Keyed on **hue direction**, not on RGB distance: a green screen is never
+// evenly lit, and a plain distance keys its bright middle while keeping its
+// shadowed corners. Saturation then pulls weakly coloured pixels back toward
+// "keep", which is what gives the edge its gradient — hue alone is binary
+// along the desaturation axis and `smoothness` would do nothing.
+float chromaCoverage(vec3 c, vec4 a, vec4 b) {
+    if (b.z < 0.5) {
+        return 1.0;
+    }
+    float py = dot(c, vec3(0.299, 0.587, 0.114));
+    vec2 pv = vec2(c.b - py, c.r - py);
+    float plen = length(pv);
+
+    float ky = dot(a.rgb, vec3(0.299, 0.587, 0.114));
+    vec2 kv = vec2(a.b - ky, a.r - ky);
+    float klen = length(kv);
+    if (klen < 0.02) {
+        return 1.0;
+    }
+
+    // step(), not a ternary on a vector: ES 2.0 permits the ternary but the
+    // branchless form is what every other shader here uses, and the divide is
+    // guarded so a grey pixel cannot produce a NaN direction.
+    vec2 pdir = pv / max(plen, 0.02) * step(0.02, plen);
+    float hueDistance = length(pdir - kv / klen) * 0.5;
+    float saturation = clamp(plen / 0.25, 0.0, 1.0);
+    float distance = hueDistance + (1.0 - saturation);
+
+    float inner = a.w;
+    float outer = inner + max(b.x, 0.001);
+    return smoothstep(inner, outer, distance);
+}
+
+// A kept pixel with the key colour's bounce pulled out of it. A green screen
+// throws green onto the subject, and that fringe survives the key because it
+// is not green enough to drop — so it is removed separately or the subject
+// wears a halo. Only the key's dominant channel is touched, and only where it
+// exceeds the other two.
+vec3 despill(vec3 c, vec4 a, vec4 b) {
+    if (b.z < 0.5 || b.y <= 0.0) {
+        return c;
+    }
+    float maxKey = max(a.r, max(a.g, a.b));
+    if (maxKey <= 0.0) {
+        return c;
+    }
+    if (a.g >= maxKey) {
+        float neutral = (c.r + c.b) * 0.5;
+        return c.g > neutral ? vec3(c.r, c.g + (neutral - c.g) * b.y, c.b) : c;
+    }
+    if (a.b >= maxKey) {
+        float neutral = (c.r + c.g) * 0.5;
+        return c.b > neutral ? vec3(c.r, c.g, c.b + (neutral - c.b) * b.y) : c;
+    }
+    float neutral = (c.g + c.b) * 0.5;
+    return c.r > neutral ? vec3(c.r + (neutral - c.r) * b.y, c.g, c.b) : c;
+}
+
 vec4 incomingAt(vec2 uv) {
     vec2 centred = rotateCanvas(uv - uPanIncoming * vec2(1.0, -1.0), uRotationIncoming);
     vec2 fitted = (centred - 0.5) / uFitIncoming + 0.5;
@@ -217,6 +285,13 @@ vec4 incomingAt(vec2 uv) {
     fitted = mix(fitted, 1.0 - fitted, uFlipIncoming);
     vec2 source = uContentRectIncoming.xy + fitted * uContentRectIncoming.zw;
     vec4 texel = texture2D(uIncoming, (uTexMatrixIncoming * vec4(source, 0.0, 1.0)).xy);
+    // The key reads the **source** texel, before the clip's grade: a green
+    // screen is a property of the footage, and keying after a grade would
+    // change which pixels drop every time the user moved a colour slider.
+    // Despill happens on the source too, so the grade then treats the
+    // de-fringed picture the same way it treats an unkeyed one.
+    float keep = chromaCoverage(texel.rgb, uChromaAIncoming, uChromaBIncoming);
+    texel = vec4(despill(texel.rgb, uChromaAIncoming, uChromaBIncoming), texel.a);
     vec4 graded = gradeClip(texel, uClipMatrixIncoming, uClipOffsetIncoming, uClipColorIncoming);
     // Opacity is a mix toward the letterbox fill, not alpha: nothing blends
     // the clip pass, and the fill is already what shows around the clip. After
@@ -228,7 +303,7 @@ vec4 incomingAt(vec2 uv) {
     return mix(
         backgroundAt(),
         graded,
-        uOpacityIncoming * maskCoverage(windowIncoming, uMaskAIncoming, uMaskBIncoming)
+        uOpacityIncoming * maskCoverage(windowIncoming, uMaskAIncoming, uMaskBIncoming) * keep
     );
 }
 
@@ -242,11 +317,13 @@ vec4 outgoingAt(vec2 uv) {
     fitted = mix(fitted, 1.0 - fitted, uFlipOutgoing);
     vec2 source = uContentRectOutgoing.xy + fitted * uContentRectOutgoing.zw;
     vec4 texel = texture2D(uOutgoing, (uTexMatrixOutgoing * vec4(source, 0.0, 1.0)).xy);
+    float keep = chromaCoverage(texel.rgb, uChromaAOutgoing, uChromaBOutgoing);
+    texel = vec4(despill(texel.rgb, uChromaAOutgoing, uChromaBOutgoing), texel.a);
     vec4 graded = gradeClip(texel, uClipMatrixOutgoing, uClipOffsetOutgoing, uClipColorOutgoing);
     return mix(
         backgroundAt(),
         graded,
-        uOpacityOutgoing * maskCoverage(windowOutgoing, uMaskAOutgoing, uMaskBOutgoing)
+        uOpacityOutgoing * maskCoverage(windowOutgoing, uMaskAOutgoing, uMaskBOutgoing) * keep
     );
 }
 

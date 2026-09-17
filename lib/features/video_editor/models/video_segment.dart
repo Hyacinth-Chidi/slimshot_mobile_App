@@ -6,6 +6,7 @@ import '../logic/filter_presets.dart';
 import '../logic/color/color_adjustments.dart';
 import '../logic/mask/clip_mask.dart';
 import '../logic/speed/speed_curve.dart';
+import '../logic/chroma/chroma_key.dart';
 
 /// A parameter resting at 1.0 — an ungained volume, an unpinched scale.
 ///
@@ -138,6 +139,12 @@ class VideoSegment {
   /// crop rect. See `logic/mask/clip_mask.dart`.
   final ClipMask mask;
 
+  /// Which of this clip's pixels are dropped for the background to show
+  /// through, keyed on colour. The mask's sibling — both are a coverage that
+  /// multiplies into the same mix toward the letterbox fill — and off on every
+  /// clip nobody has keyed.
+  final ChromaKey chromaKey;
+
   /// Whether this clip carries a crop of its own.
   bool get isCropped => cropRect != kFullFrameRect;
 
@@ -219,6 +226,7 @@ class VideoSegment {
     this.opacity = kUnitParameter,
     this.adjustments = ColorAdjustments.none,
     this.mask = ClipMask.none,
+    this.chromaKey = ChromaKey.none,
   });
 
   /// Timeline length. A curve decides it through its integral — the source
@@ -354,6 +362,7 @@ class VideoSegment {
     AnimatableDouble? opacity,
     ColorAdjustments? adjustments,
     ClipMask? mask,
+    ChromaKey? chromaKey,
   }) {
     return VideoSegment(
       id: id ?? this.id,
@@ -381,6 +390,7 @@ class VideoSegment {
       opacity: opacity ?? this.opacity,
       adjustments: adjustments ?? this.adjustments,
       mask: mask ?? this.mask,
+      chromaKey: chromaKey ?? this.chromaKey,
     );
   }
 
@@ -452,6 +462,9 @@ class VideoSegment {
       // always wrote.
       if (!adjustments.isIdentity) 'adjustments': adjustments.toJson(),
       if (!mask.isNone) 'mask': mask.toJson(),
+      // Omitted while off, so a project nobody keyed writes what it always
+      // wrote.
+      if (!chromaKey.isNone) 'chromaKey': chromaKey.toJson(),
     };
   }
 
@@ -523,6 +536,9 @@ class VideoSegment {
       opacity: AnimatableDouble.fromJson(json['opacity'], fallback: 1.0),
       adjustments: ColorAdjustments.fromJson(json['adjustments']),
       mask: ClipMask.fromJson(json['mask']),
+      // Absent in every draft written before clips could be keyed; junk reads
+      // as no key rather than a throw.
+      chromaKey: ChromaKey.fromJson(json['chromaKey']),
     );
   }
 }

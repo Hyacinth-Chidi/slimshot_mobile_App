@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../logic/animation/animatable_double.dart';
 import '../logic/mask/clip_mask.dart';
 import '../logic/speed/speed_curve.dart';
+import '../logic/chroma/chroma_key.dart';
 
 /// A resolved editor timeline, ready to hand to the native preview engine.
 ///
@@ -241,6 +242,7 @@ class EditorTimelineVideoClip {
     this.flipVertical = false,
     this.opacity = const AnimatableDouble(baseValue: 1.0),
     this.mask = ClipMask.none,
+    this.chromaKey = ChromaKey.none,
   });
 
   final String id;
@@ -375,6 +377,10 @@ class EditorTimelineVideoClip {
   /// The window over the picture. See `VideoSegment.mask`.
   final ClipMask mask;
 
+  /// The clip's chroma key. Resolved in the shader as a coverage that
+  /// multiplies the clip's opacity, exactly as the mask does.
+  final ChromaKey chromaKey;
+
   double get timelineDuration => timelineEnd - timelineStart;
 
   /// This clip's 0..1 position at a timeline instant.
@@ -465,6 +471,9 @@ class EditorTimelineVideoClip {
       'canvasRotation': canvasRotation.toJson(),
       'opacity': opacity.toJson(),
       if (!mask.isNone) 'mask': mask.toJson(),
+      // Only when on: an engine reading an unkeyed clip sees the payload it
+      // always did.
+      if (!chromaKey.isNone) 'chromaKey': chromaKey.toJson(),
       // Only when set, so an older engine reads the payload it always did.
       if (flipHorizontal) 'flipHorizontal': true,
       if (flipVertical) 'flipVertical': true,

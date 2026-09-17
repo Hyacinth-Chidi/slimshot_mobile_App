@@ -531,6 +531,7 @@ internal class VideoExportEngine(
         renderer.setLaneContentRect(clip.laneIndex, r[0], r[1], r[2], r[3])
         renderer.setLaneFlip(clip.laneIndex, clip.flipMask())
         renderer.setLaneMask(clip.laneIndex, clip.maskUniforms())
+        renderer.setLaneChromaKey(clip.laneIndex, clip.chromaUniforms())
         renderer.setLaneOpacity(clip.laneIndex, clip.opacityAt(clipProgress).toFloat())
 
         if (clip.isImage) {

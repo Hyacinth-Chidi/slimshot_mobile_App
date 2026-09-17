@@ -112,6 +112,7 @@ internal class TransitionRenderer(
         /** The clip's mask as the shader's two vec4s. See `NativeTimelineClip.mask`. */
         @Volatile
         var mask = NativeTimelineClip.NO_MASK
+        var chromaKey = NativeTimelineClip.NO_CHROMA
 
         /**
          * Set once the decoder has delivered at least one frame. Sampling a
@@ -853,6 +854,15 @@ internal class TransitionRenderer(
         requestRender()
     }
 
+    /** The lane's chroma key, change-guarded like the mask. */
+    fun setLaneChromaKey(laneIndex: Int, chroma: FloatArray) {
+        if (released) return
+        val lane = lanes.getOrNull(laneIndex) ?: return
+        if (chroma.size < 8 || chroma.contentEquals(lane.chromaKey)) return
+        lane.chromaKey = chroma.copyOf()
+        requestRender()
+    }
+
     /**
      * How present the lane's clip is, resolved per tick by the engines from
      * the clip's keyframes. Change-guarded so a clip that does not fade costs
@@ -1498,6 +1508,7 @@ internal class TransitionRenderer(
                 lane.flip,
                 p.opacity,
                 lane.mask,
+                lane.chromaKey,
             )
         } else {
             program.bindIncoming(
@@ -1513,6 +1524,7 @@ internal class TransitionRenderer(
                 lane.flip,
                 p.opacity,
                 lane.mask,
+                lane.chromaKey,
             )
         }
         program.bindIncomingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1534,6 +1546,7 @@ internal class TransitionRenderer(
                 lane.flip,
                 p.opacity,
                 lane.mask,
+                lane.chromaKey,
             )
         } else {
             program.bindOutgoing(
@@ -1549,6 +1562,7 @@ internal class TransitionRenderer(
                 lane.flip,
                 p.opacity,
                 lane.mask,
+                lane.chromaKey,
             )
         }
         program.bindOutgoingGrade(lane.colorMatrix, lane.colorOffset)
@@ -1707,6 +1721,10 @@ internal class TransitionProgram(private val handle: Int) {
     private val uMaskBIncoming = GLES20.glGetUniformLocation(handle, "uMaskBIncoming")
     private val uMaskAOutgoing = GLES20.glGetUniformLocation(handle, "uMaskAOutgoing")
     private val uMaskBOutgoing = GLES20.glGetUniformLocation(handle, "uMaskBOutgoing")
+    private val uChromaAIncoming = GLES20.glGetUniformLocation(handle, "uChromaAIncoming")
+    private val uChromaBIncoming = GLES20.glGetUniformLocation(handle, "uChromaBIncoming")
+    private val uChromaAOutgoing = GLES20.glGetUniformLocation(handle, "uChromaAOutgoing")
+    private val uChromaBOutgoing = GLES20.glGetUniformLocation(handle, "uChromaBOutgoing")
     private val uColorMatrix = GLES20.glGetUniformLocation(handle, "uColorMatrix")
     private val uColorOffset = GLES20.glGetUniformLocation(handle, "uColorOffset")
     private val uColorEnabled = GLES20.glGetUniformLocation(handle, "uColorEnabled")
@@ -1829,6 +1847,7 @@ internal class TransitionProgram(private val handle: Int) {
         flip: FloatArray = NO_FLIP,
         opacity: Float = 1f,
         mask: FloatArray = NativeTimelineClip.NO_MASK,
+        chroma: FloatArray = NativeTimelineClip.NO_CHROMA,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(target, textureId)
@@ -1848,6 +1867,8 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glUniform1f(uOpacityIncoming, opacity)
         GLES20.glUniform4f(uMaskAIncoming, mask[0], mask[1], mask[2], mask[3])
         GLES20.glUniform4f(uMaskBIncoming, mask[4], mask[5], mask[6], mask[7])
+        GLES20.glUniform4f(uChromaAIncoming, chroma[0], chroma[1], chroma[2], chroma[3])
+        GLES20.glUniform4f(uChromaBIncoming, chroma[4], chroma[5], chroma[6], chroma[7])
     }
 
     fun bindOutgoing(
@@ -1863,6 +1884,7 @@ internal class TransitionProgram(private val handle: Int) {
         flip: FloatArray = NO_FLIP,
         opacity: Float = 1f,
         mask: FloatArray = NativeTimelineClip.NO_MASK,
+        chroma: FloatArray = NativeTimelineClip.NO_CHROMA,
     ) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
         GLES20.glBindTexture(target, textureId)
@@ -1882,6 +1904,8 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glUniform1f(uOpacityOutgoing, opacity)
         GLES20.glUniform4f(uMaskAOutgoing, mask[0], mask[1], mask[2], mask[3])
         GLES20.glUniform4f(uMaskBOutgoing, mask[4], mask[5], mask[6], mask[7])
+        GLES20.glUniform4f(uChromaAOutgoing, chroma[0], chroma[1], chroma[2], chroma[3])
+        GLES20.glUniform4f(uChromaBOutgoing, chroma[4], chroma[5], chroma[6], chroma[7])
     }
 
     private companion object {
