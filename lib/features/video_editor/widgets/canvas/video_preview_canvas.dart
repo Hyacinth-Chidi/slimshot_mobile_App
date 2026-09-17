@@ -659,6 +659,21 @@ class _MaskOutlinePainter extends CustomPainter {
           width: halfW * 2 + featherX * 2,
           height: halfH * 2 + featherY * 2,
         ), soft);
+      case ClipMaskShape.roundedRectangle:
+        final r = Rect.fromCenter(center: centre, width: halfW * 2, height: halfH * 2);
+        // The arc in canvas pixels, clamped to the box exactly as the coverage
+        // clamps it — an outline wider than the shape would lie about it.
+        final radius = (mask.cornerRadius * frame.width)
+            .clamp(0.0, halfW < halfH ? halfW : halfH)
+            .toDouble();
+        canvas.drawRRect(RRect.fromRectAndRadius(r, Radius.circular(radius)), edge);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            r.inflate(featherX),
+            Radius.circular(radius + featherX),
+          ),
+          soft,
+        );
       case ClipMaskShape.linear:
         final x = centre.dx;
         canvas.drawLine(Offset(x, frame.top), Offset(x, frame.bottom), edge);

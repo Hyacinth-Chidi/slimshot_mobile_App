@@ -16,7 +16,12 @@ library;
 import 'dart:math' as math;
 
 /// The window's shape. `none` is the absence of a mask and writes nothing.
-enum ClipMaskShape { none, rectangle, circle, linear }
+/// The window's shape. `none` is the absence of a mask and writes nothing.
+///
+/// **Append only.** Both sides read the shape as a number — the shader tests
+/// `a.x < 1.5` — so inserting a value would turn every saved circle into
+/// something else. `roundedRectangle` is last for that reason, not by accident.
+enum ClipMaskShape { none, rectangle, circle, linear, roundedRectangle }
 
 /// Least half-extent and feather the maths will accept, so a zero never
 /// reaches a division.
@@ -31,6 +36,7 @@ class ClipMask {
     this.height = 0.6,
     this.feather = 0.05,
     this.inverted = false,
+    this.cornerRadius = 0.12,
   });
 
   /// No mask: the whole picture shows.
@@ -51,6 +57,16 @@ class ClipMask {
   /// How wide the soft edge is, as a fraction of the frame.
   final double feather;
 
+  /// Corner arc for [ClipMaskShape.roundedRectangle], as a fraction of the
+  /// frame like every other extent here. Ignored by the other shapes, and
+  /// clamped at use to the largest arc the box can hold — a radius wider than
+  /// the box would otherwise fold the shape inside out.
+  ///
+  /// This is the shape a picture-in-picture actually wants: a plain rectangle
+  /// reads as a screenshot pasted on, and a circle crops the corners off a
+  /// 16:9 inset.
+  final double cornerRadius;
+
   /// Keep the outside instead of the inside.
   final bool inverted;
 
@@ -64,6 +80,7 @@ class ClipMask {
     double? height,
     double? feather,
     bool? inverted,
+    double? cornerRadius,
   }) {
     return ClipMask(
       shape: shape ?? this.shape,
@@ -73,6 +90,7 @@ class ClipMask {
       height: height ?? this.height,
       feather: feather ?? this.feather,
       inverted: inverted ?? this.inverted,
+      cornerRadius: cornerRadius ?? this.cornerRadius,
     );
   }
 
@@ -85,6 +103,7 @@ class ClipMask {
         'height': height,
         'feather': feather,
         'inverted': inverted,
+        'cornerRadius': cornerRadius,
       };
 
   /// Defensive: anything that is not a map with a known shape is [none];
@@ -111,6 +130,8 @@ class ClipMask {
       height: read('height', 0.6, kMaskMinExtent, 2.0),
       feather: read('feather', 0.05, 0.0, 0.5),
       inverted: raw['inverted'] == true,
+      // Absent in every mask saved before rounded corners existed.
+      cornerRadius: read('cornerRadius', 0.12, 0.0, 2.0),
     );
   }
 
@@ -123,11 +144,13 @@ class ClipMask {
       other.width == width &&
       other.height == height &&
       other.feather == feather &&
-      other.inverted == inverted;
+      other.inverted == inverted &&
+      other.cornerRadius == cornerRadius;
 
   @override
   int get hashCode =>
-      Object.hash(shape, centerX, centerY, width, height, feather, inverted);
+      Object.hash(shape, centerX, centerY, width, height, feather, inverted,
+          cornerRadius);
 
   @override
   String toString() => isNone
@@ -163,6 +186,22 @@ double maskCoverage(ClipMask mask, double x, double y) {
     case ClipMaskShape.circle:
       final r = math.sqrt((dx / halfW) * (dx / halfW) + (dy / halfH) * (dy / halfH));
       coverage = 1.0 - _smoothstep(1.0, 1.0 + feather / math.max(halfW, halfH), r);
+    case ClipMaskShape.roundedRectangle:
+      // The distance field of a rounded box: push the box in by the radius,
+      // measure to that smaller box, then subtract the radius back. Inside the
+      // straight edges this is identical to the plain rectangle; near a corner
+      // it becomes the distance to the arc's centre, which is what rounds it.
+      final r = math.min(mask.cornerRadius, math.min(halfW, halfH))
+          .clamp(0.0, double.infinity)
+          .toDouble();
+      final qx = dx.abs() - (halfW - r);
+      final qy = dy.abs() - (halfH - r);
+      final outside = math.sqrt(
+            math.pow(math.max(qx, 0.0), 2) + math.pow(math.max(qy, 0.0), 2),
+          ) +
+          math.min(math.max(qx, qy), 0.0) -
+          r;
+      coverage = 1.0 - _smoothstep(0.0, feather, outside);
     case ClipMaskShape.linear:
       coverage = 1.0 - _smoothstep(mask.centerX - feather, mask.centerX + feather, x);
   }
@@ -181,5 +220,7 @@ List<double> maskUniforms(ClipMask mask) => [
       mask.width,
       mask.height,
       mask.inverted ? 1.0 : 0.0,
-      0.0,
+      // The slot was reserved and unused; the rounded rectangle is what it was
+      // waiting for. Zero for every other shape, which is what they always sent.
+      mask.shape == ClipMaskShape.roundedRectangle ? mask.cornerRadius : 0.0,
     ];

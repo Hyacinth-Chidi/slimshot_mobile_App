@@ -7,6 +7,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../models/image_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
+import '../overlay_mask_clip.dart';
 
 class ImageOverlayLayer extends ConsumerStatefulWidget {
   final Size videoCanvasSize;
@@ -131,10 +132,16 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
           maxWidth: 200,
           maxHeight: 200,
         ),
-        child: Image.file(
-          File(overlay.imagePath),
-          fit: BoxFit.contain,
-          opacity: AlwaysStoppedAnimation(animOpacity),
+        // Cut to the overlay's shape, from the same ClipMask the export
+        // resolves in its shader. See OverlayMaskClip for the one difference:
+        // a feather is a hard edge here.
+        child: OverlayMaskClip(
+          mask: overlay.mask,
+          child: Image.file(
+            File(overlay.imagePath),
+            fit: BoxFit.contain,
+            opacity: AlwaysStoppedAnimation(animOpacity),
+          ),
         ),
       );
 

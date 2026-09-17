@@ -1180,6 +1180,7 @@ internal class VideoExportEngine(
                 rotation = overlay.rotation,
                 opacity = state.opacity,
                 texMatrix = texMatrix,
+                mask = overlay.mask,
             )
         }
 

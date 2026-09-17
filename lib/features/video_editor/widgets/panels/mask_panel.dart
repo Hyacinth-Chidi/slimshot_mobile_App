@@ -17,7 +17,7 @@ const double kMaskFeatherPerPixel = 0.002;
 /// the canvas — drag to move it, pinch to resize — and a sheet would cover the
 /// surface being edited. The panel holds only what the canvas cannot: which
 /// shape, how soft its edge, and which side to keep. Every change writes live
-/// through `setClipMask`; a ruler drag is one undo step.
+/// through `setMaskOnSelection`; a ruler drag is one undo step.
 ///
 /// Switching shape keeps the window where it is: the user placed it, and a
 /// different outline around the same place is what they mean.
@@ -28,16 +28,21 @@ class MaskPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
-    final segment = state.selectedSegment;
-    if (segment == null) {
+    // The panel serves a clip, a photo overlay or a video overlay — whichever
+    // is selected — so a shape means the same thing wherever it is applied and
+    // there is no second mask editor to drift from this one.
+    final hasTarget = state.selectedSegment != null ||
+        state.selectedImageId != null ||
+        state.selectedVideoOverlayId != null;
+    if (!hasTarget) {
       return const Center(
         child: Text(
-          'Select a clip to mask it.',
+          'Select a clip or an overlay to mask it.',
           style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
         ),
       );
     }
-    final mask = segment.mask;
+    final mask = notifier.maskOnSelection;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -57,11 +62,11 @@ class MaskPanel extends ConsumerWidget {
                     onTap: () {
                       HapticFeedback.selectionClick();
                       if (shape == ClipMaskShape.none) {
-                        notifier.setClipMask(ClipMask.none);
+                        notifier.setMaskOnSelection(ClipMask.none);
                       } else if (mask.isNone) {
-                        notifier.setClipMask(ClipMask(shape: shape));
+                        notifier.setMaskOnSelection(ClipMask(shape: shape));
                       } else {
-                        notifier.setClipMask(mask.copyWith(shape: shape));
+                        notifier.setMaskOnSelection(mask.copyWith(shape: shape));
                       }
                     },
                   ),
@@ -94,11 +99,11 @@ class MaskPanel extends ConsumerWidget {
                   snapPoints: const [0.05],
                   format: (v) => '${(v * 100).round()}%',
                   onChangeStart: notifier.saveStateForUndo,
-                  onChanged: (v) => notifier.setClipMask(
+                  onChanged: (v) => notifier.setMaskOnSelection(
                     mask.copyWith(feather: v),
                     takeUndoSnapshot: false,
                   ),
-                  onReset: () => notifier.setClipMask(mask.copyWith(feather: 0.05)),
+                  onReset: () => notifier.setMaskOnSelection(mask.copyWith(feather: 0.05)),
                 ),
               ),
               const SizedBox(width: 10),
@@ -109,7 +114,7 @@ class MaskPanel extends ConsumerWidget {
                 on: mask.inverted,
                 onTap: () {
                   HapticFeedback.selectionClick();
-                  notifier.setClipMask(mask.copyWith(inverted: !mask.inverted));
+                  notifier.setMaskOnSelection(mask.copyWith(inverted: !mask.inverted));
                 },
               ),
             ],
@@ -129,6 +134,7 @@ class MaskPanel extends ConsumerWidget {
         ClipMaskShape.rectangle => 'Rectangle',
         ClipMaskShape.circle => 'Circle',
         ClipMaskShape.linear => 'Linear',
+        ClipMaskShape.roundedRectangle => 'Rounded',
       };
 
   static IconData _glyph(ClipMaskShape s) => switch (s) {
@@ -136,6 +142,7 @@ class MaskPanel extends ConsumerWidget {
         ClipMaskShape.rectangle => LucideIcons.square,
         ClipMaskShape.circle => LucideIcons.circle,
         ClipMaskShape.linear => LucideIcons.alignLeft,
+        ClipMaskShape.roundedRectangle => LucideIcons.squareDashedBottom,
       };
 
   /// The pill the other sheets use for a category: a filled capsule when

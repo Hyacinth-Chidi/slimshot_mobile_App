@@ -599,6 +599,7 @@ class EditorTimelineOverlay {
     this.volume = 1.0,
     this.isMuted = false,
     this.glyphs,
+    this.mask = ClipMask.none,
     this.backgroundLeft = 0,
     this.backgroundTop = 0,
     this.backgroundRight = 0,
@@ -610,6 +611,10 @@ class EditorTimelineOverlay {
 
   /// `image`, `video`, or `text`.
   final String kind;
+
+  /// The shape this overlay is cut to, in its **own box**. See
+  /// `ImageOverlayModel.mask`.
+  final ClipMask mask;
 
   final String path;
 
@@ -692,6 +697,9 @@ class EditorTimelineOverlay {
     return {
       'id': id,
       'kind': kind,
+      // Only when set: an engine reading an unmasked overlay sees the payload
+      // it always did.
+      if (!mask.isNone) 'mask': mask.toJson(),
       'path': path,
       'centerX': centerX,
       'centerY': centerY,

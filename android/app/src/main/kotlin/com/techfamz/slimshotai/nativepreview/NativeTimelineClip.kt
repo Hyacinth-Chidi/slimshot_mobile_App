@@ -372,6 +372,7 @@ internal data class NativeTimelineClip(
                 "rectangle" -> 1f
                 "circle" -> 2f
                 "linear" -> 3f
+                "roundedRectangle" -> 4f
                 else -> return NO_MASK
             }
             fun read(key: String, fallback: Double, lo: Double, hi: Double): Float {
@@ -386,7 +387,10 @@ internal data class NativeTimelineClip(
                 read("width", 0.6, 0.001, 2.0),
                 read("height", 0.6, 0.001, 2.0),
                 if (map["inverted"] == true) 1f else 0f,
-                0f,
+                // The last slot carries the corner arc for a rounded
+                // rectangle, and stays 0 for every other shape — which is
+                // exactly what they have always sent.
+                if (shape >= 3.5f) read("cornerRadius", 0.12, 0.0, 2.0) else 0f,
             )
         }
 

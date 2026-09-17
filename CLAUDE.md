@@ -1463,6 +1463,40 @@ Dart is the shader's twin, pinned by tests; if one changes the other must. The t
 `(shape, centerX, centerY, feather)` / `(width, height, inverted, 0)` are encoded once on each side
 (`maskUniforms`, `NativeTimelineClip.maskUniforms`) in a fixed order and tested to match.
 
+**An overlay can be masked too, with the same model** (**awaiting device
+verification**). `ImageOverlayModel.mask` and `VideoOverlayModel.mask` are the same `ClipMask`, so a
+circle means one thing everywhere and there is one coverage function keeping preview and export
+agreeing. **Authored in the overlay's own box**, not in canvas fractions: an overlay is placed and
+scaled independently, so a mask measured against the canvas would slide off the picture the moment
+the overlay moved. The panel serves whichever of the three is selected
+(`VideoEditorNotifier.maskOnSelection` / `setMaskOnSelection`, a clip winning when several somehow
+are), so there is no second mask editor to drift from the first.
+
+**The two renderers reach the shape differently, and that is the one gap.** Export computes the
+coverage in `OverlayRenderer`'s fragment shader, reading the quad's own 0..1 — which *is* the
+overlay's box — and multiplying it into the premultiplied texel beside `uAlpha`. The preview
+cannot: overlays there are plain Flutter widgets with no shader of their own, so
+`OverlayMaskClip` clips them to the same shape instead. A clip is a **hard edge** where the shader
+ramps over the feather, so a soft-edged mask looks very slightly crisper on the canvas than in the
+file. That is the right way round — nothing appears in the export that the preview did not show —
+and it closes entirely when overlay playback moves into the engine.
+
+**A chroma key on an overlay is deliberately not built yet**, for the same reason inverted: a key
+is a per-pixel colour decision the widget layer cannot make, so the export would drop the green
+while the preview still showed it. That needs a real fragment shader in the preview overlay layer,
+fed by the same `ChromaKey` model — its own piece of work, not a bolt-on.
+
+**`roundedRectangle` is the fourth shape**, appended to the enum on purpose: both sides read the
+shape as a **number** (the shader tests `a.x < 1.5`), so inserting a value would have turned every
+saved circle into something else. A test pins each index. It is a rounded-box distance field —
+push the box in by the radius, measure to that smaller box, subtract the radius back — identical
+to the plain rectangle along the straight edges and an arc at the corners, with the radius clamped
+to the box so a large value degrades to a stadium rather than folding inside out. The radius rides
+the **last uniform slot**, which was reserved and unused until this shape, and stays 0 for every
+other shape — exactly what they have always sent. It is the shape a picture-in-picture actually
+wants: a plain rectangle reads as a screenshot pasted on, and a circle crops the corners off a
+16:9 inset.
+
 **Mask is an in-place panel, not a sheet**: the window is placed on the canvas — drag to move,
 pinch to resize, with the outline and a grab point drawn by `_MaskOutlinePainter` — and a sheet
 would cover the surface being edited. The panel holds only what the canvas cannot: shape, feather,

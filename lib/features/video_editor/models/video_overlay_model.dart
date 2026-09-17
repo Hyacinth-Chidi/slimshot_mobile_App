@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../logic/mask/clip_mask.dart';
 
 class VideoOverlayModel {
   final String id;
@@ -32,6 +33,15 @@ class VideoOverlayModel {
   // Layering
   int laneIndex;
 
+  /// The shape this overlay is cut to, or [ClipMask.none].
+  ///
+  /// **Authored in the overlay's own box**, not in canvas fractions: an
+  /// overlay is placed and scaled independently, so a mask measured against
+  /// the canvas would slide off the picture the moment the overlay moved. The
+  /// same `ClipMask` a clip carries, so a shape means one thing everywhere and
+  /// there is one coverage function to keep preview and export agreeing.
+  ClipMask mask;
+
   VideoOverlayModel({
     required this.id,
     required this.videoPath,
@@ -51,6 +61,7 @@ class VideoOverlayModel {
     this.speed = 1.0,
     this.isMuted = false,
     this.laneIndex = 0,
+    this.mask = ClipMask.none,
   });
 
   VideoOverlayModel copyWith({
@@ -74,6 +85,7 @@ class VideoOverlayModel {
     double? speed,
     bool? isMuted,
     int? laneIndex,
+    ClipMask? mask,
   }) {
     return VideoOverlayModel(
       id: id ?? this.id,
@@ -94,6 +106,7 @@ class VideoOverlayModel {
       speed: speed ?? this.speed,
       isMuted: isMuted ?? this.isMuted,
       laneIndex: laneIndex ?? this.laneIndex,
+      mask: mask ?? this.mask,
     );
   }
 
@@ -118,6 +131,8 @@ class VideoOverlayModel {
       'speed': speed,
       'isMuted': isMuted,
       'laneIndex': laneIndex,
+      // Omitted while unset, as on the image overlay.
+      if (!mask.isNone) 'mask': mask.toJson(),
     };
   }
 
@@ -144,6 +159,8 @@ class VideoOverlayModel {
       speed: (json['speed'] as num?)?.toDouble() ?? 1.0,
       isMuted: json['isMuted'] as bool? ?? false,
       laneIndex: json['laneIndex'] as int? ?? 0,
+      // Absent in every overlay saved before shapes existed.
+      mask: ClipMask.fromJson(json['mask']),
     );
   }
 }

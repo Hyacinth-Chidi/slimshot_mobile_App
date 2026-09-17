@@ -1156,6 +1156,63 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
   /// The selected clip's mask. [takeUndoSnapshot] false for the live frames of
   /// a drag whose start already took one.
+  /// The mask on whatever is selected — a clip, a photo overlay or a video
+  /// overlay — or [ClipMask.none] with nothing selected.
+  ///
+  /// One editor serves all three, so there is no second mask UI to drift from
+  /// the first. A clip wins when several are somehow selected at once, since
+  /// that is the selection the canvas is drawing handles for.
+  ClipMask get maskOnSelection {
+    final segment = state.selectedSegment;
+    if (segment != null) return segment.mask;
+    final imageId = state.selectedImageId;
+    if (imageId != null) {
+      for (final o in state.imageOverlays) {
+        if (o.id == imageId) return o.mask;
+      }
+    }
+    final videoId = state.selectedVideoOverlayId;
+    if (videoId != null) {
+      for (final o in state.videoOverlays) {
+        if (o.id == videoId) return o.mask;
+      }
+    }
+    return ClipMask.none;
+  }
+
+  /// Writes [mask] to whatever is selected. With nothing selected it does
+  /// nothing — and takes no snapshot either, because an undo entry that undoes
+  /// nothing is a lie.
+  void setMaskOnSelection(ClipMask mask, {bool takeUndoSnapshot = true}) {
+    if (state.selectedSegmentId != null) {
+      setClipMask(mask, takeUndoSnapshot: takeUndoSnapshot);
+      return;
+    }
+
+    final imageId = state.selectedImageId;
+    if (imageId != null) {
+      if (takeUndoSnapshot) saveStateForUndo();
+      state = state.copyWith(
+        imageOverlays: [
+          for (final o in state.imageOverlays)
+            if (o.id == imageId) o.copyWith(mask: mask) else o,
+        ],
+      );
+      return;
+    }
+
+    final videoId = state.selectedVideoOverlayId;
+    if (videoId != null) {
+      if (takeUndoSnapshot) saveStateForUndo();
+      state = state.copyWith(
+        videoOverlays: [
+          for (final o in state.videoOverlays)
+            if (o.id == videoId) o.copyWith(mask: mask) else o,
+        ],
+      );
+    }
+  }
+
   void setClipMask(ClipMask mask, {bool takeUndoSnapshot = true}) {
     final targetId = state.selectedSegmentId;
     if (targetId == null) return;

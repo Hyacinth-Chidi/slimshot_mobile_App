@@ -198,8 +198,19 @@ float maskCoverage(vec2 p, vec4 a, vec4 b) {
     } else if (a.x < 2.5) {
         float r = length((p - c) / halfSize);
         coverage = 1.0 - smoothstep(1.0, 1.0 + feather / max(halfSize.x, halfSize.y), r);
-    } else {
+    } else if (a.x < 3.5) {
         coverage = 1.0 - smoothstep(c.x - feather, c.x + feather, p.x);
+    } else {
+        // Rounded rectangle: the distance field of a rounded box. Push the box
+        // in by the radius, measure to that smaller box, then subtract the
+        // radius back — identical to the plain rectangle along the straight
+        // edges, an arc near a corner. b.w carries the radius; the slot was
+        // reserved and unused until this shape. Twin of `maskCoverage`'s
+        // roundedRectangle arm in logic/mask/clip_mask.dart.
+        float rad = min(b.w, min(halfSize.x, halfSize.y));
+        vec2 q = abs(p - c) - (halfSize - vec2(rad));
+        float outside = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - rad;
+        coverage = 1.0 - smoothstep(0.0, feather, outside);
     }
     return mix(coverage, 1.0 - coverage, b.z);
 }

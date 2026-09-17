@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../models/video_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
+import '../overlay_mask_clip.dart';
 
 class VideoOverlayLayer extends ConsumerStatefulWidget {
   final Size videoCanvasSize;
@@ -389,11 +390,16 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
           maxWidth: 240,
           maxHeight: 240,
         ),
-        child: AspectRatio(
-          aspectRatio: videoRatio,
-          child: Opacity(
-            opacity: animOpacity.clamp(0.0, 1.0),
-            child: VideoPlayer(controller),
+        // Cut to the overlay's shape, from the same ClipMask the export
+        // resolves in its shader.
+        child: OverlayMaskClip(
+          mask: overlay.mask,
+          child: AspectRatio(
+            aspectRatio: videoRatio,
+            child: Opacity(
+              opacity: animOpacity.clamp(0.0, 1.0),
+              child: VideoPlayer(controller),
+            ),
           ),
         ),
       );

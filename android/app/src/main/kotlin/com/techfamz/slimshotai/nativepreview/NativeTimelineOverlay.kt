@@ -114,6 +114,15 @@ internal data class NativeTimelineOverlay(
     /** Text overlays only: one entry per drawn character. */
     val glyphs: List<NativeTimelineGlyph>,
     /** Text overlays only: the background box in text-box fractions. */
+    /**
+     * The shape this overlay is cut to, as the same two vec4s a clip's mask
+     * uses — `NativeTimelineClip.NO_MASK` when unmasked.
+     *
+     * **In the overlay's own box**, not in canvas fractions: an overlay is
+     * placed and scaled independently, so a mask measured against the canvas
+     * would slide off the picture the moment the overlay moved.
+     */
+    val mask: FloatArray = NativeTimelineClip.NO_MASK,
     val backgroundLeft: Double,
     val backgroundTop: Double,
     val backgroundRight: Double,
@@ -285,6 +294,9 @@ internal data class NativeTimelineOverlay(
                 volume = (map.number("volume") ?: 1.0).coerceIn(0.0, 1.0),
                 isMuted = map["isMuted"] as? Boolean ?: false,
                 glyphs = glyphs,
+                // Absent on every overlay saved before shapes existed, and on
+                // every unmasked one; `parseMask` reads that as no mask.
+                mask = NativeTimelineClip.parseMask(map["mask"]),
                 backgroundLeft = map.number("backgroundLeft") ?: 0.0,
                 backgroundTop = map.number("backgroundTop") ?: 0.0,
                 backgroundRight = map.number("backgroundRight") ?: 0.0,

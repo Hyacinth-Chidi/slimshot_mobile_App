@@ -206,6 +206,10 @@ const EditorMenu _imageOverlayMenu = EditorMenu(
       label: 'Animation',
       icon: LucideIcons.playCircle,
     ),
+    // The same Mask tool a clip has, cutting the overlay to a shape. One
+    // model, one coverage function, so a circle is the same circle on a clip
+    // and on an overlay.
+    EditorTool(id: 'mask', label: 'Mask', icon: LucideIcons.scan),
     EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
     EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
     EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
@@ -226,6 +230,10 @@ const EditorMenu _videoOverlayMenu = EditorMenu(
       icon: LucideIcons.playCircle,
     ),
     EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
+    // The same Mask tool a clip has, cutting the overlay to a shape. One
+    // model, one coverage function, so a circle is the same circle on a clip
+    // and on an overlay.
+    EditorTool(id: 'mask', label: 'Mask', icon: LucideIcons.scan),
     EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
     EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
     EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),

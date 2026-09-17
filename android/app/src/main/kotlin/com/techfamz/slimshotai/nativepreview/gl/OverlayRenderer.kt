@@ -1,5 +1,6 @@
 package com.techfamz.slimshotai.nativepreview.gl
 
+import com.techfamz.slimshotai.nativepreview.NativeTimelineClip
 import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.opengl.GLES11Ext
@@ -55,6 +56,12 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
          * whole texture. A glyph reads one cell of the atlas.
          */
         val srcRect: FloatArray? = null,
+        /**
+         * The overlay's shape as two vec4s, in the overlay's own box. See
+         * `NativeTimelineOverlay.mask`. Defaults to no mask, so every existing
+         * caller draws exactly as it did.
+         */
+        val mask: FloatArray = NativeTimelineClip.NO_MASK,
         /**
          * Where to place the quad inside the overlay's box, as box fractions
          * (left, top, right, bottom), or null to contain-fit the whole box —
@@ -135,9 +142,13 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
     private var aPosition2d = -1
     private var aTexCoord2d = -1
     private var uAlpha2d = -1
+    private var uMaskA2d = -1
+    private var uMaskB2d = -1
     private var aPositionOes = -1
     private var aTexCoordOes = -1
     private var uAlphaOes = -1
+    private var uMaskAOes = -1
+    private var uMaskBOes = -1
     private var uTexMatrixOes = -1
 
     /** Uploaded bitmap textures, keyed by file path. */
@@ -166,11 +177,15 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
         aPosition2d = GLES20.glGetAttribLocation(program2d, "aPosition")
         aTexCoord2d = GLES20.glGetAttribLocation(program2d, "aTexCoord")
         uAlpha2d = GLES20.glGetUniformLocation(program2d, "uAlpha")
+        uMaskA2d = GLES20.glGetUniformLocation(program2d, "uMaskA")
+        uMaskB2d = GLES20.glGetUniformLocation(program2d, "uMaskB")
 
         programOes = GlUtil.createProgram(VERTEX, fragment(external = true))
         aPositionOes = GLES20.glGetAttribLocation(programOes, "aPosition")
         aTexCoordOes = GLES20.glGetAttribLocation(programOes, "aTexCoord")
         uAlphaOes = GLES20.glGetUniformLocation(programOes, "uAlpha")
+        uMaskAOes = GLES20.glGetUniformLocation(programOes, "uMaskA")
+        uMaskBOes = GLES20.glGetUniformLocation(programOes, "uMaskB")
         uTexMatrixOes = GLES20.glGetUniformLocation(programOes, "uTexMatrix")
     }
 
@@ -256,6 +271,7 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, draw.textureId)
                 GLES20.glUniform1f(uAlphaOes, draw.opacity.toFloat())
+                bindMask(uMaskAOes, uMaskBOes, draw.mask)
                 GLES20.glUniformMatrix4fv(
                     uTexMatrixOes,
                     1,
@@ -269,6 +285,7 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, draw.textureId)
                 GLES20.glUniform1f(uAlpha2d, draw.opacity.toFloat())
+                bindMask(uMaskA2d, uMaskB2d, draw.mask)
                 val texCoords = draw.srcRect?.let { writeGlyphTexCoords(it) }
                     ?: texCoordsTopDown
                 drawQuad(aPosition2d, aTexCoord2d, texCoords)
@@ -446,10 +463,54 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
         return """$declaration
 varying vec2 vTexCoord;
 uniform float uAlpha;
+uniform vec4 uMaskA;
+uniform vec4 uMaskB;
+
+// The overlay's shape, read in the overlay's own box. The same arithmetic as
+// `maskCoverage` in TransitionShaders and its Dart twin in
+// logic/mask/clip_mask.dart — if one changes they all must.
+//
+// a = (shape, centerX, centerY, feather), b = (width, height, inverted, radius)
+float overlayMaskCoverage(vec2 p, vec4 a, vec4 b) {
+    if (a.x < 0.5) {
+        return 1.0;
+    }
+    vec2 c = a.yz;
+    float feather = max(a.w, 0.001);
+    vec2 halfSize = max(b.xy * 0.5, vec2(0.001));
+    float coverage;
+    if (a.x < 1.5) {
+        vec2 d = abs(p - c) - halfSize;
+        coverage = 1.0 - smoothstep(0.0, feather, max(d.x, d.y));
+    } else if (a.x < 2.5) {
+        float r = length((p - c) / halfSize);
+        coverage = 1.0 - smoothstep(1.0, 1.0 + feather / max(halfSize.x, halfSize.y), r);
+    } else if (a.x < 3.5) {
+        coverage = 1.0 - smoothstep(c.x - feather, c.x + feather, p.x);
+    } else {
+        float rad = min(b.w, min(halfSize.x, halfSize.y));
+        vec2 q = abs(p - c) - (halfSize - vec2(rad));
+        float outside = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - rad;
+        coverage = 1.0 - smoothstep(0.0, feather, outside);
+    }
+    return mix(coverage, 1.0 - coverage, b.z);
+}
+
 void main() {
-    gl_FragColor = $lookup * uAlpha;
+    // The quad's own 0..1, which is the overlay's box — the space the mask is
+    // authored in. Premultiplied alpha, so the coverage multiplies the whole
+    // texel exactly as uAlpha does.
+    float keep = overlayMaskCoverage(vTexCoord, uMaskA, uMaskB);
+    gl_FragColor = $lookup * uAlpha * keep;
 }
 """
+    }
+
+    /** The mask's two vec4s, or a no-mask pair when the uniform is absent. */
+    private fun bindMask(uA: Int, uB: Int, mask: FloatArray) {
+        if (uA < 0 || uB < 0 || mask.size < 8) return
+        GLES20.glUniform4f(uA, mask[0], mask[1], mask[2], mask[3])
+        GLES20.glUniform4f(uB, mask[4], mask[5], mask[6], mask[7])
     }
 
     private fun floatBufferOf(vararg values: Float): FloatBuffer {
