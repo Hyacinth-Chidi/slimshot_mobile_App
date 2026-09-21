@@ -37,7 +37,12 @@ internal class RealtimeOverlayDecoder(
     val path: String,
     private val surface: Surface,
     private val startUs: Long,
+    /** Called once if the codec dies, so the user hears about it. */
+    private val onFailed: () -> Unit = {},
 ) {
+    /** So a dead codec is reported once, not on every pump turn. */
+    private var reportedFailure = false
+
     private val thread = HandlerThread("slimshot-overlay-decode").apply { start() }
     private val handler = Handler(thread.looper)
 
@@ -98,39 +103,67 @@ internal class RealtimeOverlayDecoder(
         // See [OverlayClock.shouldSeek] for why ordinary playback never does.
         if (OverlayClock.shouldSeek(active.lastRenderedUs, target)) active.seekTo(target)
 
-        val rendered = active.advanceTo(target)
-        // One call decodes a bounded number of steps. After a seek the target
-        // can be a whole GOP away, so keep going until it is reached — aiming
-        // at whatever the newest target is by then.
+        // **Bounded per turn, and `released` asked every step.** Both halves
+        // were bugs. The flag used to be read once above, so a walk after a
+        // seek carried on for seconds after release was requested; and a turn
+        // that ran the whole walk never let the handler see the release
+        // message at all. Now the turn yields and re-posts, so a teardown
+        // lands within a step rather than a GOP.
+        var budget = OverlayDecoderTeardown.STEPS_PER_TURN
+        var rendered = false
+        while (OverlayDecoderTeardown.mayContinue(!released, budget)) {
+            budget--
+            rendered = active.advanceTo(targetUs.get())
+            if (rendered || active.isFinished || active.failed) break
+        }
+
+        if (released) return
+        // A codec that failed — reclaimed by the system, or errored mid-frame
+        // — can do nothing more. Say so once; the overlay stops rather than
+        // the app dying, which is what this used to do.
+        if (active.failed) {
+            if (!reportedFailure) {
+                reportedFailure = true
+                onFailed()
+            }
+            return
+        }
+
         val latest = targetUs.get()
         val behind = !active.isFinished && active.lastRenderedUs < latest
         if ((!rendered && behind) || latest != target) schedulePump()
     }
 
     /**
-     * Stops the thread and frees the codec, **before returning**: the caller
-     * releases the surface next, and a codec still writing into a released
-     * surface is an error storm. Bounded, so a wedged codec cannot hang the
-     * GL thread.
+     * Frees the codec and **then** hands the surface release back, through
+     * [OverlayDecoderTeardown].
+     *
+     * This does not wait, and that is the point. It is called from the GL
+     * thread, where blocking is a visible freeze, and the previous version's
+     * 400ms `join` could time out while a pump was still running — the GL
+     * thread then freed the surface under a live codec, which is the crash
+     * this class was reported for. See [OverlayDecoderTeardown].
      */
-    fun release() {
-        if (released) return
+    fun release(teardown: OverlayDecoderTeardown) {
+        if (released) {
+            teardown.giveUp()
+            return
+        }
         released = true
         handler.removeCallbacksAndMessages(null)
-        handler.post {
+        val posted = handler.post {
             decoder?.release()
             decoder = null
+            // The codec is gone: the surface may now be freed, on the thread
+            // that owns it.
+            teardown.onCodecReleased()
         }
+        // A looper already dead accepts nothing; the surface must not strand.
+        if (!posted) teardown.giveUp()
         thread.quitSafely()
-        try {
-            thread.join(RELEASE_WAIT_MS)
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-        }
     }
 
     private companion object {
         const val NO_TARGET = Long.MIN_VALUE
-        const val RELEASE_WAIT_MS = 400L
     }
 }

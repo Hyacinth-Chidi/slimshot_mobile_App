@@ -36,6 +36,32 @@ internal class ExportClipDecoder(
     var isFinished: Boolean = false
         private set
 
+    /**
+     * The codec reported an error and can do nothing more.
+     *
+     * **Device-reported as a fatal crash.** A `MediaCodec` that reports an
+     * error moves to an error state and every later call throws
+     * `IllegalStateException`; there is no recovering it, only replacing it.
+     * On the export's own thread that surfaced as a caught failure, but the
+     * preview steps this decoder on a `HandlerThread`, where an uncaught
+     * exception **kills the process**:
+     *
+     * ```
+     * FATAL EXCEPTION: slimshot-overlay-decode
+     *   at MediaCodec.releaseOutputBuffer(Native Method)
+     *   at ExportClipDecoder.advanceTo, at RealtimeOverlayDecoder.pump
+     * ```
+     *
+     * The log also shows `keep callback message for reclaim` — the system's
+     * resource manager taking a codec away from us under pressure, which can
+     * happen at any time and is not ours to prevent. So a dead codec has to be
+     * an outcome the caller handles, not an exception nobody catches: the
+     * overlay stops and the user is told, the way a transition lane that
+     * cannot come up already does.
+     */
+    var failed: Boolean = false
+        private set
+
     private var inputDone = false
 
     /** MIME of the video track, for reporting an unsupported file by name. */
@@ -162,7 +188,7 @@ internal class ExportClipDecoder(
      */
     fun advanceTo(targetUs: Long): Boolean {
         val decoder = codec ?: return false
-        if (isFinished) return false
+        if (isFinished || failed) return false
 
         // The frame already on the lane may still be the one this output frame
         // wants, and then nothing should be decoded.
@@ -179,6 +205,10 @@ internal class ExportClipDecoder(
         var rendered = false
         var guard = 0
 
+        // **Nothing in this loop may throw past this point.** See [failed]:
+        // every call below is illegal once the codec has reported an error or
+        // been reclaimed, and this runs on a thread where that is fatal.
+        try {
         while (!rendered && guard++ < MAX_STEPS_PER_FRAME) {
             feedInput(decoder)
 
@@ -215,6 +245,13 @@ internal class ExportClipDecoder(
                     }
                 }
             }
+        }
+        } catch (error: IllegalStateException) {
+            // The codec is gone — reclaimed, or failed mid-frame. Its own
+            // buffers are already invalid, so there is nothing to hand back.
+            Log.w(TAG, "Decoder failed mid-frame for $path", error)
+            failed = true
+            return false
         }
 
         return rendered

@@ -2116,6 +2116,71 @@ borrows a clip **only when nothing at all is selected** — it used to test `sel
 alone, which with an overlay selected would have keyed the clip under the playhead instead of the
 overlay the user opened the tool on.
 
+**The realtime decoder killed the app, and it was a teardown race** (**awaiting device
+verification**). Device-reported as "crashes on Android 12, mostly when working with video
+overlays", first blamed on memory. The logcat named it exactly:
+
+```
+FATAL EXCEPTION: slimshot-overlay-decode
+java.lang.IllegalStateException
+  at android.media.MediaCodec.releaseOutputBuffer(Native Method)
+  at ExportClipDecoder.advanceTo, at RealtimeOverlayDecoder.pump
+```
+
+preceded by `BufferQueue has been abandoned` and `Codec reported err 0xe`. **The surface was freed
+while the codec was still decoding into it.** An uncaught exception on a `HandlerThread` kills the
+process, which is why it read as a random crash after minutes rather than as a decoder fault.
+
+The teardown *looked* ordered — decoder, then lane — but `release()` posted the codec release
+**behind an in-flight `pump()`**, waited 400ms, and returned regardless; the GL thread then freed
+the surface under a live codec. Two further faults made the window wide: `released` was read
+**once** at the top of `pump()`, so a walk after a seek (up to the step cap at a 10ms dequeue
+timeout each) carried on for seconds after teardown was asked for, and a turn that ran the whole
+walk never let the handler see the release message at all.
+
+**Waiting harder is not the fix**, and this is the part worth not re-deriving: teardown is
+requested from the GL thread, so blocking it trades a crash for a visible freeze.
+`gl/OverlayDecoderTeardown.kt` sequences the two threads instead — the decode thread frees the
+codec and *then* hands the surface release back through `onCodecReleased`, so the order is correct
+by construction and nobody waits. `giveUp()` is the backstop for a wedged codec: the surface is
+freed anyway, because a stranded lane leaks a texture and the overlay could never reopen. All
+three release sites go through one `releaseRealtimeDecoder`; a fourth spelling of this ordering is
+how the bug would return.
+
+**A dead codec is now an outcome, not an exception.** `ExportClipDecoder.failed` — every
+`MediaCodec` call is illegal once the codec has reported an error, and the log also carries
+`keep callback message for reclaim`, the system's resource manager **taking a codec away from us**
+under pressure. That is not ours to prevent, so it must be survivable: `advanceTo` catches
+`IllegalStateException`, marks the decoder failed and returns false, and the overlay stops **with
+a toast** through the same `onOverlayFailed` the lane fallback uses. The export path could assume a
+healthy codec because it owns the lifecycle; a preview decoder cannot.
+
+**The measured reason it happens at all — and the caps are wrong** (not yet changed). On the
+Infinix (Unisoc, Android 12), `adb shell dumpsys media.player` reports for `c2.unisoc.avc.decoder`:
+
+| | |
+| :--- | :--- |
+| `size-range` | `64x64-1920x3840` — **this device cannot decode 4K at all** |
+| `max-concurrent-instances` | 10 |
+| `blocks-per-second-range` | `1-864000` |
+| `measured-frame-rate-1920x1080` | 42–54, for **one** instance |
+
+Two things that follow, both correcting assumptions in this file. **Instances are not the scarce
+resource** — the device allows 10 and `MAX_OVERLAY_DECODERS` is 2. **Throughput is**: 864000
+blocks/sec ÷ 8160 blocks per 1080p frame ≈ **105 fps of 1080p across every decoder combined**. Two
+clip lanes at 30fps spend 60 of that; each 1080p overlay spends 30. Two lanes plus two overlays is
+120 — over budget, which is what invites the reclaim. **And decoding smaller is not available**:
+`KEY_MAX_WIDTH`/`KEY_MAX_HEIGHT` are adaptive-playback buffer hints, not output scaling, so
+MediaCodec offers no portable way to decode a stream below its native size.
+
+`maxSupportedInstances` is read **only** inside `ExportCapabilities.probe()`, which merely logs,
+while the numbers that govern behaviour are hardcoded in two unrelated files
+(`OverlayDrawBuilder.MAX_OVERLAY_DECODERS`, `OverlayAudioPlayers.MAX_PLAYERS`) and compared
+against nothing. For the one resource that is genuinely scarce the app neither probes nor degrades
+— the standing rule unfollowed. A budget derived from `blocks-per-second` is the next piece of
+work, deliberately **not** bundled with this crash fix: shipping both together would leave no way
+to tell which half was wrong.
+
 **What it unlocks**: an overlay chroma key and blend modes, each now a shader line rather than an
 impossibility, and an exact feather instead of a hard-edged clip.
 

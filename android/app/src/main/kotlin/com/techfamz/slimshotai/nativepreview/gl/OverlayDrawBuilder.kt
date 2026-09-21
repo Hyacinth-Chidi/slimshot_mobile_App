@@ -123,10 +123,7 @@ internal class OverlayDrawBuilder(
         overlays = list
         val paths = list.associate { it.id to it.path }
         val stale = realtimeDecoders.filter { (id, d) -> paths[id] != d.path }.keys.toList()
-        for (id in stale) {
-            realtimeDecoders.remove(id)?.release()
-            renderer.overlays.releaseVideoLane(id)
-        }
+        for (id in stale) releaseRealtimeDecoder(id)
     }
 
     /**
@@ -139,6 +136,23 @@ internal class OverlayDrawBuilder(
      * clip's decoder competed with an overlay decoder that was about to be
      * freed anyway, and on devices near their codec limit the open lost.
      */
+
+    /**
+     * Tears a realtime overlay decoder down **codec first, surface after**.
+     *
+     * The two live on different threads, and freeing them in the wrong order
+     * is the crash this was reported for: `BufferQueue has been abandoned`,
+     * then `IllegalStateException` from a codec still decoding into the
+     * surface that just went. [OverlayDecoderTeardown] sequences them without
+     * anyone blocking — see it for why waiting was not the answer.
+     */
+    private fun releaseRealtimeDecoder(id: String) {
+        val worker = realtimeDecoders.remove(id) ?: return
+        val teardown = OverlayDecoderTeardown()
+        teardown.begin { renderer.overlays.releaseVideoLane(id) }
+        worker.release(teardown)
+    }
+
     fun releaseExpired(t: Double) {
         for (overlay in overlays) {
             // The export's clock only walks forward, so "expired" means past
@@ -151,10 +165,7 @@ internal class OverlayDrawBuilder(
                 renderer.overlays.releaseVideoLane(overlay.id)
             }
             if (overlay.isVideo && gone && realtimeDecoders.containsKey(overlay.id)) {
-                // Decoder first, and it returns only once the codec is freed:
-                // the lane's surface goes next.
-                realtimeDecoders.remove(overlay.id)?.release()
-                renderer.overlays.releaseVideoLane(overlay.id)
+                releaseRealtimeDecoder(overlay.id)
             }
         }
     }
@@ -442,6 +453,9 @@ internal class OverlayDrawBuilder(
                 path = overlay.path,
                 surface = surface,
                 startUs = (overlay.sourceStart * 1_000_000L).toLong(),
+                // A codec reclaimed by the system or failing mid-frame is not
+                // ours to prevent; it must be said rather than crashed on.
+                onFailed = { events.onOverlayFailed() },
             )
             realtimeDecoders[overlay.id] = worker
         }
@@ -499,10 +513,7 @@ internal class OverlayDrawBuilder(
             renderer.overlays.releaseVideoLane(id)
         }
         videoStates.clear()
-        for ((id, worker) in realtimeDecoders) {
-            worker.release()
-            renderer.overlays.releaseVideoLane(id)
-        }
+        for (id in realtimeDecoders.keys.toList()) releaseRealtimeDecoder(id)
         realtimeDecoders.clear()
     }
 
