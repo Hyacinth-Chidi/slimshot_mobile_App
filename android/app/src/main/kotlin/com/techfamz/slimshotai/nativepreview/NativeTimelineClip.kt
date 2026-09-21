@@ -394,6 +394,52 @@ internal data class NativeTimelineClip(
             )
         }
 
+        /**
+         * The crop rectangle, turned from the contract's y-DOWN space into the
+         * shader's y-UP sampling space.
+         *
+         * **Device-reported:** "if I crop from the top, it crops from the
+         * bottom; if I crop from the bottom, it crops from the top", on both
+         * the project crop and the per-clip crop.
+         *
+         * Everything on the Dart side is y-down — `Rect.top` is the distance
+         * from the top edge, the handles hit-test in screen pixels, the
+         * painter draws `frame.top + top * frame.height`. That is all
+         * self-consistent, which is exactly why the handles *looked* right
+         * while the picture disagreed: nothing in the UI was wrong.
+         *
+         * The shader samples in a y-UP space — texcoord (0,0) is the
+         * bottom-left vertex. `TransitionShaders` already documents this for
+         * the pan, which is negated at "the one place the two frames meet",
+         * noting that skipping it makes a downward drag move the clip up,
+         * "which shipped once". The content rect crosses the same boundary and
+         * was never converted.
+         *
+         * Here rather than in the shader, and here rather than in Dart:
+         * `TimelinePlaybackEngine` and `VideoExportEngine` both push this
+         * parsed array straight to `setLaneContentRect`, so one conversion at
+         * the parse boundary fixes the preview and the export together and
+         * leaves exactly one definition. Doing it in the shader would mean two
+         * copies; doing it in Dart would put a GL detail in the contract.
+         *
+         * Its own inverse, so nothing accumulates: flipping twice is identity.
+         */
+        fun toSamplingRect(rect: FloatArray): FloatArray {
+            if (rect.size < 4) return rect
+            val height = rect[3].coerceIn(0f, 1f)
+            // Measured from the opposite edge: the distance from the bottom is
+            // what is left once the top offset and the height are taken off.
+            //
+            // Clamped because the subtraction is not exact in float32: a crop
+            // flush to the bottom (top 0.8, height 0.2) lands at -1.49e-08
+            // rather than 0. Invisible as a number and harmless under
+            // GL_CLAMP_TO_EDGE, but it is a *texture coordinate* — under a
+            // repeat wrap a negative y samples the opposite edge of the
+            // picture. A test pins it.
+            val y = (1f - rect[1] - height).coerceIn(0f, 1f - height)
+            return floatArrayOf(rect[0], y, rect[2], height)
+        }
+
         fun fromMap(map: Map<*, *>, fallbackSource: String): NativeTimelineClip? {
             val id = map["id"] as? String ?: return null
             val sourceVideoPath = (map["sourceVideoPath"] as? String)
@@ -475,7 +521,9 @@ internal data class NativeTimelineClip(
                 // Absent from timelines composed before clips carried their
                 // own rect: the whole frame, which is what the canvas rect was
                 // for every clip that never had a project crop either.
-                contentRect = map.rect("contentRect") ?: floatArrayOf(0f, 0f, 1f, 1f),
+                contentRect = toSamplingRect(
+                    map.rect("contentRect") ?: floatArrayOf(0f, 0f, 1f, 1f),
+                ),
                 // Written only when set; absent reads as unflipped.
                 flipHorizontal = map["flipHorizontal"] == true,
                 flipVertical = map["flipVertical"] == true,

@@ -1707,6 +1707,37 @@ side. A hand-edited draft could have hit this before any of this work existed.
 **The rejected design is entry 23 in `docs/dead-ends.md`** — a keyframe row under the clip, opened
 from a button on the effects sheet. Read it before proposing anywhere else for a keyframe control.
 
+**The crop was upside down, and the UI was never the problem** (**awaiting device verification**).
+Device-reported: "if I crop from the top it crops from the bottom, if I crop from the bottom it
+crops from the top" — on the project crop *and* the per-clip crop, which is what says it is one
+shared cause rather than two.
+
+Everything on the Dart side is **y-DOWN**, consistently: `Rect.top` is the distance from the top
+edge, `_handleCropPanStart` hit-tests in screen pixels, `_handleCropPanUpdate` moves `top` by a
+positive `dy`, `composeCropRects` and `resolveContentRect` keep `top` as `top`, and the painter
+draws `frame.top + top * frame.height`. Every one of those agrees with the others, which is
+exactly why the handles *looked* right while the picture disagreed — there was nothing to find in
+the crop editor.
+
+The shader samples in a **y-UP** space: texcoord (0,0) is the bottom-left vertex. `TransitionShaders`
+already documents this for the pan, which is negated "at the one place the two frames meet", with
+the warning that skipping it makes a downward drag move the clip up — "which shipped once". The
+content rect crosses the same boundary and was never converted, so `top` became `bottom` in the
+sample.
+
+**`NativeTimelineClip.toSamplingRect` converts once, at the parse boundary**, and the location is
+the point: `TimelinePlaybackEngine` and `VideoExportEngine` both push the parsed array straight to
+`setLaneContentRect`, so one conversion fixes preview and export together and leaves a single
+definition. In the shader it would be two copies; in Dart it would put a GL detail into the
+contract. It is its own inverse, so nothing accumulates, and it touches **only y** — `LaneFit.contentAspect`
+reads width and height alone, so letterbox fitting is unaffected and an uncropped project is
+byte-identical.
+
+**The conversion clamps, and a test found why.** `1f - top - height` is not exact in float32: a
+crop flush to the bottom (top 0.8, height 0.2) lands at **-1.49e-08** rather than 0. Invisible as
+a number and harmless under `GL_CLAMP_TO_EDGE`, but it is a *texture coordinate* — under a repeat
+wrap a negative y samples the opposite edge of the picture.
+
 ### 3. Then â€” timeline UX
 
 Zoom (`_pixelsPerSecond` is a `static const 50.0`; `ClipFilmstrip` already recomputes its grid from
