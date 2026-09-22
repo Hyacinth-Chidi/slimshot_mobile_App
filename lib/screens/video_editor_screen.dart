@@ -2218,10 +2218,16 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       return VolumePanel(
         displayVolume: editorState.previewVolume ?? videoOverlay.volume,
         emptyMessage: null,
+        // One snapshot for the drag; the frames between write live. Going
+        // through `updateVideoOverlay` per frame pushed an undo entry each
+        // time, so Undo walked the drag back a pixel at a time — the same
+        // fault the overlay *move* gesture had, and the reason
+        // `updateVideoOverlayLive` exists.
+        onChangeStart: notifier.saveStateForUndo,
         onChanged: (value) {
-          // Immediately update actual model so video playback engine reacts
+          // Written to the model immediately so the engine hears it.
           notifier.setPreviewVolume(value);
-          notifier.updateVideoOverlay(
+          notifier.updateVideoOverlayLive(
             videoOverlay.id,
             (v) => v.copyWith(volume: value),
           );
