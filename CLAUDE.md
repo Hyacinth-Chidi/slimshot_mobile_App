@@ -15,6 +15,38 @@ flutter analyze --no-pub
 flutter build apk --debug
 ```
 
+**Flutter 3.47.5 / Dart 3.13.4** (upgraded 2026-09-22 from 3.38.9, three minor versions).
+Motivated by the desktop version: 3.47 makes **Impeller the default renderer on macOS, Windows
+and Linux**, so starting desktop on an older framework would mean building against a renderer we
+would migrate off anyway. Android gains little directly — this app's hot path is Kotlin and GL,
+not Flutter's compositor — but the framework-side wins land on the editor UI and timeline.
+
+Three things the upgrade turned up, none of them optional:
+
+- **`lucide_icons` is abandoned and no longer compiles.** Flutter 3.44 marked `IconData` **final**
+  and the package declares `class LucideIconData extends IconData`; upstream has shipped nothing
+  since 0.257.0. It blocked the upgrade outright — every test failed to *load*. The icons are
+  **vendored** into `lib/core/theme/lucide_icons.dart` as plain `IconData` with the font in
+  `assets/fonts/lucide.ttf`. The subclass added no behaviour and nothing here ever referenced
+  `LucideIconData`, so all 326 call sites across 54 files are untouched; only the import moved.
+  `fontPackage` is **null**, because the font is this app's asset now and naming a package Flutter
+  cannot find resolves to no glyph.
+- **`android.builtInKotlin=false` and `android.newDsl=false`** were written into
+  `android/gradle.properties` by Flutter's own migrator. They opt *out* of 3.44's built-in Kotlin
+  and the new Gradle DSL, keeping the existing build. A real migration, deliberately deferred —
+  not something to delete without doing the work.
+- **`unawaited_return_in_try_block`** is a new lint, and it found two genuine faults rather than
+  style noise. `image_compression_service` returned a future from inside a `try`, so a file-I/O
+  failure escaped the `catch` that promises a null; the rasteriser test returned one before its
+  `finally` disposed the image, freeing the pixels out from under the read. Both now `await`.
+
+**Known and accepted:** Impeller on Android has open regressions with `Texture` widgets across
+three GPU vendors (Adreno, Mali, PowerVR — the last is what this Infinix has, `IMGGralloc` in
+logcat). We already shipped Impeller before this upgrade, and the opt-out
+(`io.flutter.embedding.android.EnableImpeller`) is deprecated and being removed, so it is not a
+long-term escape. **`Color.value` is deprecated** in favour of `toARGB32()`; ten call sites,
+still functional, not yet migrated.
+
 **`SLIMSHOT_NATIVE_PREVIEW` is gone.** The native engine is the only engine, so a plain
 `flutter run` is the editor as it ships. The flag existed while `media_kit` was a live fallback;
 keeping it after everything moved native would have meant shipping a second, untested preview
