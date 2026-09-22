@@ -22,6 +22,7 @@ import '../features/video_editor/models/image_overlay_model.dart';
 import '../features/video_editor/models/video_segment.dart';
 import '../features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_overlay_model.dart';
+import '../features/video_editor/logic/text_overlay_geometry.dart';
 import '../features/video_editor/logic/tool_dismissal.dart';
 import '../features/video_editor/logic/timeline/timeline_geometry.dart';
 import '../features/video_editor/providers/video_editor_notifier.dart';
@@ -130,7 +131,12 @@ const EditorMenu _rootMenu = EditorMenu(
     // placeholder for a feature that ships one tap away, on the clip's own
     // menu. A wrong signpost rather than an unfinished tool, which is why it
     // goes where the audio menu's genuinely-unbuilt entry stays.
-    EditorTool(id: 'stickers', label: 'Stickers', icon: LucideIcons.smile),
+    // **Labelled for what it opens.** The picker offers emoji; GIFs and
+    // stickers need a content provider that does not exist yet, and a tool
+    // saying "Stickers" that shows emoji is the same wrong signpost the root
+    // menu's Effects entry was. The id stays `stickers` because it is
+    // persisted and matched elsewhere — only the label is the user's.
+    EditorTool(id: 'stickers', label: 'Emoji', icon: LucideIcons.smile),
   ],
 );
 
@@ -854,6 +860,44 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   void _deleteSelectedSegment() {
     ref.read(videoEditorProvider.notifier).deleteSelectedSegment();
     HapticFeedback.mediumImpact();
+  }
+
+  /// Drops [emoji] on the canvas as a text overlay.
+  ///
+  /// **An emoji is text, not a new overlay kind.** It renders through the
+  /// platform's own colour emoji face, so going this way it inherits the whole
+  /// text pipeline — the glyph atlas, per-character animation, mask, chroma
+  /// key, keyframes and export parity — all of it already device-verified. A
+  /// dedicated emoji overlay would be a second implementation of that.
+  ///
+  /// Unlike "Add text" this does **not** open the editor: the user has already
+  /// chosen what they want, and a keyboard over the canvas would be a second
+  /// decision nobody asked for. Tapping the overlay opens the editor as usual,
+  /// so styling and animation are one tap away.
+  void _addEmojiOverlay(String emoji) {
+    final editorState = ref.read(videoEditorProvider);
+    final notifier = ref.read(videoEditorProvider.notifier);
+
+    final proposedStart = Duration(
+      milliseconds: (editorState.currentPlaybackPosition * 1000).toInt(),
+    );
+    // Not clamped to the video's end — an overlay may outlast the video, the
+    // same rule text and audio already follow.
+    final proposedEnd = proposedStart + const Duration(seconds: 3);
+
+    final overlay = TextOverlayModel(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      text: emoji,
+      startTime: proposedStart,
+      endTime: proposedEnd,
+      referenceCanvasSize: ref.read(videoCanvasSizeProvider),
+      // An emoji at caption size reads as punctuation rather than as a
+      // sticker, so it lands at `kEmojiOverlayScale`. Still one scale value
+      // the pinch gesture edits from — nothing here is a special case for the
+      // renderer, only a different starting size.
+      scale: kEmojiOverlayScale,
+    );
+    notifier.addTextOverlay(overlay);
   }
 
   Future<void> _pickImageOverlay() async {
@@ -1803,7 +1847,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   } else if (tool.id == 'stickers') {
                     showEditorSheet<void>(
                       context,
-                      builder: (context) => const StickersDrawer(),
+                      builder: (context) => StickersDrawer(
+                        onEmojiSelected: _addEmojiOverlay,
+                      ),
                     );
                   } else if (tool.id == 'text' &&
                       editorState.currentMenuId == 'root') {

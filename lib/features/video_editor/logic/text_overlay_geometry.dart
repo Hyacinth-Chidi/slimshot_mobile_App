@@ -40,6 +40,15 @@ const double kDefaultTextBoxMargin = 32.0;
 const double kMinTextScale = 0.2;
 const double kMaxTextScale = 5.0;
 
+/// The scale an emoji dropped from the picker starts at.
+///
+/// An emoji is inserted as a text overlay, and at the caption size every other
+/// text starts at it reads as punctuation rather than as a sticker. This is
+/// only a starting *value* — the pinch gesture, the Transform sheet and
+/// keyframes all treat it as any other scale, so nothing downstream knows an
+/// emoji from a word. Inside [kMinTextScale]..[kMaxTextScale] by construction.
+const double kEmojiOverlayScale = 2.5;
+
 /// Reference → render pixel factor for [overlay] on [canvasSize].
 double textOverlayRenderScale(TextOverlayModel overlay, Size canvasSize) {
   final refSize = overlay.referenceCanvasSize;

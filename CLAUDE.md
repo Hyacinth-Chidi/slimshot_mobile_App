@@ -1929,6 +1929,38 @@ activeToolIds style/font/animation) were unreachable dead code — nothing ever 
 tool has **no submenu on purpose**: it would hold one item today, a tap tax on the most common
 action — add the submenu when templates/captions give it a second real entry.
 
+**An emoji is a text overlay, and that is the whole feature** (`logic/emoji_catalog.dart`,
+`panels/stickers_drawer.dart`, **awaiting device verification**). An emoji is a *character*: it
+renders through the platform's own colour emoji face, which is why one typed from the system
+keyboard already exported correctly before any of this existed — device-confirmed by the user.
+So the picker inserts a `TextOverlayModel` whose text is the emoji, and it inherits the glyph
+atlas, per-character animation, mask, chroma key, keyframes and export parity already verified.
+**Do not add an emoji overlay kind**, and do not bundle an emoji font: a dedicated kind would be
+a second implementation of the text pipeline, and a bundled face would add megabytes plus a
+second look that drifts from what the user's keyboard produces. `_addEmojiOverlay` deliberately
+does **not** open the text editor — the user has already chosen what they wanted, and a keyboard
+over the canvas is a second decision nobody asked for; tapping the overlay opens it as usual.
+`kEmojiOverlayScale` (2.5) is only a starting value, because an emoji at caption size reads as
+punctuation rather than as a sticker; nothing downstream knows an emoji from a word.
+
+**Every catalog entry must be one grapheme cluster**, pinned by `emoji_catalog_test.dart` across
+all ~590. A flag is two regional indicators and a skin tone is a base plus a modifier: a
+two-cluster entry would insert as two glyphs and animate as two characters, and a half-cluster
+renders as a hollow box — in the export as well as the preview. Entries are kept to Emoji 12
+(2019) and older for the same reason: a codepoint newer than the device's font is a box.
+`text_overlay_emoji_test.dart` pins the rasteriser half (clusters stay whole, cells are well
+formed, emoji paint ink). It deliberately does **not** assert colour — `flutter_test` has no
+colour emoji face behind its bundled test font, so such a test would pin the harness rather
+than the product; colour is a device fact.
+
+**The drawer had GIF and Sticker tabs and a search field, and all three were a mockup** — three
+hardcoded labels over a spinner that never resolved, with no callback, no selection and no
+insert. They are removed rather than left visible, which is the same call as the root menu's
+Effects entry: the rule protects *unfinished* tools, not ones promising content that has no
+provider behind it. GIFs need an animated source, and that means a video overlay (a GIF through
+the image path is `BitmapFactory`, one frozen frame) plus an API serving MP4 — a separate piece
+of work, not a wiring job.
+
 **The text selection frame is CapCut's** (`text_overlay_layer.dart`, awaiting device run): a solid
 white rectangle through the box's transformed corners, × delete top-left, pencil top-right,
 duplicate bottom-left, a **rotate + scale** handle bottom-right (finger distance from the centre
