@@ -166,14 +166,9 @@ class _ChromaKeySheetState extends ConsumerState<ChromaKeySheet> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
-            'Chroma key',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-            ),
-          ),
+          // No title: the menu said "Chroma" one tap ago. The Spacer keeps
+          // the switch and the tuning on the right.
+          const Spacer(),
           Row(
             children: [
               GestureDetector(

@@ -477,6 +477,30 @@ migration. Unknown names (e.g. `circleOpen` from old drafts) degrade to a hard c
   a height that lands before or after its content reads as a stutter. The sheet route fixes its
   own curve, so it takes only the durations. A panel slides in from *fully* below, like a sheet,
   not the old 40% nudge.
+- **A sheet does not repeat the name of the tool that opened it.** Tapping
+  "Transform" and being told "Transform" is a line of chrome describing what the
+  user just did. The five drawers have shipped titleless and nobody has missed
+  one; the space goes to the controls. What stays is a title that is *not* an
+  echo — the cover picker opens from an unlabelled card, and the speed curve's
+  header keeps the clip's resulting **duration**, the one number the graph does
+  not show.
+- **White on purple, never dark.** `primaryStart` is the chosen-state fill
+  everywhere (background tiles, effect grid, easing cells, the apply-to-all
+  check) and the glyph on it is white. The theme guard exempts exactly that
+  case.
+- **`ApplyToAllToggle` is a label and a check, not a Material `Switch`.** The
+  switch plus two stacked lines cost ~70px at the top of a sheet capped at 45%
+  of the screen, for a control glanced at once. The subtitle survives — "apply
+  to all" alone does not say what happens when it is off — but sits on the
+  label's line rather than under it, and the **whole row** is the tap target
+  rather than a 20px box at its end. `ApplyToAllButton` is left alone: it is a
+  copy *action*, already compact, and correctly reads as a button.
+- **The Transform sheet's mirrors live in its header**, not under the Rotate
+  ruler. Each tab is one continuous value set by dragging; a mirror is an
+  instant on/off that applies to the whole placement. Under a tab they were
+  invisible from the other two — a user had to already know they were there.
+  Icon-only with a tooltip, since a flip glyph beside the words "Flip H" says
+  it twice.
 - **Sheets open through `showEditorSheet`** (`widgets/panels/editor_sheet.dart`), never
   `showModalBottomSheet` directly — a test scans `lib/` for strays. It paints **no barrier tint**:
   a sheet here is a set of choices *about* the picture (a curve, a filter, a transition), and

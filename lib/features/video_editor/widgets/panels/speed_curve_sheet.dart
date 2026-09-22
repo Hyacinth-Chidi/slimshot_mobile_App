@@ -119,16 +119,11 @@ class _SpeedCurveSheetState extends ConsumerState<SpeedCurveSheet> {
         children: [
           Row(
             children: [
-              const Text(
-                'Speed curve',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
+              // No title — the tool that opened this was called "Curve". What
+              // stays is the clip's resulting **duration**, which is the
+              // number the curve is actually shaping and the only thing here
+              // the user cannot read off the graph.
               if (label.isNotEmpty) ...[
-                const SizedBox(width: 10),
                 Text(
                   label,
                   style: const TextStyle(

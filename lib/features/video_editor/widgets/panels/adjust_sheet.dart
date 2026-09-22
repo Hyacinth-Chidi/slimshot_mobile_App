@@ -77,14 +77,10 @@ class _AdjustSheetState extends ConsumerState<AdjustSheet> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Adjust',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
+                    // No title: the user tapped the tool to get here, so
+                    // repeating its name is chrome. The Spacer keeps the
+                    // action on the right where it has always been.
+                    const Spacer(),
                     GestureDetector(
                       key: const Key('adjust_done'),
                       onTap: () {

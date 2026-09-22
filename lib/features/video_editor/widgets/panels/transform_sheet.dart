@@ -94,13 +94,35 @@ class _TransformSheetState extends ConsumerState<TransformSheet> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Transform',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
+                    // **No title.** The user tapped "Transform" to get here;
+                    // repeating it is a line of chrome that says what they
+                    // just did. The tabs identify the sheet, and the five
+                    // drawers have shipped titleless without anyone missing
+                    // one. The space goes to the controls instead.
+                    //
+                    // **The mirrors live here, not under the Rotate ruler.**
+                    // Each tab is one continuous value set by dragging; a
+                    // mirror is an instant on/off that applies to the whole
+                    // placement. Under a tab they were invisible from the
+                    // other two — a user had to already know they existed.
+                    Row(
+                      children: [
+                        _flipToggle(
+                          key: const Key('flip_horizontal'),
+                          icon: LucideIcons.flipHorizontal,
+                          label: 'Flip H',
+                          on: segment.flipHorizontal,
+                          onTap: () => _notifier.toggleClipFlip(horizontal: true),
+                        ),
+                        const SizedBox(width: 8),
+                        _flipToggle(
+                          key: const Key('flip_vertical'),
+                          icon: LucideIcons.flipVertical,
+                          label: 'Flip V',
+                          on: segment.flipVertical,
+                          onTap: () => _notifier.toggleClipFlip(horizontal: false),
+                        ),
+                      ],
                     ),
                     ApplyToAllButton(
                       key: const Key('transform_apply_all'),
@@ -205,46 +227,20 @@ class _TransformSheetState extends ConsumerState<TransformSheet> {
           format: (v) => '${v.toStringAsFixed(2)}×',
         );
       case _Tab.rotate:
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _ruler(
-              segment: segment,
-              property: ClipProperty.canvasRotation,
-              value: shown(ClipProperty.canvasRotation),
-              min: -180,
-              max: 180,
-              unitsPerPixel: _kDegreesPerPixel,
-              // Right angles are what a rotation is usually reaching for; a
-              // reading of 89.6° is a mistake nobody meant.
-              snapPoints: const [0, 90, -90, 180, -180],
-              resetTo: 0.0,
-              format: (v) => '${v.toStringAsFixed(1)}°',
-            ),
-            const SizedBox(height: 12),
-            // Mirrors live with rotation because that is where a user looks
-            // for them, and because a mirror is the one orientation change a
-            // rotation cannot make.
-            Row(
-              children: [
-                _flipToggle(
-                  key: const Key('flip_horizontal'),
-                  icon: LucideIcons.flipHorizontal,
-                  label: 'Flip H',
-                  on: segment.flipHorizontal,
-                  onTap: () => _notifier.toggleClipFlip(horizontal: true),
-                ),
-                const SizedBox(width: 10),
-                _flipToggle(
-                  key: const Key('flip_vertical'),
-                  icon: LucideIcons.flipVertical,
-                  label: 'Flip V',
-                  on: segment.flipVertical,
-                  onTap: () => _notifier.toggleClipFlip(horizontal: false),
-                ),
-              ],
-            ),
-          ],
+        // The ruler alone: the mirrors moved to the header, where they are
+        // reachable from every tab.
+        return _ruler(
+          segment: segment,
+          property: ClipProperty.canvasRotation,
+          value: shown(ClipProperty.canvasRotation),
+          min: -180,
+          max: 180,
+          unitsPerPixel: _kDegreesPerPixel,
+          // Right angles are what a rotation is usually reaching for; a
+          // reading of 89.6° is a mistake nobody meant.
+          snapPoints: const [0, 90, -90, 180, -180],
+          resetTo: 0.0,
+          format: (v) => '${v.toStringAsFixed(1)}°',
         );
       case _Tab.position:
         return Column(
@@ -286,6 +282,12 @@ class _TransformSheetState extends ConsumerState<TransformSheet> {
 
   /// A mirror toggle in the sheet's selection language: `primaryStart` border
   /// over `highlight` fill when on, the plain surface when off.
+  /// A mirror toggle, icon-only for the header row.
+  ///
+  /// The label went with the move: a horizontal-flip arrow glyph beside the
+  /// words "Flip H" says the same thing twice, and the header has an
+  /// apply-to-all button to fit beside it. The tooltip keeps the name for
+  /// anyone who wants it.
   Widget _flipToggle({
     required Key key,
     required IconData icon,
@@ -293,40 +295,29 @@ class _TransformSheetState extends ConsumerState<TransformSheet> {
     required bool on,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      key: key,
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: on ? AppColors.highlight : AppColors.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: on ? AppColors.primaryStart : AppColors.border,
-            width: on ? 1.5 : 1,
+    return Tooltip(
+      message: label,
+      child: GestureDetector(
+        key: key,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: on ? AppColors.highlight : AppColors.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: on ? AppColors.primaryStart : AppColors.border,
+              width: on ? 1.5 : 1,
+            ),
           ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: on ? AppColors.textPrimary : AppColors.textSecondary,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: on ? AppColors.textPrimary : AppColors.textSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+          child: Icon(
+            icon,
+            size: 16,
+            color: on ? AppColors.textPrimary : AppColors.textSecondary,
+          ),
         ),
       ),
     );

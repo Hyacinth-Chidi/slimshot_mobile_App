@@ -90,13 +90,43 @@ void main() {
       expect(find.textContaining('°'), findsOneWidget);
     });
 
+    testWidgets('the mirrors are reachable from every tab', (tester) async {
+      // **They used to sit under the Rotate ruler**, which made them
+      // invisible from two of the three tabs: a user had to already know they
+      // were there. They are not a rotation either — the tabs are each one
+      // continuous value set by dragging, and a mirror is an instant on/off
+      // that applies to the clip's whole placement. So they live in the
+      // header, at the sheet's level, beside the other sheet-level action.
+      await pump(tester, notifierWith([clip('a')], selectedSegmentId: 'a'));
+
+      for (final tab in ['Scale', 'Rotate', 'Position']) {
+        await tester.tap(find.text(tab));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('flip_horizontal')),
+          findsOneWidget,
+          reason: 'mirrors must not hide behind the $tab tab',
+        );
+        expect(find.byKey(const Key('flip_vertical')), findsOneWidget);
+      }
+    });
+
+    testWidgets('the sheet does not repeat the name of the tool that opened it',
+        (tester) async {
+      // A user taps "Transform" and the sheet says "Transform" — a line of
+      // chrome telling them what they just did. The five drawers have shipped
+      // without a title and nobody has missed one; the space belongs to the
+      // controls.
+      await pump(tester, notifierWith([clip('a')], selectedSegmentId: 'a'));
+      expect(find.text('Transform'), findsNothing);
+      // The tabs are what identify the sheet, and they are still there.
+      expect(find.text('Scale'), findsOneWidget);
+    });
+
     testWidgets('Rotate offers two mirrors, each one undo step', (tester) async {
-      // A mirror is the one orientation change a rotation cannot make, and it
-      // lives where a user looks for it.
+      // A mirror is the one orientation change a rotation cannot make.
       final n = notifierWith([clip('a')], selectedSegmentId: 'a');
       await pump(tester, n);
-      await tester.tap(find.text('Rotate'));
-      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('flip_horizontal')));
       await tester.pump();

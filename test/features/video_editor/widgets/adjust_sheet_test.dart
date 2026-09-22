@@ -61,10 +61,7 @@ void main() {
     final n = notifierWith([clip('a'), clip('b')], selected: 'a');
     await pump(tester, n);
 
-    await tester.tap(find.descendant(
-      of: find.byType(ApplyToAllToggle),
-      matching: find.byType(Switch),
-    ));
+    await tester.tap(find.byType(ApplyToAllToggle));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Temperature'));
     await tester.pumpAndSettle();
@@ -108,10 +105,7 @@ void main() {
     await pump(tester, n);
     expect(tester.widget<ValueRuler>(find.byType(ValueRuler)).value, closeTo(0.4, 1e-9));
 
-    await tester.tap(find.descendant(
-      of: find.byType(ApplyToAllToggle),
-      matching: find.byType(Switch),
-    ));
+    await tester.tap(find.byType(ApplyToAllToggle));
     await tester.pumpAndSettle();
     expect(tester.widget<ValueRuler>(find.byType(ValueRuler)).value, closeTo(-0.2, 1e-9));
   });
