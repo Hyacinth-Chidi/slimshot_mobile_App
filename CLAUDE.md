@@ -1930,7 +1930,7 @@ tool has **no submenu on purpose**: it would hold one item today, a tap tax on t
 action — add the submenu when templates/captions give it a second real entry.
 
 **An emoji is a text overlay, and that is the whole feature** (`logic/emoji_catalog.dart`,
-`panels/stickers_drawer.dart`, **awaiting device verification**). An emoji is a *character*: it
+`panels/stickers_drawer.dart`, **device-verified**). An emoji is a *character*: it
 renders through the platform's own colour emoji face, which is why one typed from the system
 keyboard already exported correctly before any of this existed — device-confirmed by the user.
 So the picker inserts a `TextOverlayModel` whose text is the emoji, and it inherits the glyph
