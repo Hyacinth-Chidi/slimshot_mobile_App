@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/features/video_editor/models/image_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_segment.dart';

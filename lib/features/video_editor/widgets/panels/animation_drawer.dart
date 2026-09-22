@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/theme/lucide_icons.dart';
 
 import '../../providers/video_editor_notifier.dart';
 import '../../models/overlay_animation.dart';

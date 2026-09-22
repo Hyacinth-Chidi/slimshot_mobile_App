@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/theme/lucide_icons.dart';
 
 import '../../logic/text_overlay_geometry.dart';
 import '../../models/text_overlay_model.dart';

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/toast_utils.dart';

@@ -374,7 +374,12 @@ class VideoCompressionService {
         },
       );
 
-      return completer.future;
+      // Awaited rather than returned: an unawaited return escapes the catch
+      // below, so a rejected future would bypass the null this promises. The
+      // completer only ever completes with a value today, which makes this
+      // latent rather than live — and exactly the kind of thing that becomes
+      // live the day someone adds a completeError.
+      return await completer.future;
     } catch (e) {
       debugPrint('FFmpeg error: $e');
       return null;

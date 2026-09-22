@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../core/theme/lucide_icons.dart';
 
 import 'package:slimshotai/core/services/media_picker_service.dart';
 import 'package:slimshotai/core/utils/file_utils.dart';

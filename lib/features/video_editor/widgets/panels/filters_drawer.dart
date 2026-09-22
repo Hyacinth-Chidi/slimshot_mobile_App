@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/theme/lucide_icons.dart';
 
 import '../../logic/filter_presets.dart';
 import '../../models/filter_preset.dart';

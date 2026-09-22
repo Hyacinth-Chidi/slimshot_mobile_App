@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../core/theme/lucide_icons.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../core/services/ad_service.dart';
 import '../core/services/media_picker_service.dart';

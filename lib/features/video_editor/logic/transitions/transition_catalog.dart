@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/theme/lucide_icons.dart';
 
 /// The single source of truth for every transition SlimShot supports.
 ///

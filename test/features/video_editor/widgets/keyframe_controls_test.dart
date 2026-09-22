@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/core/theme/app_colors.dart';
 import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/widgets/editor_playback_controls.dart';

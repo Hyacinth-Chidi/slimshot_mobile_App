@@ -323,7 +323,9 @@ Future<_AlphaBuffer> _decodeAlpha(String pngPath) async {
   final frame = await codec.getNextFrame();
   final image = frame.image;
   try {
-    return _alphaFromImage(image);
+    // Awaited, or `finally` disposes the image *before* the pixels are read.
+    // Flutter 3.47's `unawaited_return_in_try_block` lint caught it.
+    return await _alphaFromImage(image);
   } finally {
     image.dispose();
   }

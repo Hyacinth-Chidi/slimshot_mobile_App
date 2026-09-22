@@ -42,7 +42,12 @@ class ImageCompressionService {
           return inputPath;
         }
 
-        return _compressToTargetSize(
+        // Awaited inside the try on purpose: returning the future
+        // unawaited hands it to the caller *before* the catch below is in
+        // scope, so a file-I/O failure in there escapes the handler that is
+        // meant to turn it into a null. Flutter 3.47's
+        // `unawaited_return_in_try_block` lint found this.
+        return await _compressToTargetSize(
           inputPath: inputPath,
           outputExt: outputExt,
           compressFormat: compressFormat,

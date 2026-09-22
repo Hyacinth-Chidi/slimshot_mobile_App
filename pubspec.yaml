@@ -19,7 +19,6 @@ dependencies:
   # UI & Animations
   flutter_animate: ^4.5.0
   google_fonts: ^6.2.1
-  lucide_icons:
   animations: ^2.2.0
 
   # State Management & Routing
@@ -71,6 +70,11 @@ flutter:
     - assets/
 
   fonts:
+    # Vendored from the abandoned lucide_icons package; see
+    # lib/core/theme/lucide_icons.dart for why.
+    - family: Lucide
+      fonts:
+        - asset: assets/fonts/lucide.ttf
     - family: Plus Jakarta Sans
       fonts:
         - asset: assets/fonts/PlusJakartaSans-Regular.ttf
