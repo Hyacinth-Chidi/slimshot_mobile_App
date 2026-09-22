@@ -301,6 +301,7 @@ internal class TimelinePlaybackEngine(
         if (isSamePlaybackStructure(parsed, parsedTransitions)) {
             clips = parsed
             transitions = parsedTransitions
+            applyDecoderBudget()
             canvasAspect = (canvas?.get("aspectRatio") as? Number)?.toDouble() ?: 0.0
             applyCanvasLook(canvas)
 
@@ -334,6 +335,7 @@ internal class TimelinePlaybackEngine(
 
         clips = parsed
         transitions = parsedTransitions
+        applyDecoderBudget()
         canvasAspect = (canvas?.get("aspectRatio") as? Number)?.toDouble() ?: 0.0
         applyCanvasLook(canvas)
         hasSentCompleted = false
@@ -957,6 +959,21 @@ internal class TimelinePlaybackEngine(
         // there before, usually zero.
         applyOverlays(timelinePositionSeconds())
         renderer.setPreviewOverlays(list)
+    }
+
+    /**
+     * How many video-overlay decoders the preview may open beside this
+     * timeline's clip lanes. Recomputed on every `setTimeline`, because the
+     * lane count is the one input that changes: a project of plain cuts
+     * decodes on one lane, and the first transition brings up the second,
+     * which costs the same throughput as an overlay would. The device half
+     * ([DeviceDecoderFacts.avc]) is read once and cached.
+     */
+    private fun applyDecoderBudget() {
+        val lanes = DecoderBudget.lanesFor(hasTransitions = transitions.isNotEmpty())
+        renderer.setPreviewOverlayDecoderCap(
+            DecoderBudget.previewOverlayCapacity(DeviceDecoderFacts.avc, lanes),
+        )
     }
 
     /**

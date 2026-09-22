@@ -2273,7 +2273,7 @@ under pressure. That is not ours to prevent, so it must be survivable: `advanceT
 a toast** through the same `onOverlayFailed` the lane fallback uses. The export path could assume a
 healthy codec because it owns the lifecycle; a preview decoder cannot.
 
-**The measured reason it happens at all — and the caps are wrong** (not yet changed). On the
+**The measured reason it happens at all — and the caps were wrong.** On the
 Infinix (Unisoc, Android 12), `adb shell dumpsys media.player` reports for `c2.unisoc.avc.decoder`:
 
 | | |
@@ -2291,13 +2291,34 @@ clip lanes at 30fps spend 60 of that; each 1080p overlay spends 30. Two lanes pl
 `KEY_MAX_WIDTH`/`KEY_MAX_HEIGHT` are adaptive-playback buffer hints, not output scaling, so
 MediaCodec offers no portable way to decode a stream below its native size.
 
-`maxSupportedInstances` is read **only** inside `ExportCapabilities.probe()`, which merely logs,
-while the numbers that govern behaviour are hardcoded in two unrelated files
-(`OverlayDrawBuilder.MAX_OVERLAY_DECODERS`, `OverlayAudioPlayers.MAX_PLAYERS`) and compared
-against nothing. For the one resource that is genuinely scarce the app neither probes nor degrades
-— the standing rule unfollowed. A budget derived from `blocks-per-second` is the next piece of
-work, deliberately **not** bundled with this crash fix: shipping both together would leave no way
-to tell which half was wrong.
+**The preview's overlay cap is now a budget, not a constant** (`nativepreview/DecoderBudget.kt`,
+**awaiting device verification**; shipped separately from the crash fix on purpose, so a
+regression in either half names itself). The cap used to be `MAX_OVERLAY_DECODERS = 2`, read by
+nothing that knew the device — the one genuinely scarce resource the app neither probed nor
+degraded on. `DeviceDecoderFacts.avc` reads the AVC decoder **once**: `maxSupportedInstances` and
+`VideoCapabilities.getSupportedFrameRatesFor(1920, 1080).upper`, which is the platform's own
+`blocks-per-second ÷ macroblocks` — the portable route to throughput, and it **throws** for a
+size the codec cannot open, which is how "no 4K" shows up without parsing `dumpsys`. It logs one
+`decoder facts:` line under `SlimshotExport` with both numbers, the size range and the caps they
+yield, so the next device report arrives with measurements instead of guesses.
+
+`DecoderBudget.previewOverlayCapacity(device, lanes)` costs every stream — a clip lane or an
+overlay — as a **reference 1080p30** and takes the tighter of throughput and instances, floored
+at 1 (zero would silently remove video overlays as a feature) and capped at `PREVIEW_CEILING` 6
+(a memory bound: each decoder holds five to eight 1080p output buffers). **No headroom is held
+back**, on evidence: the Infinix plays one lane plus two overlays — 90 of its ~105 — for minutes,
+and a 15% margin would have cut that to one. So it yields the same **2** that always shipped
+there with no transition, and **1** through a transition, where the second lane spends the
+throughput the second overlay wanted. A device that will not describe itself gets `LEGACY_CAP` 2.
+The lane count is why it is recomputed on every `setTimeline` (`applyDecoderBudget`), pushed
+through `TransitionRenderer.setPreviewOverlayDecoderCap` and applied to the builder's
+`maxVideoDecoders` on every draw. **It bounds opening, never evicts**: a decoder already live
+when a transition drops the cap plays on until its overlay expires, because a picture vanishing
+mid-frame for no visible reason is worse than one frame over budget. Per-stream accounting (a
+720p overlay costs less than it is charged here) and eviction are the expensive half and are
+deliberately not built. **The export keeps the constant 2** — it is not realtime, so a decoder
+over the throughput line only slows the run. `OverlayAudioPlayers.MAX_PLAYERS` is untouched: those
+players hold no video decoder.
 
 **What it unlocks**: an overlay chroma key and blend modes, each now a shader line rather than an
 impossibility, and an exact feather instead of a hard-edged clip.

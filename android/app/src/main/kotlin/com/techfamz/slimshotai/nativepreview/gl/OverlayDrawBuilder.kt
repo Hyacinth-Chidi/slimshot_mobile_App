@@ -46,6 +46,20 @@ internal class OverlayDrawBuilder(
 ) {
 
     /**
+     * Most video-overlay decoders this builder may hold open at once. The
+     * export leaves it at [MAX_OVERLAY_DECODERS]; the preview sets it from
+     * [com.techfamz.slimshotai.nativepreview.DecoderBudget], which reads what
+     * the device's decoder actually commits to. It bounds *opening*: a
+     * decoder already live when the cap drops (a transition added while two
+     * overlays play) runs on until its overlay expires — evicting one
+     * mid-frame would be a picture vanishing for no visible reason.
+     * Written by the renderer on the GL thread, read here on the same thread;
+     * volatile so a write from a setter elsewhere is never stale.
+     */
+    @Volatile
+    var maxVideoDecoders: Int = MAX_OVERLAY_DECODERS
+
+    /**
      * Where the builder reports what it could not do. Export counts these into
      * its end-of-run warnings; the counters stayed behind because they are the
      * export's bookkeeping, not the builder's.
@@ -54,7 +68,7 @@ internal class OverlayDrawBuilder(
         /** An overlay's image, atlas or video could not be opened or decoded. */
         fun onOverlayFailed()
 
-        /** A video overlay was skipped because [MAX_OVERLAY_DECODERS] were live. */
+        /** A video overlay was skipped because [maxVideoDecoders] were already live. */
         fun onDecoderSkipped()
 
         /** A video overlay's frame did not arrive within [frameWaitMs]. */
@@ -383,7 +397,7 @@ internal class OverlayDrawBuilder(
 
         var decoder = videoState.decoder
         if (decoder == null) {
-            if (videoStates.count { it.value.decoder != null } >= MAX_OVERLAY_DECODERS) {
+            if (videoStates.count { it.value.decoder != null } >= maxVideoDecoders) {
                 videoState.failed = true
                 events.onDecoderSkipped()
                 return null
@@ -440,7 +454,7 @@ internal class OverlayDrawBuilder(
     ): OverlayRenderer.Draw? {
         var worker = realtimeDecoders[overlay.id]
         if (worker == null) {
-            if (realtimeDecoders.size >= MAX_OVERLAY_DECODERS) {
+            if (realtimeDecoders.size >= maxVideoDecoders) {
                 events.onDecoderSkipped()
                 return null
             }
@@ -519,10 +533,14 @@ internal class OverlayDrawBuilder(
 
     companion object {
         /**
-         * Most video-overlay decoders live at once, on top of the two clip
-         * lanes. Three simultaneous decoders is already the practical ceiling
-         * on entry-level hardware; an overlay beyond the cap is skipped with a
-         * warning rather than risking every codec on the device failing.
+         * The export's cap on video-overlay decoders, and the preview's when
+         * the device will not describe its decoder
+         * ([com.techfamz.slimshotai.nativepreview.DecoderBudget.LEGACY_CAP]).
+         * The export keeps a constant on purpose: it is not realtime, so a
+         * decoder over the throughput line merely slows the run rather than
+         * inviting a reclaim, and its two clip lanes are its own
+         * `ExportClipDecoder`s, not ExoPlayer's. An overlay beyond the cap is
+         * skipped with a warning rather than risking every codec on the device.
          */
         const val MAX_OVERLAY_DECODERS = 2
 

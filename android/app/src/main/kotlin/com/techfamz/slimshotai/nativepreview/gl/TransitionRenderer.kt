@@ -403,11 +403,29 @@ internal class TransitionRenderer(
 
     private var previewOverlayWarned = false
 
+    /**
+     * How many video-overlay decoders the preview may open, from the engine's
+     * `DecoderBudget` — it depends on how many clip lanes are decoding, which
+     * only the engine knows. Applied to the builder on every draw, so a cap
+     * that arrives between two `setOverlays` still lands.
+     */
+    @Volatile
+    private var previewOverlayDecoderCap = OverlayDrawBuilder.MAX_OVERLAY_DECODERS
+
     /** Replaces the overlays the preview draws. Cheap; touches no player. */
     fun setPreviewOverlays(list: List<NativeTimelineOverlay>) {
         if (released) return
         previewOverlayList = list
         pendingPreviewOverlays = list
+        requestRender()
+    }
+
+    /** Sets the preview's cap on live video-overlay decoders. Any thread. */
+    fun setPreviewOverlayDecoderCap(cap: Int) {
+        if (released) return
+        val bounded = cap.coerceAtLeast(1)
+        if (bounded == previewOverlayDecoderCap) return
+        previewOverlayDecoderCap = bounded
         requestRender()
     }
 
@@ -523,6 +541,7 @@ internal class TransitionRenderer(
             previewOverlayDraws = emptyList()
             return
         }
+        builder.maxVideoDecoders = previewOverlayDecoderCap
         val clock = overlayClockSeconds
         previewOverlayDraws = try {
             builder.releaseExpired(clock)
