@@ -27,7 +27,7 @@ class OpacityPanel extends StatelessWidget {
           children: [
             Icon(
               opacity == 0 ? LucideIcons.eyeOff : LucideIcons.contrast,
-              color: Colors.white54,
+              color: AppColors.textSecondary,
               size: 20,
             ),
             const SizedBox(width: 16),
@@ -55,7 +55,7 @@ class OpacityPanel extends StatelessWidget {
               child: Text(
                 '${(opacity * 100).round()}%',
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),

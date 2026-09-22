@@ -457,6 +457,19 @@ migration. Unknown names (e.g. `circleOpen` from old drafts) degrade to a hard c
 - **Serialisation:** hand-written `toJson`/`fromJson`, defensive on read
   (`(x as num?)?.toDouble() ?? default`).
 - Colours from `AppColors`, never hard-coded. Dark theme only. Lucide icons.
+  **`panel_theme_test.dart` enforces this across `widgets/panels/`**, because
+  the rule held in the newer sheets and had never reached the five older
+  drawers — 40 sites on `Colors.white`/`white54`. Not pedantry:
+  `textPrimary` is Zinc 50 and `textSecondary` Zinc 400, a different hue *and*
+  weight from pure white and 54% white, so the two generations of sheet read
+  differently side by side. Titles diverged with them, 13px against 14px.
+  What the test deliberately allows, because both generations already agree
+  and the theme has no token for them: `white24` for a grab handle, `white12`
+  for an inactive slider track, `white10` for a divider, and pure white for a
+  glyph sitting *on* the purple accent, where the contrast is the point.
+  **A selected tile is `primaryStart` over `border`** — the Background,
+  Effects and easing grids' pattern; the crop panel's white ring was the last
+  surface saying "selected" in a second language.
 - **Motion comes from `AppMotion`** (`core/theme/app_motion.dart`): Material 3 emphasized —
   380ms decelerate in, 260ms accelerate out, leaving always quicker than arriving. Sheets
   (`showEditorSheet`), the bottom-area switcher (`EditorPanelSwitcher`), the `AnimatedSize` around

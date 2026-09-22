@@ -331,7 +331,7 @@ class _FiltersDrawerState extends ConsumerState<FiltersDrawer> {
                         padding: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
                           border: isSelected
-                              ? const Border(bottom: BorderSide(color: Colors.white, width: 2))
+                              ? const Border(bottom: BorderSide(color: AppColors.textPrimary, width: 2))
                               : null,
                         ),
                         child: Text(
@@ -356,7 +356,7 @@ class _FiltersDrawerState extends ConsumerState<FiltersDrawer> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   child: Row(
                     children: [
-                      const Icon(LucideIcons.sun, color: Colors.white54, size: 16),
+                      const Icon(LucideIcons.sun, color: AppColors.textSecondary, size: 16),
                       Expanded(
                         child: SliderTheme(
                           data: const SliderThemeData(
@@ -376,7 +376,7 @@ class _FiltersDrawerState extends ConsumerState<FiltersDrawer> {
                         width: 36,
                         child: Text(
                           '${(intensity * 100).round()}',
-                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
                           textAlign: TextAlign.right,
                         ),
                       ),
@@ -438,7 +438,7 @@ class _FiltersDrawerState extends ConsumerState<FiltersDrawer> {
                                         )
                                       : const Icon(
                                           LucideIcons.ban,
-                                          color: Colors.white54,
+                                          color: AppColors.textSecondary,
                                         ),
                                 ),
                               ),

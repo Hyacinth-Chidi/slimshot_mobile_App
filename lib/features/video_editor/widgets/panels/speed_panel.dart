@@ -21,7 +21,7 @@ class SpeedPanel extends StatelessWidget {
       return Center(
         child: Text(
           emptyMessage!,
-          style: const TextStyle(color: Colors.white),
+          style: const TextStyle(color: AppColors.textPrimary),
         ),
       );
     }
@@ -31,7 +31,7 @@ class SpeedPanel extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Icon(LucideIcons.gauge, color: Colors.white54, size: 20),
+            const Icon(LucideIcons.gauge, color: AppColors.textSecondary, size: 20),
             const SizedBox(width: 16),
             Expanded(
               child: SliderTheme(
@@ -55,7 +55,7 @@ class SpeedPanel extends StatelessWidget {
               child: Text(
                 '${displaySpeed.toStringAsFixed(1)}x',
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),

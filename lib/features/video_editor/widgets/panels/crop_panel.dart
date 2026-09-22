@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
 import '../../models/video_editor_state.dart';
@@ -50,7 +51,7 @@ class CropPanel extends StatelessWidget {
         Widget ratioIcon;
         if (ratio == EditorCropRatio.custom) {
           ratioIcon = const Icon(LucideIcons.crop,
-              color: Colors.white, size: _kGlyphEdge);
+              color: AppColors.textPrimary, size: _kGlyphEdge);
         } else {
           final r = ratio.ratio!;
           double width = _kGlyphEdge;
@@ -64,7 +65,7 @@ class CropPanel extends StatelessWidget {
             width: width,
             height: height,
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.white, width: 1.5),
+              border: Border.all(color: AppColors.textPrimary, width: 1.5),
               borderRadius: BorderRadius.circular(2),
             ),
           );
@@ -78,9 +79,14 @@ class CropPanel extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(12),
-              border: isSelected
-                  ? Border.all(color: Colors.white, width: 2)
-                  : Border.all(color: Colors.transparent, width: 2),
+              // Selection is the purple accent over a resting border, the
+              // pattern every other tile grid here uses (Background, Effects,
+              // the easing cells). A white ring said "selected" in a second
+              // visual language on the one panel that had never been aligned.
+              border: Border.all(
+                color: isSelected ? AppColors.primaryStart : AppColors.border,
+                width: 2,
+              ),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

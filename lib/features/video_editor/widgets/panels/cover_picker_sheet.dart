@@ -246,19 +246,19 @@ class _CoverPickerSheetState extends State<CoverPickerSheet> {
                             height: 14,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                             ),
                           )
                         : const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(LucideIcons.check,
-                                  size: 14, color: Colors.white),
+                                  size: 14, color: AppColors.textPrimary),
                               SizedBox(width: 6),
                               Text(
                                 'Use',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: AppColors.textPrimary,
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -366,7 +366,7 @@ class _CoverPickerSheetState extends State<CoverPickerSheet> {
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(6),
                                     border: Border.all(
-                                      color: Colors.white,
+                                      color: AppColors.textPrimary,
                                       width: 2.5,
                                     ),
                                     boxShadow: [

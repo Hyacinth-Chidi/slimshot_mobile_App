@@ -92,7 +92,7 @@ class _AnimationDrawerState extends ConsumerState<AnimationDrawer> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   child: Row(
                     children: [
-                      const Icon(LucideIcons.timer, color: Colors.white54, size: 16),
+                      const Icon(LucideIcons.timer, color: AppColors.textSecondary, size: 16),
                       Expanded(
                         child: SliderTheme(
                           data: const SliderThemeData(
@@ -120,7 +120,7 @@ class _AnimationDrawerState extends ConsumerState<AnimationDrawer> {
                         width: 40,
                         child: Text(
                           '${activeDuration.toStringAsFixed(1)}s',
-                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
                           textAlign: TextAlign.right,
                         ),
                       ),
@@ -133,7 +133,7 @@ class _AnimationDrawerState extends ConsumerState<AnimationDrawer> {
               // Grid
               Expanded(
                 child: _activeTabIndex == 2
-                    ? const Center(child: Text("Combo coming soon!", style: TextStyle(color: Colors.white54)))
+                    ? const Center(child: Text("Combo coming soon!", style: TextStyle(color: AppColors.textSecondary)))
                     : GridView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -201,7 +201,7 @@ class _AnimationDrawerState extends ConsumerState<AnimationDrawer> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           border: isSelected
-              ? const Border(bottom: BorderSide(color: Colors.white, width: 2))
+              ? const Border(bottom: BorderSide(color: AppColors.textPrimary, width: 2))
               : null,
         ),
         child: Text(

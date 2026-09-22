@@ -47,7 +47,7 @@ class TransitionsDrawer extends ConsumerWidget {
                 child: Center(
                   child: Text(
                     'Split the video first to add\ntransitions between clips.',
-                    style: TextStyle(color: Colors.white54, fontSize: 14),
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -110,7 +110,7 @@ class TransitionsDrawer extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   child: Row(
                     children: [
-                      const Icon(LucideIcons.timer, color: Colors.white54, size: 16),
+                      const Icon(LucideIcons.timer, color: AppColors.textSecondary, size: 16),
                       Expanded(
                         child: SliderTheme(
                           data: const SliderThemeData(
@@ -137,7 +137,7 @@ class TransitionsDrawer extends ConsumerWidget {
                         width: 40,
                         child: Text(
                           '${currentDuration.toStringAsFixed(1)}s',
-                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
                           textAlign: TextAlign.right,
                         ),
                       ),

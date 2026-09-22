@@ -43,7 +43,7 @@ class ApplyToAllToggle extends StatelessWidget {
                   const Text(
                     'Apply to all clips',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -52,7 +52,7 @@ class ApplyToAllToggle extends StatelessWidget {
                   Text(
                     subtitle,
                     style: const TextStyle(
-                      color: Colors.white54,
+                      color: AppColors.textSecondary,
                       fontSize: 11.5,
                     ),
                   ),

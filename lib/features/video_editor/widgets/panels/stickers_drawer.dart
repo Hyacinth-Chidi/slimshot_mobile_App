@@ -55,14 +55,14 @@ class _StickersDrawerState extends State<StickersDrawer> {
                     children: [
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 12.0),
-                        child: Icon(LucideIcons.search, color: Colors.white54, size: 18),
+                        child: Icon(LucideIcons.search, color: AppColors.textSecondary, size: 18),
                       ),
                       Expanded(
                         child: TextField(
-                          style: TextStyle(color: Colors.white, fontSize: 14),
+                          style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
                           decoration: InputDecoration(
                             hintText: 'Search...',
-                            hintStyle: TextStyle(color: Colors.white54, fontSize: 14),
+                            hintStyle: TextStyle(color: AppColors.textSecondary, fontSize: 14),
                             border: InputBorder.none,
                             isDense: true,
                             contentPadding: EdgeInsets.zero,
@@ -91,7 +91,7 @@ class _StickersDrawerState extends State<StickersDrawer> {
                         padding: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
                           border: isSelected
-                              ? const Border(bottom: BorderSide(color: Colors.white, width: 2))
+                              ? const Border(bottom: BorderSide(color: AppColors.textPrimary, width: 2))
                               : null,
                         ),
                         child: Text(
@@ -125,7 +125,7 @@ class _StickersDrawerState extends State<StickersDrawer> {
                       padding: EdgeInsets.all(12.0),
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ),

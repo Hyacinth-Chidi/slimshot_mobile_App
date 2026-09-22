@@ -48,7 +48,7 @@ class ZoomPanel extends StatelessWidget {
               child: Text(
                 '$zoomPercent%',
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -63,7 +63,7 @@ class ZoomPanel extends StatelessWidget {
           children: [
             const Text(
               'Pinch to adjust • Drag to pan',
-              style: TextStyle(color: Colors.white54, fontSize: 12),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
             if (currentScale > 1.0)
               GestureDetector(
