@@ -110,9 +110,6 @@ class _AdjustSheetState extends ConsumerState<AdjustSheet> {
                       if (segment != null)
                         ApplyToAllToggle(
                           value: _toProject,
-                          subtitle: _toProject
-                              ? 'Adjusting the whole video'
-                              : 'Adjusting the selected clip only',
                           onChanged: (v) => setState(() => _toProject = v),
                         ),
                       const SizedBox(height: 6),

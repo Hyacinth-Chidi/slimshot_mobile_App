@@ -303,11 +303,8 @@ class _FiltersDrawerState extends ConsumerState<FiltersDrawer> {
               ApplyToAllToggle(
                 value: appliesToAll,
                 enabled: editorState.segments.length > 1,
-                subtitle: appliesToAll
-                    ? 'One look over the whole video'
-                    : (selectedSegment == null
-                        ? 'Select a clip on the timeline to filter it'
-                        : 'Filtering the selected clip only'),
+                // Nothing when it is on: the label already says it.
+                // Off, the label says nothing about what *is* happening.
                 onChanged: notifier.setFilterAppliesToAll,
               ),
 

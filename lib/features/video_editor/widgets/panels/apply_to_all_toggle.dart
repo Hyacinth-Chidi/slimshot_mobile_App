@@ -8,8 +8,12 @@ import '../../../../core/theme/lucide_icons.dart';
 ///
 /// Shared by the filter, transition and adjust sheets so the control reads the
 /// same in all three: the same place, the same wording, the same affordance.
-/// [subtitle] says what the *current* setting will do, because "apply to all"
-/// on its own does not tell the user what happens when it is off.
+///
+/// **The label and the check, and nothing else.** It carried a second line
+/// explaining the current state — "One look over the whole video", "Only the
+/// cut you tapped" — which device-reading showed as two phrasings of one fact
+/// sitting side by side. A checkbox does not need prose to say whether it is
+/// ticked.
 ///
 /// **A label and a check, not a Material `Switch`.** The switch plus two
 /// stacked lines came to about 70px at the top of a sheet capped at 45% of the
@@ -26,13 +30,11 @@ class ApplyToAllToggle extends StatelessWidget {
     super.key,
     required this.value,
     required this.onChanged,
-    required this.subtitle,
     this.enabled = true,
   });
 
   final bool value;
   final ValueChanged<bool> onChanged;
-  final String subtitle;
 
   /// False when the choice cannot apply — a single-clip project has nothing to
   /// apply "to all" of. Shown dimmed rather than hidden, so the control does
@@ -57,31 +59,14 @@ class ApplyToAllToggle extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
           child: Row(
             children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    const Text(
-                      'Apply to all clips',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // On one line with the label rather than stacked under it:
-                    // it is a qualifier, and stacking it was half the height.
-                    Flexible(
-                      child: Text(
-                        subtitle,
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 11.5,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+              const Expanded(
+                child: Text(
+                  'Apply to all',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               const SizedBox(width: 10),

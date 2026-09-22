@@ -490,10 +490,11 @@ migration. Unknown names (e.g. `circleOpen` from old drafts) degrade to a hard c
   case.
 - **`ApplyToAllToggle` is a label and a check, not a Material `Switch`.** The
   switch plus two stacked lines cost ~70px at the top of a sheet capped at 45%
-  of the screen, for a control glanced at once. The subtitle survives — "apply
-  to all" alone does not say what happens when it is off — but sits on the
-  label's line rather than under it, and the **whole row** is the tap target
-  rather than a 20px box at its end. `ApplyToAllButton` is left alone: it is a
+  of the screen, for a control glanced at once. It is **"Apply to all" and the
+  check, nothing else** — the explanatory second line went too, because a
+  checkbox does not need prose to say whether it is ticked and the sheet read
+  "Apply to all clips · One look over the whole video", one fact twice. The
+  **whole row** is the tap target rather than a 20px box at its end. `ApplyToAllButton` is left alone: it is a
   copy *action*, already compact, and correctly reads as a button.
 - **The Transform sheet's mirrors live in its header**, not under the Rotate
   ruler. Each tab is one continuous value set by dragging; a mirror is an

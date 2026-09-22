@@ -98,9 +98,6 @@ class TransitionsDrawer extends ConsumerWidget {
               ApplyToAllToggle(
                 value: editorState.transitionAppliesToAll,
                 enabled: editorState.segments.length > 2,
-                subtitle: editorState.transitionAppliesToAll
-                    ? 'The same transition at every cut'
-                    : 'Only the cut you tapped',
                 onChanged: notifier.setTransitionAppliesToAll,
               ),
 

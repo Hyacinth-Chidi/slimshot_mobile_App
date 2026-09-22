@@ -18,7 +18,6 @@ void main() {
       ApplyToAllToggle(
         value: false,
         onChanged: (_) {},
-        subtitle: 'Only this clip',
       ),
     ));
 
@@ -31,17 +30,18 @@ void main() {
     );
   });
 
-  testWidgets('the subtitle survives, because it says what the state does',
-      (tester) async {
-    // "Apply to all" alone does not tell a user what happens when it is off.
-    await tester.pumpWidget(host(
-      ApplyToAllToggle(
-        value: false,
-        onChanged: (_) {},
-        subtitle: 'Only this clip',
-      ),
-    ));
-    expect(find.text('Only this clip'), findsOneWidget);
+  testWidgets('it is the label and the check, and nothing else', (tester) async {
+    // **Device-reported:** it carried a second line explaining the state —
+    // the filters sheet read "Apply to all clips" beside "One look over the
+    // whole video", two phrasings of one fact side by side. A checkbox does
+    // not need prose to say whether it is ticked.
+    for (final on in [true, false]) {
+      await tester.pumpWidget(host(
+        ApplyToAllToggle(value: on, onChanged: (_) {}),
+      ));
+      expect(find.text('Apply to all'), findsOneWidget);
+      expect(find.byType(Text), findsOneWidget);
+    }
   });
 
   testWidgets('tapping anywhere on the row flips it', (tester) async {
@@ -51,11 +51,10 @@ void main() {
       ApplyToAllToggle(
         value: false,
         onChanged: (v) => got = v,
-        subtitle: 'Only this clip',
       ),
     ));
 
-    await tester.tap(find.text('Apply to all clips'));
+    await tester.tap(find.text('Apply to all'));
     expect(got, isTrue);
   });
 
@@ -68,11 +67,10 @@ void main() {
         value: false,
         enabled: false,
         onChanged: (_) => taps++,
-        subtitle: 'Only this clip',
       ),
     ));
 
-    await tester.tap(find.text('Apply to all clips'), warnIfMissed: false);
+    await tester.tap(find.text('Apply to all'), warnIfMissed: false);
     expect(taps, 0);
   });
 }
