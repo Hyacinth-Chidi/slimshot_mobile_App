@@ -2490,3 +2490,11 @@ criteria, not aspirations.
 - No audio disappearing silently, and no gap in audio at a transition.
 - Applying or retuning a transition must not force unrelated clips to reload.
 - Don't remove unfinished tools â€” keep them visible and implement later.
+  **The exception is a tool that is not unfinished but misplaced.** The root
+  menu carried an `effects` entry whose handler is gated on the clip menu, so
+  it fell through to "Effects controls coming soon" for a feature that is
+  built and ships one tap away on the clip's own menu. That is a wrong
+  signpost, not a promise of future work, and it is gone
+  (`editor_menu_test.dart` pins it). The **audio** menu's `effects` entry
+  stays: no audio-effect code exists anywhere, so the rule applies to it
+  exactly as written.

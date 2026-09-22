@@ -125,7 +125,11 @@ const EditorMenu _rootMenu = EditorMenu(
     // menu, the same way Filters works.
     EditorTool(id: 'adjust', label: 'Adjust', icon: LucideIcons.slidersHorizontal),
     EditorTool(id: 'animate', label: 'Animate', icon: LucideIcons.clapperboard),
-    EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
+    // **No Effects here.** An effect belongs to a clip, so the real sheet is
+    // gated on the clip menu — and this entry fell through to a "coming soon"
+    // placeholder for a feature that ships one tap away, on the clip's own
+    // menu. A wrong signpost rather than an unfinished tool, which is why it
+    // goes where the audio menu's genuinely-unbuilt entry stays.
     EditorTool(id: 'stickers', label: 'Stickers', icon: LucideIcons.smile),
   ],
 );
@@ -1788,8 +1792,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     _showChromaKeySheet();
                   } else if (tool.id == 'effects' &&
                       editorState.currentMenuId == 'edit') {
-                    // Gated on the clip menu: the root and audio menus carry an
-                    // `effects` tool of their own (unbuilt, and deliberately
+                    // Gated on the clip menu: the audio menu carries an
+                    // `effects` tool of its own (unbuilt, and deliberately
                     // left visible), and an effect without a clip has no
                     // target.
                     showEditorSheet<void>(
