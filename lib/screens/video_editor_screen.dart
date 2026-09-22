@@ -125,7 +125,13 @@ const EditorMenu _rootMenu = EditorMenu(
     // filter preset is not. Project-level from here; per clip from the clip
     // menu, the same way Filters works.
     EditorTool(id: 'adjust', label: 'Adjust', icon: LucideIcons.slidersHorizontal),
-    EditorTool(id: 'animate', label: 'Animate', icon: LucideIcons.clapperboard),
+    // **No Animate here.** An animation belongs to the thing being animated:
+    // `animation` opens `AnimationDrawer` from the image- and video-overlay
+    // menus, and text has the Animation tab in its editor sheet. The root
+    // menu has nothing selected, so there was no target — and the id
+    // `animate` was handled by nothing at all, falling through to a "coming
+    // soon" placeholder for a feature that ships one tap away. Same wrong
+    // signpost as Effects below, same removal.
     // **No Effects here.** An effect belongs to a clip, so the real sheet is
     // gated on the clip menu — and this entry fell through to a "coming soon"
     // placeholder for a feature that ships one tap away, on the clip's own

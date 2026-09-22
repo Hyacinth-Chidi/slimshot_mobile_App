@@ -1953,6 +1953,12 @@ formed, emoji paint ink). It deliberately does **not** assert colour — `flutte
 colour emoji face behind its bundled test font, so such a test would pin the harness rather
 than the product; colour is a device fact.
 
+**The picker stops at `kEditorSheetPreviewFraction` (45%), not at the audio library's 0.7.**
+Choosing an emoji is a choice *for a frame* — the user is looking at where it will land — so the
+device-reported rule that a tall sheet hides the very frame being chosen for applies here as it
+does to Filters or Background. A grid pays nothing for the cap because it scrolls, where the
+audio library is a list to read down; at 45% several rows still show with the canvas in view.
+
 **The drawer had GIF and Sticker tabs and a search field, and all three were a mockup** — three
 hardcoded labels over a spinner that never resolved, with no callback, no selection and no
 insert. They are removed rather than left visible, which is the same call as the root menu's
@@ -2548,6 +2554,13 @@ criteria, not aspirations.
   it fell through to "Effects controls coming soon" for a feature that is
   built and ships one tap away on the clip's own menu. That is a wrong
   signpost, not a promise of future work, and it is gone
-  (`editor_menu_test.dart` pins it). The **audio** menu's `effects` entry
+  (`editor_menu_test.dart` pins it). The root menu's **`animate`** entry went
+  the same way and was worse: the string appeared *once* in the whole
+  codebase — the entry itself — so nothing handled it at all, while the real
+  tool ships as `animation` on the image- and video-overlay menus and as the
+  text editor's Animation tab. An animation also needs a target, and the root
+  menu is the no-selection menu. The **audio** menu's `effects` entry
   stays: no audio-effect code exists anywhere, so the rule applies to it
-  exactly as written.
+  exactly as written, and `templates` keeps its deliberate "coming soon"
+  panel for the same reason. **Clips still have no in/out animation tool**;
+  if one is built its home is the clip menu, with a handler.

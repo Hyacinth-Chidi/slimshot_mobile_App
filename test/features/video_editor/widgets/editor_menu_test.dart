@@ -36,6 +36,21 @@ void main() {
     expect(menuSource('_editMenu'), contains("id: 'effects'"));
   });
 
+  test('Animate is not on the root menu, and Animation is on the overlays', () {
+    // `animate` was handled by nothing — the string appeared once in the
+    // codebase, the entry itself — so it fell through to a "coming soon"
+    // placeholder while the real tool shipped under the id `animation`, one
+    // tap away on whatever was being animated. An animation also needs a
+    // target, and the root menu is the no-selection menu.
+    expect(
+      menuSource('_rootMenu'),
+      isNot(contains("id: 'animate'")),
+      reason: 'the root menu has nothing selected to animate',
+    );
+    expect(menuSource('_imageOverlayMenu'), contains("id: 'animation'"));
+    expect(menuSource('_videoOverlayMenu'), contains("id: 'animation'"));
+  });
+
   test('the audio menu keeps its unbuilt Effects entry', () {
     // Genuinely unbuilt — no audio-effect code exists — so the standing rule
     // applies: keep it visible and implement later. Unlike the root entry,

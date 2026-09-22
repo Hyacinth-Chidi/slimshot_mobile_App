@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/emoji_catalog.dart';
+import 'package:slimshotai/features/video_editor/widgets/panels/editor_sheet.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/stickers_drawer.dart';
 
 void main() {
@@ -78,6 +79,23 @@ void main() {
     // An emoji unique to the second group is now on screen. The catalog test
     // pins uniqueness, so this cannot pass by coincidence.
     expect(find.text(second.emoji[2]), findsWidgets);
+  });
+
+  testWidgets('stops at the sheet preview fraction so the canvas stays visible',
+      (tester) async {
+    // Device-reported about sheets generally: one at half the screen hid the
+    // very frame the user was choosing for. Choosing an emoji is a choice
+    // *for a frame*, so this obeys the cap rather than taking the audio
+    // library's taller height — a grid scrolls, so it loses nothing.
+    await pumpDrawer(tester);
+
+    final screenHeight = tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    final drawerHeight = tester.getSize(find.byType(StickersDrawer)).height;
+    expect(
+      drawerHeight,
+      closeTo(screenHeight * kEditorSheetPreviewFraction, 1.0),
+    );
+    expect(drawerHeight, lessThan(screenHeight * 0.5));
   });
 
   testWidgets('has no search field and no GIF or sticker tab', (tester) async {

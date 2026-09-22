@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../logic/emoji_catalog.dart';
+import 'editor_sheet.dart';
 
 /// The emoji picker.
 ///
@@ -16,9 +17,13 @@ import '../../logic/emoji_catalog.dart';
 /// labels over a spinner that never resolved. GIFs and stickers need a content
 /// provider and are not offered rather than promised.
 ///
-/// This is a *library* browser, so it keeps its own taller height rather than
-/// [kEditorSheetPreviewFraction] — the same exception the audio library takes.
-/// A picker at 45% would show two rows of a 590-emoji grid.
+/// **It stops at [kEditorSheetPreviewFraction], like a sheet about the
+/// picture rather than like the audio library.** Choosing an emoji is a
+/// choice *for a frame* — the user is looking at where it will land — and the
+/// device-reported complaint that a tall sheet hides the very frame being
+/// chosen for applies here exactly. A grid loses nothing to the cap: it
+/// scrolls, where the audio library is a list to read down, so at 45% this
+/// still shows several rows with the canvas in view above it.
 class StickersDrawer extends StatefulWidget {
   const StickersDrawer({super.key, required this.onEmojiSelected});
 
@@ -40,7 +45,7 @@ class _StickersDrawerState extends State<StickersDrawer> {
   Widget build(BuildContext context) {
     final group = kEmojiGroups[_selectedGroup];
     return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.7,
+      height: MediaQuery.of(context).size.height * kEditorSheetPreviewFraction,
       child: Container(
         decoration: const BoxDecoration(
           color: AppColors.background,
@@ -128,7 +133,10 @@ class _StickersDrawerState extends State<StickersDrawer> {
 
   Widget _grid(EmojiGroup group) {
     return GridView.builder(
-      padding: const EdgeInsets.all(_kEdge),
+      // Tighter vertically than horizontally: at 45% of the screen the grid
+      // has roughly three rows to give, and symmetric padding would spend a
+      // fifth of that on empty space above and below.
+      padding: const EdgeInsets.fromLTRB(_kEdge, 4, _kEdge, _kEdge),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         // A max extent rather than a fixed column count, so a tablet shows
         // more columns instead of stretching eight across the screen.
