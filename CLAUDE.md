@@ -1618,6 +1618,23 @@ Filters uses to switch to the project; from the root menu there is no clip and n
 ruler shows the level it writes.** Drags write live with one undo snapshot per drag; the readout
 tap resets to 0. Persisted per clip (omitted while untouched) and on the draft (`adjustments`).
 
+**Speed and Zoom are rulers; Volume and Opacity are sliders**, and the split is the
+ruler's own argument applied honestly. Sensitivity per pixel matters where the range is
+wide or a tenth of a step is visible: speed spans `SpeedCurve.kMinSpeed`–`kMaxSpeed`
+(0.1×–10×) and zoom 1×–5×. **The Speed slider capped at 2×**, so 4× was unreachable from
+the Speed tool at all while the model, the engine and the speed *curve* all supported it —
+a slider spanning 0.1–10 would have put 1× a tenth of the way along and made every
+ordinary value a pixel-hunt. Volume and Opacity keep sliders: 0–100% on a track is the
+universal idiom and a second gesture buys nothing. Both rulers snap to their default (1×),
+because that is a value people return to *exactly*.
+
+**The zoom row overflowed by 78px at 360dp** — the hint and the Reset chip side by side,
+a yellow-black stripe on a narrow phone. Caught by adding both panels to
+`tool_panel_sizing_test.dart`, which pumps a body unbounded; the hint is `Flexible` and
+ellipsises, the chip keeps its size. **A new panel with a ruler or a row in it must be
+added there.** Reset also stopped being `Colors.deepOrange` — a hue found nowhere else in
+the editor's chrome, warning about an action that merely returns to the default.
+
 **`ValueRuler` anchors its drag on pointer-down** (`DragStartBehavior.down`). Alone, a horizontal
 recogniser is accepted on its first move; inside a scrolling sheet it competes with the vertical
 recogniser and, with the default behaviour, the touch slop spent winning the arena was dropped from

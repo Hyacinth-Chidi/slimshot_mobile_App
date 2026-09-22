@@ -18,7 +18,24 @@ import 'package:flutter_test/flutter_test.dart';
 /// white for a glyph sitting *on* the purple accent, where the contrast is the
 /// point.
 void main() {
-  final panelDir = Directory('lib/features/video_editor/widgets/panels');
+  /// **Scoped to the tool panels deliberately.** The timeline is a different
+  /// surface with its own rules — the playhead is pure white so it reads
+  /// against any footage, and a clip's label sits on a coloured clip body
+  /// rather than on the panel background — so sweeping it to the text tokens
+  /// would be wrong, not merely unreviewed. It is worth its own audit; this
+  /// guard covers what has had one.
+  final dirs = [
+    Directory('lib/features/video_editor/widgets/panels'),
+  ];
+
+  Iterable<File> dartFiles() sync* {
+    for (final dir in dirs) {
+      if (!dir.existsSync()) continue;
+      for (final entity in dir.listSync()) {
+        if (entity is File && entity.path.endsWith('.dart')) yield entity;
+      }
+    }
+  }
 
   test('no tool surface hard-codes a text or icon colour', () {
     // `color: Colors.white` and `color: Colors.white54` — the two that carry
@@ -26,8 +43,7 @@ void main() {
     final offender = RegExp(r'color: Colors\.white(54)?[,)]');
 
     final strays = <String>[];
-    for (final entity in panelDir.listSync()) {
-      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+    for (final entity in dartFiles()) {
       final name = entity.uri.pathSegments.last;
       final lines = entity.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
@@ -50,8 +66,7 @@ void main() {
     // The drawers were 13px where every sheet was 14. One size, or the
     // headers read as two different apps stacked on the same screen.
     final strays = <String>[];
-    for (final entity in panelDir.listSync()) {
-      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+    for (final entity in dartFiles()) {
       final name = entity.uri.pathSegments.last;
       final lines = entity.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {

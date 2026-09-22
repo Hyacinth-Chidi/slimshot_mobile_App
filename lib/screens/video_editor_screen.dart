@@ -2029,7 +2029,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         content = const Center(
           child: Text(
             'Templates coming soon!',
-            style: TextStyle(color: Colors.white54),
+            style: TextStyle(color: AppColors.textSecondary),
           ),
         );
         break;

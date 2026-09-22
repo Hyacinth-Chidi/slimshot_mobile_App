@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/crop_panel.dart';
+import 'package:slimshotai/features/video_editor/widgets/panels/speed_panel.dart';
+import 'package:slimshotai/features/video_editor/widgets/panels/zoom_panel.dart';
 
 /// A tool panel takes the height its content needs, not a fixed 160.
 ///
@@ -57,5 +59,34 @@ void main() {
       expect(tester.getSize(find.byWidget(tile.widget)).height,
           CropPanel.kRowHeight);
     }
+  });
+
+  testWidgets('the speed panel lays out unbounded', (tester) async {
+    // It carries a ValueRuler now rather than a slider, and the ruler draws
+    // its ticks in a sized box — exactly the shape that throws if a panel
+    // body assumes a fixed height around it.
+    final size = await pumpUnbounded(
+      tester,
+      SpeedPanel(displaySpeed: 1.0, onChanged: (_) {}),
+    );
+    expect(size.height, greaterThan(0));
+    expect(size.height, lessThan(300));
+  });
+
+  testWidgets('the zoom panel lays out unbounded, with and without Reset',
+      (tester) async {
+    // Reset appears only above 1x, so the body has two heights; neither may
+    // throw and neither may sprawl.
+    final resting = await pumpUnbounded(
+      tester,
+      ZoomPanel(currentScale: 1.0, onChanged: (_) {}, onReset: () {}),
+    );
+    final zoomed = await pumpUnbounded(
+      tester,
+      ZoomPanel(currentScale: 2.0, onChanged: (_) {}, onReset: () {}),
+    );
+    expect(resting.height, greaterThan(0));
+    expect(zoomed.height, greaterThan(0));
+    expect(zoomed.height, lessThan(300));
   });
 }
