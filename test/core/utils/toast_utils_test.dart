@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/utils/toast_utils.dart';
@@ -113,6 +115,31 @@ void main() {
     expect(errorIcon.icon, isNot(warningIcon.icon));
     expect(warningIcon.icon, isNot(successIcon.icon));
     expect(errorIcon.color, isNot(successIcon.color));
+  });
+
+  test('ToastUtils is the one toast implementation in lib/', () {
+    // "Centralised" is the user's own requirement: one toast, not toast code
+    // per file. The settings screen carried a private `_showSnackBar` wrapper
+    // whose icon and colour parameters were silently ignored — this scan is
+    // what keeps the next one from appearing. Same pattern as the
+    // `showEditorSheet` stray-scan for sheets.
+    final strays = <String>[];
+    for (final file in Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.dart'))) {
+      final text = file.readAsStringSync();
+      if (text.contains('SnackBar(') ||
+          text.contains('ScaffoldMessenger') ||
+          text.contains('showSnackBar')) {
+        strays.add(file.path);
+      }
+    }
+    expect(
+      strays,
+      isEmpty,
+      reason: 'user feedback goes through ToastUtils.show, nothing else',
+    );
   });
 
   testWidgets('taps outside the pill pass through to the screen below',

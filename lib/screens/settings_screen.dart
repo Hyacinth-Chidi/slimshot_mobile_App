@@ -116,11 +116,9 @@ class SettingsScreen extends StatelessWidget {
                                       false,
                                     );
                                     if (context.mounted) {
-                                      _showSnackBar(
+                                      ToastUtils.show(
                                         context,
                                         'Onboarding will show on next launch',
-                                        Icons.check_circle,
-                                        AppColors.success,
                                       );
                                     }
                                   },
@@ -142,11 +140,9 @@ class SettingsScreen extends StatelessWidget {
                                   onConfirm: () async {
                                     final count = await FileUtils.clearCache();
                                     if (context.mounted) {
-                                      _showSnackBar(
+                                      ToastUtils.show(
                                         context,
                                         '$count cached files cleared',
-                                        Icons.check_circle,
-                                        AppColors.success,
                                       );
                                     }
                                   },
@@ -173,11 +169,10 @@ class SettingsScreen extends StatelessWidget {
                                   final url = Uri.parse('https://slimshotai.vercel.app/privacy');
                                   if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
                                     if (context.mounted) {
-                                      _showSnackBar(
+                                      ToastUtils.show(
                                         context,
                                         'Could not open privacy policy',
-                                        Icons.error_outline,
-                                        AppColors.error,
+                                        isError: true,
                                       );
                                     }
                                   }
@@ -236,16 +231,6 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  void _showSnackBar(
-    BuildContext context,
-    String message,
-    IconData icon,
-    Color color,
-  ) {
-    final isError = color == AppColors.error;
-    ToastUtils.show(context, message, isError: isError);
   }
 
   void _showConfirmDialog(
