@@ -197,7 +197,6 @@ class _ExportOptionsDialogState extends State<ExportOptionsDialog> {
                             context,
                             'Please check your internet connection to unlock 4K Export.',
                             isWarning: true,
-                            title: 'No Internet Connection',
                           );
                           }
                         },

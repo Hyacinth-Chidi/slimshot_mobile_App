@@ -497,7 +497,6 @@ class _CompressVideoScreenState extends ConsumerState<CompressVideoScreen> {
                                                     context, 
                                                     'Please check your internet connection to unlock Pro features.', 
                                                     isWarning: true,
-                                                    title: 'No Internet Connection',
                                                   );
                                                 }
                                               },

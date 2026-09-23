@@ -46,7 +46,6 @@ dependencies:
 
   # Utils
   uuid: ^4.4.0
-  awesome_snackbar_content: ^0.1.8
 
   # Update System
   http: ^1.2.1

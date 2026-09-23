@@ -293,7 +293,6 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
                                                     context, 
                                                     'Please check your internet connection to unlock Pro features.', 
                                                     isWarning: true,
-                                                    title: 'No Internet Connection',
                                                   );
                                                 }
                                               },
