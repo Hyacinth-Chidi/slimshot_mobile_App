@@ -6,13 +6,14 @@ import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
 import '../theme/lucide_icons.dart';
 
-/// A compact pill centred on the screen — never a banner.
+/// A compact pill at the top of the screen — never a banner.
 ///
 /// Device-reported: the old toast was a full-width `AwesomeSnackbarContent`
-/// card pinned to the top, so deleting a draft raised a "Success!" banner over
-/// the drafts screen's own action buttons and the user waited ~4 seconds for
-/// their UI back. Centred, it sits over *content* on every screen — never over
-/// the app bar's actions or the editor's bottom toolbar — and everything
+/// card pinned flush to the top, so deleting a draft raised a "Success!"
+/// banner over the drafts screen's own action buttons and the user waited
+/// ~4 seconds for their UI back. The position stays top — the user's choice,
+/// at the screen title's row like an Apple notification — but the pill is
+/// compact, so it never reaches the edge action buttons, and everything
 /// around it stays tappable because the overlay hit-tests only the pill.
 ///
 /// The generic titles went with the card. "Success!" above "Draft deleted" is
@@ -62,11 +63,21 @@ class ToastUtils {
         // `Align` hit-tests only its child, so every tap outside the pill
         // falls straight through to the screen below — the whole point.
         child: Align(
-          child: ToastPill(
-            message: message,
-            isError: isError,
-            isWarning: isWarning,
-            onDismiss: dismiss,
+          alignment: Alignment.topCenter,
+          child: Padding(
+            // At the screen title's row, Apple-notification style — the
+            // user's position, after a pass below the app bar read as
+            // floating "inside the screen". Compactness and tap-through are
+            // what keep the edge action buttons usable, not distance: the
+            // old banner's offence was being full-width and unhittable-under,
+            // not being at the top.
+            padding: const EdgeInsets.only(top: 8),
+            child: ToastPill(
+              message: message,
+              isError: isError,
+              isWarning: isWarning,
+              onDismiss: dismiss,
+            ),
           ),
         ),
       ),
@@ -142,10 +153,12 @@ class _ToastPillState extends State<ToastPill>
     if (status == AnimationStatus.dismissed) widget.onDismiss();
   }
 
-  /// A tap is "get out of my way" — instant, no exit animation to wait on.
+  /// A tap dismisses through the same exit the hold uses — 160ms of slide
+  /// and fade reads as response, not as a wait, and a pop beside every other
+  /// smooth edge would be the one abrupt thing on screen.
   void _dismissNow() {
     _holdTimer?.cancel();
-    widget.onDismiss();
+    _controller.reverse();
   }
 
   @override
@@ -167,8 +180,14 @@ class _ToastPillState extends State<ToastPill>
 
     return FadeTransition(
       opacity: _curve,
-      child: ScaleTransition(
-        scale: Tween<double>(begin: 0.94, end: 1.0).animate(_curve),
+      // A top toast arrives from its edge: it slides down a little of its
+      // own height on entry and back up on exit (the reversed controller),
+      // on AppMotion's emphasized curves.
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, -0.6),
+          end: Offset.zero,
+        ).animate(_curve),
         child: Material(
           color: Colors.transparent,
           child: GestureDetector(

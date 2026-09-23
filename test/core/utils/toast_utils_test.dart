@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/utils/toast_utils.dart';
 
-/// The toast is a compact centred pill, not a banner.
+/// The toast is a compact pill at the top, not a banner.
 ///
-/// Device-reported: the old toast was a full-width card pinned to the top of
-/// the screen — deleting a draft raised a "Success!" banner over the drafts
-/// screen's own action buttons, and the user had to wait ~4 seconds for their
-/// UI back. These tests pin the properties that fixed that: compact, centred,
-/// title-free, tap-dismissable, and one at a time.
+/// Device-reported: the old toast was a full-width card pinned flush to the
+/// top — deleting a draft raised a "Success!" banner over the drafts screen's
+/// own action buttons, and the user had to wait ~4 seconds for their UI back.
+/// These tests pin the properties that fixed that: compact, at the title row
+/// like an Apple notification, title-free, tap-dismissable, one at a time.
 void main() {
   Future<BuildContext> pumpHost(WidgetTester tester) async {
     await tester.pumpWidget(
@@ -19,10 +19,18 @@ void main() {
     return tester.element(find.byType(SizedBox));
   }
 
+  /// One frame to build the overlay entry — the enter animation *starts*
+  /// there, at value 0 — then a pump past the enter so assertions and taps
+  /// meet the pill at rest, not mid-slide off its layout position.
+  Future<void> settleToast(WidgetTester tester) async {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
   testWidgets('shows the message and no generic title', (tester) async {
     final context = await pumpHost(tester);
     ToastUtils.show(context, 'Draft deleted');
-    await tester.pump(const Duration(milliseconds: 300));
+    await settleToast(tester);
 
     expect(find.text('Draft deleted'), findsOneWidget);
     // "Success!" above "Draft deleted" is the same fact twice — the echo rule
@@ -32,33 +40,39 @@ void main() {
     expect(find.text('Warning!'), findsNothing);
   });
 
-  testWidgets('is a compact pill centred on screen, not a full-width banner',
+  testWidgets('is a compact pill at the top, not a full-width banner',
       (tester) async {
     final context = await pumpHost(tester);
     ToastUtils.show(context, 'Draft deleted');
-    await tester.pump(const Duration(milliseconds: 300));
+    await settleToast(tester);
 
     final screen = tester.getSize(find.byType(MaterialApp));
     final pill = find.byType(ToastPill);
     final size = tester.getSize(pill);
     final centre = tester.getCenter(pill);
+    final top = tester.getTopLeft(pill).dy;
 
     // Compact: sized to its text, never edge to edge — a full-width card is
     // what covered the drafts screen's action buttons.
     expect(size.width, lessThan(screen.width * 0.9));
-    // Centred both ways: over content, never over the top app bar's actions
-    // or the editor's bottom toolbar.
     expect(centre.dx, closeTo(screen.width / 2, 1.0));
-    expect(centre.dy, closeTo(screen.height / 2, screen.height * 0.15));
+    // In the screen title's row, Apple-notification style — the user's
+    // position, twice stated: a first pass centred it, a second floated it
+    // below the app bar ("inside the screen"), and both were corrected. The
+    // pill drops in at the top edge; compactness and tap-through are what
+    // keep the edge action buttons usable, not distance.
+    expect(top, greaterThanOrEqualTo(0));
+    expect(top, lessThan(kToolbarHeight));
   });
 
-  testWidgets('tap dismisses immediately', (tester) async {
+  testWidgets('tap dismisses, through the smooth exit', (tester) async {
     final context = await pumpHost(tester);
     ToastUtils.show(context, 'Draft deleted');
-    await tester.pump(const Duration(milliseconds: 300));
+    await settleToast(tester);
 
     await tester.tap(find.byType(ToastPill));
-    await tester.pump();
+    // The exit animation is short enough to read as response, not delay.
+    await settleToast(tester);
     expect(find.text('Draft deleted'), findsNothing);
   });
 
@@ -66,9 +80,9 @@ void main() {
       (tester) async {
     final context = await pumpHost(tester);
     ToastUtils.show(context, 'first');
-    await tester.pump(const Duration(milliseconds: 300));
+    await settleToast(tester);
     ToastUtils.show(context, 'second');
-    await tester.pump(const Duration(milliseconds: 300));
+    await settleToast(tester);
 
     expect(find.text('first'), findsNothing);
     expect(find.text('second'), findsOneWidget);
@@ -78,13 +92,14 @@ void main() {
   testWidgets('dismisses itself after its hold', (tester) async {
     final context = await pumpHost(tester);
     ToastUtils.show(context, 'Draft deleted');
-    await tester.pump(const Duration(milliseconds: 300));
+    await settleToast(tester);
     expect(find.text('Draft deleted'), findsOneWidget);
 
     // Generously past enter + hold for any severity; the hold timer fires
     // during this pump and starts the exit, which needs frames of its own.
     await tester.pump(const Duration(seconds: 6));
     await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
     expect(find.text('Draft deleted'), findsNothing);
   });
 
@@ -93,19 +108,19 @@ void main() {
     final context = await pumpHost(tester);
 
     ToastUtils.show(context, 'export failed', isError: true);
-    await tester.pump(const Duration(milliseconds: 300));
+    await settleToast(tester);
     final errorIcon = tester.widget<Icon>(
       find.descendant(of: find.byType(ToastPill), matching: find.byType(Icon)),
     );
 
     ToastUtils.show(context, 'lane unavailable', isWarning: true);
-    await tester.pump(const Duration(milliseconds: 300));
+    await settleToast(tester);
     final warningIcon = tester.widget<Icon>(
       find.descendant(of: find.byType(ToastPill), matching: find.byType(Icon)),
     );
 
     ToastUtils.show(context, 'saved');
-    await tester.pump(const Duration(milliseconds: 300));
+    await settleToast(tester);
     final successIcon = tester.widget<Icon>(
       find.descendant(of: find.byType(ToastPill), matching: find.byType(Icon)),
     );
@@ -160,7 +175,7 @@ void main() {
     );
     final context = tester.element(find.byType(Scaffold));
     ToastUtils.show(context, 'Draft deleted');
-    await tester.pump(const Duration(milliseconds: 300));
+    await settleToast(tester);
 
     // The whole point: a toast must never make the user wait to use their UI.
     await tester.tap(find.text('under'));

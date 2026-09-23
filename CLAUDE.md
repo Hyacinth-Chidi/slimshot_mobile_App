@@ -509,24 +509,33 @@ migration. Unknown names (e.g. `circleOpen` from old drafts) degrade to a hard c
   still there — a tap outside still closes — it just draws nothing. It also carries the two
   settings every sheet shared (`isScrollControlled`, transparent route background).
 - `unawaited(...)` for fire-and-forget. `ToastUtils.show(context, msg, isError:)` for user feedback.
-- **A toast is a compact pill centred on the screen, never a banner**
+- **A toast is a compact pill at the top of the screen, never a banner**
   (`core/utils/toast_utils.dart`, **awaiting device verification**).
   Device-reported: the old full-width `AwesomeSnackbarContent` card was
-  pinned to the top, so deleting a draft raised a "Success!" banner over the
-  drafts screen's own action buttons and the user waited ~4s for their UI
-  back. Centred, it sits over content on every screen — never over the app
-  bar's actions or the editor's bottom toolbar. Rules a test pins
-  (`toast_utils_test.dart`): compact (sized to its text), centred, **no
+  pinned flush to the top, so deleting a draft raised a "Success!" banner
+  over the drafts screen's own action buttons and the user waited ~4s for
+  their UI back. **The pill sits at the screen title's row, Apple-notification
+  style — the user's position, twice corrected** (a first pass centred it on
+  screen; a second floated it below the app bar, which read as "inside the
+  screen"). What fixes the covering is compactness and tap-through, not
+  distance: it drops in 8px below the safe area and slides down/up with a
+  fade on `AppMotion`'s curves. Rules a test pins
+  (`toast_utils_test.dart`): compact (sized to its text), top-centred, **no
   title** — "Success!" above "Draft deleted" is the echo rule, severity is
   the icon and its `AppColors.error/warning/success` colour — tap to
-  dismiss, one at a time (a new toast replaces the current, never stacks),
-  and taps outside the pill pass through, because `Align` hit-tests only its
-  child. **The pill drives its own lifecycle**: an `AnimationController` for
-  enter/exit and one hold `Timer` cancelled in `dispose` — deliberately not
-  `flutter_animate`, whose `Animate` starts through `Future.delayed`, a
-  timer nothing can cancel, which trips flutter_test's "Timer is still
-  pending" invariant in every test that shows a toast.
-  `awesome_snackbar_content` is gone from the build.
+  dismiss (through the same smooth exit), one at a time (a new toast
+  replaces the current, never stacks), and taps outside the pill pass
+  through, because `Align` hit-tests only its child. **The pill drives its
+  own lifecycle**: an `AnimationController` for enter/exit and one hold
+  `Timer` cancelled in `dispose` — deliberately not `flutter_animate`,
+  whose `Animate` starts through `Future.delayed`, a timer nothing can
+  cancel, which trips flutter_test's "Timer is still pending" invariant in
+  every test that shows a toast. `awesome_snackbar_content` is gone from
+  the build. **A toast test pumps one frame before asserting**
+  (`settleToast`): the enter starts at value 0 on the entry's first frame,
+  and a slide moves hit geometry with it (`SlideTransition` transforms hit
+  tests), so a single long pump meets the pill mid-flight off its layout
+  position.
 
 ## Status
 
