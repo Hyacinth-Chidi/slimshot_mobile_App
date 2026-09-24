@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../logic/text_template_catalog.dart';
+import 'text_preview_tile.dart';
 import 'text_template_tile.dart';
 
 /// A grid of live template tiles — the one both ways into templates show.
@@ -63,12 +64,7 @@ class _TextTemplateGridState extends State<TextTemplateGrid>
   Widget build(BuildContext context) {
     return GridView.builder(
       padding: widget.padding,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 1.1,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-      ),
+      gridDelegate: kTextPreviewGrid,
       itemCount: widget.templates.length,
       itemBuilder: (context, index) {
         final template = widget.templates[index];

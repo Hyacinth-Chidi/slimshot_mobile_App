@@ -4,6 +4,7 @@ import 'package:slimshotai/features/video_editor/logic/text_animation_catalog.da
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_animation_panel.dart';
 import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_animation_tile.dart';
+import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_preview_tile.dart';
 
 import '../../../support/test_fonts.dart';
 
@@ -95,6 +96,17 @@ void main() {
     await tester.tap(find.text(label));
     await tester.pump();
   }
+
+  testWidgets('lays its tiles out three to a row, as the templates do',
+      (tester) async {
+    // It was four to a row in taller tiles, beside a Templates tab of three —
+    // two grids of the same kind of tile, sized differently. One layout,
+    // shared, so the two tabs cannot drift apart again.
+    await pumpPanel(tester, overlay: overlayWith());
+    final grid = tester.widget<GridView>(find.byType(GridView));
+    expect(grid.gridDelegate, same(kTextPreviewGrid));
+    expect(kTextPreviewGrid.crossAxisCount, 3);
+  });
 
   testWidgets('offers three categories', (tester) async {
     await pumpPanel(tester, overlay: overlayWith());

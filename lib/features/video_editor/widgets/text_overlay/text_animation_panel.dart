@@ -5,6 +5,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../logic/text_animation_catalog.dart';
 import '../../models/text_overlay_model.dart';
 import 'text_animation_tile.dart';
+import 'text_preview_tile.dart';
 
 /// The text editor sheet's Animation tab.
 ///
@@ -136,12 +137,9 @@ class _TextAnimationPanelState extends State<TextAnimationPanel>
             key: ValueKey(_category),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             physics: const BouncingScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              childAspectRatio: 0.85,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
+            // Three to a row, the templates' own layout — see
+            // [kTextPreviewGrid].
+            gridDelegate: kTextPreviewGrid,
             // The leading None tile clears the slot, so every category has a
             // way back to no animation.
             itemCount: animations.length + 1,

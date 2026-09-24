@@ -45,6 +45,20 @@ String textPreviewWords(String? source, {required String fallback}) {
   return clusters.take(kTextPreviewGlyphs).toString();
 }
 
+/// How every grid of preview tiles is laid out — the animation tab's and the
+/// templates' alike: three to a row, a little wider than tall.
+///
+/// One definition because they are the same kind of tile side by side in one
+/// sheet. The animation tab used to run four to a row in taller tiles beside a
+/// Templates tab of three, so switching tabs changed the size of everything.
+const SliverGridDelegateWithFixedCrossAxisCount kTextPreviewGrid =
+    SliverGridDelegateWithFixedCrossAxisCount(
+  crossAxisCount: 3,
+  childAspectRatio: 1.1,
+  crossAxisSpacing: 10,
+  mainAxisSpacing: 10,
+);
+
 /// How long a tile rests on the finished look before looping.
 ///
 /// Without it an in-animation would restart the instant its last glyph

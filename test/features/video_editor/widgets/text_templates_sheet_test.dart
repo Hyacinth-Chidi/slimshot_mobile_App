@@ -4,6 +4,7 @@ import 'package:slimshotai/features/video_editor/logic/text_template_catalog.dar
 import 'package:slimshotai/features/video_editor/widgets/panels/editor_sheet.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/text_templates_sheet.dart';
 import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_overlay_painter.dart';
+import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_preview_tile.dart';
 import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_template_tile.dart';
 
 import '../../../support/test_fonts.dart';
@@ -81,6 +82,12 @@ void main() {
     // sheet with no edit here.
     final sheet = TextTemplatesSheet(onTemplateSelected: (_) {});
     expect(identical(sheet.templates, kTextTemplates), isTrue);
+  });
+
+  testWidgets('lays its tiles out on the shared preview grid', (tester) async {
+    await pumpSheet(tester);
+    final grid = tester.widget<GridView>(find.byType(GridView));
+    expect(grid.gridDelegate, same(kTextPreviewGrid));
   });
 
   testWidgets('offers one tile per template', (tester) async {

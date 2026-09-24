@@ -1160,6 +1160,11 @@ scaled to meet a `kTextPreviewMargin` both up and down, capped at `kTextPreviewM
 (1.5×) so "Hi" does not become two giant glyphs. The `ClipRect` is now only for animation,
 which moves letters past the resting look.
 
+**Every grid of preview tiles is `kTextPreviewGrid`**: three to a row, a little wider than tall.
+The animation tab ran four to a row in taller tiles beside a Templates tab of three — the same
+kind of tile, sized differently from one tab to the next — and tests pin both grids to the one
+constant.
+
 **One clock drives every tile.** A repeating `AnimationController` on the panel, passed to each
 visible tile as its `clock`; only the active category is built, so switching tabs does not leave
 twenty animations running. A `Ticker` per tile would mean twenty tickers.
