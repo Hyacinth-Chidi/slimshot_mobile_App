@@ -12,6 +12,7 @@ import '../../../core/services/draft_service.dart';
 import '../../../core/utils/file_utils.dart';
 import '../logic/animation/animatable_double.dart';
 import '../logic/animation/clip_keyframes.dart';
+import '../logic/animation/keyframe_core.dart';
 import '../logic/canvas_geometry.dart';
 import '../logic/animation/clip_keyframes.dart' as kf;
 import '../logic/effects/effect_catalog.dart';
@@ -1041,45 +1042,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     double cut, {
     required bool isLeft,
   }) {
-    if (!original.hasKeyframes) return half;
-    if (cut <= 0.0 || cut >= 1.0) return half;
-
-    // Pin the seam on the original, so both halves read the same value there.
-    final pinned = captureKeyframe(original, cut);
-
-    var out = half;
-    for (final property in ClipProperty.values) {
-      final param = clipParameter(pinned, property);
-      final kept = <Keyframe>[];
-      for (final k in param.keyframes) {
-        if (isLeft) {
-          if (k.progress > cut + kKeyframeMatchProgress) continue;
-          kept.add(Keyframe(
-            progress: (k.progress / cut).clamp(0.0, 1.0).toDouble(),
-            value: k.value,
-            interpolation: k.interpolation,
-          ));
-        } else {
-          if (k.progress < cut - kKeyframeMatchProgress) continue;
-          kept.add(Keyframe(
-            progress:
-                ((k.progress - cut) / (1 - cut)).clamp(0.0, 1.0).toDouble(),
-            value: k.value,
-            interpolation: k.interpolation,
-          ));
-        }
-      }
-      out = withClipParameter(
-        out,
-        property,
-        AnimatableDouble.sorted(
-          baseValue: param.baseValue,
-          envelope: param.envelope,
-          keyframes: kept,
-        ),
-      );
-    }
-    return out;
+    final params = clipParams(original);
+    final split = splitKeyframesIn(params, cut, isLeft: isLeft);
+    // Unchanged means no keyframes or a degenerate cut: the half keeps what
+    // the split gave it.
+    if (identical(split, params)) return half;
+    return withClipParams(half, split);
   }
 
   void splitAtPlayhead(double timelineSeconds) {
@@ -2280,41 +2248,16 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     double value, {
     required double? playheadProgress,
   }) {
-    final param = clipParameter(segment, property);
-    if (!segment.hasKeyframes || playheadProgress == null) {
-      return withClipParameter(
-          segment, property, param.copyWith(baseValue: value));
-    }
-
-    final tolerance = keyframeHitToleranceFor(segment);
-    var out = segment;
-    var target = keyframeProgressNear(segment, playheadProgress, tolerance);
-    if (target == null) {
-      out = captureKeyframe(segment, playheadProgress);
-      target = playheadProgress;
-    }
-    final resolved = target;
-
-    final p = clipParameter(out, property);
-    return withClipParameter(
-      out,
-      property,
-      AnimatableDouble.sorted(
-        baseValue: p.baseValue,
-        envelope: p.envelope,
-        keyframes: [
-          for (final k in p.keyframes)
-            if ((k.progress - resolved).abs() <= kKeyframeMatchProgress)
-              // The easing belongs to the keyframe, not to the edit: retuning a
-              // value must not silently straighten the curve leaving it.
-              Keyframe(
-                progress: k.progress,
-                value: value,
-                interpolation: k.interpolation,
-              )
-            else
-              k,
-        ],
+    // The rule itself is the shared core's (`writeKeyframedValueIn`), so a
+    // clip and an overlay decide base-or-keyframe identically.
+    return withClipParams(
+      segment,
+      writeKeyframedValueIn(
+        clipParams(segment),
+        property,
+        value,
+        playheadProgress: playheadProgress,
+        tolerance: keyframeHitToleranceFor(segment),
       ),
     );
   }

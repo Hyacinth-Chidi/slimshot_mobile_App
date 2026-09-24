@@ -16,10 +16,18 @@
 /// playhead, the clock, Riverpod or seconds. `VideoEditorNotifier` owns the
 /// decision of *when* an edit becomes a keyframe, and the timeline owns where a
 /// diamond is drawn.
+///
+/// **What a diamond does is not defined here.** Every function below is a thin
+/// adapter over `keyframe_core.dart`, which overlays share, so a diamond obeys
+/// one set of rules on a clip's filmstrip and on an overlay's bar. This file
+/// only says which parameters a clip has and how to read and write them.
 library;
 
 import '../../models/video_segment.dart';
 import 'animatable_double.dart';
+import 'keyframe_core.dart';
+
+export 'keyframe_core.dart' show KeyframeParams, kKeyframeMatchProgress;
 
 /// Every property a diamond pins.
 ///
@@ -57,15 +65,6 @@ enum ClipProperty {
   /// engine, never alpha. The seventh property; a fade is two diamonds.
   opacity,
 }
-
-/// Two progresses closer than this are the same diamond.
-///
-/// **Not the tap tolerance.** How close a *finger* has to be is a question
-/// about screens and clip lengths, is measured in seconds, and lives with the
-/// notifier. This is only about floating-point identity between a progress
-/// stored in a keyframe and one recomputed from a playhead position — the same
-/// instant arrived at by two routes.
-const double kKeyframeMatchProgress = 0.0005;
 
 /// The parameter [p] names on [s].
 AnimatableDouble clipParameter(VideoSegment s, ClipProperty p) {
@@ -111,287 +110,94 @@ VideoSegment withClipParameter(
   }
 }
 
-/// Every instant this clip has a diamond at, sorted and de-duplicated.
-///
-/// The **union** across properties rather than any one property's list. The
-/// notifier writes all of them together, but a draft can arrive hand-edited or
-/// from a build that wrote fewer, and a diamond a user can see but not remove
-/// is worse than one drawn from a partial row.
-List<double> keyframeProgresses(VideoSegment s) {
-  final out = <double>[];
-  for (final property in ClipProperty.values) {
-    for (final k in clipParameter(s, property).keyframes) {
-      if (!out.any((v) => (v - k.progress).abs() <= kKeyframeMatchProgress)) {
-        out.add(k.progress);
-      }
-    }
+/// The clip's keyframable parameters, in [ClipProperty] order.
+KeyframeParams<ClipProperty> clipParams(VideoSegment s) =>
+    {for (final p in ClipProperty.values) p: clipParameter(s, p)};
+
+/// [s] with every parameter in [params] written back.
+VideoSegment withClipParams(
+  VideoSegment s,
+  KeyframeParams<ClipProperty> params,
+) {
+  var out = s;
+  for (final e in params.entries) {
+    out = withClipParameter(out, e.key, e.value);
   }
-  out.sort();
   return out;
 }
 
-/// The diamond nearest [progress] within [tolerance], or null.
-///
-/// Nearest rather than first: two diamonds can both be in range when they were
-/// placed close together, and "the one I am standing on" is the nearer.
+/// [s] after [edit] — or [s] itself when [edit] changed nothing, so a caller
+/// comparing by identity can tell.
+VideoSegment _applied(
+  VideoSegment s,
+  KeyframeParams<ClipProperty> Function(KeyframeParams<ClipProperty>) edit,
+) {
+  final params = clipParams(s);
+  final out = edit(params);
+  return identical(out, params) ? s : withClipParams(s, out);
+}
+
+/// Every instant this clip has a diamond at — see [keyframeProgressesIn].
+List<double> keyframeProgresses(VideoSegment s) =>
+    keyframeProgressesIn(clipParams(s));
+
+/// The diamond nearest [progress] within [tolerance] — see
+/// [keyframeProgressNearIn].
 double? keyframeProgressNear(
   VideoSegment s,
   double progress,
   double tolerance,
-) {
-  double? best;
-  var bestDistance = double.infinity;
-  for (final p in keyframeProgresses(s)) {
-    final d = (p - progress).abs();
-    if (d <= tolerance && d < bestDistance) {
-      best = p;
-      bestDistance = d;
-    }
-  }
-  return best;
-}
+) =>
+    keyframeProgressNearIn(clipParams(s), progress, tolerance);
 
-/// Pins every property at the value it **already resolves to** at [progress].
-///
-/// Capturing the *resolved* value is what makes placing a diamond invisible:
-/// the frame on screen does not change, in the preview or in the file.
-/// Capturing the base value instead would snap an animated property back to its
-/// base the moment a second diamond was placed — and a control that changes the
-/// picture when the user only meant to mark a moment is the fastest way to make
-/// the feature feel broken.
-///
-/// A diamond already at [progress] is replaced rather than duplicated, so
-/// capturing twice at one instant is idempotent.
-VideoSegment captureKeyframe(VideoSegment s, double progress) {
-  var out = s;
-  for (final property in ClipProperty.values) {
-    final param = clipParameter(out, property);
-    final value = param.resolveAt(progress);
-    final kept = [
-      for (final k in param.keyframes)
-        if ((k.progress - progress).abs() > kKeyframeMatchProgress) k,
-    ];
-    out = withClipParameter(
-      out,
-      property,
-      AnimatableDouble.sorted(
-        baseValue: param.baseValue,
-        envelope: param.envelope,
-        keyframes: [
-          ...kept,
-          // Linear, so the easing sheet opens showing "None" and tells the
-          // truth about the diamond just placed.
-          Keyframe(
-            progress: progress,
-            value: value,
-            interpolation: KeyframeInterpolation.linear,
-          ),
-        ],
-      ),
-    );
-  }
-  return out;
-}
+/// Pins every property at the value it already resolves to at [progress] —
+/// see [captureKeyframeIn].
+VideoSegment captureKeyframe(VideoSegment s, double progress) =>
+    _applied(s, (p) => captureKeyframeIn(p, progress));
 
-/// Takes the diamond nearest [progress] off every property.
-///
-/// **The last diamond hands its value back as the base**, so the frame the user
-/// is looking at when they remove it is the frame that stays. Dropping to the
-/// old base would jump the picture to a value they may have set minutes ago,
-/// which reads as the editor undoing something it was not asked to undo.
-///
-/// A [progress] with no diamond near it returns [s] unchanged.
+/// Takes the diamond nearest [progress] off every property; the last one
+/// hands its value back as the base — see [removeKeyframeIn].
 VideoSegment removeKeyframe(
   VideoSegment s,
   double progress,
   double tolerance,
-) {
-  final target = keyframeProgressNear(s, progress, tolerance);
-  if (target == null) return s;
+) =>
+    _applied(s, (p) => removeKeyframeIn(p, progress, tolerance));
 
-  var out = s;
-  for (final property in ClipProperty.values) {
-    final param = clipParameter(out, property);
-    final removed = [
-      for (final k in param.keyframes)
-        if ((k.progress - target).abs() <= kKeyframeMatchProgress) k,
-    ];
-    final kept = [
-      for (final k in param.keyframes)
-        if ((k.progress - target).abs() > kKeyframeMatchProgress) k,
-    ];
-    out = withClipParameter(
-      out,
-      property,
-      AnimatableDouble.sorted(
-        baseValue: kept.isEmpty && removed.isNotEmpty
-            ? removed.first.value
-            : param.baseValue,
-        envelope: param.envelope,
-        keyframes: kept,
-      ),
-    );
-  }
-  return out;
-}
-
-/// Slides the diamond nearest [from] to [to] on every property, each keyframe
-/// keeping its value and its curve.
-///
-/// A diamond is an *instant* of the clip, so the move is of the instant: the
-/// seven properties' keyframes at it travel together, or the filmstrip's one
-/// mark would stop being an honest picture of the clip's state. Clamped to the
-/// clip. Returns [s] itself — the same instance, so a caller can tell — when
-/// there is no diamond near [from], when the destination is where it already
-/// is, or when **another diamond already sits at the destination**: two
-/// instants must never collapse into one because a finger overshot, so the
-/// dragged diamond stops short of its neighbour instead.
+/// Slides the diamond nearest [from] to [to] on every property. Returns [s]
+/// itself when refused — see [moveKeyframeIn].
 VideoSegment moveKeyframe(
   VideoSegment s,
   double from,
   double to,
   double tolerance,
-) {
-  final target = keyframeProgressNear(s, from, tolerance);
-  if (target == null) return s;
-  final dest = to.clamp(0.0, 1.0).toDouble();
-  if ((dest - target).abs() <= kKeyframeMatchProgress) return s;
-  final occupied = keyframeProgresses(s).any(
-    (p) => (p - target).abs() > kKeyframeMatchProgress &&
-        (p - dest).abs() <= kKeyframeMatchProgress,
-  );
-  if (occupied) return s;
+) =>
+    _applied(s, (p) => moveKeyframeIn(p, from, to, tolerance) ?? p);
 
-  var out = s;
-  for (final property in ClipProperty.values) {
-    final param = clipParameter(out, property);
-    if (param.keyframes.isEmpty) continue;
-    out = withClipParameter(
-      out,
-      property,
-      AnimatableDouble.sorted(
-        baseValue: param.baseValue,
-        envelope: param.envelope,
-        keyframes: [
-          for (final k in param.keyframes)
-            if ((k.progress - target).abs() <= kKeyframeMatchProgress)
-              Keyframe(
-                progress: dest,
-                value: k.value,
-                interpolation: k.interpolation,
-              )
-            else
-              k,
-        ],
-      ),
-    );
-  }
-  return out;
-}
-
-/// Which diamond's outgoing curve the curve control edits at [progress], or
-/// null when there is nothing to ease.
-///
-/// **A curve shapes travel between two diamonds**, and the interpolation lives
-/// on the diamond a segment *starts* at. So the target is the latest diamond at
-/// or before the playhead — provided a later one exists to travel towards.
-///
-/// Null in three cases, and each is a real "nothing to shape here":
-///
-/// - **Fewer than two diamonds.** One point is a value held across the whole
-///   clip; there is no travel, and a curve would change nothing.
-/// - **Before the first diamond.** The value holds back to the clip's start.
-/// - **After the last.** It holds to the end.
-///
-/// The one concession to the finger: **on the last diamond the target is the
-/// segment arriving at it**, not the nothing that follows. A user who taps the
-/// final diamond and reaches for the curve icon means the curve they can see,
-/// and an icon that went inert the moment they landed on a diamond would read
-/// as broken.
+/// Which diamond's outgoing curve the curve control edits — see
+/// [keyframeCurveTargetIn].
 double? keyframeCurveTarget(
   VideoSegment s,
   double progress,
   double tolerance,
-) {
-  final all = keyframeProgresses(s);
-  // A curve needs two points to run between.
-  if (all.length < 2) return null;
+) =>
+    keyframeCurveTargetIn(clipParams(s), progress, tolerance);
 
-  final onDiamond = keyframeProgressNear(s, progress, tolerance);
-  if (onDiamond != null) {
-    final index = all.indexWhere((p) => (p - onDiamond).abs() <= kKeyframeMatchProgress);
-    // On the last diamond, edit the segment that arrives at it; on any other,
-    // the one that leaves it.
-    if (index == all.length - 1) return all[index - 1];
-    return all[index];
-  }
-
-  // Between diamonds: the segment the playhead is inside.
-  if (progress < all.first || progress > all.last) return null;
-  double? target;
-  for (final p in all) {
-    if (p <= progress) target = p;
-  }
-  return target;
-}
-
-/// Sets the curve on the segment the playhead is inside, on every property.
-///
-/// **Never places a diamond.** That is the whole distinction from
-/// [captureKeyframe]: the plus button creates instants, the curve control
-/// shapes travel that already exists. A curve picker that quietly added a
-/// keyframe was the device-reported fault — the user tapped it expecting to
-/// choose a shape and got a new point on their timeline.
-///
-/// No target — fewer than two diamonds, or the playhead outside them — returns
-/// [s] unchanged.
+/// Sets the curve on the segment the playhead is inside, never placing a
+/// diamond — see [setKeyframeCurveIn].
 VideoSegment setKeyframeCurve(
   VideoSegment s,
   double progress,
   double tolerance,
   KeyframeInterpolation curve,
-) {
-  final target = keyframeCurveTarget(s, progress, tolerance);
-  if (target == null) return s;
-  return setKeyframeEasing(s, target, tolerance, curve);
-}
+) =>
+    _applied(s, (p) => setKeyframeCurveIn(p, progress, tolerance, curve));
 
-/// Re-eases the diamond nearest [progress], on every property.
-///
-/// The interpolation belongs to the segment that *starts* at a keyframe, so
-/// this changes how the value travels from here to the next diamond — which is
-/// what the easing sheet's cells describe.
+/// Re-eases the diamond nearest [progress] — see [setKeyframeEasingIn].
 VideoSegment setKeyframeEasing(
   VideoSegment s,
   double progress,
   double tolerance,
   KeyframeInterpolation easing,
-) {
-  final target = keyframeProgressNear(s, progress, tolerance);
-  if (target == null) return s;
-
-  var out = s;
-  for (final property in ClipProperty.values) {
-    final param = clipParameter(out, property);
-    out = withClipParameter(
-      out,
-      property,
-      AnimatableDouble.sorted(
-        baseValue: param.baseValue,
-        envelope: param.envelope,
-        keyframes: [
-          for (final k in param.keyframes)
-            if ((k.progress - target).abs() <= kKeyframeMatchProgress)
-              Keyframe(
-                progress: k.progress,
-                value: k.value,
-                interpolation: easing,
-              )
-            else
-              k,
-        ],
-      ),
-    );
-  }
-  return out;
-}
+) =>
+    _applied(s, (p) => setKeyframeEasingIn(p, progress, tolerance, easing));
