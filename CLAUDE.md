@@ -1151,6 +1151,15 @@ cross-slot id and the tile shows a still frame. The painting shell — clock swe
 clip, chrome — is `TextPreviewTile`, shared with the template tiles; the animation tile only
 builds its synthetic overlay and span.
 
+**A tile fits the whole look and fills itself with it** (`text_preview_fit_test.dart`). It
+used to fit the text *box* and scale only down, so a shadow or an outline — which reach past
+the box — was cut at the tile's edge, exactly where a glow or a far drop shadow lives, and a
+short word sat small in an empty tile. The fitted extent is the box grown by
+`textGlyphBleedPadding` (the reach the export pads by, so the tile holds what the file does),
+scaled to meet a `kTextPreviewMargin` both up and down, capped at `kTextPreviewMaxUpscale`
+(1.5×) so "Hi" does not become two giant glyphs. The `ClipRect` is now only for animation,
+which moves letters past the resting look.
+
 **One clock drives every tile.** A repeating `AnimationController` on the panel, passed to each
 visible tile as its `clock`; only the active category is built, so switching tabs does not leave
 twenty animations running. A `Ticker` per tile would mean twenty tickers.

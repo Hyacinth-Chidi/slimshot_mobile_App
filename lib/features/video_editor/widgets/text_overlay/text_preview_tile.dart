@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/text_glyph_layout.dart';
 import '../../logic/text_overlay_geometry.dart';
 import '../../models/text_overlay_model.dart';
 import 'text_overlay_painter.dart';
@@ -21,6 +22,14 @@ const Size kTextPreviewCanvas = Size(240, 240);
 /// landed, and the user would never see the text the animation is animating
 /// *to*.
 const double kTextPreviewRestSeconds = 0.45;
+
+/// The most a tile magnifies a look to fill itself. Without a ceiling a word
+/// of two letters becomes two giant glyphs that no longer read as the style
+/// on offer; with this one a short word still sits comfortably large.
+const double kTextPreviewMaxUpscale = 1.5;
+
+/// The breathing room between a look and its tile's edge, in logical pixels.
+const double kTextPreviewMargin = 6.0;
 
 /// The shell every text preview tile shares: a small, looping, live preview
 /// painted by **the canvas's own painter**.
@@ -136,6 +145,15 @@ class _TextPreviewTileState extends State<TextPreviewTile> {
   Widget build(BuildContext context) {
     final overlay = widget.overlay;
     final layout = TextOverlayLayout.measure(overlay, kTextPreviewCanvas);
+    // The whole look, not just the text box: a shadow and an outline reach
+    // past the box — a glow by thirty-odd pixels — and fitting the box alone
+    // cut them off at the tile's edge. The reach is the one the export pads
+    // by, so the tile holds exactly what the file does.
+    final bleed = textGlyphBleedPadding(overlay, layout.renderScale);
+    final extent = Size(
+      layout.boxSize.width + bleed * 2,
+      layout.boxSize.height + bleed * 2,
+    );
 
     return Semantics(
       button: true,
@@ -159,29 +177,51 @@ class _TextPreviewTileState extends State<TextPreviewTile> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Expanded(
+                // An animation moves glyphs well outside the resting look — a
+                // slide travels 1.5 glyph heights — which is what the clip is
+                // for; the resting look itself always fits.
                 child: ClipRect(
-                  child: Center(
-                    // The measured box, scaled **down** only, so a long text
-                    // never spills out of the tile and a short one is not
-                    // blown up past the styling it carries. An animation moves
-                    // glyphs well outside the resting box — a slide travels
-                    // 1.5 glyph heights — so the margin is the whole reason
-                    // for the `ClipRect`.
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: SizedBox(
-                        width: layout.boxSize.width,
-                        height: layout.boxSize.height,
-                        child: CustomPaint(
-                          size: layout.boxSize,
-                          painter: TextOverlayPainter(
-                            overlay: overlay,
-                            layout: layout,
-                            canvasSize: kTextPreviewCanvas,
-                            positionSeconds: _phase * widget.spanSeconds,
+                  child: Padding(
+                    padding: const EdgeInsets.all(kTextPreviewMargin),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        // **Fills the tile, both ways.** A long text scales
+                        // down to fit and a short one scales up to meet the
+                        // margin — up to [kTextPreviewMaxUpscale] — so every
+                        // tile in a grid carries its look at a similar
+                        // presence instead of some sitting small in the
+                        // middle.
+                        final scale = [
+                          constraints.maxWidth / extent.width,
+                          constraints.maxHeight / extent.height,
+                          kTextPreviewMaxUpscale,
+                        ].reduce((a, b) => a < b ? a : b);
+                        return Center(
+                          child: SizedBox(
+                            width: extent.width * scale,
+                            height: extent.height * scale,
+                            child: FittedBox(
+                              fit: BoxFit.fill,
+                              child: SizedBox.fromSize(
+                                size: extent,
+                                child: Padding(
+                                  padding: EdgeInsets.all(bleed),
+                                  child: CustomPaint(
+                                    size: layout.boxSize,
+                                    painter: TextOverlayPainter(
+                                      overlay: overlay,
+                                      layout: layout,
+                                      canvasSize: kTextPreviewCanvas,
+                                      positionSeconds:
+                                          _phase * widget.spanSeconds,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      },
                     ),
                   ),
                 ),
