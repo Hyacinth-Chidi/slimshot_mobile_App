@@ -400,10 +400,15 @@ class NativeTimelinePreviewService {
 
       final String pngPath;
       final Size boxPxSize;
+      // What the placement box is sized from: the text box for the glyph
+      // path, whose cells carry their own bleed; for the flat path the whole
+      // PNG, which is the box plus an even margin for the shadow.
+      final Size placedPxSize;
       final List<EditorTimelineGlyph>? glyphs;
       if (usableAtlas != null) {
         pngPath = usableAtlas.pngPath;
         boxPxSize = usableAtlas.canvasPxSize;
+        placedPxSize = boxPxSize;
         glyphs = glyphsForAtlas(usableAtlas);
       } else {
         // The atlas PNG, if one was written, is still on disk — register it
@@ -418,6 +423,7 @@ class NativeTimelinePreviewService {
         if (flat == null) continue;
         pngPath = flat.pngPath;
         boxPxSize = flat.canvasPxSize;
+        placedPxSize = flat.rasterPxSize;
         glyphs = null;
       }
       tempFiles.add(pngPath);
@@ -433,7 +439,8 @@ class NativeTimelinePreviewService {
       // glyph path multiplies each cell's fraction by the box directly and so
       // takes the true text box. Sending the square down the glyph path
       // stretched every exported text vertically by the box's own aspect.
-      final fitBox = textOverlayBoxPx(boxPxSize, usingAtlas: usableAtlas != null);
+      final fitBox =
+          textOverlayBoxPx(placedPxSize, usingAtlas: usableAtlas != null);
       final boxDivW = boxPxSize.width == 0 ? 1.0 : boxPxSize.width;
       final boxDivH = boxPxSize.height == 0 ? 1.0 : boxPxSize.height;
 

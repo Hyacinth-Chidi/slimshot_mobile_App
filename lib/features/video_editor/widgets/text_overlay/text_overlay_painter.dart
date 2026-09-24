@@ -87,24 +87,14 @@ class TextOverlayPainter extends CustomPainter {
       );
     }
 
-    final textAlign = TextOverlayLayout.textAlignFor(overlay);
     final fillPainter = TextOverlayLayout.textPainterFor(overlay, renderScale)
       ..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
-    TextPainter? strokePainter;
+    // Shadow, outline, fill — one painter for all three, shared with the
+    // export (`paintTextOverlayInk`).
+    final strokePainter =
+        TextOverlayLayout.strokePainterFor(overlay, renderScale)
+          ?..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
     try {
-      // Stroke under fill, exactly as the rasteriser stacks them and as the
-      // two `Text` widgets used to.
-      if (TextOverlayLayout.hasStroke(overlay)) {
-        strokePainter = TextPainter(
-          text: TextSpan(
-            text: overlay.text,
-            style: TextOverlayLayout.strokeStyleFor(overlay, renderScale),
-          ),
-          textDirection: TextDirection.ltr,
-          textAlign: textAlign,
-          textScaler: TextScaler.noScaling,
-        )..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
-      }
 
       final timing = _animationTiming;
 
@@ -114,8 +104,14 @@ class TextOverlayPainter extends CustomPainter {
       // render as it did before — and it is also the cheaper path, which is
       // what most overlays take.
       if (timing == null || !timing.isActive) {
-        strokePainter?.paint(canvas, layout.textOrigin);
-        fillPainter.paint(canvas, layout.textOrigin);
+        paintTextOverlayInk(
+          canvas,
+          overlay: overlay,
+          renderScale: renderScale,
+          fill: fillPainter,
+          stroke: strokePainter,
+          textOrigin: layout.textOrigin,
+        );
         return;
       }
 
@@ -195,8 +191,16 @@ class TextOverlayPainter extends CustomPainter {
         // not the width of "A" plus "V", so a character painted alone is not
         // the pixels that character has in context. The atlas rasteriser draws
         // its cells the same way, for the same reason.
-        strokePainter?.paint(canvas, layout.textOrigin);
-        fillPainter.paint(canvas, layout.textOrigin);
+        // Only this letter's shadow is cast, so it travels with the letter.
+        paintTextOverlayInk(
+          canvas,
+          overlay: overlay,
+          renderScale: renderScale,
+          fill: fillPainter,
+          stroke: strokePainter,
+          textOrigin: layout.textOrigin,
+          shadowFrom: glyph.inkRect,
+        );
         if (fading) canvas.restore();
         canvas.restore();
       }

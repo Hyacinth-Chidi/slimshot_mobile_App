@@ -29,7 +29,15 @@ class RasterizedTextOverlay {
   const RasterizedTextOverlay({
     required this.pngPath,
     required this.canvasPxSize,
+    required this.rasterPxSize,
   });
+
+  /// The PNG's extent in preview-canvas pixels: [canvasPxSize] plus an even
+  /// margin wide enough for the shadow and outline, centred on the box. The
+  /// box's own outer padding is 8px, and a shadow reaches further than that —
+  /// a raster the size of the box cut it off on the right and bottom. Even,
+  /// so the raster's centre is the box's and the text lands where it did.
+  final Size rasterPxSize;
 
   /// Temp PNG holding the text exactly as the preview draws it.
   final String pngPath;
@@ -161,9 +169,19 @@ class TextOverlayRasterizer {
         canvasPxSize: size,
       );
 
+      // Whatever the box's own padding cannot hold of the shadow and outline.
+      final margin = math.max(
+        0.0,
+        textGlyphBleedPadding(overlay, renderScale) -
+            kTextOverlayOuterPadding * renderScale,
+      );
+      final rasterSize =
+          Size(size.width + margin * 2, size.height + margin * 2);
+
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       canvas.scale(density);
+      canvas.translate(margin, margin);
 
       if (layout.hasBackground) {
         canvas.drawRRect(
@@ -179,30 +197,27 @@ class TextOverlayRasterizer {
       // widget (tight when the box was dragged wider), so alignment inside a
       // widened box lands where the preview put it.
       final textOrigin = layout.textOrigin;
-      final textAlign = TextOverlayLayout.textAlignFor(overlay);
 
-      // Stroke under fill, exactly as the layer stacks its two Text widgets.
-      if (TextOverlayLayout.hasStroke(overlay)) {
-        final strokePainter = TextPainter(
-          text: TextSpan(
-            text: overlay.text,
-            style: TextOverlayLayout.strokeStyleFor(overlay, renderScale),
-          ),
-          textDirection: TextDirection.ltr,
-          textAlign: textAlign,
-          textScaler: TextScaler.noScaling,
-        )..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
-        strokePainter.paint(canvas, textOrigin);
-        strokePainter.dispose();
-      }
+      // Shadow, outline, fill — exactly as the canvas draws them.
+      final strokePainter =
+          TextOverlayLayout.strokePainterFor(overlay, renderScale)
+            ?..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
       final fillPainter = TextOverlayLayout.textPainterFor(overlay, renderScale)
         ..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
-      fillPainter.paint(canvas, textOrigin);
+      paintTextOverlayInk(
+        canvas,
+        overlay: overlay,
+        renderScale: renderScale,
+        fill: fillPainter,
+        stroke: strokePainter,
+        textOrigin: textOrigin,
+      );
+      strokePainter?.dispose();
       fillPainter.dispose();
 
       final image = await recorder.endRecording().toImage(
-            (size.width * density).ceil().clamp(1, kMaxRasterSidePx),
-            (size.height * density).ceil().clamp(1, kMaxRasterSidePx),
+            (rasterSize.width * density).ceil().clamp(1, kMaxRasterSidePx),
+            (rasterSize.height * density).ceil().clamp(1, kMaxRasterSidePx),
           );
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
@@ -214,7 +229,11 @@ class TextOverlayRasterizer {
       );
       await file.writeAsBytes(bytes.buffer.asUint8List());
 
-      return RasterizedTextOverlay(pngPath: file.path, canvasPxSize: size);
+      return RasterizedTextOverlay(
+        pngPath: file.path,
+        canvasPxSize: size,
+        rasterPxSize: rasterSize,
+      );
     } catch (error) {
       debugPrint('[TextRaster] ${overlay.id} failed: $error');
       return null;
@@ -312,28 +331,18 @@ class TextOverlayRasterizer {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
 
-      final textAlign = TextOverlayLayout.textAlignFor(overlay);
       final fillPainter = TextOverlayLayout.textPainterFor(overlay, renderScale)
         ..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
-      TextPainter? strokePainter;
+      final strokePainter =
+          TextOverlayLayout.strokePainterFor(overlay, renderScale)
+            ?..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
       ui.Image? image;
       try {
-        if (TextOverlayLayout.hasStroke(overlay)) {
-          strokePainter = TextPainter(
-            text: TextSpan(
-              text: overlay.text,
-              style: TextOverlayLayout.strokeStyleFor(overlay, renderScale),
-            ),
-            textDirection: TextDirection.ltr,
-            textAlign: textAlign,
-            textScaler: TextScaler.noScaling,
-          )..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
-        }
-
         // Each cell draws the *whole* text translated so that this glyph's
         // padded rect lands on the cell, clipped to the cell. Drawing the
         // whole run keeps kerning, ligatures and alignment identical to the
-        // flat raster; the clip is what isolates one character.
+        // flat raster; the clip is what isolates one character. The shadow
+        // is this glyph's alone — see [paintTextOverlayInk].
         for (var i = 0; i < glyphBoxes.length; i++) {
           final glyph = glyphBoxes[i];
           final cell = cells[i];
@@ -342,8 +351,15 @@ class TextOverlayRasterizer {
           canvas.translate(cell.left, cell.top);
           canvas.scale(density);
           canvas.translate(-glyph.paddedRect.left, -glyph.paddedRect.top);
-          strokePainter?.paint(canvas, layout.textOrigin);
-          fillPainter.paint(canvas, layout.textOrigin);
+          paintTextOverlayInk(
+            canvas,
+            overlay: overlay,
+            renderScale: renderScale,
+            fill: fillPainter,
+            stroke: strokePainter,
+            textOrigin: layout.textOrigin,
+            shadowFrom: glyph.inkRect,
+          );
           canvas.restore();
         }
 

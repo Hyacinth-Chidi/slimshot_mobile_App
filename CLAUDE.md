@@ -982,13 +982,43 @@ it is passed through undivided; dividing it yields values that still look plausi
 silently mis-sampling every glyph.
 
 A residual remains and is **accepted, not a bug to chase**: adjacent glyphs' padded cells can
-still overlap on canvas, so faint *bleed* re-composites even though *ink* does not. It is
-measured at 100% outside `boxRect`, and a text can only ever carry `kTextShadowBlurRadius`
-(8.0) — one constant the editor sheet and the text templates both write, so neither can leave
-the territory these tests measured. The reassembly tests gate ink hard (`60 × glyphCount` pixels, max
-delta 80 — a real double-composite saturates near 255) and halo softly with per-case measured
-numbers. Masking a cell to its own ink cannot work (nothing attributes rasterised pixels to a
-glyph) and a max/coverage blend would break alpha for every overlay; neither is worth retrying.
+still overlap on canvas, so an antialiased *ink edge* inside the overlap re-composites. The
+**shadow no longer does**: each cell casts only its own glyph's shadow, built from the glyph's
+tile before rasterising (see the text-shadow section), so a shadow is drawn once however cells
+overlap. Until that landed every cell carried the whole run's shadow cropped to the cell, and
+the overlap drew it twice — darker, stepped at each cell edge, and (once the shadow stopped
+being cut off) 1682 halo pixels off the flat raster at blur 8. The reassembly tests gate ink
+hard (`60 × glyphCount` pixels, max delta 80 — a real double-composite saturates near 255) and
+halo with per-case measured numbers (shadow: 60 and 300, from measured 16 and 91). Masking a
+cell's *rasterised pixels* to its own glyph still cannot work (nothing attributes a pixel to a
+glyph) and a max/coverage blend would break alpha for every overlay; the per-glyph shadow works
+because it is built from geometry, not attributed afterwards.
+
+**A text's shadow has one painter: `paintTextOverlayInk`** (`text_overlay_geometry.dart`,
+`text_shadow_test.dart`, **awaiting device verification**). Device-reported as "the shadow is
+only on the left". Rendered and measured in tests, three faults, each fixed:
+
+- **The export cut the shadow off.** The flat raster was exactly the text box (8px outer
+  padding) and atlas cells were padded by 1.5 × the blur radius (12px), while the shadow reaches
+  ~19px down and right (offset + 3σ of the blur) and ~11px up and left. The file kept the soft
+  left and top and lost the rest in a straight line — alpha 66 on the raster's last column, 51 on
+  its last row. `TextOverlayLayout.shadowReachFor` is the reach; `textGlyphBleedPadding` pads
+  cells by it, and the flat raster grows an **even** margin (`RasterizedTextOverlay.rasterPxSize`)
+  so its centre stays the box's. The export places the flat raster by that size and keeps
+  `canvasPxSize` — the text box — for the slide travel, which is the widget's own size. **No Kotlin
+  changed**: sizes already cross the channel as numbers.
+- **An outlined text had two shadows**, one per text style, and the fill's was painted over the
+  outline beneath it.
+- **A `Shadow`'s blur ignores the canvas scale.** The export draws at 2–3× the canvas's
+  density; measured, a shadow faded over 12 box px at 1× and 6.7 at 3× — twice as sharp in the
+  file as on the screen.
+
+So **no text style carries a shadow any more**. `paintTextOverlayInk` casts it once — the
+silhouette (outline included) in the shadow colour through a `saveLayer` with an image-filter
+blur of the same sigma a `Shadow` uses, which *does* scale with the canvas — then paints outline
+and fill over it. The canvas (still and animated), the flat raster and the atlas all call it.
+With `shadowFrom` it casts from one glyph's tile only: that is how each atlas cell and each
+animated letter carries its own letter's shadow, drawn once, travelling with the letter.
 
 **Two cases deliberately keep the flat raster**: text whose atlas exceeds the 4096px texture
 limit even at floor density, and text with a **background box** (the glyph pass draws letters

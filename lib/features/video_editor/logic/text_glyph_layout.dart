@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 // Explicit rather than leaning on `material.dart`'s re-export: cluster
 // iteration is load-bearing here, not incidental.
@@ -41,8 +40,10 @@ class TextGlyphBox {
   final Rect paddedRect;
 }
 
-/// How far a glyph's ink can extend past its box: the shadow's blur and its
-/// offset, plus half the stroke width, which straddles the glyph's edge.
+/// How far a glyph's ink can extend past its box: half the stroke width,
+/// which straddles the glyph's edge, plus the shadow's reach beyond that —
+/// the shadow is cast from the outline when there is one, so it starts where
+/// the outline ends. Symmetric, sized for the shadow's farthest direction.
 ///
 /// **One definition, two consumers, and they must not drift.**
 /// `TextOverlayRasterizer` pads the atlas cells it *writes* by this, and
@@ -51,16 +52,12 @@ class TextGlyphBox {
 /// this arithmetic (which is what there were) desync silently: the file and the
 /// canvas would clip a shadow differently with nothing failing anywhere.
 double textGlyphBleedPadding(TextOverlayModel overlay, double renderScale) {
-  var padding = 0.0;
-  if (overlay.shadowColor != Colors.transparent &&
-      overlay.shadowBlurRadius > 0) {
-    final blur = overlay.shadowBlurRadius * renderScale;
-    padding = math.max(padding, blur + blur / 2);
-  }
-  if (TextOverlayLayout.hasStroke(overlay)) {
-    padding = math.max(padding, overlay.strokeWidth * renderScale / 2);
-  }
-  return padding;
+  final stroke = TextOverlayLayout.hasStroke(overlay)
+      ? overlay.strokeWidth * renderScale / 2
+      : 0.0;
+  final shadow = TextOverlayLayout.shadowReachFor(overlay, renderScale);
+  // A pixel of slack, rounded up: the blur's tail is sampled on whole pixels.
+  return shadow > 0 ? (stroke + shadow + 1).ceilToDouble() : stroke;
 }
 
 /// Where every character of [overlay] sits, using Flutter's own text layout.

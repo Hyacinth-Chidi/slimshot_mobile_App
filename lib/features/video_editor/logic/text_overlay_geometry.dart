@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -145,8 +146,12 @@ class TextOverlayLayout {
   }
 
   /// The fill painter for [overlay], unlaid. Stroke painters take the same
-  /// span with a stroking `foreground` — see [strokeStyleFor].
-  static TextPainter textPainterFor(TextOverlayModel overlay, double renderScale) {
+  /// span with a stroking `foreground` — see [strokePainterFor]. Neither
+  /// carries the shadow: [paintTextOverlayInk] casts it.
+  static TextPainter textPainterFor(
+    TextOverlayModel overlay,
+    double renderScale,
+  ) {
     return TextPainter(
       text: TextSpan(
         text: overlay.text,
@@ -170,24 +175,61 @@ class TextOverlayLayout {
     };
   }
 
-  static List<Shadow> shadowsFor(TextOverlayModel overlay, double renderScale) {
-    if (overlay.shadowColor == Colors.transparent ||
-        overlay.shadowBlurRadius <= 0) {
-      return const <Shadow>[];
-    }
+  static bool hasShadow(TextOverlayModel overlay) =>
+      overlay.shadowColor != Colors.transparent && overlay.shadowBlurRadius > 0;
+
+  /// Where the shadow sits relative to the text, in render pixels.
+  static Offset shadowOffsetFor(TextOverlayModel overlay, double renderScale) {
     final blur = overlay.shadowBlurRadius * renderScale;
-    return [
-      Shadow(color: overlay.shadowColor, blurRadius: blur, offset: Offset(blur / 2, blur / 2)),
-    ];
+    return Offset(blur / 2, blur / 2);
   }
 
+  /// The shadow's blur, as the Gaussian sigma a `Shadow` of that radius
+  /// would use, in render pixels.
+  static double shadowSigmaFor(TextOverlayModel overlay, double renderScale) =>
+      Shadow.convertRadiusToSigma(overlay.shadowBlurRadius * renderScale);
+
+  /// How far the shadow reaches past the ink it is cast from, in render
+  /// pixels, in its **farthest** direction: the offset plus three sigmas of
+  /// Flutter's own blur, beyond which a Gaussian has nothing left to draw.
+  ///
+  /// Anything that stores a shadow — the export raster's margin, an atlas
+  /// cell's padding — must be at least this big, or the shadow is cut off in
+  /// a straight line. It used to be sized by 1.5 × the blur *radius*, which
+  /// is short of this down and to the right, so the file kept the shadow's
+  /// soft left and top and lost the rest: "the shadow is only on the left".
+  static double shadowReachFor(TextOverlayModel overlay, double renderScale) {
+    if (!hasShadow(overlay)) return 0;
+    return shadowOffsetFor(overlay, renderScale).distance +
+        3 * shadowSigmaFor(overlay, renderScale);
+  }
+
+  /// The fill's style. **No shadow**: see [paintTextOverlayInk].
   static TextStyle fillStyleFor(TextOverlayModel overlay, double renderScale) {
     return getFontStyle(
       overlay.fontFamily,
       fontSize: kTextOverlayFontSize * renderScale,
       color: overlay.color,
       height: kTextOverlayLineHeight,
-      shadows: shadowsFor(overlay, renderScale),
+    );
+  }
+
+  /// The outline, as a painter laid out like the fill — or null when the text
+  /// has none. The one place an outline painter is built, so the canvas, the
+  /// flat raster and the atlas stack the same layers.
+  static TextPainter? strokePainterFor(
+    TextOverlayModel overlay,
+    double renderScale,
+  ) {
+    if (!hasStroke(overlay)) return null;
+    return TextPainter(
+      text: TextSpan(
+        text: overlay.text,
+        style: strokeStyleFor(overlay, renderScale),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: textAlignFor(overlay),
+      textScaler: TextScaler.noScaling,
     );
   }
 
@@ -195,7 +237,11 @@ class TextOverlayLayout {
     return overlay.strokeColor != Colors.transparent && overlay.strokeWidth > 0;
   }
 
-  static TextStyle strokeStyleFor(TextOverlayModel overlay, double renderScale) {
+  /// The outline's style. **No shadow**: see [paintTextOverlayInk].
+  static TextStyle strokeStyleFor(
+    TextOverlayModel overlay,
+    double renderScale,
+  ) {
     return getFontStyle(
       overlay.fontFamily,
       fontSize: kTextOverlayFontSize * renderScale,
@@ -204,9 +250,69 @@ class TextOverlayLayout {
         ..style = PaintingStyle.stroke
         ..strokeWidth = overlay.strokeWidth * renderScale
         ..color = overlay.strokeColor,
-      shadows: shadowsFor(overlay, renderScale),
     );
   }
+}
+
+/// Paints a text's ink — its shadow, then the outline, then the fill — at
+/// [textOrigin] in box-local pixels. **The only thing that draws a text's
+/// shadow**: the canvas (still and animated), the flat export raster and the
+/// glyph atlas all come here, so they cannot disagree about it.
+///
+/// [fill] and [stroke] come from [TextOverlayLayout.textPainterFor] and
+/// [TextOverlayLayout.strokePainterFor], laid out; neither carries a shadow.
+///
+/// The shadow is the text's silhouette — outline included — in the shadow's
+/// colour, blurred and offset, **once**, under everything. It used to ride on
+/// the text styles instead, and that went wrong three ways, each measured:
+/// both the outline's style and the fill's carried one, so an outlined text
+/// had two and the fill's was painted over the outline; a `Shadow`'s blur
+/// ignores the canvas scale, so the export — drawn at 2–3× — got a shadow
+/// roughly twice as sharp as the preview; and a glyph-atlas cell carried the
+/// whole run's shadow, composited twice wherever cells overlapped.
+///
+/// [shadowFrom], when given, casts the shadow from only that part of the
+/// text: a glyph's own tile, so each atlas cell and each animated letter
+/// carries its own letter's shadow and nothing else. Tiles never overlap, so
+/// every letter's shadow is drawn exactly once, and a letter that moves takes
+/// its shadow with it. The ink is never limited by it — a cell draws the
+/// whole run, for kerning's sake, and the caller's clip isolates the letter.
+void paintTextOverlayInk(
+  Canvas canvas, {
+  required TextOverlayModel overlay,
+  required double renderScale,
+  required TextPainter fill,
+  required TextPainter? stroke,
+  required Offset textOrigin,
+  Rect? shadowFrom,
+}) {
+  if (TextOverlayLayout.hasShadow(overlay)) {
+    final sigma = TextOverlayLayout.shadowSigmaFor(overlay, renderScale);
+    final offset = TextOverlayLayout.shadowOffsetFor(overlay, renderScale);
+    canvas.save();
+    canvas.translate(offset.dx, offset.dy);
+    // The layer takes the silhouette in whatever colours the text has; the
+    // colour filter turns it into the shadow's colour, alpha included, and
+    // the blur softens it with the same sigma a `Shadow` of that radius uses
+    // — in the canvas's own units, so it scales with the export's density.
+    canvas.saveLayer(
+      null,
+      Paint()
+        ..imageFilter = ImageFilter.blur(
+          sigmaX: sigma,
+          sigmaY: sigma,
+          tileMode: TileMode.decal,
+        )
+        ..colorFilter = ColorFilter.mode(overlay.shadowColor, BlendMode.srcIn),
+    );
+    if (shadowFrom != null) canvas.clipRect(shadowFrom);
+    stroke?.paint(canvas, textOrigin);
+    fill.paint(canvas, textOrigin);
+    canvas.restore();
+    canvas.restore();
+  }
+  stroke?.paint(canvas, textOrigin);
+  fill.paint(canvas, textOrigin);
 }
 
 /// The box's centre on the canvas, in render pixels.

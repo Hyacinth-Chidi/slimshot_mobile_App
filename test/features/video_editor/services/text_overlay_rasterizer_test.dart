@@ -144,10 +144,12 @@ void main() {
   //   *area* not perimeter) while tolerating the known seam noise.
   // - **Outside every `boxRect`** (the shadow/stroke bleed halo) can still
   //   differ from the flat raster where two glyphs sit close enough that
-  //   their *padded* cells overlap on canvas: each cell already contains a
-  //   fully-rendered (and already-correct) crop of the whole run — shadow
-  //   blur included — so where two such crops overlap, reassembly composites
-  //   the same already-correct pixels a second time. Rejected fixes (dead
+  //   their *padded* cells overlap on canvas: each cell contains a crop of
+  //   the whole run's ink, so where two crops overlap an antialiased edge is
+  //   composited a second time. The **shadow** no longer does this: each
+  //   cell casts only its own glyph's shadow (`paintTextOverlayInk`), so a
+  //   shadow is drawn once however the cells overlap — the shadow cases'
+  //   gates fell from 1250/2200 to 60/300 when that landed. Rejected fixes (dead
   //   ends, not retried): masking a cell to only its own glyph's ink is
   //   impossible once rasterised (nothing distinguishes whose pixels are
   //   whose), and a max/coverage blend for the bleed would break legitimate
@@ -176,7 +178,16 @@ void main() {
       expect(atlas, isNotNull, reason: '$label: atlas produced nothing');
 
       final flatAlpha = await _decodeAlpha(flat!.pngPath);
-      final reassembled = await _reassemble(atlas!);
+      // The flat raster is the box plus an even margin for the shadow, so
+      // the atlas is rebuilt into the same extent, offset by that margin.
+      // Both used to stop at the box — which is why this comparison agreed
+      // while both files cut the shadow off at the box's right and bottom.
+      final margin = (flat.rasterPxSize.width - flat.canvasPxSize.width) / 2;
+      final reassembled = await _reassemble(
+        atlas!,
+        size: flat.rasterPxSize,
+        origin: Offset(margin, margin),
+      );
 
       expect(
         reassembled.width,
@@ -192,7 +203,7 @@ void main() {
       final split = _alphaDeltaSplitByBoxRects(
         flatAlpha,
         reassembled,
-        atlas.glyphs.map((g) => g.boxRect).toList(),
+        atlas.glyphs.map((g) => g.boxRect.shift(Offset(margin, margin))).toList(),
       );
 
       // Hard-ish gate: the ink area is where C1 lived. A seam row per glyph
@@ -260,18 +271,19 @@ void main() {
     });
 
     test('shadowed text', () async {
-      // 8px matches the app's actual shadow preset (text_editor_dialog.dart:
-      // shadowBlurRadius: 8.0) — a realistic bleed width relative to the
-      // 32px font, not the 20px stress figure used to originally measure
-      // C1's ink-area bug. The halo is wider here because real bleed
-      // (not just seam noise) now overlaps between adjacent glyphs.
+      // 8px matches the app's shadow (kTextShadowBlurRadius). Each cell now
+      // casts only its own glyph's shadow, so no shadow is composited twice:
+      // measured 16 px over threshold (max delta 34). It was 1682 (max 98)
+      // when every cell carried the whole run's shadow — once the margin
+      // stopped cutting the shadow off and the comparison could see all of
+      // it. The gate sits far below that.
       final overlay = overlayWith('hello')
         ..shadowColor = Colors.black
         ..shadowBlurRadius = 8;
       await expectReassemblyMatches(
         overlay,
         label: 'shadowed',
-        maxHaloPixelsOverThreshold: 250 * 5,
+        maxHaloPixelsOverThreshold: 60,
       );
     });
 
@@ -296,10 +308,12 @@ void main() {
         final overlay = overlayWith('hello')
           ..shadowColor = Colors.black
           ..shadowBlurRadius = 20;
+        // Measured 91 (max delta 37) with per-glyph shadows; 6166 when each
+        // cell carried the whole run's.
         await expectReassemblyMatches(
           overlay,
           label: 'wide shadow blur',
-          maxHaloPixelsOverThreshold: 2200,
+          maxHaloPixelsOverThreshold: 300,
         );
       },
     );
@@ -354,16 +368,21 @@ Future<_AlphaBuffer> _alphaFromImage(ui.Image image) async {
 /// glyph. Cropping to `srcRect` (drawing only the ink) is the mistake this
 /// test exists to catch: it would make the fixed C1 pass by construction
 /// without checking that the bleed is preserved.
-Future<_AlphaBuffer> _reassemble(RasterizedTextAtlas atlas) async {
+Future<_AlphaBuffer> _reassemble(
+  RasterizedTextAtlas atlas, {
+  required Size size,
+  required Offset origin,
+}) async {
   final atlasBytes = await File(atlas.pngPath).readAsBytes();
   final atlasCodec = await ui.instantiateImageCodec(atlasBytes);
   final atlasImage = (await atlasCodec.getNextFrame()).image;
 
-  final width = atlas.canvasPxSize.width.ceil();
-  final height = atlas.canvasPxSize.height.ceil();
+  final width = size.width.ceil();
+  final height = size.height.ceil();
 
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
+  canvas.translate(origin.dx, origin.dy);
   final paint = Paint();
   for (final glyph in atlas.glyphs) {
     final atlasRect = glyph.atlasRect;
