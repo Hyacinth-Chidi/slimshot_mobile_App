@@ -16,6 +16,7 @@ import '../logic/canvas_geometry.dart';
 import '../logic/animation/clip_keyframes.dart' as kf;
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
+import '../logic/timeline/lane_layout.dart';
 import '../logic/timeline/timeline_geometry.dart';
 import '../models/filter_preset.dart';
 import '../models/text_overlay_model.dart';
@@ -533,6 +534,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedTransitionSegmentId: true,
       isClipSelected: false,
     );
+
+    // A draft saved before the lane rules held can hold stacked overlays —
+    // duplicates used to land exactly on top of their original — or gaps.
+    _applyLanes(normalizeLanes(_laneSpans));
 
     if (rerenderMissingProxies) {
       for (final id in healed.reversedToRender) {
@@ -2639,219 +2644,291 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
-  bool _overlaps(
-    Duration start1,
-    Duration end1,
-    Duration start2,
-    Duration end2,
-  ) {
-    return start1 < end2 && start2 < end1;
-  }
+  // --- Lanes ---
+  //
+  // Text, photos, video overlays and audio share one set of lanes. The rules
+  // live in `lane_layout.dart` as pure functions over spans; these methods
+  // read the four lists into spans and write the answers back.
 
-  int _findAvailableLane(
-    Duration startTime,
-    Duration endTime, {
-    String? excludeId,
-    int startLane = 0,
-  }) {
-    int lane = startLane;
-    while (true) {
-      bool collision = false;
-
-      for (final item in state.textOverlays) {
-        if (item.id == excludeId) continue;
-        if (item.laneIndex == lane &&
-            _overlaps(startTime, endTime, item.startTime, item.endTime)) {
-          collision = true;
-          break;
-        }
-      }
-      if (collision) {
-        lane++;
-        continue;
-      }
-
-      for (final item in state.imageOverlays) {
-        if (item.id == excludeId) continue;
-        if (item.laneIndex == lane &&
-            _overlaps(startTime, endTime, item.startTime, item.endTime)) {
-          collision = true;
-          break;
-        }
-      }
-      if (collision) {
-        lane++;
-        continue;
-      }
-
-      for (final item in state.videoOverlays) {
-        if (item.id == excludeId) continue;
-        if (item.laneIndex == lane &&
-            _overlaps(
-              startTime,
-              endTime,
-              item.timelineStart,
-              item.timelineEnd,
-            )) {
-          collision = true;
-          break;
-        }
-      }
-      if (collision) {
-        lane++;
-        continue;
-      }
-
-      for (final item in state.audioTracks) {
-        if (item.id == excludeId) continue;
-        final trackStart = Duration(
-          milliseconds: (item.timelineStart * 1000).round(),
-        );
-        final trackEnd = Duration(
-          milliseconds: (item.timelineEnd * 1000).round(),
-        );
-        if (item.laneIndex == lane &&
-            _overlaps(startTime, endTime, trackStart, trackEnd)) {
-          collision = true;
-          break;
-        }
-      }
-      if (collision) {
-        lane++;
-        continue;
-      }
-
-      return lane;
-    }
-  }
-
-  /// Moves `draggedId` to `targetLane`. If something already occupies that
-  /// lane at the same time range, swap their lane indices. This gives
-  /// smooth one-lane-at-a-time swap behavior (like reordering layers).
-  void _swapToLane(
-    String draggedId,
-    int targetLane,
-    Duration startTime,
-    Duration endTime,
-  ) {
-    // Find any item currently sitting at targetLane that overlaps our time range.
-    // If found, give it our old lane. Then set ours to targetLane.
-
-    // First, find the dragged item's current lane across all item types.
-    int? draggedCurrentLane;
-    for (final t in state.textOverlays) {
-      if (t.id == draggedId) {
-        draggedCurrentLane = t.laneIndex;
-        break;
-      }
-    }
-    if (draggedCurrentLane == null) {
-      for (final i in state.imageOverlays) {
-        if (i.id == draggedId) {
-          draggedCurrentLane = i.laneIndex;
-          break;
-        }
-      }
-    }
-    if (draggedCurrentLane == null) {
-      for (final v in state.videoOverlays) {
-        if (v.id == draggedId) {
-          draggedCurrentLane = v.laneIndex;
-          break;
-        }
-      }
-    }
-    if (draggedCurrentLane == null) {
-      for (final a in state.audioTracks) {
-        if (a.id == draggedId) {
-          draggedCurrentLane = a.laneIndex;
-          break;
-        }
-      }
-    }
-    if (draggedCurrentLane == null || draggedCurrentLane == targetLane) return;
-
-    // Now search for a conflicting item at targetLane and swap it to draggedCurrentLane.
-    var textOverlays = [...state.textOverlays];
-    var imageOverlays = [...state.imageOverlays];
-    var videoOverlays = [...state.videoOverlays];
-    var audioTracks = [...state.audioTracks];
-
-    // Swap conflicting text overlays
-    for (int i = 0; i < textOverlays.length; i++) {
-      final item = textOverlays[i];
-      if (item.id == draggedId) continue;
-      if (item.laneIndex == targetLane &&
-          _overlaps(startTime, endTime, item.startTime, item.endTime)) {
-        textOverlays[i] = item.copyWith(laneIndex: draggedCurrentLane);
-      }
-    }
-
-    // Swap conflicting image overlays
-    for (int i = 0; i < imageOverlays.length; i++) {
-      final item = imageOverlays[i];
-      if (item.id == draggedId) continue;
-      if (item.laneIndex == targetLane &&
-          _overlaps(startTime, endTime, item.startTime, item.endTime)) {
-        imageOverlays[i] = item.copyWith(laneIndex: draggedCurrentLane);
-      }
-    }
-
-    // Swap conflicting video overlays
-    for (int i = 0; i < videoOverlays.length; i++) {
-      final item = videoOverlays[i];
-      if (item.id == draggedId) continue;
-      if (item.laneIndex == targetLane &&
-          _overlaps(startTime, endTime, item.timelineStart, item.timelineEnd)) {
-        videoOverlays[i] = item.copyWith(laneIndex: draggedCurrentLane);
-      }
-    }
-
-    // Swap conflicting audio tracks
-    for (int i = 0; i < audioTracks.length; i++) {
-      final item = audioTracks[i];
-      if (item.id == draggedId) continue;
-      final trackStart = Duration(
-        milliseconds: (item.timelineStart * 1000).round(),
+  List<LaneSpan> get _laneSpans => laneSpansOf(
+        texts: state.textOverlays,
+        images: state.imageOverlays,
+        videos: state.videoOverlays,
+        audios: state.audioTracks,
       );
-      final trackEnd = Duration(
-        milliseconds: (item.timelineEnd * 1000).round(),
-      );
-      if (item.laneIndex == targetLane &&
-          _overlaps(startTime, endTime, trackStart, trackEnd)) {
-        audioTracks[i] = item.copyWith(laneIndex: draggedCurrentLane);
-      }
-    }
 
-    // Now set the dragged item to targetLane
-    for (int i = 0; i < textOverlays.length; i++) {
-      if (textOverlays[i].id == draggedId) {
-        textOverlays[i] = textOverlays[i].copyWith(laneIndex: targetLane);
-      }
-    }
-    for (int i = 0; i < imageOverlays.length; i++) {
-      if (imageOverlays[i].id == draggedId) {
-        imageOverlays[i] = imageOverlays[i].copyWith(laneIndex: targetLane);
-      }
-    }
-    for (int i = 0; i < videoOverlays.length; i++) {
-      if (videoOverlays[i].id == draggedId) {
-        videoOverlays[i] = videoOverlays[i].copyWith(laneIndex: targetLane);
-      }
-    }
-    for (int i = 0; i < audioTracks.length; i++) {
-      if (audioTracks[i].id == draggedId) {
-        audioTracks[i] = audioTracks[i].copyWith(laneIndex: targetLane);
-      }
-    }
+  static Duration _duration(double seconds) =>
+      Duration(microseconds: (seconds * 1e6).round());
 
+  /// Writes new lanes by id across the four lists, replacing only a list that
+  /// actually changed — an untouched list keeps its identity, which is how
+  /// the overlay sync knows there is nothing to push.
+  void _applyLanes(Map<String, int> lanes) {
+    if (lanes.isEmpty) return;
+    bool changes(String id, int lane) =>
+        lanes.containsKey(id) && lanes[id] != lane;
+    final texts = state.textOverlays;
+    final images = state.imageOverlays;
+    final videos = state.videoOverlays;
+    final audios = state.audioTracks;
     state = state.copyWith(
-      textOverlays: textOverlays,
-      imageOverlays: imageOverlays,
-      videoOverlays: videoOverlays,
-      audioTracks: audioTracks,
+      textOverlays: texts.any((x) => changes(x.id, x.laneIndex))
+          ? [
+              for (final x in texts)
+                lanes.containsKey(x.id)
+                    ? x.copyWith(laneIndex: lanes[x.id])
+                    : x,
+            ]
+          : null,
+      imageOverlays: images.any((x) => changes(x.id, x.laneIndex))
+          ? [
+              for (final x in images)
+                lanes.containsKey(x.id)
+                    ? x.copyWith(laneIndex: lanes[x.id])
+                    : x,
+            ]
+          : null,
+      videoOverlays: videos.any((x) => changes(x.id, x.laneIndex))
+          ? [
+              for (final x in videos)
+                lanes.containsKey(x.id)
+                    ? x.copyWith(laneIndex: lanes[x.id])
+                    : x,
+            ]
+          : null,
+      audioTracks: audios.any((x) => changes(x.id, x.laneIndex))
+          ? [
+              for (final x in audios)
+                lanes.containsKey(x.id)
+                    ? x.copyWith(laneIndex: lanes[x.id])
+                    : x,
+            ]
+          : null,
     );
   }
+
+  /// Closes any lane left empty — by a move, a delete — keeping everything's
+  /// order relative to everything else, so paint order does not change.
+  void _compactLanes() => _applyLanes(compactLanes(_laneSpans));
+
+  /// The undo entry [beginTimelineGesture] pushed, and the redo stack it
+  /// cleared, in case the gesture turns out to have changed nothing.
+  VideoEditorState? _gestureBase;
+  List<VideoEditorState> _gestureRedo = const [];
+
+  /// A finger went down on a timeline drag or trim: **one** undo entry for
+  /// the whole gesture, taken before anything moves.
+  ///
+  /// Every frame used to go through `updateTextOverlay` and its siblings,
+  /// which snapshot each call, so Undo walked a drag back a frame at a time;
+  /// and the only snapshot a clip trim had was taken *after* it, so Undo
+  /// restored the trimmed state and the trim was permanent.
+  void beginTimelineGesture() {
+    _gestureRedo = [..._redoStack];
+    saveStateForUndo();
+    _gestureBase = _undoStack.last;
+  }
+
+  /// The finger lifted: close any lane the gesture emptied, and withdraw the
+  /// undo entry if nothing changed — a long press that moved nothing is not
+  /// an edit, and an undo that undoes nothing is a lie.
+  void endTimelineGesture() {
+    _compactLanes();
+    final base = _gestureBase;
+    _gestureBase = null;
+    if (base == null ||
+        _undoStack.isEmpty ||
+        !identical(_undoStack.last, base)) {
+      return;
+    }
+    final unchanged = identical(base.segments, state.segments) &&
+        base.trimRange == state.trimRange &&
+        identical(base.textOverlays, state.textOverlays) &&
+        identical(base.imageOverlays, state.imageOverlays) &&
+        identical(base.videoOverlays, state.videoOverlays) &&
+        identical(base.audioTracks, state.audioTracks);
+    if (!unchanged) return;
+    _undoStack.removeLast();
+    _redoStack
+      ..clear()
+      ..addAll(_gestureRedo);
+    state = state.copyWith(
+      canUndo: _undoStack.isNotEmpty,
+      canRedo: _redoStack.isNotEmpty,
+    );
+  }
+
+  /// One frame of a timeline move: [id] to [start] on [targetLane], keeping
+  /// its length. No undo snapshot — see [beginTimelineGesture].
+  ///
+  /// Where it lands is [resolveMove]'s decision: the target lane if free, a
+  /// trade of lanes with what it was dropped onto (the layer reorder), or the
+  /// nearest free lane below — never an overlap, and never more than one new
+  /// lane past the last.
+  void moveLaneItem(
+    String id, {
+    required double start,
+    required int targetLane,
+  }) {
+    final spans = _laneSpans;
+    final me = spans.where((x) => x.id == id).firstOrNull;
+    if (me == null) return;
+    final from = start < 0 ? 0.0 : start;
+    final to = from + (me.end - me.start);
+    final lanes = resolveMove(spans, id, from, to, targetLane);
+
+    final begin = _duration(from);
+    final end = _duration(to);
+    state = state.copyWith(
+      textOverlays: state.textOverlays.any((x) => x.id == id)
+          ? [
+              for (final x in state.textOverlays)
+                x.id == id ? x.copyWith(startTime: begin, endTime: end) : x,
+            ]
+          : null,
+      imageOverlays: state.imageOverlays.any((x) => x.id == id)
+          ? [
+              for (final x in state.imageOverlays)
+                x.id == id ? x.copyWith(startTime: begin, endTime: end) : x,
+            ]
+          : null,
+      videoOverlays: state.videoOverlays.any((x) => x.id == id)
+          ? [
+              for (final x in state.videoOverlays)
+                x.id == id
+                    ? x.copyWith(timelineStart: begin, timelineEnd: end)
+                    : x,
+            ]
+          : null,
+      audioTracks: state.audioTracks.any((x) => x.id == id)
+          ? [
+              for (final x in state.audioTracks)
+                x.id == id ? x.copyWith(timelineStart: from) : x,
+            ]
+          : null,
+    );
+    _applyLanes(lanes);
+  }
+
+  /// One frame of a text, photo or video overlay trim. No undo snapshot.
+  ///
+  /// Each edge stops at the neighbour on its lane ([clampTrim]). A video
+  /// overlay's edges also stop at its footage, and its **left edge cuts into
+  /// the footage**: it used to move only the timeline start, so trimming the
+  /// head left the footage beginning at its first frame, just later.
+  void trimLaneItem(String id, {required double start, required double end}) {
+    final spans = _laneSpans;
+    final me = spans.where((x) => x.id == id).firstOrNull;
+    if (me == null) return;
+    final clamped = clampTrim(spans, id, start, end);
+    var from = clamped.start;
+    var to = clamped.end;
+
+    final video = state.videoOverlays.where((x) => x.id == id).firstOrNull;
+    if (video != null) {
+      var sourceStart = video.sourceStart;
+      if (video.speed > 0 && video.sourceEnd > video.sourceStart) {
+        // The timeline instants the footage's first and last frames would
+        // play at: an edge may move within them, no further.
+        final footageZero = me.start - video.sourceStart / video.speed;
+        final footageEnd = footageZero + video.sourceEnd / video.speed;
+        if ((from - me.start).abs() > 1e-9) {
+          if (from < footageZero) from = footageZero;
+          sourceStart = (from - footageZero) * video.speed;
+        }
+        if ((to - me.end).abs() > 1e-9 && to > footageEnd) to = footageEnd;
+      }
+      state = state.copyWith(videoOverlays: [
+        for (final x in state.videoOverlays)
+          x.id == id
+              ? x.copyWith(
+                  timelineStart: _duration(from),
+                  timelineEnd: _duration(to),
+                  sourceStart: sourceStart,
+                )
+              : x,
+      ]);
+      return;
+    }
+
+    final begin = _duration(from);
+    final finish = _duration(to);
+    if (state.textOverlays.any((x) => x.id == id)) {
+      state = state.copyWith(textOverlays: [
+        for (final x in state.textOverlays)
+          x.id == id ? x.copyWith(startTime: begin, endTime: finish) : x,
+      ]);
+    } else if (state.imageOverlays.any((x) => x.id == id)) {
+      state = state.copyWith(imageOverlays: [
+        for (final x in state.imageOverlays)
+          x.id == id ? x.copyWith(startTime: begin, endTime: finish) : x,
+      ]);
+    }
+  }
+
+  /// One frame of an audio trim. No undo snapshot. The edges stop at the
+  /// lane's neighbours, and the source range follows whatever was clamped,
+  /// so the sound under the clip does not slide.
+  void trimAudioTrackLive(
+    String id, {
+    required double timelineStart,
+    required double sourceStart,
+    required double sourceEnd,
+  }) {
+    final requestedEnd = timelineStart + (sourceEnd - sourceStart);
+    final clamped = clampTrim(_laneSpans, id, timelineStart, requestedEnd);
+    state = state.copyWith(audioTracks: [
+      for (final x in state.audioTracks)
+        x.id == id
+            ? x.copyWith(
+                timelineStart: clamped.start,
+                sourceStart: sourceStart + (clamped.start - timelineStart),
+                sourceEnd: sourceEnd - (requestedEnd - clamped.end),
+              )
+            : x,
+    ]);
+  }
+
+  /// A copy of an audio track straight after it, on its own lane when that
+  /// is free there — music continuing — or the nearest free lane below.
+  void duplicateAudioTrack(String id) {
+    final track = state.audioTracks.where((a) => a.id == id).firstOrNull;
+    if (track == null) return;
+    saveStateForUndo();
+    final start = track.timelineEnd;
+    final lane = firstFreeLane(
+      _laneSpans,
+      start,
+      start + track.trimmedDuration,
+      fromLane: track.laneIndex,
+    );
+    final copy = track.copyWith(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      timelineStart: start,
+      laneIndex: lane,
+    );
+    state = state.copyWith(audioTracks: [...state.audioTracks, copy]);
+    selectAudioTrack(copy.id);
+  }
+
+  /// The lane a copy of an overlay spanning [start]–[end] on [lane] goes to:
+  /// the nearest one at or below it that is free at that time.
+  ///
+  /// Duplicates used to keep the original's lane and times, so the copy sat
+  /// exactly on top of it — invisible on the timeline and on the canvas.
+  int _laneForCopy(Duration start, Duration end, int lane) => firstFreeLane(
+        _laneSpans,
+        start.inMicroseconds / 1e6,
+        end.inMicroseconds / 1e6,
+        fromLane: lane,
+      );
+
+  /// The first lane free for [start]–[end], for something new.
+  int _laneForNew(Duration start, Duration end) => firstFreeLane(
+        _laneSpans,
+        start.inMicroseconds / 1e6,
+        end.inMicroseconds / 1e6,
+      );
 
   /// Adds [overlay] and selects it, **as the only selection**, on its menu.
   ///
@@ -2861,7 +2938,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// on a thing the toolbar was not about. The same shape as [addImageOverlay].
   void addTextOverlay(TextOverlayModel overlay) {
     saveStateForUndo();
-    final lane = _findAvailableLane(overlay.startTime, overlay.endTime);
+    final lane = _laneForNew(overlay.startTime, overlay.endTime);
     final placedOverlay = overlay.copyWith(laneIndex: lane);
     state = state.copyWith(
       textOverlays: [...state.textOverlays, placedOverlay],
@@ -2894,19 +2971,14 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
   void updateTextOverlay(
     String id,
-    TextOverlayModel Function(TextOverlayModel) update, {
-    int? newLaneIndex,
-  }) {
+    TextOverlayModel Function(TextOverlayModel) update,
+  ) {
     final index = state.textOverlays.indexWhere((text) => text.id == id);
     if (index == -1) return;
     saveStateForUndo();
     final updated = [...state.textOverlays];
-    final item = update(updated[index]);
-    updated[index] = item;
+    updated[index] = update(updated[index]);
     state = state.copyWith(textOverlays: updated);
-    if (newLaneIndex != null && newLaneIndex != item.laneIndex) {
-      _swapToLane(id, newLaneIndex, item.startTime, item.endTime);
-    }
   }
 
   /// A gesture frame's worth of text transform, with **no undo snapshot**.
@@ -2941,6 +3013,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedTextId: wasSelected,
       currentMenuId: wasSelected ? 'root' : null,
     );
+    // A lane this emptied closes, so nothing below it is left hanging.
+    _compactLanes();
   }
 
   void duplicateTextOverlay(String id) {
@@ -2951,6 +3025,11 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     final duplicated = overlay.copyWith(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       position: overlay.position + const Offset(20, 20),
+      laneIndex: _laneForCopy(
+        overlay.startTime,
+        overlay.endTime,
+        overlay.laneIndex,
+      ),
     );
     state = state.copyWith(
       textOverlays: [...state.textOverlays, duplicated],
@@ -2965,7 +3044,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
   void addImageOverlay(ImageOverlayModel overlay) {
     saveStateForUndo();
-    final lane = _findAvailableLane(overlay.startTime, overlay.endTime);
+    final lane = _laneForNew(overlay.startTime, overlay.endTime);
     final placedOverlay = overlay.copyWith(laneIndex: lane);
     state = state.copyWith(
       imageOverlays: [...state.imageOverlays, placedOverlay],
@@ -2992,19 +3071,14 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
   void updateImageOverlay(
     String id,
-    ImageOverlayModel Function(ImageOverlayModel) update, {
-    int? newLaneIndex,
-  }) {
+    ImageOverlayModel Function(ImageOverlayModel) update,
+  ) {
     final index = state.imageOverlays.indexWhere((img) => img.id == id);
     if (index == -1) return;
     saveStateForUndo();
     final updated = [...state.imageOverlays];
-    final item = update(updated[index]);
-    updated[index] = item;
+    updated[index] = update(updated[index]);
     state = state.copyWith(imageOverlays: updated);
-    if (newLaneIndex != null && newLaneIndex != item.laneIndex) {
-      _swapToLane(id, newLaneIndex, item.startTime, item.endTime);
-    }
   }
 
   /// One frame of a canvas gesture on a photo overlay: no undo snapshot.
@@ -3032,6 +3106,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       imageOverlays: state.imageOverlays.where((img) => img.id != id).toList(),
       clearSelectedImageId: state.selectedImageId == id,
     );
+    _compactLanes();
   }
 
   void duplicateImageOverlay(String id) {
@@ -3042,11 +3117,18 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     final duplicated = overlay.copyWith(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       position: overlay.position + const Offset(20, 20),
+      laneIndex: _laneForCopy(
+        overlay.startTime,
+        overlay.endTime,
+        overlay.laneIndex,
+      ),
     );
     state = state.copyWith(
       imageOverlays: [...state.imageOverlays, duplicated],
       selectedImageId: duplicated.id,
       clearSelectedTextId: true,
+      clearSelectedVideoOverlayId: true,
+      clearSelectedSegmentId: true,
       isClipSelected: false,
     );
   }
@@ -3054,7 +3136,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   // --- Video Overlay Logic ---
   void addVideoOverlay(VideoOverlayModel overlay) {
     saveStateForUndo();
-    final lane = _findAvailableLane(overlay.timelineStart, overlay.timelineEnd);
+    final lane = _laneForNew(overlay.timelineStart, overlay.timelineEnd);
     final placedOverlay = overlay.copyWith(laneIndex: lane);
     state = state.copyWith(
       videoOverlays: [...state.videoOverlays, placedOverlay],
@@ -3081,19 +3163,14 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
   void updateVideoOverlay(
     String id,
-    VideoOverlayModel Function(VideoOverlayModel) update, {
-    int? newLaneIndex,
-  }) {
+    VideoOverlayModel Function(VideoOverlayModel) update,
+  ) {
     final index = state.videoOverlays.indexWhere((vid) => vid.id == id);
     if (index == -1) return;
     saveStateForUndo();
     final updated = [...state.videoOverlays];
-    final item = update(updated[index]);
-    updated[index] = item;
+    updated[index] = update(updated[index]);
     state = state.copyWith(videoOverlays: updated);
-    if (newLaneIndex != null && newLaneIndex != item.laneIndex) {
-      _swapToLane(id, newLaneIndex, item.timelineStart, item.timelineEnd);
-    }
   }
 
   /// One frame of a canvas gesture on a video overlay: no undo snapshot.
@@ -3115,6 +3192,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       videoOverlays: state.videoOverlays.where((vid) => vid.id != id).toList(),
       clearSelectedVideoOverlayId: state.selectedVideoOverlayId == id,
     );
+    _compactLanes();
   }
 
   void duplicateVideoOverlay(String id) {
@@ -3125,12 +3203,18 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     final duplicated = overlay.copyWith(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       position: overlay.position + const Offset(20, 20),
+      laneIndex: _laneForCopy(
+        overlay.timelineStart,
+        overlay.timelineEnd,
+        overlay.laneIndex,
+      ),
     );
     state = state.copyWith(
       videoOverlays: [...state.videoOverlays, duplicated],
       selectedVideoOverlayId: duplicated.id,
       clearSelectedTextId: true,
       clearSelectedImageId: true,
+      clearSelectedSegmentId: true,
       isClipSelected: false,
     );
   }
@@ -3289,7 +3373,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       milliseconds: (track.timelineStart * 1000).round(),
     );
     final trackEnd = Duration(milliseconds: (track.timelineEnd * 1000).round());
-    final lane = _findAvailableLane(trackStart, trackEnd);
+    final lane = _laneForNew(trackStart, trackEnd);
     final placedTrack = track.copyWith(laneIndex: lane);
     state = state.copyWith(
       audioTracks: [...state.audioTracks, placedTrack],
@@ -3297,23 +3381,13 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
-  void updateAudioTrack(AudioTrackModel updatedTrack, {int? newLaneIndex}) {
+  void updateAudioTrack(AudioTrackModel updatedTrack) {
     saveStateForUndo();
-    final item = updatedTrack;
     state = state.copyWith(
       audioTracks: state.audioTracks
-          .map((t) => t.id == item.id ? item : t)
+          .map((t) => t.id == updatedTrack.id ? updatedTrack : t)
           .toList(),
     );
-    if (newLaneIndex != null && newLaneIndex != item.laneIndex) {
-      final trackStart = Duration(
-        milliseconds: (item.timelineStart * 1000).round(),
-      );
-      final trackEnd = Duration(
-        milliseconds: (item.timelineEnd * 1000).round(),
-      );
-      _swapToLane(item.id, newLaneIndex, trackStart, trackEnd);
-    }
   }
 
   void deleteAudioTrack(String id) {
@@ -3325,6 +3399,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
           : state.selectedAudioId,
       clearSelectedAudioId: state.selectedAudioId == id,
     );
+    _compactLanes();
   }
 
   void setSelectedAudioId(String? id) {

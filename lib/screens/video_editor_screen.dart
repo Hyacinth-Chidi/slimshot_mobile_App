@@ -801,6 +801,18 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// Deliberately does **not** seek: the timeline widget already previews the
   /// frame under the handle at its own rate, and seeking here as well meant two
   /// decoder flushes per drag frame.
+  /// One frame of a text, photo or video overlay gesture on the timeline: a
+  /// move when [lane] is given, a trim of an edge when it is not.
+  void _placeLaneItem(String id, Duration start, Duration end, int? lane) {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final from = start.inMicroseconds / 1e6;
+    if (lane != null) {
+      notifier.moveLaneItem(id, start: from, targetLane: lane);
+    } else {
+      notifier.trimLaneItem(id, start: from, end: end.inMicroseconds / 1e6);
+    }
+  }
+
   void _setTrimRange(RangeValues value) {
     ref.read(videoEditorProvider.notifier).setTrimRange(value);
   }
@@ -1805,17 +1817,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   notifier.selectAudioTrack(null);
                 }
               } else if (tool.id == 'duplicate') {
-                if (editorState.selectedAudioId != null) {
-                  final audioTrack = editorState.audioTracks.firstWhere(
-                    (a) => a.id == editorState.selectedAudioId,
-                  );
-                  final duplicate = audioTrack.copyWith(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    timelineStart: audioTrack.timelineEnd,
-                  );
-                  notifier.addAudioTrack(duplicate);
-                  notifier.selectAudioTrack(duplicate.id);
-                }
+                final audioId = editorState.selectedAudioId;
+                if (audioId != null) notifier.duplicateAudioTrack(audioId);
               }
             },
             child: EditorToolTile(icon: tool.icon, label: tool.label),
@@ -2636,55 +2639,43 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
           );
         }
       },
-      onTextTrimChanged: (id, start, end, {newLaneIndex}) {
-        notifier.updateTextOverlay(
-          id,
-          (current) => current.copyWith(startTime: start, endTime: end),
-          newLaneIndex: newLaneIndex,
-        );
-      },
+      // A lane index means the item is being moved, none that an edge is
+      // being trimmed. Both are live frames of one gesture: the undo snapshot
+      // is taken once, by `onDragStart`.
+      onTextTrimChanged: (id, start, end, {newLaneIndex}) =>
+          _placeLaneItem(id, start, end, newLaneIndex),
       imageOverlays: editorState.imageOverlays,
       selectedImageId: editorState.selectedImageId,
       onImageTapped: notifier.selectImageOverlay,
-      onImageTrimChanged: (id, start, end, {newLaneIndex}) {
-        notifier.updateImageOverlay(
-          id,
-          (current) => current.copyWith(startTime: start, endTime: end),
-          newLaneIndex: newLaneIndex,
-        );
-      },
+      onImageTrimChanged: (id, start, end, {newLaneIndex}) =>
+          _placeLaneItem(id, start, end, newLaneIndex),
       videoOverlays: editorState.videoOverlays,
       selectedVideoId: editorState.selectedVideoOverlayId,
       onVideoTapped: notifier.selectVideoOverlay,
-      onVideoTrimChanged: (id, start, end, {newLaneIndex}) {
-        notifier.updateVideoOverlay(
-          id,
-          (current) => current.copyWith(timelineStart: start, timelineEnd: end),
-          newLaneIndex: newLaneIndex,
-        );
-      },
+      onVideoTrimChanged: (id, start, end, {newLaneIndex}) =>
+          _placeLaneItem(id, start, end, newLaneIndex),
       audioTracks: editorState.audioTracks,
       selectedAudioId: editorState.selectedAudioId,
       onAudioTapped: (id) => notifier.selectAudioTrack(id),
       onAudioDragChanged: (id, newStart, {newLaneIndex}) {
-        final track = editorState.audioTracks.firstWhere((a) => a.id == id);
-        notifier.updateAudioTrack(
-          track.copyWith(timelineStart: newStart),
-          newLaneIndex: newLaneIndex,
-        );
+        final lane = newLaneIndex ??
+            editorState.audioTracks.firstWhere((a) => a.id == id).laneIndex;
+        notifier.moveLaneItem(id, start: newStart, targetLane: lane);
       },
       onAudioTrimChanged: (id, newTimelineStart, newSourceStart, newSourceEnd) {
-        final track = editorState.audioTracks.firstWhere((a) => a.id == id);
-        notifier.updateAudioTrack(
-          track.copyWith(
-            timelineStart: newTimelineStart,
-            sourceStart: newSourceStart,
-            sourceEnd: newSourceEnd,
-          ),
+        notifier.trimAudioTrackLive(
+          id,
+          timelineStart: newTimelineStart,
+          sourceStart: newSourceStart,
+          sourceEnd: newSourceEnd,
         );
       },
       onTimelinePositionChanged: notifier.updatePlaybackPosition,
-      onDragEnd: notifier.saveStateForUndo,
+      // One undo entry per gesture, taken before anything moves. It used to be
+      // taken at the *end*, a snapshot of the finished state — so the first
+      // Undo did nothing, and a clip trim could not be undone at all.
+      onDragStart: notifier.beginTimelineGesture,
+      onDragEnd: notifier.endTimelineGesture,
       onTrimDragStart: _beginTrimDrag,
       onTrimDragEnd: _endTrimDrag,
       onScrubStart: _beginScrub,

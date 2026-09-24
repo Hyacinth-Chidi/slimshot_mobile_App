@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/utils/toast_utils.dart';
+import '../../logic/timeline/lane_layout.dart';
 import '../../logic/timeline/timeline_geometry.dart';
 import '../../logic/transitions/transition_catalog.dart';
 import '../../models/media_asset.dart';
@@ -174,6 +175,10 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
   onAudioTrimChanged;
   final ValueChanged<double>? onTimelinePositionChanged;
   final ValueChanged<String>? onTransitionTapped;
+  /// A timeline edit gesture began — a lane item's move or trim, or a clip
+  /// trim. The screen takes the gesture's one undo snapshot here; with
+  /// [onDragEnd] it brackets the gesture.
+  final VoidCallback? onDragStart;
   final VoidCallback? onDragEnd;
 
   /// Fires when a trim handle is grabbed.
@@ -225,6 +230,7 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
     this.onAudioTrimChanged,
     this.onTimelinePositionChanged,
     this.onTransitionTapped,
+    this.onDragStart,
     this.onDragEnd,
     this.onTrimDragStart,
     this.onTrimDragEnd,
@@ -403,6 +409,18 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     }
     return lastEnd;
   }
+
+  /// The deepest lane [id] may be dragged to — one below the last lane
+  /// anything else is on, never further ([maxMoveLane]).
+  int _maxMoveLaneFor(String id) => maxMoveLane(
+        laneSpansOf(
+          texts: widget.textOverlays,
+          images: widget.imageOverlays,
+          videos: widget.videoOverlays,
+          audios: widget.audioTracks,
+        ),
+        id,
+      );
 
   int get _maxLane {
     int m = 0;
@@ -591,6 +609,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     widget.onPausePlayback();
     HapticFeedback.selectionClick();
     setState(() => _activeTrimHandle = handle);
+    widget.onDragStart?.call();
     widget.onTrimDragStart?.call();
   }
 
@@ -802,6 +821,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   }
 
   void _beginTextClipDrag(TextOverlayModel text) {
+    widget.onDragStart?.call();
     setState(() {
       _isDraggingTextClip = true;
       _draggingTextId = text.id;
@@ -809,7 +829,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _textDragInitialEnd = text.endTime;
       _activeSnapGuideMs = text.startTime.inMilliseconds;
       _dragStartLaneIndex = text.laneIndex;
-      _dragStartMaxLane = _maxLane;
+      _dragStartMaxLane = _maxMoveLaneFor(text.id);
     });
     widget.onPausePlayback();
     widget.onTextTapped?.call(text.id);
@@ -902,13 +922,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   }
 
   void _beginAudioClipDrag(AudioTrackModel audio) {
+    widget.onDragStart?.call();
     HapticFeedback.selectionClick();
     setState(() {
       _isDraggingAudioClip = true;
       _draggingAudioId = audio.id;
       _audioDragInitialTimelineStart = audio.timelineStart;
       _dragStartLaneIndex = audio.laneIndex;
-      _dragStartMaxLane = _maxLane;
+      _dragStartMaxLane = _maxMoveLaneFor(audio.id);
     });
   }
 
@@ -916,7 +937,6 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     if (!_isDraggingAudioClip || _audioDragInitialTimelineStart == null) return;
 
     final deltaSeconds = details.localOffsetFromOrigin.dx / _pixelsPerSecond;
-    final totalVideoDuration = widget.durationSeconds;
 
     final audio = widget.audioTracks.firstWhere(
       (a) => a.id == _draggingAudioId,
@@ -924,14 +944,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     );
     if (audio.id != _draggingAudioId) return;
 
-    final duration = audio.trimmedDuration;
-
+    // No upper bound: audio may run past the video's end and the project runs
+    // longer, like every overlay. This was the last cap on `durationSeconds`
+    // — the *first asset's* length — so music could not be dragged past it.
     double nextStart = _audioDragInitialTimelineStart! + deltaSeconds;
     if (nextStart < 0) nextStart = 0;
-    if (nextStart + duration > totalVideoDuration) {
-      nextStart = totalVideoDuration - duration;
-      if (nextStart < 0) nextStart = 0;
-    }
 
     // Same downward lane order as the overlay movers: drag down = higher lane.
     final lanesMoved = (details.localOffsetFromOrigin.dy / _laneHeight)
@@ -958,6 +975,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   }
 
   void _beginAudioTrim(AudioTrackModel audio) {
+    widget.onDragStart?.call();
     HapticFeedback.selectionClick();
     setState(() {
       _trimmingAudioId = audio.id;
@@ -997,8 +1015,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       newSourceStart -= newTimelineStart;
       newTimelineStart = 0;
     }
-    if (_audioTrimInitialSourceEnd! - newSourceStart < 0.5) {
-      newSourceStart = _audioTrimInitialSourceEnd! - 0.5;
+    if (_audioTrimInitialSourceEnd! - newSourceStart < kMinClipDurationSeconds) {
+      newSourceStart = _audioTrimInitialSourceEnd! - kMinClipDurationSeconds;
       newTimelineStart =
           _audioTrimInitialTimelineStart! +
           (newSourceStart - _audioTrimInitialSourceStart!);
@@ -1035,8 +1053,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     if (newSourceEnd > audio.sourceDuration) {
       newSourceEnd = audio.sourceDuration;
     }
-    if (newSourceEnd - _audioTrimInitialSourceStart! < 0.5) {
-      newSourceEnd = _audioTrimInitialSourceStart! + 0.5;
+    if (newSourceEnd - _audioTrimInitialSourceStart! < kMinClipDurationSeconds) {
+      newSourceEnd = _audioTrimInitialSourceStart! + kMinClipDurationSeconds;
     }
 
     widget.onAudioTrimChanged?.call(
@@ -2324,6 +2342,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             child: _laneTrimHandle(
               handleKey: 'text:${text.id}:start',
               onStart: (details) {
+                widget.onDragStart?.call();
                 setState(() {
                   _trimmingTextId = text.id;
                   _textTrimInitialTime = text.startTime;
@@ -2343,13 +2362,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   milliseconds: _textTrimInitialTime!.inMilliseconds + deltaMs,
                 );
                 if (newStart < Duration.zero) newStart = Duration.zero;
-                if (newStart >= text.endTime)
+                if (newStart > text.endTime - _kMinTrimDuration)
                   newStart = text.endTime - _kMinTrimDuration;
 
                 widget.onTextTrimChanged?.call(text.id, newStart, text.endTime);
                 _previewTrimPosition(newStart.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                widget.onDragEnd?.call();
                 setState(() {
                   _trimmingTextId = null;
                   _textTrimInitialTime = null;
@@ -2369,6 +2389,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             child: _laneTrimHandle(
               handleKey: 'text:${text.id}:end',
               onStart: (details) {
+                widget.onDragStart?.call();
                 setState(() {
                   _trimmingTextId = text.id;
                   _textTrimInitialTime = text.endTime;
@@ -2390,13 +2411,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 // Unbounded above: overlays may outlast the video, like audio.
                 const maxEnd = Duration(milliseconds: _kUnboundedMs);
                 if (newEnd > maxEnd) newEnd = maxEnd;
-                if (newEnd <= text.startTime)
+                if (newEnd < text.startTime + _kMinTrimDuration)
                   newEnd = text.startTime + _kMinTrimDuration;
 
                 widget.onTextTrimChanged?.call(text.id, text.startTime, newEnd);
                 _previewTrimPosition(newEnd.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                widget.onDragEnd?.call();
                 setState(() {
                   _trimmingTextId = null;
                   _textTrimInitialTime = null;
@@ -2412,13 +2434,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   }
 
   void _beginImageClipDrag(ImageOverlayModel image) {
+    widget.onDragStart?.call();
     setState(() {
       _isDraggingImageClip = true;
       _draggingImageId = image.id;
       _imageDragInitialStart = image.startTime;
       _imageDragInitialEnd = image.endTime;
       _dragStartLaneIndex = image.laneIndex;
-      _dragStartMaxLane = _maxLane;
+      _dragStartMaxLane = _maxMoveLaneFor(image.id);
     });
     widget.onPausePlayback();
     widget.onImageTapped?.call(image.id);
@@ -2475,6 +2498,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _imageDragInitialStart = null;
       _imageDragInitialEnd = null;
     });
+    widget.onDragEnd?.call();
   }
 
   List<Widget> _buildImageTracks(double lanesTop) {
@@ -2575,6 +2599,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             child: _laneTrimHandle(
               handleKey: 'image:${image.id}:start',
               onStart: (details) {
+                widget.onDragStart?.call();
                 setState(() {
                   _trimmingImageId = image.id;
                   _imageTrimInitialTime = image.startTime;
@@ -2595,7 +2620,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   milliseconds: _imageTrimInitialTime!.inMilliseconds + deltaMs,
                 );
                 if (newStart < Duration.zero) newStart = Duration.zero;
-                if (newStart >= image.endTime)
+                if (newStart > image.endTime - _kMinTrimDuration)
                   newStart = image.endTime - _kMinTrimDuration;
 
                 widget.onImageTrimChanged?.call(
@@ -2606,6 +2631,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 _previewTrimPosition(newStart.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                widget.onDragEnd?.call();
                 setState(() {
                   _trimmingImageId = null;
                   _imageTrimInitialTime = null;
@@ -2626,6 +2652,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             child: _laneTrimHandle(
               handleKey: 'image:${image.id}:end',
               onStart: (details) {
+                widget.onDragStart?.call();
                 setState(() {
                   _trimmingImageId = image.id;
                   _imageTrimInitialTime = image.endTime;
@@ -2648,7 +2675,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 // Unbounded above: overlays may outlast the video, like audio.
                 const maxEnd = Duration(milliseconds: _kUnboundedMs);
                 if (newEnd > maxEnd) newEnd = maxEnd;
-                if (newEnd <= image.startTime)
+                if (newEnd < image.startTime + _kMinTrimDuration)
                   newEnd = image.startTime + _kMinTrimDuration;
 
                 widget.onImageTrimChanged?.call(
@@ -2659,6 +2686,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 _previewTrimPosition(newEnd.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                widget.onDragEnd?.call();
                 setState(() {
                   _trimmingImageId = null;
                   _imageTrimInitialTime = null;
@@ -2674,13 +2702,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   }
 
   void _beginVideoClipDrag(VideoOverlayModel video) {
+    widget.onDragStart?.call();
     setState(() {
       _isDraggingVideoClip = true;
       _draggingVideoId = video.id;
       _videoDragInitialStart = video.timelineStart;
       _videoDragInitialEnd = video.timelineEnd;
       _dragStartLaneIndex = video.laneIndex;
-      _dragStartMaxLane = _maxLane;
+      _dragStartMaxLane = _maxMoveLaneFor(video.id);
     });
     widget.onPausePlayback();
     widget.onVideoTapped?.call(video.id);
@@ -2737,6 +2766,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _videoDragInitialStart = null;
       _videoDragInitialEnd = null;
     });
+    widget.onDragEnd?.call();
   }
 
   List<Widget> _buildVideoTracks(double lanesTop) {
@@ -2838,6 +2868,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             child: _laneTrimHandle(
               handleKey: 'video:${video.id}:start',
               onStart: (details) {
+                widget.onDragStart?.call();
                 setState(() {
                   _trimmingVideoId = video.id;
                   _videoTrimInitialTime = video.timelineStart;
@@ -2858,7 +2889,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   milliseconds: _videoTrimInitialTime!.inMilliseconds + deltaMs,
                 );
                 if (newStart < Duration.zero) newStart = Duration.zero;
-                if (newStart >= video.timelineEnd)
+                if (newStart > video.timelineEnd - _kMinTrimDuration)
                   newStart =
                       video.timelineEnd - _kMinTrimDuration;
 
@@ -2870,6 +2901,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 _previewTrimPosition(newStart.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                widget.onDragEnd?.call();
                 setState(() {
                   _trimmingVideoId = null;
                   _videoTrimInitialTime = null;
@@ -2890,6 +2922,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             child: _laneTrimHandle(
               handleKey: 'video:${video.id}:end',
               onStart: (details) {
+                widget.onDragStart?.call();
                 setState(() {
                   _trimmingVideoId = video.id;
                   _videoTrimInitialTime = video.timelineEnd;
@@ -2912,7 +2945,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 // Unbounded above: overlays may outlast the video, like audio.
                 const maxEnd = Duration(milliseconds: _kUnboundedMs);
                 if (newEnd > maxEnd) newEnd = maxEnd;
-                if (newEnd <= video.timelineStart)
+                if (newEnd < video.timelineStart + _kMinTrimDuration)
                   newEnd =
                       video.timelineStart + _kMinTrimDuration;
 
@@ -2924,6 +2957,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 _previewTrimPosition(newEnd.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                widget.onDragEnd?.call();
                 setState(() {
                   _trimmingVideoId = null;
                   _videoTrimInitialTime = null;

@@ -1880,6 +1880,55 @@ the lane-order flip every vertical drag landed on the opposite side. Lanes stack
 nearest the filmstrip): drag down = higher lane index, no negation. The main clip track is
 untouched — its reorder is horizontal-only by design.
 
+**The lanes have two rules: nothing overlaps on a lane, and no lane is left empty**
+(`logic/timeline/lane_layout.dart`, `lane_layout_test.dart`, `timeline_lanes_test.dart`,
+**awaiting device verification**). Text, photos, video overlays and audio share one set of lanes,
+so the rules are pure functions over `LaneSpan`s (id, lane, timeline range) and know nothing about
+what an item is; the notifier reads the four lists into spans and writes the answers back.
+Device-reported: a duplicate landed exactly on top of its original, and nothing could be dragged
+onto a new lane below the last. Reading the code found the rest:
+
+- **Duplicates** kept the original's lane and times. A text, photo or video copy now takes the
+  nearest lane at or below the original that is free at that time (`firstFreeLane`); an audio copy
+  goes straight after the original on its lane when free (`duplicateAudioTrack`, moved out of the
+  screen).
+- **A move** (`moveLaneItem`, `resolveMove`) takes the target lane if free; onto an item it
+  overlaps on another lane the two **trade lanes** — lane is paint order, so that is the layer
+  reorder — but only when everything displaced fits where the mover came from; otherwise the
+  nearest free lane below. Sliding onto a neighbour on one's own lane steps down a lane. The
+  target is clamped to `maxMoveLane`: one below the last lane anything *else* is on. With company
+  on the last lane an item may open one new lane; alone there it may not go further, because the
+  lane it left would be empty. The widget used to clamp to the current last lane, so no new lane
+  could ever be made. A swept test drops every item at every time on every lane and asserts no
+  overlap.
+- **A trim** (`trimLaneItem`, `trimAudioTrackLive`, `clampTrim`) stops each edge at its lane
+  neighbour. **A video overlay's left edge now cuts into its footage**: it moved only
+  `timelineStart`, so trimming the head left the footage starting at its first frame, just later.
+  `sourceStart` follows by `Δt × speed`, and neither edge may run past the footage
+  (`sourceEnd` is the file's end or Split's cut; a right trim never changes it).
+- **Empty lanes close** (`compactLanes`) when a gesture ends and on every overlay/audio delete,
+  keeping relative order. **A draft saved before the rules held opens repaired**
+  (`normalizeLanes` in `loadDraft`): overlaps separated in paint order, so of two stacked items
+  the later, which painted on top, still does.
+
+**A timeline gesture is one undo step, and the snapshot comes first.** Every frame of a lane move
+or trim went through `updateTextOverlay` and its siblings, which snapshot per call, so Undo walked
+a drag back a frame at a time; and `onDragEnd` was wired to `saveStateForUndo`, a snapshot of the
+*finished* state — the first Undo did nothing, and a **clip trim could not be undone at all**
+(`setTrimRange` never snapshots; its only entry was taken after it). Photo and video drags and
+every overlay trim handle never called `onDragEnd`. Now `onDragStart` → `beginTimelineGesture`
+(one snapshot) and `onDragEnd` → `endTimelineGesture` (close emptied lanes, and withdraw the
+snapshot — restoring the redo stack — when nothing changed) bracket all twelve gestures, and a
+test counts them. The live writes take no snapshot. `update*Overlay` lost its `newLaneIndex`
+parameter and `_swapToLane`/`_findAvailableLane` are gone; **anything new that moves an item
+between lanes goes through `lane_layout.dart`**.
+
+Smaller faults fixed with it: the audio drag was still capped at `durationSeconds` — the first
+asset's length, the last of the clamp sites the tail work removed; overlay trim handles enforced
+the minimum only once a handle crossed the other edge, so a text could be trimmed to a few
+milliseconds; audio trims used their own 0.5s minimum instead of `kMinClipDurationSeconds`; photo
+and video duplicates left a clip selected beside the copy.
+
 **The timeline area has a floor as well as a cap** (`timelineTrackHeight`, 190–250): the canvas
 is `Expanded`, so any pixel the timeline does not claim the canvas absorbs — a simple project
 used to collapse the track area and balloon the canvas. CapCut-style: keep a workable track area,
