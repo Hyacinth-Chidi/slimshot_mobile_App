@@ -419,6 +419,23 @@ void main() {
       );
     });
 
+    test('retuning the shadow repaints', () {
+      // shouldRepaint compares field by field; a control it does not list
+      // would move nothing on the canvas until something else changed.
+      final before = textWith(shadow: true);
+      for (final after in [
+        before.copyWith(shadowOpacity: 0.5),
+        before.copyWith(shadowDistance: 15),
+        before.copyWith(shadowAngle: 200),
+        before.copyWith(shadowBlurRadius: 2),
+      ]) {
+        expect(
+          painterFor(after, 0.0).shouldRepaint(painterFor(before, 0.0)),
+          isTrue,
+        );
+      }
+    });
+
     test('scale and rotation do not repaint — the transforms own them', () {
       final before = textWith();
       final after = textWith()

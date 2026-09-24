@@ -56,8 +56,9 @@ class TextTemplate {
   final double strokeWidth;
   final Color backgroundColor;
 
-  /// The shadow's colour. Its blur is not the template's to choose: it is
-  /// [kTextShadowBlurRadius] whenever there is a shadow, as in the editor.
+  /// The shadow's colour. The rest of the shadow — opacity, blur, distance,
+  /// angle — starts at the defaults every new shadow has, so the Style tab
+  /// takes it from there.
   final Color shadowColor;
 
   final double borderRadius;
@@ -97,8 +98,6 @@ class TextTemplate {
       strokeWidth: strokeWidth,
       backgroundColor: backgroundColor,
       shadowColor: shadowColor,
-      shadowBlurRadius:
-          shadowColor == Colors.transparent ? 0.0 : kTextShadowBlurRadius,
       borderRadius: borderRadius,
       backgroundPadding: backgroundPadding,
       textAlign: textAlign,

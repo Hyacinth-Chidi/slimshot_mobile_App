@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// A speed of 1 runs an animation at the catalog's own natural duration.
@@ -11,13 +13,26 @@ const double kTextAnimationNaturalSpeed = 1.0;
 const double kMinTextAnimationSpeed = 0.5;
 const double kMaxTextAnimationSpeed = 3.0;
 
-/// The one shadow blur a text can have: this when it has a shadow, 0 when not.
+/// What a text's shadow starts as.
 ///
-/// The editor sheet and the text templates both write it, so it is defined
-/// once. It is not a free parameter: the glyph-atlas reassembly tests measure
-/// the faint bleed between neighbouring glyph cells at exactly this blur, so a
-/// larger one would leave the territory those tests have checked.
-const double kTextShadowBlurRadius = 8.0;
+/// Only the colour used to be adjustable: every shadow was blur 8, offset
+/// half the blur down and to the right — (4, 4), which is 4√2 at 45° — and
+/// fully opaque. Those are the defaults, so a new shadow looks the way
+/// shadows always have, and a draft saved before the controls reads back
+/// exactly as it looked (see [TextOverlayModel.fromJson]).
+const double kTextShadowDefaultBlur = 8.0;
+const double kTextShadowDefaultDistance = 4 * math.sqrt2;
+const double kTextShadowDefaultAngle = 45.0;
+const double kTextShadowDefaultOpacity = 1.0;
+
+/// How far the blur and the distance go, in reference pixels (the text is 32).
+///
+/// A bound, not a taste: the export stores a shadow inside the text's raster
+/// margin and each glyph's atlas cell, both sized by how far it reaches, and
+/// `text_overlay_rasterizer_test.dart` measures the atlas against the flat
+/// raster up to exactly these values.
+const double kTextShadowMaxBlur = 20.0;
+const double kTextShadowMaxDistance = 20.0;
 
 /// The version of the animation fields in a persisted [TextOverlayModel].
 ///
@@ -43,6 +58,16 @@ class TextOverlayModel {
   double strokeWidth;
   Color shadowColor;
   double shadowBlurRadius;
+
+  /// 0..1, multiplying [shadowColor]'s own alpha.
+  double shadowOpacity;
+
+  /// How far the shadow sits from the text, in reference pixels.
+  double shadowDistance;
+
+  /// The direction the shadow falls, in degrees clockwise from pointing
+  /// right: 90 is straight down. [0, 360).
+  double shadowAngle;
   double borderRadius;
   double backgroundPadding;
   String textAlign;
@@ -106,7 +131,12 @@ class TextOverlayModel {
     this.strokeColor = Colors.transparent,
     this.strokeWidth = 0.0,
     this.shadowColor = Colors.transparent,
-    this.shadowBlurRadius = 0.0,
+    // The tuning exists whether or not there is a shadow — the colour alone
+    // says whether one is drawn — so choosing a colour shows a real shadow.
+    this.shadowBlurRadius = kTextShadowDefaultBlur,
+    this.shadowOpacity = kTextShadowDefaultOpacity,
+    this.shadowDistance = kTextShadowDefaultDistance,
+    this.shadowAngle = kTextShadowDefaultAngle,
     this.borderRadius = 16.0,
     this.backgroundPadding = 16.0,
     this.textAlign = 'center',
@@ -136,6 +166,9 @@ class TextOverlayModel {
     double? strokeWidth,
     Color? shadowColor,
     double? shadowBlurRadius,
+    double? shadowOpacity,
+    double? shadowDistance,
+    double? shadowAngle,
     double? borderRadius,
     double? backgroundPadding,
     String? textAlign,
@@ -164,6 +197,9 @@ class TextOverlayModel {
       strokeWidth: strokeWidth ?? this.strokeWidth,
       shadowColor: shadowColor ?? this.shadowColor,
       shadowBlurRadius: shadowBlurRadius ?? this.shadowBlurRadius,
+      shadowOpacity: shadowOpacity ?? this.shadowOpacity,
+      shadowDistance: shadowDistance ?? this.shadowDistance,
+      shadowAngle: shadowAngle ?? this.shadowAngle,
       borderRadius: borderRadius ?? this.borderRadius,
       backgroundPadding: backgroundPadding ?? this.backgroundPadding,
       textAlign: textAlign ?? this.textAlign,
@@ -195,6 +231,9 @@ class TextOverlayModel {
       'strokeWidth': strokeWidth,
       'shadowColor': shadowColor.value,
       'shadowBlurRadius': shadowBlurRadius,
+      'shadowOpacity': shadowOpacity,
+      'shadowDistance': shadowDistance,
+      'shadowAngle': shadowAngle,
       'borderRadius': borderRadius,
       'backgroundPadding': backgroundPadding,
       'textAlign': textAlign,
@@ -237,6 +276,41 @@ class TextOverlayModel {
     return stored.clamp(kMinTextAnimationSpeed, kMaxTextAnimationSpeed);
   }
 
+  /// The shadow's tuning, from a draft of any age.
+  ///
+  /// A draft saved before the controls has no `shadowDistance`. **With a
+  /// shadow**, its geometry was the fixed rule — offset half the blur down and
+  /// to the right, fully opaque — so that is what it gets back: the same
+  /// pixels. **Without one**, it stored blur 0 as part of "no shadow"; read
+  /// literally, a shadow chosen later would have no blur and no distance and
+  /// hide exactly under the letters, so it takes the defaults instead.
+  /// Values are clamped, and the angle folded into [0, 360), because a
+  /// hand-edited draft must not reach the renderer as nonsense.
+  static ({double blur, double opacity, double distance, double angle})
+      _shadowFrom(Map<String, dynamic> json, Color shadowColor) {
+    final legacy = !json.containsKey('shadowDistance');
+    final hasShadow = shadowColor != Colors.transparent;
+    final storedBlur = (json['shadowBlurRadius'] as num?)?.toDouble();
+    final blur = legacy && !hasShadow
+        ? kTextShadowDefaultBlur
+        : storedBlur ?? kTextShadowDefaultBlur;
+    final distance = (json['shadowDistance'] as num?)?.toDouble() ??
+        (legacy && hasShadow && storedBlur != null
+            ? storedBlur / 2 * math.sqrt2
+            : kTextShadowDefaultDistance);
+    final angle = (json['shadowAngle'] as num?)?.toDouble() ??
+        kTextShadowDefaultAngle;
+    final opacity = (json['shadowOpacity'] as num?)?.toDouble() ??
+        kTextShadowDefaultOpacity;
+    return (
+      blur: blur.clamp(0.0, kTextShadowMaxBlur).toDouble(),
+      opacity: opacity.clamp(0.0, 1.0).toDouble(),
+      distance: distance.clamp(0.0, kTextShadowMaxDistance).toDouble(),
+      // Dart's % takes the divisor's sign, so -90 folds to 270.
+      angle: angle % 360,
+    );
+  }
+
   factory TextOverlayModel.fromJson(Map<String, dynamic> json) {
     Size? refSize;
     if (json['refWidth'] != null && json['refHeight'] != null) {
@@ -249,6 +323,11 @@ class TextOverlayModel {
     // later build wrote would be worse than reading it.
     final schema = (json['animationSchema'] as num?)?.toInt() ?? 0;
 
+    final shadowColor = json['shadowColor'] != null
+        ? Color(json['shadowColor'] as int)
+        : Colors.transparent;
+    final shadow = _shadowFrom(json, shadowColor);
+
 
     return TextOverlayModel(
       id: json['id'] as String,
@@ -258,8 +337,11 @@ class TextOverlayModel {
       backgroundColor: json['backgroundColor'] != null ? Color(json['backgroundColor'] as int) : Colors.transparent,
       strokeColor: json['strokeColor'] != null ? Color(json['strokeColor'] as int) : Colors.transparent,
       strokeWidth: (json['strokeWidth'] as num?)?.toDouble() ?? 0.0,
-      shadowColor: json['shadowColor'] != null ? Color(json['shadowColor'] as int) : Colors.transparent,
-      shadowBlurRadius: (json['shadowBlurRadius'] as num?)?.toDouble() ?? 0.0,
+      shadowColor: shadowColor,
+      shadowBlurRadius: shadow.blur,
+      shadowOpacity: shadow.opacity,
+      shadowDistance: shadow.distance,
+      shadowAngle: shadow.angle,
       borderRadius: (json['borderRadius'] as num?)?.toDouble() ?? 16.0,
       backgroundPadding: (json['backgroundPadding'] as num?)?.toDouble() ?? 16.0,
       textAlign: json['textAlign'] as String? ?? 'center',

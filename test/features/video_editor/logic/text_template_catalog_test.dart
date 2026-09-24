@@ -130,21 +130,19 @@ void main() {
       expect(applied(canvasSize: null).position, Offset.zero);
     });
 
-    test('blurs a shadow exactly as the editor does, and no other way', () {
-      // The atlas reassembly tests are calibrated for the one blur the editor
-      // can emit; a template choosing its own would leave that measured
-      // territory.
+    test("a template's shadow starts as every new shadow does", () {
+      // The template picks the colour; the tuning is the editor's defaults,
+      // so a template's shadow is one the Style tab can take from there.
       for (final t in kTextTemplates) {
         final o = t.apply(
           id: 'x',
           startTime: Duration.zero,
           endTime: const Duration(seconds: 3),
         );
-        expect(
-          o.shadowBlurRadius,
-          t.shadowColor == Colors.transparent ? 0.0 : kTextShadowBlurRadius,
-          reason: t.id,
-        );
+        expect(o.shadowBlurRadius, kTextShadowDefaultBlur, reason: t.id);
+        expect(o.shadowDistance, kTextShadowDefaultDistance, reason: t.id);
+        expect(o.shadowAngle, kTextShadowDefaultAngle, reason: t.id);
+        expect(o.shadowOpacity, kTextShadowDefaultOpacity, reason: t.id);
       }
     });
   });

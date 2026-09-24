@@ -989,7 +989,8 @@ overlap. Until that landed every cell carried the whole run's shadow cropped to 
 the overlap drew it twice — darker, stepped at each cell edge, and (once the shadow stopped
 being cut off) 1682 halo pixels off the flat raster at blur 8. The reassembly tests gate ink
 hard (`60 × glyphCount` pixels, max delta 80 — a real double-composite saturates near 255) and
-halo with per-case measured numbers (shadow: 60 and 300, from measured 16 and 91). Masking a
+halo with per-case measured numbers (every shadow case 60; measured 16 at the default, 0 soft
+and 7 hard at the far corners of the controls, 0 at the widest blur). Masking a
 cell's *rasterised pixels* to its own glyph still cannot work (nothing attributes a pixel to a
 glyph) and a max/coverage blend would break alpha for every overlay; the per-glyph shadow works
 because it is built from geometry, not attributed afterwards.
@@ -1019,6 +1020,31 @@ blur of the same sigma a `Shadow` uses, which *does* scale with the canvas — t
 and fill over it. The canvas (still and animated), the flat raster and the atlas all call it.
 With `shadowFrom` it casts from one glyph's tile only: that is how each atlas cell and each
 animated letter carries its own letter's shadow, drawn once, travelling with the letter.
+
+**The shadow is the user's: colour, opacity, blur, distance, angle** (`text_shadow_settings_test.dart`,
+`text_editor_shadow_test.dart`, **awaiting device verification**). Only the colour used to be
+adjustable. `TextOverlayModel` gained `shadowOpacity` (0–1, multiplying the colour's alpha —
+`TextOverlayLayout.shadowColorFor`), `shadowDistance` (reference px) and `shadowAngle` (degrees,
+**the direction the shadow falls, clockwise from pointing right**: 90 is straight down),
+beside the existing `shadowBlurRadius`. The old fixed shadow — blur 8, offset (blur/2, blur/2),
+opaque — is exactly the defaults (`kTextShadowDefault*`, distance 4√2 at 45°), so:
+
+- **A draft saved before the controls opens pixel-identical.** No `shadowDistance` key means
+  legacy: with a shadow, the geometry is re-derived from the stored blur by the old rule; without
+  one, the stored blur 0 was part of "no shadow" and becomes the default, or a shadow chosen
+  later would sit hidden exactly under the letters.
+- **The tuning survives the colour being cleared**, so choosing a colour again brings the shadow
+  back as it was. A shadow is drawn when it has a colour, some opacity, and a blur *or* a
+  distance (`hasShadow`) — blur 0 with a distance is the hard shadow.
+- **Blur and distance stop at 20** (`kTextShadowMaxBlur`/`kTextShadowMaxDistance`) because the
+  export's raster margin and atlas cells are sized from the shadow's reach, and the reassembly
+  tests measure the atlas up to exactly those values. Clamped on read, angle folded into [0, 360).
+- **The per-glyph shadow is cast through an unantialiased tile clip** (`doAntiAlias: false`): an
+  antialiased clip split each boundary pixel between two cells and source-over put them back
+  short of whole — a hairline seam through a hard shadow at every letter (198 px off the flat
+  raster at the far hard corner; 7 without).
+- Anything that copies a text's style field by field must copy all five — the animation tile
+  did, and `shouldRepaint` compares them.
 
 **Two cases deliberately keep the flat raster**: text whose atlas exceeds the 4096px texture
 limit even at floor density, and text with a **background box** (the glyph pass draws letters
@@ -2029,7 +2055,13 @@ would show the stale cover), deletes the previous cover file, and saves the draf
 labeled tabs — Keyboard / Style / Font / Animation — at a fixed panel height so switching tabs
 never resizes the sheet. Style opens with one-tap **presets** (bundles of colour/stroke/
 background/shadow; fonts deliberately excluded — a preset overwriting the chosen typeface would
-feel destructive), then alignment, colour targets and sliders. The header has an explicit ✓
+feel destructive), then alignment, colour targets and sliders — a target's sliders appear once
+it has a colour: Thickness under Outline, Radius and Padding under Background, and **Opacity,
+Blur, Distance and Angle under Shadow**. **Every slider in the tab is one undo step per drag**
+(`_buildSliderRow` snapshots on drag start and writes live): they used to go through
+`_updateOverlay` per frame, which snapshots per call — measured, an outline drag undid to 5.875
+instead of 5. **A preset is a complete look**: applying one resets the shadow's tuning to the
+defaults along with its colour. The header has an explicit ✓
 Done; duplicate/delete belong to the timeline, not the sheet. **Text is created empty** and
 `showTextEditor` deletes the overlay if it is still empty when the sheet closes — no
 "Double Tap to Edit" ghosts in an export. The in-screen text panels (`text_panels.dart`,
@@ -2056,9 +2088,9 @@ device. The catalog test pins what a template could otherwise break silently: ev
 `allFonts` (anything else throws in `GoogleFonts.getFont`); every animation resolves in its own
 slot and is selectable; **a boxed template uses only whole-block animations**, because
 per-character animation cannot run over a background box and export would flatten it and warn on
-every use; placement stays on the canvas and scale inside the pinch range; and the shadow blur is
-derived exactly as the editor derives it (below). Mutation-checked: a boxed template with a
-per-glyph animation, and an unknown font, each fail their test.
+every use; placement stays on the canvas and scale inside the pinch range; and a template's
+shadow starts at the same defaults as any new shadow (it picks only the colour). Mutation-checked:
+a boxed template with a per-glyph animation, and an unknown font, each fail their test.
 
 **A template tile is the painter too.** `TextTemplateTile` builds its overlay with
 `TextTemplate.apply` itself — the call that makes the real text — given the sample words, and

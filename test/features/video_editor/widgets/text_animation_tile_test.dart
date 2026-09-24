@@ -216,6 +216,35 @@ void main() {
     expect(synthetic.position, Offset.zero);
   });
 
+  testWidgets('the tile keeps the shadow as the user tuned it',
+      (tester) async {
+    // The tile builds its own overlay field by field, so a shadow control it
+    // does not copy would preview a different shadow from the canvas.
+    await tester.pumpWidget(
+      host(
+        TextAnimationTile(
+          animation: animationById('fade_in'),
+          overlay: overlayWith().copyWith(
+            shadowColor: const Color(0xFFFF0000),
+            shadowBlurRadius: 3,
+            shadowOpacity: 0.4,
+            shadowDistance: 12,
+            shadowAngle: 200,
+          ),
+          isSelected: false,
+          onTap: () {},
+        ),
+      ),
+    );
+
+    final synthetic = painterIn(tester).overlay;
+    expect(synthetic.shadowColor, const Color(0xFFFF0000));
+    expect(synthetic.shadowBlurRadius, 3);
+    expect(synthetic.shadowOpacity, 0.4);
+    expect(synthetic.shadowDistance, 12);
+    expect(synthetic.shadowAngle, 200);
+  });
+
   testWidgets('the text is truncated by grapheme cluster, not by code unit',
       (tester) async {
     // A family emoji is several code units; `substring` would cut it in half

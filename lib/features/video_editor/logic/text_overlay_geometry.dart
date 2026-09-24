@@ -175,13 +175,27 @@ class TextOverlayLayout {
     };
   }
 
+  /// Whether a shadow is drawn: a colour, some opacity, and somewhere to be
+  /// seen — with no blur *and* no distance it would sit exactly under the
+  /// letters. Blur 0 with a distance is the crisp, hard shadow.
   static bool hasShadow(TextOverlayModel overlay) =>
-      overlay.shadowColor != Colors.transparent && overlay.shadowBlurRadius > 0;
+      overlay.shadowColor != Colors.transparent &&
+      overlay.shadowOpacity > 0 &&
+      (overlay.shadowBlurRadius > 0 || overlay.shadowDistance > 0);
 
-  /// Where the shadow sits relative to the text, in render pixels.
+  /// The colour the shadow is drawn in: [TextOverlayModel.shadowColor] with
+  /// its opacity folded into the alpha.
+  static Color shadowColorFor(TextOverlayModel overlay) =>
+      overlay.shadowColor.withValues(
+        alpha: overlay.shadowColor.a * overlay.shadowOpacity,
+      );
+
+  /// Where the shadow sits relative to the text, in render pixels: the
+  /// distance along the angle, clockwise from pointing right.
   static Offset shadowOffsetFor(TextOverlayModel overlay, double renderScale) {
-    final blur = overlay.shadowBlurRadius * renderScale;
-    return Offset(blur / 2, blur / 2);
+    final radians = overlay.shadowAngle * math.pi / 180;
+    final distance = overlay.shadowDistance * renderScale;
+    return Offset(math.cos(radians) * distance, math.sin(radians) * distance);
   }
 
   /// The shadow's blur, as the Gaussian sigma a `Shadow` of that radius
@@ -303,9 +317,17 @@ void paintTextOverlayInk(
           sigmaY: sigma,
           tileMode: TileMode.decal,
         )
-        ..colorFilter = ColorFilter.mode(overlay.shadowColor, BlendMode.srcIn),
+        ..colorFilter = ColorFilter.mode(
+          TextOverlayLayout.shadowColorFor(overlay),
+          BlendMode.srcIn,
+        ),
     );
-    if (shadowFrom != null) canvas.clipRect(shadowFrom);
+    // Not antialiased: each pixel belongs wholly to one glyph's tile. An
+    // antialiased clip splits a boundary pixel between the two cells that
+    // share it, and source-over puts the halves back together short of
+    // whole — a hairline seam through a hard shadow at every letter
+    // (measured: 198 px off the flat raster at a far hard shadow; 7 without).
+    if (shadowFrom != null) canvas.clipRect(shadowFrom, doAntiAlias: false);
     stroke?.paint(canvas, textOrigin);
     fill.paint(canvas, textOrigin);
     canvas.restore();

@@ -149,7 +149,7 @@ void main() {
   //   composited a second time. The **shadow** no longer does this: each
   //   cell casts only its own glyph's shadow (`paintTextOverlayInk`), so a
   //   shadow is drawn once however the cells overlap — the shadow cases'
-  //   gates fell from 1250/2200 to 60/300 when that landed. Rejected fixes (dead
+  //   gates fell from 1250/2200 to 60 when that landed. Rejected fixes (dead
   //   ends, not retried): masking a cell to only its own glyph's ink is
   //   impossible once rasterised (nothing distinguishes whose pixels are
   //   whose), and a max/coverage blend for the bleed would break legitimate
@@ -271,7 +271,7 @@ void main() {
     });
 
     test('shadowed text', () async {
-      // 8px matches the app's shadow (kTextShadowBlurRadius). Each cell now
+      // 8px matches the app's default shadow (kTextShadowDefaultBlur). Each cell now
       // casts only its own glyph's shadow, so no shadow is composited twice:
       // measured 16 px over threshold (max delta 34). It was 1682 (max 98)
       // when every cell carried the whole run's shadow — once the margin
@@ -286,6 +286,28 @@ void main() {
         maxHaloPixelsOverThreshold: 60,
       );
     });
+
+    // The far corners of the shadow controls: the full distance at an angle
+    // that is on no axis, hard and fully soft. Each cell casts its own
+    // glyph's shadow however far it falls — onto a neighbour's cell, under a
+    // neighbour's letter — so the ink gate must hold here as everywhere.
+    for (final blur in [0.0, kTextShadowMaxBlur]) {
+      test('a far shadow at an angle, blur $blur', () async {
+        final overlay = overlayWith('hello')
+          ..shadowColor = Colors.black
+          ..shadowBlurRadius = blur
+          ..shadowDistance = kTextShadowMaxDistance
+          ..shadowAngle = 200;
+        // Measured 7 hard (max delta 137 — a handful of seam pixels) and 0
+        // soft. An antialiased tile clip left 198 hard: every boundary pixel
+        // split between two cells and composited short of whole.
+        await expectReassemblyMatches(
+          overlay,
+          label: 'far shadow, blur $blur',
+          maxHaloPixelsOverThreshold: 60,
+        );
+      });
+    }
 
     test('multi-line text', () async {
       await expectReassemblyMatches(
@@ -308,12 +330,13 @@ void main() {
         final overlay = overlayWith('hello')
           ..shadowColor = Colors.black
           ..shadowBlurRadius = 20;
-        // Measured 91 (max delta 37) with per-glyph shadows; 6166 when each
-        // cell carried the whole run's.
+        // Measured 0 (max delta 24) with per-glyph shadows cast through an
+        // unantialiased tile clip; 91 with an antialiased one, and 6166 when
+        // each cell carried the whole run's shadow.
         await expectReassemblyMatches(
           overlay,
           label: 'wide shadow blur',
-          maxHaloPixelsOverThreshold: 300,
+          maxHaloPixelsOverThreshold: 60,
         );
       },
     );

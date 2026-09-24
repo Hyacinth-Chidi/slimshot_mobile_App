@@ -270,6 +270,9 @@ class TextOverlayPainter extends CustomPainter {
         old.strokeWidth != overlay.strokeWidth ||
         old.shadowColor != overlay.shadowColor ||
         old.shadowBlurRadius != overlay.shadowBlurRadius ||
+        old.shadowOpacity != overlay.shadowOpacity ||
+        old.shadowDistance != overlay.shadowDistance ||
+        old.shadowAngle != overlay.shadowAngle ||
         old.borderRadius != overlay.borderRadius ||
         old.backgroundPadding != overlay.backgroundPadding ||
         old.textAlign != overlay.textAlign ||

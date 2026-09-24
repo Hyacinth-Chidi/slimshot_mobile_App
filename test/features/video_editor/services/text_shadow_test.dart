@@ -37,7 +37,7 @@ void main() {
         referenceCanvasSize: canvas,
         color: Colors.white,
         shadowColor: Colors.black,
-        shadowBlurRadius: kTextShadowBlurRadius,
+        shadowBlurRadius: kTextShadowDefaultBlur,
         strokeColor: stroke ? Colors.red : Colors.transparent,
         strokeWidth: stroke ? 4 : 0,
       );
@@ -180,5 +180,122 @@ void main() {
     final atOne = await falloff(1);
     final atThree = await falloff(3);
     expect(atThree, closeTo(atOne, 1.5));
+  });
+
+  group('the controls reach the file', () {
+    TextOverlayModel tuned(
+      String text, {
+      double blur = kTextShadowMaxBlur,
+      double distance = kTextShadowMaxDistance,
+      double angle = 45,
+      double opacity = 1,
+    }) =>
+        shadowed(text)
+          ..shadowBlurRadius = blur
+          ..shadowDistance = distance
+          ..shadowAngle = angle
+          ..shadowOpacity = opacity;
+
+    test('the whole shadow, at every angle, at the farthest — soft and hard',
+        () async {
+      // The hard one matters most: a soft shadow's three-sigma tail leaves
+      // slack that can hide a reach computed without the distance.
+      for (final (angle, blur) in [
+        for (final a in [0.0, 90.0, 135.0, 180.0, 270.0, 315.0])
+          for (final b in [0.0, kTextShadowMaxBlur]) (a, b),
+      ]) {
+        final raster = await TextOverlayRasterizer.rasterize(
+          overlay: tuned('Hello', angle: angle, blur: blur),
+          canvasSize: canvas,
+          rasterScale: 1,
+        );
+        final image = await decode(raster!.pngPath);
+        expect(
+          await edgeAlpha(
+            image,
+            Rect.fromLTWH(
+              0,
+              0,
+              image.width.toDouble(),
+              image.height.toDouble(),
+            ),
+          ),
+          (left: 0, top: 0, right: 0, bottom: 0),
+          reason: 'flat raster at $angle°, blur $blur',
+        );
+
+        final atlas = await TextOverlayRasterizer.rasterizeAtlas(
+          overlay: tuned('H', angle: angle, blur: blur),
+          canvasSize: canvas,
+          rasterScale: 1,
+        );
+        expect(
+          await edgeAlpha(
+            await decode(atlas!.pngPath),
+            atlas.glyphs.single.atlasRect,
+          ),
+          (left: 0, top: 0, right: 0, bottom: 0),
+          reason: 'atlas cell at $angle°, blur $blur',
+        );
+      }
+    });
+
+    test('it falls where the angle points', () async {
+      // Hard and far, straight left: shadow left of the letter, none right.
+      final raster = await TextOverlayRasterizer.rasterize(
+        overlay: tuned('H', blur: 0, angle: 180),
+        canvasSize: canvas,
+        rasterScale: 1,
+      );
+      final image = await decode(raster!.pngPath);
+      final data =
+          (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+      final y = image.height ~/ 2;
+      final row = [
+        for (var x = 0; x < image.width; x++)
+          (
+            data.getUint8((y * image.width + x) * 4 + 1),
+            data.getUint8((y * image.width + x) * 4 + 3),
+          ),
+      ];
+      final inkStart = row.indexWhere((p) => p.$1 > 200 && p.$2 > 200);
+      final inkEnd = row.lastIndexWhere((p) => p.$1 > 200 && p.$2 > 200);
+      bool dark((int, int) p) => p.$2 > 100 && p.$1 < 60;
+      expect(row.sublist(0, inkStart).any(dark), isTrue,
+          reason: 'shadow to the left');
+      expect(row.sublist(inkEnd + 1).any(dark), isFalse,
+          reason: 'nothing to the right');
+    });
+
+    test('opacity fades it', () async {
+      // A hard shadow straight down, well clear of the letter: sample its
+      // middle at full and at half opacity.
+      Future<int> shadowAlpha(double opacity) async {
+        final raster = await TextOverlayRasterizer.rasterize(
+          overlay: tuned('H', blur: 0, angle: 90, opacity: opacity),
+          canvasSize: canvas,
+          rasterScale: 1,
+        );
+        final image = await decode(raster!.pngPath);
+        final data =
+            (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+        final x = image.width ~/ 2;
+        var inkEnd = -1;
+        for (var y = 0; y < image.height; y++) {
+          final i = (y * image.width + x) * 4;
+          if (data.getUint8(i + 1) > 200 && data.getUint8(i + 3) > 200) {
+            inkEnd = y;
+          }
+        }
+        // Past the letter by half the distance: inside the hard shadow.
+        final y = inkEnd + (kTextShadowMaxDistance / 2).round();
+        return data.getUint8((y * image.width + x) * 4 + 3);
+      }
+
+      final full = await shadowAlpha(1);
+      final half = await shadowAlpha(0.5);
+      expect(full, greaterThan(240));
+      expect(half, closeTo(full / 2, 4));
+    });
   });
 }

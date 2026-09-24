@@ -167,6 +167,10 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
   late double _strokeWidth;
   late Color _backgroundColor;
   late Color _shadowColor;
+  late double _shadowOpacity;
+  late double _shadowBlur;
+  late double _shadowDistance;
+  late double _shadowAngle;
   late String _textAlign;
   late double _borderRadius;
   late double _backgroundPadding;
@@ -222,6 +226,10 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     _strokeWidth = widget.overlay.strokeWidth;
     _backgroundColor = widget.overlay.backgroundColor;
     _shadowColor = widget.overlay.shadowColor;
+    _shadowOpacity = widget.overlay.shadowOpacity;
+    _shadowBlur = widget.overlay.shadowBlurRadius;
+    _shadowDistance = widget.overlay.shadowDistance;
+    _shadowAngle = widget.overlay.shadowAngle;
     _textAlign = widget.overlay.textAlign;
     _borderRadius = widget.overlay.borderRadius;
     _backgroundPadding = widget.overlay.backgroundPadding;
@@ -245,8 +253,12 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
         strokeWidth: _strokeWidth,
         backgroundColor: _backgroundColor,
         shadowColor: _shadowColor,
-        shadowBlurRadius:
-            _shadowColor != Colors.transparent ? kTextShadowBlurRadius : 0.0,
+        // The tuning is kept when the colour is cleared, so choosing a
+        // colour again brings back the shadow as it was.
+        shadowBlurRadius: _shadowBlur,
+        shadowOpacity: _shadowOpacity,
+        shadowDistance: _shadowDistance,
+        shadowAngle: _shadowAngle,
         textAlign: _textAlign,
         borderRadius: _borderRadius,
         backgroundPadding: _backgroundPadding,
@@ -303,6 +315,12 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
       _strokeWidth = preset.strokeWidth;
       _backgroundColor = preset.backgroundColor;
       _shadowColor = preset.shadowColor;
+      // A preset is a complete look, shadow included: the tuning goes back to
+      // what every new shadow starts as.
+      _shadowOpacity = kTextShadowDefaultOpacity;
+      _shadowBlur = kTextShadowDefaultBlur;
+      _shadowDistance = kTextShadowDefaultDistance;
+      _shadowAngle = kTextShadowDefaultAngle;
       _borderRadius = preset.borderRadius;
       _backgroundPadding = preset.backgroundPadding;
     });
@@ -539,32 +557,34 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
         const SizedBox(height: 12),
         if (_activeColorTarget == ColorTarget.outline &&
             _strokeColor != Colors.transparent) ...[
-          _buildSliderRow('Thickness', _strokeWidth, 1, 10, (val) {
-            setState(() {
-              _strokeWidth = val;
-              _markCustomized();
-            });
-            _updateOverlay();
-          }),
+          _buildSliderRow('Thickness', _strokeWidth, 1, 10,
+              (val) => _strokeWidth = val),
           const SizedBox(height: 8),
         ],
         if (_activeColorTarget == ColorTarget.background &&
             _backgroundColor != Colors.transparent) ...[
-          _buildSliderRow('Radius', _borderRadius, 0, 50, (val) {
-            setState(() {
-              _borderRadius = val;
-              _markCustomized();
-            });
-            _updateOverlay();
-          }),
+          _buildSliderRow('Radius', _borderRadius, 0, 50,
+              (val) => _borderRadius = val),
           const SizedBox(height: 8),
-          _buildSliderRow('Padding', _backgroundPadding, 0, 64, (val) {
-            setState(() {
-              _backgroundPadding = val;
-              _markCustomized();
-            });
-            _updateOverlay();
-          }),
+          _buildSliderRow('Padding', _backgroundPadding, 0, 64,
+              (val) => _backgroundPadding = val),
+          const SizedBox(height: 8),
+        ],
+        // The rest of the shadow, under its colour like Thickness under
+        // Outline. The angle is the direction it falls, clockwise from right.
+        if (_activeColorTarget == ColorTarget.shadow &&
+            _shadowColor != Colors.transparent) ...[
+          _buildSliderRow('Opacity', _shadowOpacity, 0, 1,
+              (val) => _shadowOpacity = val),
+          const SizedBox(height: 8),
+          _buildSliderRow('Blur', _shadowBlur, 0, kTextShadowMaxBlur,
+              (val) => _shadowBlur = val),
+          const SizedBox(height: 8),
+          _buildSliderRow('Distance', _shadowDistance, 0,
+              kTextShadowMaxDistance, (val) => _shadowDistance = val),
+          const SizedBox(height: 8),
+          _buildSliderRow('Angle', _shadowAngle, 0, 360,
+              (val) => _shadowAngle = val),
           const SizedBox(height: 8),
         ],
         _buildColorPicker(
@@ -853,12 +873,17 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     );
   }
 
+  /// A labelled slider over one style value. [write] stores the value; the
+  /// row does the rest: **one undo snapshot when the drag starts**, then a
+  /// live write per frame, so a drag is one undo step. Each frame used to go
+  /// through [_updateOverlay], which snapshots per call — Undo walked a drag
+  /// back a frame at a time.
   Widget _buildSliderRow(
     String label,
     double value,
     double min,
     double max,
-    ValueChanged<double> onChanged,
+    ValueChanged<double> write,
   ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -873,12 +898,21 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
           ),
           Expanded(
             child: Slider(
-              value: value,
+              value: value.clamp(min, max).toDouble(),
               min: min,
               max: max,
               activeColor: AppColors.primaryStart,
               inactiveColor: Colors.white12,
-              onChanged: onChanged,
+              onChangeStart: (_) => widget.ref
+                  .read(videoEditorProvider.notifier)
+                  .saveStateForUndo(),
+              onChanged: (val) {
+                setState(() {
+                  write(val);
+                  _markCustomized();
+                });
+                _updateOverlayLive();
+              },
             ),
           ),
         ],
