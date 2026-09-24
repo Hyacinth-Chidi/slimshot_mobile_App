@@ -26,6 +26,7 @@ import '../features/video_editor/logic/text_overlay_geometry.dart';
 import '../features/video_editor/logic/text_template_catalog.dart';
 import '../features/video_editor/widgets/panels/text_templates_sheet.dart';
 import '../features/video_editor/logic/tool_dismissal.dart';
+import '../features/video_editor/logic/toolbar_visibility.dart';
 import '../features/video_editor/logic/timeline/timeline_geometry.dart';
 import '../features/video_editor/providers/video_editor_notifier.dart';
 import '../features/video_editor/services/media_import_service.dart';
@@ -1831,32 +1832,21 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
     final canDelete = ref.watch(canDeleteSegmentProvider);
     final isSplitEnabled = ref.watch(isSplitToolEnabledProvider);
-    final visibleTools = menu.tools.where((tool) {
-      if (tool.id == 'delete') {
-        if (editorState.selectedTextId != null ||
-            editorState.selectedImageId != null ||
-            editorState.selectedVideoOverlayId != null) {
-          return true;
-        }
-        return canDelete;
-      }
-      if (tool.id == 'split') {
-        return isSplitEnabled;
-      }
-      if (tool.id == 'volume' || tool.id == 'speed') {
-        if (editorState.segments.length > 1 && !editorState.isClipSelected) {
-          return false;
-        }
-        return true;
-      }
-      if (tool.id == 'animation') {
-        if (editorState.selectedVideoOverlayId != null) {
-          return false;
-        }
-        return true;
-      }
-      return true;
-    }).toList();
+    final visibleTools = menu.tools
+        .where(
+          (tool) => isToolbarToolVisible(
+            tool.id,
+            isSplitEnabled: isSplitEnabled,
+            canDeleteSegment: canDelete,
+            isClipSelected: editorState.isClipSelected,
+            clipCount: editorState.segments.length,
+            hasTextSelected: editorState.selectedTextId != null,
+            hasImageSelected: editorState.selectedImageId != null,
+            hasVideoOverlaySelected:
+                editorState.selectedVideoOverlayId != null,
+          ),
+        )
+        .toList();
 
     return SizedBox(
       height: _kToolbarHeight,

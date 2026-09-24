@@ -2032,6 +2032,19 @@ cut at the bare timeline offset, ignoring `speed` — the engine plays an overla
 early in the footage. The cut now mirrors that mapping, clamp included, so every instant shows the
 frame it showed before the split.
 
+**A declared tool reaches the user unless `isToolbarToolVisible` says otherwise**
+(`logic/toolbar_visibility.dart`, **awaiting device verification**). Device-reported: the video
+overlay's Volume never showed. It was declared, and the menu tests — which read declarations —
+were green, because the filter hiding it lived inline in the screen where no test looked: Volume
+and Speed were hidden in any project with several clips and none selected, and selecting an
+overlay deselects the clip. The same filter hid the video overlay's **Animation** outright, a rule
+from before the engine drew overlays (`AnimationDrawer`, `setOverlayAnimation` and the composer all
+carry a video overlay's animations). The filter is a pure function now, and
+`toolbar_visibility_test.dart` reads every overlay menu's declared ids and requires each shown for
+its own selection. **A new rule that withholds a tool goes there**, never back into the screen.
+Known and not yet fixed: a video overlay's Volume and Opacity write live, so ✕ keeps the dragged
+value rather than discarding it — a clip's Volume does discard.
+
 **An emoji is a text overlay, and that is the whole feature** (`logic/emoji_catalog.dart`,
 `panels/stickers_drawer.dart`, **device-verified**). An emoji is a *character*: it
 renders through the platform's own colour emoji face, which is why one typed from the system
