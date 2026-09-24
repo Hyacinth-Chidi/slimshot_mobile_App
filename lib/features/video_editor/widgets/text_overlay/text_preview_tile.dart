@@ -1,0 +1,213 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
+import '../../../../core/theme/app_colors.dart';
+import '../../logic/text_overlay_geometry.dart';
+import '../../models/text_overlay_model.dart';
+import 'text_overlay_painter.dart';
+
+/// The canvas a preview tile measures its synthetic overlay against.
+///
+/// It is also that overlay's `referenceCanvasSize`, so the render scale is
+/// exactly 1 and the box comes out at the catalog's own font size whatever
+/// device the sheet is opened on. The tile then scales the finished box down
+/// to fit its own bounds — one uniform scale on a measured box, rather than a
+/// second definition of how big text is.
+const Size kTextPreviewCanvas = Size(240, 240);
+
+/// How long a tile rests on the finished look before looping.
+///
+/// Without it an in-animation would restart the instant its last glyph
+/// landed, and the user would never see the text the animation is animating
+/// *to*.
+const double kTextPreviewRestSeconds = 0.45;
+
+/// The shell every text preview tile shares: a small, looping, live preview
+/// painted by **the canvas's own painter**.
+///
+/// A tile hands it a synthetic [TextOverlayModel] — starting at zero, living
+/// [spanSeconds], measured against [kTextPreviewCanvas] — and this sweeps
+/// [TextOverlayPainter]'s `positionSeconds` through that span from an injected
+/// clock. It never draws its own approximation of a look or a motion: a tile
+/// that approximated would promise the user something the canvas and the
+/// export do not deliver, which is the failure the preview / export / tiles
+/// split exists to prevent.
+///
+/// `TextAnimationTile` (one animation, the user's own text) and
+/// `TextTemplateTile` (one template, its sample words) are thin wrappers that
+/// build their synthetic overlay and hand it here, so the two cannot drift
+/// apart in how they measure, fit, clip, sweep or show selection.
+///
+/// The clock is injected rather than owned. A sheet shows many tiles at once
+/// and drives them all from one `AnimationController`; a `Ticker` per tile
+/// would be a ticker per tile competing for the same frames. A null clock
+/// renders the first frame and holds it — which is what an off-screen tile,
+/// and a widget test, want.
+class TextPreviewTile extends StatefulWidget {
+  const TextPreviewTile({
+    super.key,
+    required this.overlay,
+    required this.spanSeconds,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    this.clock,
+  });
+
+  /// What is painted: starts at zero and lives [spanSeconds], with
+  /// [kTextPreviewCanvas] as its reference canvas.
+  final TextOverlayModel overlay;
+
+  /// How far one loop of the clock walks the overlay's own timeline.
+  final double spanSeconds;
+
+  /// The words under the preview, and its semantics label.
+  final String label;
+
+  final bool isSelected;
+
+  /// Fired **once per tap**, never per animation frame: a caller turning a
+  /// tap into an undo entry would otherwise push one per frame.
+  final VoidCallback onTap;
+
+  /// Drives the playhead. A [ValueListenable] of a double is read as a 0..1
+  /// phase through one loop; any other [Listenable] simply advances the phase
+  /// by a frame's worth on each notification, so a bare `Listenable` still
+  /// animates.
+  final Listenable? clock;
+
+  @override
+  State<TextPreviewTile> createState() => _TextPreviewTileState();
+}
+
+class _TextPreviewTileState extends State<TextPreviewTile> {
+  /// 0..1 through one loop.
+  double _phase = 0;
+
+  /// The fallback for a clock that carries no value: a phase advanced per
+  /// notification. Assumes roughly 60Hz, which is only ever a pacing guess —
+  /// the picture itself comes from the catalog either way.
+  static const double _kBlindPhaseStep = 1 / 60;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.clock?.addListener(_onClock);
+    _phase = _phaseFrom(widget.clock) ?? 0;
+  }
+
+  @override
+  void didUpdateWidget(TextPreviewTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.clock, widget.clock)) {
+      oldWidget.clock?.removeListener(_onClock);
+      widget.clock?.addListener(_onClock);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.clock?.removeListener(_onClock);
+    super.dispose();
+  }
+
+  void _onClock() {
+    if (!mounted) return;
+    final value = _phaseFrom(widget.clock);
+    setState(() {
+      _phase = value ?? (_phase + _kBlindPhaseStep) % 1.0;
+    });
+  }
+
+  /// The clock's own phase, or null if it carries no readable value.
+  static double? _phaseFrom(Listenable? clock) {
+    if (clock is ValueListenable<double>) {
+      final v = clock.value;
+      if (v.isNaN || v.isInfinite) return 0;
+      // A controller that overshoots (a spring, or `repeat` past 1) still maps
+      // onto one cycle rather than running off the end of the window.
+      final wrapped = v % 1.0;
+      return wrapped < 0 ? wrapped + 1.0 : wrapped;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final overlay = widget.overlay;
+    final layout = TextOverlayLayout.measure(overlay, kTextPreviewCanvas);
+
+    return Semantics(
+      button: true,
+      selected: widget.isSelected,
+      label: widget.label,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          decoration: BoxDecoration(
+            color: widget.isSelected ? AppColors.highlight : AppColors.surface,
+            border: Border.all(
+              color: widget.isSelected
+                  ? AppColors.primaryStart
+                  : AppColors.border,
+              width: widget.isSelected ? 2 : 1,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Expanded(
+                child: ClipRect(
+                  child: Center(
+                    // The measured box, scaled **down** only, so a long text
+                    // never spills out of the tile and a short one is not
+                    // blown up past the styling it carries. An animation moves
+                    // glyphs well outside the resting box — a slide travels
+                    // 1.5 glyph heights — so the margin is the whole reason
+                    // for the `ClipRect`.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: SizedBox(
+                        width: layout.boxSize.width,
+                        height: layout.boxSize.height,
+                        child: CustomPaint(
+                          size: layout.boxSize,
+                          painter: TextOverlayPainter(
+                            overlay: overlay,
+                            layout: layout,
+                            canvasSize: kTextPreviewCanvas,
+                            positionSeconds: _phase * widget.spanSeconds,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                child: Text(
+                  widget.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11,
+                    height: 1.1,
+                    color: widget.isSelected
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
+                    fontWeight:
+                        widget.isSelected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

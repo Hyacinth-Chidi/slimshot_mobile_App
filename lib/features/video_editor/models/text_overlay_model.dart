@@ -11,6 +11,14 @@ const double kTextAnimationNaturalSpeed = 1.0;
 const double kMinTextAnimationSpeed = 0.5;
 const double kMaxTextAnimationSpeed = 3.0;
 
+/// The one shadow blur a text can have: this when it has a shadow, 0 when not.
+///
+/// The editor sheet and the text templates both write it, so it is defined
+/// once. It is not a free parameter: the glyph-atlas reassembly tests measure
+/// the faint bleed between neighbouring glyph cells at exactly this blur, so a
+/// larger one would leave the territory those tests have checked.
+const double kTextShadowBlurRadius = 8.0;
+
 /// The version of the animation fields in a persisted [TextOverlayModel].
 ///
 /// Schema 0 — the absent marker — means `animationInDuration` and

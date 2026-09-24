@@ -983,8 +983,9 @@ silently mis-sampling every glyph.
 
 A residual remains and is **accepted, not a bug to chase**: adjacent glyphs' padded cells can
 still overlap on canvas, so faint *bleed* re-composites even though *ink* does not. It is
-measured at 100% outside `boxRect`, and the text sheet can only ever emit
-`shadowBlurRadius: 8.0`. The reassembly tests gate ink hard (`60 × glyphCount` pixels, max
+measured at 100% outside `boxRect`, and a text can only ever carry `kTextShadowBlurRadius`
+(8.0) — one constant the editor sheet and the text templates both write, so neither can leave
+the territory these tests measured. The reassembly tests gate ink hard (`60 × glyphCount` pixels, max
 delta 80 — a real double-composite saturates near 255) and halo softly with per-case measured
 numbers. Masking a cell to its own ink cannot work (nothing attributes rasterised pixels to a
 glyph) and a max/coverage blend would break alpha for every overlay; neither is worth retrying.
@@ -1090,7 +1091,9 @@ an emoji), measures it with `TextOverlayLayout.measure`, and sweeps `positionSec
 export does not deliver, which is the failure the three-consumer architecture exists to prevent;
 the tile tests pull the real painter out of the widget tree and fail without it. The animation
 must be placed in the slot its `category` names, or `resolveTextAnimation` refuses the
-cross-slot id and the tile shows a still frame.
+cross-slot id and the tile shows a still frame. The painting shell — clock sweep, measure, fit,
+clip, chrome — is `TextPreviewTile`, shared with the template tiles; the animation tile only
+builds its synthetic overlay and span.
 
 **One clock drives every tile.** A repeating `AnimationController` on the panel, passed to each
 visible tile as its `clock`; only the active category is built, so switching tabs does not leave
@@ -1952,11 +1955,42 @@ Done; duplicate/delete belong to the timeline, not the sheet. **Text is created 
 `showTextEditor` deletes the overlay if it is still empty when the sheet closes — no
 "Double Tap to Edit" ghosts in an export. The in-screen text panels (`text_panels.dart`,
 activeToolIds style/font/animation) were unreachable dead code — nothing ever set those tool ids
-— and were deleted; do not grow a second styling surface, it will drift from the sheet. The Text
-tool has **no submenu on purpose**: it would hold one item today, a tap tax on the most common
-action — add the submenu when templates/captions give it a second real entry. The `add_text`
-tool id has a handler and no menu entry: it is that submenu's **Add text**, waiting for it — not
-dead code to delete.
+— and were deleted; do not grow a second styling surface, it will drift from the sheet.
+
+**The Text tool opens a submenu: Add text and Templates** (`_textMenu`, **awaiting device
+verification**). It went straight to typing while Add text was all it held, because a one-item
+submenu is a tap tax on the most common action; Templates is the second real entry that pays
+for the tap. Both go through **`_addText`**, so a new text is made one way — at the playhead,
+three seconds, **empty**, the editor opened on the keyboard. Auto captions joins the submenu when
+its server exists; it is not offered before it works.
+
+**A template is a complete starting look, and it makes an EMPTY text**
+(`logic/text_template_catalog.dart`, `panels/text_templates_sheet.dart`). Not a preset: the
+editor's presets restyle an existing text and deliberately leave its font alone, where a template
+is where a text *begins* — font, colours, stroke or box, alignment, size, place on the canvas and
+in/out/loop animations, chosen as one look. `TextTemplate.sampleText` is **only the tile's**; the
+inserted text is empty, so the rule that an empty text is deleted when the editor closes still
+keeps placeholder words out of every export — a template inserting its sample would be exactly
+the ghost that rule exists to prevent. `placement` is a fraction of the canvas from its centre,
+converted at insert through the canvas size, so a template lands in the same place on any
+device. The catalog test pins what a template could otherwise break silently: every font is in
+`allFonts` (anything else throws in `GoogleFonts.getFont`); every animation resolves in its own
+slot and is selectable; **a boxed template uses only whole-block animations**, because
+per-character animation cannot run over a background box and export would flatten it and warn on
+every use; placement stays on the canvas and scale inside the pinch range; and the shadow blur is
+derived exactly as the editor derives it (below). Mutation-checked: a boxed template with a
+per-glyph animation, and an unknown font, each fail their test.
+
+**A template tile is the painter too.** `TextTemplateTile` builds its overlay with
+`TextTemplate.apply` itself — the call that makes the real text — given the sample words, and
+plays entrance, hold (at least one loop cycle) and exit in one loop. It and `TextAnimationTile`
+are thin wrappers over **`TextPreviewTile`**, the shared shell (clock sweep, measure, fit, clip,
+selection chrome), extracted so the two cannot drift; the animation tile's 26 existing tests pass
+unchanged through the extraction. The sheet stops at `kEditorSheetPreviewFraction`, has no title,
+and drives every tile from one 2.4s clock — longer than the animation tab's 1.8s because a
+template tile plays three motions per loop. **Its tests must never `pumpAndSettle`**: the tiles
+play forever by design, so it times out after ten simulated minutes; they pump past the sheet's
+motion instead (`settleSheet`).
 
 **A selected text has a menu of its own** (`_textOverlayMenu`, **awaiting device
 verification**). Selecting a text used to show the **root** menu — tools for making a project,

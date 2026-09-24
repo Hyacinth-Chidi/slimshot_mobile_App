@@ -23,6 +23,8 @@ import '../features/video_editor/models/video_segment.dart';
 import '../features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_overlay_model.dart';
 import '../features/video_editor/logic/text_overlay_geometry.dart';
+import '../features/video_editor/logic/text_template_catalog.dart';
+import '../features/video_editor/widgets/panels/text_templates_sheet.dart';
 import '../features/video_editor/logic/tool_dismissal.dart';
 import '../features/video_editor/logic/timeline/timeline_geometry.dart';
 import '../features/video_editor/providers/video_editor_notifier.dart';
@@ -101,11 +103,15 @@ const EditorMenu _rootMenu = EditorMenu(
       icon: LucideIcons.music,
       hasSubMenu: true,
     ),
-    // One tap straight to typing — no submenu. A text submenu earns its
-    // place when it has a second real entry (templates, captions); today it
-    // would be a tap tax on the most common action. There is no 'text' menu
-    // in `_menus`, so the flag was dead and contradictory.
-    EditorTool(id: 'text', label: 'Text', icon: LucideIcons.type),
+    // A submenu now that it has a second real entry — Add text and
+    // Templates. It went straight to typing while Add text was all there was,
+    // because a one-item submenu is a tap tax on the most common action.
+    EditorTool(
+      id: 'text',
+      label: 'Text',
+      icon: LucideIcons.type,
+      hasSubMenu: true,
+    ),
     EditorTool(id: 'overlay', label: 'Overlay', icon: LucideIcons.layers),
     // **Transform's children are root tools now, and Transform is a tool of its
     // own.** The submenu was a tap tax on four things a user reaches for
@@ -265,6 +271,23 @@ const EditorMenu _videoOverlayMenu = EditorMenu(
   ],
 );
 
+/// Ways to make text: the root Text tool's submenu.
+///
+/// Both make a new, **empty** text at the playhead and open the editor on it
+/// (`_addText`) — Add text plain, a template wearing its look. Auto captions
+/// joins them when its server exists; it is not offered before it works.
+const EditorMenu _textMenu = EditorMenu(
+  id: 'text',
+  tools: [
+    EditorTool(id: 'add_text', label: 'Add text', icon: LucideIcons.type),
+    EditorTool(
+      id: 'text_templates',
+      label: 'Templates',
+      icon: LucideIcons.layoutTemplate,
+    ),
+  ],
+);
+
 /// What a selected text offers.
 ///
 /// There was no such menu: selecting a text showed the root menu, the tools
@@ -309,6 +332,7 @@ final Map<String, EditorMenu> _menus = {
   'audio': _audioMenu,
   'image_overlay': _imageOverlayMenu,
   'video_overlay': _videoOverlayMenu,
+  'text': _textMenu,
   'text_overlay': _textOverlayMenu,
   'transition': const EditorMenu(
     id: 'transition',
@@ -924,6 +948,42 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   void _deleteSelectedSegment() {
     ref.read(videoEditorProvider.notifier).deleteSelectedSegment();
     HapticFeedback.mediumImpact();
+  }
+
+  /// Makes a new text at the playhead — plain, or wearing [template] — and
+  /// opens the editor on it with the keyboard up.
+  ///
+  /// **Always empty**, template or not: the editor deletes a text still empty
+  /// when it closes, so nothing the user did not type can reach an export. A
+  /// template's sample words were only ever its tile's. Add text and every
+  /// template come through here, so a new text is made one way.
+  void _addText({TextTemplate? template}) {
+    final editorState = ref.read(videoEditorProvider);
+    final start = Duration(
+      milliseconds: (editorState.currentPlaybackPosition * 1000).toInt(),
+    );
+    // Not clamped to the video's end — an overlay may outlast the video,
+    // matching audio.
+    final end = start + const Duration(seconds: 3);
+    final canvasSize = ref.read(videoCanvasSizeProvider);
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+
+    final overlay = template?.apply(
+          id: id,
+          startTime: start,
+          endTime: end,
+          canvasSize: canvasSize,
+        ) ??
+        TextOverlayModel(
+          id: id,
+          text: '',
+          startTime: start,
+          endTime: end,
+          referenceCanvasSize: canvasSize,
+        );
+    // Selects it and opens its menu, which the editor closing leaves showing.
+    ref.read(videoEditorProvider.notifier).addTextOverlay(overlay);
+    unawaited(showTextEditor(context: context, overlay: overlay, ref: ref));
   }
 
   /// Drops [emoji] on the canvas as a text overlay.
@@ -1914,37 +1974,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                         onEmojiSelected: _addEmojiOverlay,
                       ),
                     );
-                  } else if (tool.id == 'text' &&
-                      editorState.currentMenuId == 'root') {
-                    // From root menu, directly add a new text overlay
-                    var proposedStartTime = Duration(
-                      milliseconds: (editorState.currentPlaybackPosition * 1000)
-                          .toInt(),
-                    );
-                    // Not clamped to the video's end — an overlay may outlast
-                    // the video, matching audio.
-                    final proposedEndTime =
-                        proposedStartTime + const Duration(seconds: 3);
-
-                    final canvasSize = ref.read(videoCanvasSizeProvider);
-                    final newOverlay = TextOverlayModel(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      // Created empty: the editor sheet opens with the
-                      // keyboard up, and an overlay still empty when the
-                      // sheet closes is deleted — no placeholder ghosts in
-                      // an export.
-                      text: '',
-                      startTime: proposedStartTime,
-                      endTime: proposedEndTime,
-                      referenceCanvasSize: canvasSize,
-                    );
-                    notifier.addTextOverlay(newOverlay);
-                    notifier.selectTextOverlay(newOverlay.id);
-                    showTextEditor(
-                      context: context,
-                      overlay: newOverlay,
-                      ref: ref,
-                    );
                   } else if (tool.hasSubMenu) {
                     notifier.setCurrentMenu(tool.id);
                     if (tool.id == 'edit' &&
@@ -2061,32 +2090,16 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       );
                     }
                   } else if (tool.id == 'add_text') {
-                    var proposedStartTime = Duration(
-                      milliseconds: (editorState.currentPlaybackPosition * 1000)
-                          .toInt(),
-                    );
-                    // Not clamped to the video's end — an overlay may outlast
-                    // the video, matching audio.
-                    final proposedEndTime =
-                        proposedStartTime + const Duration(seconds: 3);
-
-                    final canvasSize = ref.read(videoCanvasSizeProvider);
-                    final newOverlay = TextOverlayModel(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      // Created empty: the editor sheet opens with the
-                      // keyboard up, and an overlay still empty when the
-                      // sheet closes is deleted — no placeholder ghosts in
-                      // an export.
-                      text: '',
-                      startTime: proposedStartTime,
-                      endTime: proposedEndTime,
-                      referenceCanvasSize: canvasSize,
-                    );
-                    notifier.addTextOverlay(newOverlay);
-                    showTextEditor(
-                      context: buttonContext,
-                      overlay: newOverlay,
-                      ref: ref,
+                    _addText();
+                  } else if (tool.id == 'text_templates') {
+                    unawaited(
+                      showEditorSheet<void>(
+                        context,
+                        builder: (_) => TextTemplatesSheet(
+                          onTemplateSelected: (template) =>
+                              _addText(template: template),
+                        ),
+                      ),
                     );
                   } else if (tool.id == 'overlay') {
                     _showOverlaySelectionMenu(buttonContext);

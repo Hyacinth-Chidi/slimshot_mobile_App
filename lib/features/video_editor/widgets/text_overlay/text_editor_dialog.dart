@@ -245,7 +245,8 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
         strokeWidth: _strokeWidth,
         backgroundColor: _backgroundColor,
         shadowColor: _shadowColor,
-        shadowBlurRadius: _shadowColor != Colors.transparent ? 8.0 : 0.0,
+        shadowBlurRadius:
+            _shadowColor != Colors.transparent ? kTextShadowBlurRadius : 0.0,
         textAlign: _textAlign,
         borderRadius: _borderRadius,
         backgroundPadding: _backgroundPadding,

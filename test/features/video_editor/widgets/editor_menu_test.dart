@@ -95,6 +95,28 @@ void main() {
     expect(menuSource('_textOverlayMenu'), isNot(contains("id: 'animation'")));
   });
 
+  test('Text opens a submenu of ways to make text', () {
+    // It used to add a text straight away — deliberately, while it had one
+    // entry. Templates is the second real entry, so it is a submenu now.
+    expect(
+      RegExp(r"EditorTool\(\s*id: 'text',[^)]*hasSubMenu: true")
+          .hasMatch(menuSource('_rootMenu')),
+      isTrue,
+      reason: "the root 'text' tool opens its submenu",
+    );
+    final menu = menuSource('_textMenu');
+    expect(menu, contains("id: 'text'"));
+    expect(menu, contains("id: 'add_text'"));
+    expect(menu, contains("id: 'text_templates'"));
+    expect(screen.readAsStringSync(), contains("'text': _textMenu"));
+  });
+
+  test('no handler adds a text on the Text tool itself any more', () {
+    // The direct-add branch keyed on `tool.id == 'text'` would swallow the tap
+    // before the submenu branch saw it, and the submenu would never open.
+    expect(screen.readAsStringSync(), isNot(contains("tool.id == 'text' &&")));
+  });
+
   test('the audio menu keeps its unbuilt Effects entry', () {
     // Genuinely unbuilt — no audio-effect code exists — so the standing rule
     // applies: keep it visible and implement later. Unlike the root entry,
