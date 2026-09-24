@@ -809,29 +809,20 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     List<VideoSegment> segments,
     double timelineSeconds,
   ) {
-    if (segments.isEmpty) {
-      throw Exception('There is nothing to split.');
+    // Where to cut is [_clipCutPoint]'s decision alone — the Split tool and
+    // the freeze ask it too, so none of them can offer a cut this refuses.
+    final point = _clipCutPoint(segments, timelineSeconds);
+    if (point == null) {
+      throw Exception(
+        segments.isEmpty || segmentIndexAt(timelineSeconds, segments) < 0
+            ? 'There is nothing to split.'
+            : 'Move the playhead further into the clip to split it.',
+      );
     }
 
-    // The playhead decides which clip is cut, not the selection: the blade cuts
-    // where the user can see it. They coincide whenever the playhead is inside
-    // the selected clip, which is the usual case.
-    final index = segmentIndexAt(timelineSeconds, segments);
-    if (index < 0) {
-      throw Exception('There is nothing to split.');
-    }
-
+    final index = point.index;
     final segment = segments[index];
-    final starts = segmentTimelineStarts(segments);
-    final offsetIntoClip = timelineSeconds - starts[index];
-
-    // Measured in timeline seconds, so the rule matches the gap the user can
-    // actually see. The same test in source seconds would tighten or loosen
-    // with the clip's speed.
-    if (offsetIntoClip < kMinClipDurationSeconds ||
-        segment.duration - offsetIntoClip < kMinClipDurationSeconds) {
-      throw Exception('Move the playhead further into the clip to split it.');
-    }
+    final offsetIntoClip = point.offsetIntoClip;
 
     final sourceSplit = segment.sourceAtOffset(offsetIntoClip);
 
@@ -1104,8 +1095,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
     // Cut where a cut is possible; otherwise sit the still beside the clip
     // at the nearer end rather than force a sliver the blade would refuse.
-    final canCut = offset >= kMinClipDurationSeconds &&
-        segment.duration - offset >= kMinClipDurationSeconds;
+    // The blade's own rule, asked rather than restated.
+    final canCut = _clipCutPoint(segments, position) != null;
     final List<VideoSegment> updated;
     if (canCut) {
       final cut = _cutSegments(segments, position);
@@ -3102,45 +3093,67 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
+  /// Cuts the selected video overlay in two at the playhead, as one undo step.
+  ///
+  /// Unreachable until the Split gate learned about overlays, and wrong in
+  /// two ways that being unreachable had hidden:
+  ///
+  /// - **Both halves kept both animations**, so the overlay would exit before
+  ///   the cut and enter again after it. The entrance now stays on the left
+  ///   half and the exit on the right, as a text's split does.
+  /// - **The source was cut at the bare timeline offset, ignoring `speed`.**
+  ///   The engine plays an overlay at `sourceStart + offset × speed`
+  ///   (`NativeTimelineOverlay.sourceAt`), so at 2× the right half started
+  ///   early in the footage and replayed frames the left half had shown. The
+  ///   cut now mirrors that mapping — clamp included — so every instant shows
+  ///   the frame it showed before the split.
+  ///
+  /// Refused where [_overlaySplitPoint] refuses, the rule the Split tool is
+  /// offered by. With no overlay selected it does nothing.
   void splitVideoOverlay(double globalPlayhead) {
-    if (state.selectedVideoOverlayId == null) return;
+    final id = state.selectedVideoOverlayId;
+    if (id == null) return;
+    final index = state.videoOverlays.indexWhere((v) => v.id == id);
+    if (index == -1) return;
+    final videoOverlay = state.videoOverlays[index];
 
-    final id = state.selectedVideoOverlayId!;
-    final videoOverlay = state.videoOverlays.firstWhere(
-      (v) => v.id == id,
-      orElse: () => throw Exception('Video overlay not found'),
+    final cut = _overlaySplitPoint(
+      videoOverlay.timelineStart,
+      videoOverlay.timelineEnd,
+      globalPlayhead,
     );
-
-    // Check if playhead is within this video overlay's bounds
-    final playheadDuration = Duration(
-      milliseconds: (globalPlayhead * 1000).round(),
-    );
-    if (playheadDuration <= videoOverlay.timelineStart ||
-        playheadDuration >= videoOverlay.timelineEnd) {
-      throw Exception('Playhead is outside the selected video overlay');
+    if (cut == null) {
+      throw Exception(
+        'Move the playhead further into the overlay to split it.',
+      );
     }
 
-    final splitOffset = playheadDuration - videoOverlay.timelineStart;
-    final splitSourceTime =
-        videoOverlay.sourceStart + (splitOffset.inMilliseconds / 1000.0);
+    final offsetSeconds =
+        (cut - videoOverlay.timelineStart).inMicroseconds / 1e6;
+    var splitSourceTime =
+        videoOverlay.sourceStart + offsetSeconds * videoOverlay.speed;
+    if (videoOverlay.sourceEnd > videoOverlay.sourceStart &&
+        splitSourceTime > videoOverlay.sourceEnd) {
+      splitSourceTime = videoOverlay.sourceEnd;
+    }
 
     saveStateForUndo();
 
     final firstHalf = videoOverlay.copyWith(
-      timelineEnd: playheadDuration,
+      timelineEnd: cut,
       sourceEnd: splitSourceTime,
+      clearAnimationOut: true,
     );
-
     final secondHalf = videoOverlay.copyWith(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      timelineStart: playheadDuration,
+      timelineStart: cut,
       sourceStart: splitSourceTime,
+      clearAnimationIn: true,
     );
 
-    final updatedOverlays = state.videoOverlays
-        .map((v) => v.id == id ? firstHalf : v)
-        .toList();
-    updatedOverlays.add(secondHalf);
+    final updatedOverlays = [...state.videoOverlays];
+    updatedOverlays[index] = firstHalf;
+    updatedOverlays.insert(index + 1, secondHalf);
 
     state = state.copyWith(
       videoOverlays: updatedOverlays,
@@ -3335,6 +3348,38 @@ final videoCanvasSizeProvider = StateProvider<Size?>((ref) => null);
 /// the timeline's own trim minimum, so a split cannot make a piece the trim
 /// handles could not. The cut lands on a whole millisecond, the precision a
 /// draft stores, so both halves save to the same instant and still abut.
+/// Where the blade at [timelineSeconds] would cut [segments]: the clip under
+/// it and how far into that clip — or null where the cut is refused.
+///
+/// **The one rule for cutting a clip**, asked by the cut itself
+/// ([VideoEditorNotifier._cutSegments]), by the freeze (which sits its still
+/// beside the clip instead where this refuses) and by
+/// [isSplitToolEnabledProvider] — so the Split tool is offered exactly where
+/// the blade cuts. The gate used to restate the rule and got it wrong,
+/// comparing the playhead's *timeline* seconds against the clip's *source*
+/// range, which hid Split mid-clip on any clip whose source does not start
+/// where it sits on the timeline.
+///
+/// The playhead decides which clip is cut, not the selection: the blade cuts
+/// where the user can see it. The minimum is measured in timeline seconds, the
+/// gap the user can actually see; the same test in source seconds would
+/// tighten or loosen with the clip's speed.
+({int index, double offsetIntoClip})? _clipCutPoint(
+  List<VideoSegment> segments,
+  double timelineSeconds,
+) {
+  if (segments.isEmpty) return null;
+  final index = segmentIndexAt(timelineSeconds, segments);
+  if (index < 0) return null;
+  final offsetIntoClip =
+      timelineSeconds - segmentTimelineStarts(segments)[index];
+  if (offsetIntoClip < kMinClipDurationSeconds ||
+      segments[index].duration - offsetIntoClip < kMinClipDurationSeconds) {
+    return null;
+  }
+  return (index: index, offsetIntoClip: offsetIntoClip);
+}
+
 Duration? _overlaySplitPoint(
   Duration start,
   Duration end,
@@ -3348,39 +3393,41 @@ Duration? _overlaySplitPoint(
   return cut;
 }
 
+/// Whether the Split tool shows for what is selected.
+///
+/// **Every branch asks the rule its split cuts with**, never a restatement,
+/// so the button shows exactly where a tap succeeds. This gate used to carry
+/// a rule of its own and was wrong twice: it knew only clips, requiring
+/// `isClipSelected` — which selecting a text or a video overlay clears, so
+/// neither's Split could ever show — and for clips it compared the playhead's
+/// timeline seconds against the clip's *source* range.
 final isSplitToolEnabledProvider = Provider.autoDispose<bool>((ref) {
   final editorState = ref.watch(videoEditorProvider);
+  final playhead = editorState.currentPlaybackPosition;
 
-  // A selected text splits **itself**, not the clip under it — and only where
-  // both halves could exist. This gate used to know only clips: it required
-  // `isClipSelected`, which selecting a text clears, so a text's Split could
-  // never have shown. (A selected video overlay still takes the clip branch
-  // below and is still refused there — see CLAUDE.md, "Known broken".)
+  // A selected overlay splits **itself**, not the clip under it.
   final textId = editorState.selectedTextId;
   if (textId != null) {
     final text = editorState.textOverlays
         .where((overlay) => overlay.id == textId)
         .firstOrNull;
     return text != null &&
-        _overlaySplitPoint(
-              text.startTime,
-              text.endTime,
-              editorState.currentPlaybackPosition,
-            ) !=
+        _overlaySplitPoint(text.startTime, text.endTime, playhead) != null;
+  }
+  final videoId = editorState.selectedVideoOverlayId;
+  if (videoId != null) {
+    final video = editorState.videoOverlays
+        .where((overlay) => overlay.id == videoId)
+        .firstOrNull;
+    return video != null &&
+        _overlaySplitPoint(video.timelineStart, video.timelineEnd, playhead) !=
             null;
   }
 
-  final selectedSegment = ref.watch(activeSegmentProvider);
-  if (selectedSegment == null) return false;
-
-  // Split is only enabled if a segment is selected and it's not too close to the edges
-  // This logic mirrors the check in splitAtPosition
-  final positionSeconds = editorState.currentPlaybackPosition;
-  const edgePaddingSeconds = 0.35;
-
+  // Split is a clip-menu tool: offered with a clip selected, wherever the
+  // blade would cut — which is the clip under the playhead.
   return editorState.isClipSelected &&
-      positionSeconds > selectedSegment.sourceStart + edgePaddingSeconds &&
-      positionSeconds < selectedSegment.sourceEnd - edgePaddingSeconds;
+      _clipCutPoint(editorState.segments, playhead) != null;
 });
 
 /// The preview canvas size to export with, or null when the project is not in

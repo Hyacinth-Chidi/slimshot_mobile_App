@@ -1975,6 +1975,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                         notifier.splitVideoOverlay(
                           editorState.currentPlaybackPosition,
                         );
+                        HapticFeedback.selectionClick();
                       } catch (e) {
                         ToastUtils.show(context, e.toString(), isError: true);
                       }

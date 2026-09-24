@@ -1980,8 +1980,27 @@ overlay's own start and the model has no offset to carry; accepted, since a spli
 to keep a loop seamless. **The Split tool and the split share one rule**, `_overlaySplitPoint`
 (each half at least `kMinClipDurationSeconds`, the trim minimum; the cut on a whole millisecond,
 the precision a draft stores), so the button shows exactly where a tap succeeds — a test sweeps
-both edges and fails if the two disagree. `isSplitToolEnabledProvider` had known only clips, and
-could never have shown a text's Split.
+both edges and fails if the two disagree.
+
+**The Split tool is offered by the rule it cuts with, for everything that splits**
+(`isSplitToolEnabledProvider`, `split_gate_test.dart`). The gate used to carry a rule of its own
+and was wrong twice — both demonstrated with a probe before anything changed. It knew only clips,
+requiring `isClipSelected`, which selecting a text *or a video overlay* clears: **the
+video-overlay menu's Split had never shown.** And for clips it compared the playhead's
+**timeline** seconds against the selected clip's **source** range — the confusion the
+timeline-contract section warns about — so a later clip from another file hid its Split mid-clip
+(clip b at 5–13s over its own 0–8s, playhead 9.0), and near a seam it offered a cut the blade
+refused. Now text and video overlays ask `_overlaySplitPoint`, and clips ask **`_clipCutPoint`,
+the one clip-cut rule** — `_cutSegments` throws where it refuses and the freeze sits its still
+beside the clip where it refuses, so the blade, the freeze and the button cannot disagree. The
+sweeps compare gate against action at both edges of every clip and overlay.
+
+**Unhiding the video overlay's Split exposed two faults in `splitVideoOverlay`**, fixed with it:
+both halves kept both animations (now entrance left, exit right, as text), and the source was
+cut at the bare timeline offset, ignoring `speed` — the engine plays an overlay at
+`sourceStart + offset × speed` (`NativeTimelineOverlay.sourceAt`), so at 2× the right half started
+early in the footage. The cut now mirrors that mapping, clamp included, so every instant shows the
+frame it showed before the split.
 
 **An emoji is a text overlay, and that is the whole feature** (`logic/emoji_catalog.dart`,
 `panels/stickers_drawer.dart`, **device-verified**). An emoji is a *character*: it
@@ -2095,20 +2114,6 @@ Drag-and-drop lives in `ScrollableTimeline`. The shape of it:
   would be a window with no incoming clip.
 
 ### Known broken / not yet done
-
-- **The Split gate is wrong for everything but text** (`isSplitToolEnabledProvider`; both faults
-  demonstrated by a probe, not assumed). **A video overlay's Split has never shown**: the gate
-  requires `isClipSelected`, which selecting a video overlay clears. Unhiding it is not a
-  one-line fix, because `splitVideoOverlay` has two faults of its own that are unreachable only
-  because of this one — it copies the entrance *and* exit animations to both halves (the overlay
-  would exit and re-enter at the seam; text split drops them per half), and it cuts the source at
-  the **timeline** offset, ignoring the overlay's `speed`, so a sped overlay's right half starts
-  on the wrong frame. **The clip branch compares the playhead's timeline seconds against the
-  clip's source range** — the confusion the timeline-contract section warns about — so a later
-  clip from another file hides its Split mid-clip: clip b on the timeline at 5–13s over its own
-  0–8s, playhead 9.0, Split withheld. `_cutSegments` already resolves the clip under the playhead
-  correctly; the gate should ask it rather than re-derive, as the text branch shares
-  `_overlaySplitPoint` with the text split.
 
 - **The preview's sound is assembled from three implementations, and the export uses none of
   the first two.** Clip sound comes from ExoPlayer, imported music from `just_audio` in Flutter
