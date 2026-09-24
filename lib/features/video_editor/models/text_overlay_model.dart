@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../logic/animation/overlay_keyframes.dart';
+
 /// A speed of 1 runs an animation at the catalog's own natural duration.
 const double kTextAnimationNaturalSpeed = 1.0;
 
@@ -122,6 +124,16 @@ class TextOverlayModel {
   // To lock coordinate proportions regardless of flutter layout resizing
   Size? referenceCanvasSize;
 
+  /// How present the whole text is, 0..1 — outline, fill, box and shadow
+  /// together. The one placement property text lacked; a fade is two
+  /// diamonds on it.
+  double opacity;
+
+  /// Keyframe tracks for [position], [scale], [rotation] and [opacity], which
+  /// stay the **base values** beside them — see `overlay_keyframes.dart`.
+  /// Empty on every overlay nobody has placed a diamond on.
+  OverlayKeyframes keyframes;
+
   TextOverlayModel({
     required this.id,
     required this.text,
@@ -154,6 +166,8 @@ class TextOverlayModel {
     this.loopSpeed = kTextAnimationNaturalSpeed,
     this.laneIndex = 0,
     this.referenceCanvasSize,
+    this.opacity = 1.0,
+    this.keyframes = OverlayKeyframes.none,
   });
 
   TextOverlayModel copyWith({
@@ -186,6 +200,8 @@ class TextOverlayModel {
     double? loopSpeed,
     int? laneIndex,
     Size? referenceCanvasSize,
+    double? opacity,
+    OverlayKeyframes? keyframes,
   }) {
     return TextOverlayModel(
       id: id ?? this.id,
@@ -217,7 +233,46 @@ class TextOverlayModel {
       loopSpeed: loopSpeed ?? this.loopSpeed,
       laneIndex: laneIndex ?? this.laneIndex,
       referenceCanvasSize: referenceCanvasSize ?? this.referenceCanvasSize,
+      opacity: opacity ?? this.opacity,
+      keyframes: keyframes ?? this.keyframes,
     );
+  }
+
+  /// Base placement and keyframe tracks, as one value — see [OverlayMotion].
+  OverlayMotion get motion => OverlayMotion(
+        position: position,
+        scale: scale,
+        rotation: rotation,
+        opacity: opacity,
+        keyframes: keyframes,
+      );
+
+  /// This overlay with [m]'s base placement and tracks.
+  TextOverlayModel withMotion(OverlayMotion m) => copyWith(
+        position: m.position,
+        scale: m.scale,
+        rotation: m.rotation,
+        opacity: m.opacity,
+        keyframes: m.keyframes,
+      );
+
+  /// This overlay as it is drawn at [seconds] on the timeline: its placement
+  /// resolved through its keyframes — or this very overlay when it has none,
+  /// which is every overlay that exists before a diamond is placed.
+  ///
+  /// **What the canvas draws and what a gesture anchors on.** A gesture that
+  /// started from the stored base would jump a keyframed overlay to its base
+  /// the moment it was touched.
+  ///
+  /// **Never write the result back into state.** Its placement fields hold
+  /// the values *at* [seconds], not the base; storing it would silently move
+  /// the base to wherever the playhead happened to be. Edits go through the
+  /// notifier's edit rule.
+  TextOverlayModel shownAt(double seconds) {
+    if (keyframes.isEmpty) return this;
+    return withMotion(
+      motion.at(overlayProgressAt(startTime, endTime, seconds)),
+    ).copyWith(keyframes: keyframes);
   }
 
   Map<String, dynamic> toJson() {
@@ -257,6 +312,9 @@ class TextOverlayModel {
       'laneIndex': laneIndex,
       'refWidth': referenceCanvasSize?.width,
       'refHeight': referenceCanvasSize?.height,
+      'opacity': opacity,
+      // Omitted while unset, so an un-keyframed text writes what it always did.
+      if (!keyframes.isEmpty) 'keyframes': keyframes.toJson(),
     };
   }
 
@@ -364,6 +422,11 @@ class TextOverlayModel {
       loopSpeed: _speedFrom(json, 'loopSpeed', schema),
       laneIndex: json['laneIndex'] as int? ?? 0,
       referenceCanvasSize: refSize,
+      // Absent on every text saved before it existed: fully present.
+      opacity: ((json['opacity'] as num?)?.toDouble() ?? 1.0)
+          .clamp(0.0, 1.0)
+          .toDouble(),
+      keyframes: OverlayKeyframes.fromJson(json['keyframes']),
     );
   }
 }

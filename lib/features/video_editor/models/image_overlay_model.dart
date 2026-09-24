@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../logic/animation/overlay_keyframes.dart';
 import '../logic/chroma/chroma_key.dart';
 import '../logic/mask/clip_mask.dart';
 
@@ -44,6 +45,11 @@ class ImageOverlayModel {
   /// while the canvas still showed it. Now both sides run the same shader.
   ChromaKey chromaKey;
 
+  /// Keyframe tracks for [position], [scale], [rotation] and [opacity], which
+  /// stay the **base values** beside them — see `overlay_keyframes.dart`.
+  /// Empty on every overlay nobody has placed a diamond on.
+  OverlayKeyframes keyframes;
+
   ImageOverlayModel({
     required this.id,
     required this.imagePath,
@@ -60,6 +66,7 @@ class ImageOverlayModel {
     this.laneIndex = 0,
     this.mask = ClipMask.none,
     this.chromaKey = ChromaKey.none,
+    this.keyframes = OverlayKeyframes.none,
   });
 
   ImageOverlayModel copyWith({
@@ -80,6 +87,7 @@ class ImageOverlayModel {
     int? laneIndex,
     ClipMask? mask,
     ChromaKey? chromaKey,
+    OverlayKeyframes? keyframes,
   }) {
     return ImageOverlayModel(
       id: id ?? this.id,
@@ -97,7 +105,45 @@ class ImageOverlayModel {
       laneIndex: laneIndex ?? this.laneIndex,
       mask: mask ?? this.mask,
       chromaKey: chromaKey ?? this.chromaKey,
+      keyframes: keyframes ?? this.keyframes,
     );
+  }
+
+  /// Base placement and keyframe tracks, as one value — see [OverlayMotion].
+  OverlayMotion get motion => OverlayMotion(
+        position: position,
+        scale: scale,
+        rotation: rotation,
+        opacity: opacity,
+        keyframes: keyframes,
+      );
+
+  /// This overlay with [m]'s base placement and tracks.
+  ImageOverlayModel withMotion(OverlayMotion m) => copyWith(
+        position: m.position,
+        scale: m.scale,
+        rotation: m.rotation,
+        opacity: m.opacity,
+        keyframes: m.keyframes,
+      );
+
+  /// This overlay as it is drawn at [seconds] on the timeline: its placement
+  /// resolved through its keyframes — or this very overlay when it has none,
+  /// which is every overlay that exists before a diamond is placed.
+  ///
+  /// **What the canvas draws and what a gesture anchors on.** A gesture that
+  /// started from the stored base would jump a keyframed overlay to its base
+  /// the moment it was touched.
+  ///
+  /// **Never write the result back into state.** Its placement fields hold
+  /// the values *at* [seconds], not the base; storing it would silently move
+  /// the base to wherever the playhead happened to be. Edits go through the
+  /// notifier's edit rule.
+  ImageOverlayModel shownAt(double seconds) {
+    if (keyframes.isEmpty) return this;
+    return withMotion(
+      motion.at(overlayProgressAt(startTime, endTime, seconds)),
+    ).copyWith(keyframes: keyframes);
   }
 
   Map<String, dynamic> toJson() {
@@ -120,6 +166,7 @@ class ImageOverlayModel {
       // always wrote.
       if (!mask.isNone) 'mask': mask.toJson(),
       if (!chromaKey.isNone) 'chromaKey': chromaKey.toJson(),
+      if (!keyframes.isEmpty) 'keyframes': keyframes.toJson(),
     };
   }
 
@@ -145,6 +192,7 @@ class ImageOverlayModel {
       // mask rather than a throw.
       mask: ClipMask.fromJson(json['mask']),
       chromaKey: ChromaKey.fromJson(json['chromaKey']),
+      keyframes: OverlayKeyframes.fromJson(json['keyframes']),
     );
   }
 }
