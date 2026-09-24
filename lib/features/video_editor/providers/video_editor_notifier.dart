@@ -626,13 +626,107 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   }
 
   void setActiveTool(String? toolId) {
+    // Whatever ✕ could have restored belonged to the tool this replaces. A
+    // tool can close without ✓ or ✕ (selecting audio clears it directly), so
+    // the record is dropped on every open, not only on close.
+    _toolEntry = null;
     state = state.copyWith(
       activeToolId: toolId,
       clearActiveToolId: toolId == null,
     );
   }
 
+  /// What ✕ puts back: the selection as it stood when a slider tool opened,
+  /// and how deep the undo stack was then. See [openRevertibleTool].
+  ({
+    int undoDepth,
+    VideoSegment? segment,
+    ImageOverlayModel? image,
+    VideoOverlayModel? video,
+  })? _toolEntry;
+
+  /// Opens [toolId] remembering the selected clip or overlay as it is, so ✕
+  /// can put it back ([discardActiveTool]).
+  ///
+  /// For the Volume and Opacity panels, which — except a clip's Volume —
+  /// write the model as the slider moves: the engine has to hear the value
+  /// being dragged, and for overlays and clip opacity the model is how it
+  /// hears it. Without a record, ✕ closed the panel and kept the change.
+  void openRevertibleTool(String toolId) {
+    setActiveTool(toolId);
+    _toolEntry = (
+      undoDepth: _undoStack.length,
+      segment: state.selectedSegment,
+      image: _selectedImageOverlay,
+      video: _selectedVideoOverlay,
+    );
+  }
+
+  /// The ✕: closes the tool and discards what it did.
+  ///
+  /// **The target is put back, not the editor.** Restoring a snapshot would
+  /// also move the playhead to where the drag began and undo anything else
+  /// that happened meanwhile; replacing the one clip or overlay by id leaves
+  /// all of that alone. The undo entries the drag pushed go too — they would
+  /// undo to the value just restored, and an undo that undoes nothing is a
+  /// lie — while those from before the tool opened stay. A tool opened
+  /// without a record only closes.
+  void discardActiveTool() {
+    final entry = _toolEntry;
+    if (entry != null) {
+      final segment = entry.segment;
+      final image = entry.image;
+      final video = entry.video;
+      if (_undoStack.length > entry.undoDepth) {
+        _undoStack.removeRange(entry.undoDepth, _undoStack.length);
+      }
+      state = state.copyWith(
+        segments: segment == null
+            ? null
+            : [
+                for (final s in state.segments)
+                  if (s.id == segment.id) segment else s,
+              ],
+        imageOverlays: image == null
+            ? null
+            : [
+                for (final o in state.imageOverlays)
+                  if (o.id == image.id) image else o,
+              ],
+        videoOverlays: video == null
+            ? null
+            : [
+                for (final o in state.videoOverlays)
+                  if (o.id == video.id) video else o,
+              ],
+        canUndo: _undoStack.isNotEmpty,
+      );
+    }
+    closeActiveTool();
+  }
+
+  ImageOverlayModel? get _selectedImageOverlay {
+    final id = state.selectedImageId;
+    if (id == null) return null;
+    for (final o in state.imageOverlays) {
+      if (o.id == id) return o;
+    }
+    return null;
+  }
+
+  VideoOverlayModel? get _selectedVideoOverlay {
+    final id = state.selectedVideoOverlayId;
+    if (id == null) return null;
+    for (final o in state.videoOverlays) {
+      if (o.id == id) return o;
+    }
+    return null;
+  }
+
+  /// Closes the open tool, keeping what it did — the ✓, and every dismissal
+  /// that is not the ✕ ([discardActiveTool]).
   void closeActiveTool() {
+    _toolEntry = null;
     state = state.copyWith(
       clearActiveToolId: true,
       clearPreviewVolume: true,
@@ -3109,15 +3203,23 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
-  void setOverlayOpacity(double opacity) {
-    if (state.selectedImageId != null) {
-      updateImageOverlay(
-        state.selectedImageId!,
+  /// Sets the selected overlay's opacity. [takeUndoSnapshot] false is the
+  /// per-frame half of a slider drag, which snapshots once when it starts —
+  /// every frame used to snapshot, and Undo walked the drag back a step at a
+  /// time.
+  void setOverlayOpacity(double opacity, {bool takeUndoSnapshot = true}) {
+    final imageId = state.selectedImageId;
+    final videoId = state.selectedVideoOverlayId;
+    if (imageId == null && videoId == null) return;
+    if (takeUndoSnapshot) saveStateForUndo();
+    if (imageId != null) {
+      updateImageOverlayLive(
+        imageId,
         (overlay) => overlay.copyWith(opacity: opacity),
       );
-    } else if (state.selectedVideoOverlayId != null) {
-      updateVideoOverlay(
-        state.selectedVideoOverlayId!,
+    } else {
+      updateVideoOverlayLive(
+        videoId!,
         (overlay) => overlay.copyWith(opacity: opacity),
       );
     }

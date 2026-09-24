@@ -2042,8 +2042,20 @@ from before the engine drew overlays (`AnimationDrawer`, `setOverlayAnimation` a
 carry a video overlay's animations). The filter is a pure function now, and
 `toolbar_visibility_test.dart` reads every overlay menu's declared ids and requires each shown for
 its own selection. **A new rule that withholds a tool goes there**, never back into the screen.
-Known and not yet fixed: a video overlay's Volume and Opacity write live, so ✕ keeps the dragged
-value rather than discarding it — a clip's Volume does discard.
+
+**✕ on Volume or Opacity discards, whatever the target** (`openRevertibleTool` /
+`discardActiveTool`, `tool_discard_test.dart`, **awaiting device verification**). Only a clip's
+Volume held its drag as a preview; a video overlay's volume, any overlay's opacity and a clip's
+opacity write the model as the slider moves — the engine hears them through it — so ✕ closed
+the panel and kept the change. The two tools now open with a record of the selected clip or
+overlay and the undo depth; ✕ puts **that one object** back by id (not a state snapshot, which
+would also move the playhead to where the drag began) and drops the undo entries the drag
+pushed, keeping older ones. ✓, Back and a canvas tap keep the edit as before. Any plain
+`setActiveTool` drops the record, because a tool can close without ✓ or ✕ and a stale record
+would let the next ✕ restore an old overlay. Imported music's own player is reset to the
+track's volume on ✕ — nothing else re-syncs it. An overlay's Opacity drag is also **one undo
+step** now; it snapshotted per frame. **A new slider panel that writes live must open through
+`openRevertibleTool`**, or its ✕ keeps.
 
 **An emoji is a text overlay, and that is the whole feature** (`logic/emoji_catalog.dart`,
 `panels/stickers_drawer.dart`, **device-verified**). An emoji is a *character*: it

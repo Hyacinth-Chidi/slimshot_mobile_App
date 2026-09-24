@@ -1798,7 +1798,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   ToastUtils.show(context, e.toString(), isError: true);
                 }
               } else if (tool.id == 'volume') {
-                notifier.setActiveTool('volume');
+                notifier.openRevertibleTool('volume');
               } else if (tool.id == 'delete') {
                 if (editorState.selectedAudioId != null) {
                   notifier.deleteAudioTrack(editorState.selectedAudioId!);
@@ -2043,7 +2043,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       );
                     }
                   } else if (tool.id == 'opacity') {
-                    notifier.setActiveTool('opacity');
+                    notifier.openRevertibleTool('opacity');
                   } else if (tool.id == 'animation') {
                     showEditorSheet<void>(
                       context,
@@ -2085,7 +2085,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       builder: (_) => const BackgroundSheet(),
                     );
                   } else {
-                    notifier.setActiveTool(tool.id);
+                    // Volume writes a video overlay live, so ✕ needs the
+                    // record to put it back; every other tool here keeps a
+                    // preview value of its own, or edits nothing ✕ reverts.
+                    if (tool.id == 'volume') {
+                      notifier.openRevertibleTool(tool.id);
+                    } else {
+                      notifier.setActiveTool(tool.id);
+                    }
                     if (tool.id == 'zoom') {
                       notifier.setPreviewVideoTransform(
                         previewVideoScale: editorState.videoScale,
@@ -2181,7 +2188,20 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   // engine holds it until a timeline push, and a discard pushes
                   // none.
                   _liftLiveVolume();
-                  notifier.closeActiveTool();
+                  // Imported music plays through its own player, which the
+                  // slider set directly and nothing re-syncs on a discard.
+                  final audioId = editorState.selectedAudioId;
+                  if (activeToolId == 'volume' && audioId != null) {
+                    final track = editorState.audioTracks
+                        .where((a) => a.id == audioId)
+                        .firstOrNull;
+                    if (track != null) {
+                      _audioPlayerManager.setVolumeSync(track.id, track.volume);
+                    }
+                  }
+                  // Puts back whatever the slider wrote live — an overlay's
+                  // volume or opacity, a clip's opacity.
+                  notifier.discardActiveTool();
                 },
                 child: const Padding(
                   padding: EdgeInsets.all(12),
@@ -2426,8 +2446,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
     return OpacityPanel(
       opacity: currentOpacity,
+      // One snapshot for the drag, as the clip's opacity does.
+      onChangeStart: notifier.saveStateForUndo,
       onChanged: (value) {
-        notifier.setOverlayOpacity(value);
+        notifier.setOverlayOpacity(value, takeUndoSnapshot: false);
       },
     );
   }
