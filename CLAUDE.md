@@ -1954,7 +1954,34 @@ Done; duplicate/delete belong to the timeline, not the sheet. **Text is created 
 activeToolIds style/font/animation) were unreachable dead code — nothing ever set those tool ids
 — and were deleted; do not grow a second styling surface, it will drift from the sheet. The Text
 tool has **no submenu on purpose**: it would hold one item today, a tap tax on the most common
-action — add the submenu when templates/captions give it a second real entry.
+action — add the submenu when templates/captions give it a second real entry. The `add_text`
+tool id has a handler and no menu entry: it is that submenu's **Add text**, waiting for it — not
+dead code to delete.
+
+**A selected text has a menu of its own** (`_textOverlayMenu`, **awaiting device
+verification**). Selecting a text used to show the **root** menu — tools for making a project,
+none for the text — and its whole editor hid behind a tap on the already-selected text; image
+overlays, video overlays, clips and audio each had a menu. The menu follows the selection through
+every door: `selectTextOverlay`, `addTextOverlay` (the Text tool *and* the emoji picker),
+`duplicateTextOverlay` and `splitTextOverlay` open it, and **`deleteTextOverlay` leaves it
+itself** — the canvas frame's ✕ calls delete and nothing else, so a caller-side deselect would
+strand the menu with nothing selected. `addTextOverlay` now also clears any other selection,
+like `addImageOverlay`, or the delete handler (which checks text first) could act on a thing the
+toolbar was not about. **Edit, Style, Font and Animation are doors into the one sheet**, not
+surfaces of their own: `kTextMenuSheetTools` maps each id to the tab it opens, and a test pins
+the map to the menu declaration and to every tab. The ids carry a `text_` prefix because
+`animation` already opens the photo and video overlays' `AnimationDrawer`.
+
+**Split** cuts at the playhead into two halves with the same words, place and lane, one undo
+step, the right half selected. **The entrance stays on the left half and the exit on the right**
+— copied verbatim, the text would exit before the cut and enter again after it. A loop stays on
+both and **restarts its cycle at the cut**, because a loop's phase is measured from each
+overlay's own start and the model has no offset to carry; accepted, since a split is rarely made
+to keep a loop seamless. **The Split tool and the split share one rule**, `_overlaySplitPoint`
+(each half at least `kMinClipDurationSeconds`, the trim minimum; the cut on a whole millisecond,
+the precision a draft stores), so the button shows exactly where a tap succeeds — a test sweeps
+both edges and fails if the two disagree. `isSplitToolEnabledProvider` had known only clips, and
+could never have shown a text's Split.
 
 **An emoji is a text overlay, and that is the whole feature** (`logic/emoji_catalog.dart`,
 `panels/stickers_drawer.dart`, **device-verified**). An emoji is a *character*: it
@@ -2068,6 +2095,20 @@ Drag-and-drop lives in `ScrollableTimeline`. The shape of it:
   would be a window with no incoming clip.
 
 ### Known broken / not yet done
+
+- **The Split gate is wrong for everything but text** (`isSplitToolEnabledProvider`; both faults
+  demonstrated by a probe, not assumed). **A video overlay's Split has never shown**: the gate
+  requires `isClipSelected`, which selecting a video overlay clears. Unhiding it is not a
+  one-line fix, because `splitVideoOverlay` has two faults of its own that are unreachable only
+  because of this one — it copies the entrance *and* exit animations to both halves (the overlay
+  would exit and re-enter at the seam; text split drops them per half), and it cuts the source at
+  the **timeline** offset, ignoring the overlay's `speed`, so a sped overlay's right half starts
+  on the wrong frame. **The clip branch compares the playhead's timeline seconds against the
+  clip's source range** — the confusion the timeline-contract section warns about — so a later
+  clip from another file hides its Split mid-clip: clip b on the timeline at 5–13s over its own
+  0–8s, playhead 9.0, Split withheld. `_cutSegments` already resolves the clip under the playhead
+  correctly; the gate should ask it rather than re-derive, as the text branch shares
+  `_overlaySplitPoint` with the text split.
 
 - **The preview's sound is assembled from three implementations, and the export uses none of
   the first two.** Clip sound comes from ExoPlayer, imported music from `just_audio` in Flutter

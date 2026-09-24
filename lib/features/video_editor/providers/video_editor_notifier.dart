@@ -2768,6 +2768,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
+  /// Adds [overlay] and selects it, **as the only selection**, on its menu.
+  ///
+  /// The Text tool and the emoji picker both arrive here. It used to leave any
+  /// other selection standing, so an image selected beforehand survived beside
+  /// the new text — and the delete handler, which checks text first, would act
+  /// on a thing the toolbar was not about. The same shape as [addImageOverlay].
   void addTextOverlay(TextOverlayModel overlay) {
     saveStateForUndo();
     final lane = _findAvailableLane(overlay.startTime, overlay.endTime);
@@ -2775,10 +2781,20 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     state = state.copyWith(
       textOverlays: [...state.textOverlays, placedOverlay],
       selectedTextId: placedOverlay.id,
+      clearSelectedImageId: true,
+      clearSelectedVideoOverlayId: true,
+      clearSelectedSegmentId: true,
       isClipSelected: false,
+      currentMenuId: 'text_overlay',
     );
   }
 
+  /// Selects a text, and opens **its** menu — or returns to root on null.
+  ///
+  /// It used to send the editor to the root menu either way, so a selected
+  /// text showed the tools for making a project and none for the text; its
+  /// whole editor was reachable only by tapping the already-selected text.
+  /// Image and video overlays have always had a menu of their own.
   void selectTextOverlay(String? overlayId) {
     state = state.copyWith(
       selectedTextId: overlayId,
@@ -2787,7 +2803,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedVideoOverlayId: overlayId != null,
       clearSelectedSegmentId: overlayId != null,
       isClipSelected: overlayId == null ? state.isClipSelected : false,
-      currentMenuId: 'root',
+      currentMenuId: overlayId != null ? 'text_overlay' : 'root',
     );
   }
 
@@ -2826,11 +2842,19 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     state = state.copyWith(textOverlays: updated);
   }
 
+  /// Deletes a text, and leaves the text menu if it was the selected one.
+  ///
+  /// **The menu has to be left here, not by the caller.** The canvas frame's ✕
+  /// calls this and nothing else; if only [selectTextOverlay] returned to root,
+  /// that path would strand the text menu on screen with nothing selected and
+  /// every tool on it a silent no-op.
   void deleteTextOverlay(String id) {
     saveStateForUndo();
+    final wasSelected = state.selectedTextId == id;
     state = state.copyWith(
       textOverlays: state.textOverlays.where((text) => text.id != id).toList(),
-      clearSelectedTextId: state.selectedTextId == id,
+      clearSelectedTextId: wasSelected,
+      currentMenuId: wasSelected ? 'root' : null,
     );
   }
 
@@ -2848,7 +2872,9 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       selectedTextId: duplicated.id,
       clearSelectedImageId: true,
       clearSelectedVideoOverlayId: true,
+      clearSelectedSegmentId: true,
       isClipSelected: false,
+      currentMenuId: 'text_overlay',
     );
   }
 
@@ -3021,6 +3047,58 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedTextId: true,
       clearSelectedImageId: true,
       isClipSelected: false,
+    );
+  }
+
+  /// Cuts the selected text in two at the playhead, as one undo step.
+  ///
+  /// Both halves carry the same words, style, place and lane, so the right
+  /// half *continues* the text rather than being a new one — the point of a
+  /// split is usually to retime or restyle one side of it.
+  ///
+  /// **The entrance stays on the left half and the exit on the right.** Copied
+  /// verbatim, each half would carry both: the text would play its exit
+  /// before the cut and its entrance again after it, a fade out and back in at
+  /// a seam meant to be invisible. A loop runs under the whole span, so both
+  /// halves keep it — though its phase is measured from each overlay's own
+  /// start, so a loop restarts its cycle at the cut. The model has no phase
+  /// offset to carry, and a split is rarely made to keep a loop seamless.
+  ///
+  /// Refused, with the message the user sees, where [_overlaySplitPoint]
+  /// refuses — the same rule that decides whether the Split tool shows, so
+  /// the button is offered exactly where the tap succeeds. With no text
+  /// selected it does nothing, like [splitVideoOverlay].
+  void splitTextOverlay(double playheadSeconds) {
+    final id = state.selectedTextId;
+    if (id == null) return;
+    final index = state.textOverlays.indexWhere((text) => text.id == id);
+    if (index == -1) return;
+    final text = state.textOverlays[index];
+
+    final cut = _overlaySplitPoint(
+      text.startTime,
+      text.endTime,
+      playheadSeconds,
+    );
+    if (cut == null) {
+      throw Exception('Move the playhead further into the text to split it.');
+    }
+
+    saveStateForUndo();
+    final left = text.copyWith(endTime: cut, outAnimation: 'none');
+    final right = text.copyWith(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      startTime: cut,
+      inAnimation: 'none',
+    );
+    final updated = [...state.textOverlays];
+    updated[index] = left;
+    updated.insert(index + 1, right);
+
+    state = state.copyWith(
+      textOverlays: updated,
+      selectedTextId: right.id,
+      currentMenuId: 'text_overlay',
     );
   }
 
@@ -3247,8 +3325,51 @@ final canDeleteSegmentProvider = Provider.autoDispose<bool>((ref) {
 
 final videoCanvasSizeProvider = StateProvider<Size?>((ref) => null);
 
+/// Where an overlay spanning [start]–[end] may be cut at [playheadSeconds]:
+/// the cut instant, or null where it may not.
+///
+/// **One rule, two consumers**: [VideoEditorNotifier.splitTextOverlay] cuts
+/// here and [isSplitToolEnabledProvider] offers the tool from it, so the
+/// Split button shows exactly where a tap succeeds — never a dead tap, never
+/// a missing tool. Each half must last at least [kMinClipDurationSeconds],
+/// the timeline's own trim minimum, so a split cannot make a piece the trim
+/// handles could not. The cut lands on a whole millisecond, the precision a
+/// draft stores, so both halves save to the same instant and still abut.
+Duration? _overlaySplitPoint(
+  Duration start,
+  Duration end,
+  double playheadSeconds,
+) {
+  final cut = Duration(milliseconds: (playheadSeconds * 1000).round());
+  final minimum = Duration(
+    milliseconds: (kMinClipDurationSeconds * 1000).round(),
+  );
+  if (cut - start < minimum || end - cut < minimum) return null;
+  return cut;
+}
+
 final isSplitToolEnabledProvider = Provider.autoDispose<bool>((ref) {
   final editorState = ref.watch(videoEditorProvider);
+
+  // A selected text splits **itself**, not the clip under it — and only where
+  // both halves could exist. This gate used to know only clips: it required
+  // `isClipSelected`, which selecting a text clears, so a text's Split could
+  // never have shown. (A selected video overlay still takes the clip branch
+  // below and is still refused there — see CLAUDE.md, "Known broken".)
+  final textId = editorState.selectedTextId;
+  if (textId != null) {
+    final text = editorState.textOverlays
+        .where((overlay) => overlay.id == textId)
+        .firstOrNull;
+    return text != null &&
+        _overlaySplitPoint(
+              text.startTime,
+              text.endTime,
+              editorState.currentPlaybackPosition,
+            ) !=
+            null;
+  }
+
   final selectedSegment = ref.watch(activeSegmentProvider);
   if (selectedSegment == null) return false;
 

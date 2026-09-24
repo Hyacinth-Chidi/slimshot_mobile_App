@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_editor_dialog.dart';
 
 /// Which tools each menu offers.
 ///
@@ -49,6 +50,49 @@ void main() {
     );
     expect(menuSource('_imageOverlayMenu'), contains("id: 'animation'"));
     expect(menuSource('_videoOverlayMenu'), contains("id: 'animation'"));
+  });
+
+  test('a selected text has a menu of its own, registered by that id', () {
+    // Selecting a text used to show the root menu — tools for making a
+    // project, none for the text. The notifier now names `text_overlay`;
+    // without a registered menu the toolbar would fall back to root and the
+    // switch would silently change nothing.
+    final menu = menuSource('_textOverlayMenu');
+    expect(menu, contains("id: 'text_overlay'"));
+    for (final id in ['split', 'duplicate', 'delete']) {
+      expect(menu, contains("id: '$id'"), reason: 'the text menu offers $id');
+    }
+    expect(
+      screen.readAsStringSync(),
+      contains("'text_overlay': _textOverlayMenu"),
+    );
+  });
+
+  test('the text menu opens the one editor sheet, one entry per tab', () {
+    // Style, Font and Animation are not new surfaces: each opens the existing
+    // editor sheet on its own tab, so there is still exactly one place text
+    // is styled. Every tab is reachable, and no two entries open the same one.
+    final menu = menuSource('_textOverlayMenu');
+    for (final id in kTextMenuSheetTools.keys) {
+      expect(menu, contains("id: '$id'"), reason: '$id is declared');
+    }
+    expect(
+      kTextMenuSheetTools.values.toSet(),
+      TextEditorTool.values.toSet(),
+      reason: 'every tab of the sheet has an entry',
+    );
+    expect(
+      kTextMenuSheetTools.values.toSet(),
+      hasLength(kTextMenuSheetTools.length),
+      reason: 'no two entries open the same tab',
+    );
+  });
+
+  test('the text menu never reuses the overlays\' Animation id', () {
+    // `animation` opens `AnimationDrawer`, the photo and video overlays'
+    // sheet. Reusing the id would send a text to the wrong animations — so
+    // the text's entry has its own id and opens the text sheet's tab.
+    expect(menuSource('_textOverlayMenu'), isNot(contains("id: 'animation'")));
   });
 
   test('the audio menu keeps its unbuilt Effects entry', () {

@@ -50,6 +50,21 @@ Future<void> showTextEditor({
 
 enum TextEditorTool { keyboard, style, font, animation }
 
+/// The selected-text menu's entries that open this sheet, and the tab each
+/// opens on.
+///
+/// They are doors into **this** sheet, not surfaces of their own: there stays
+/// exactly one place text is styled, so nothing can drift from it. The ids
+/// carry a `text_` prefix because the photo and video overlays' `animation`
+/// opens `AnimationDrawer` — a text sent there would get the wrong animations.
+/// A test pins the map to the menu declaration and to every tab.
+const Map<String, TextEditorTool> kTextMenuSheetTools = {
+  'text_edit': TextEditorTool.keyboard,
+  'text_style': TextEditorTool.style,
+  'text_font': TextEditorTool.font,
+  'text_animation': TextEditorTool.animation,
+};
+
 enum ColorTarget { text, background, outline, shadow }
 
 /// A one-tap bundle of text styling — CapCut's "preset looks". Fonts are

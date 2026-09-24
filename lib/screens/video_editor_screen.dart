@@ -265,6 +265,43 @@ const EditorMenu _videoOverlayMenu = EditorMenu(
   ],
 );
 
+/// What a selected text offers.
+///
+/// There was no such menu: selecting a text showed the root menu, the tools
+/// for making a project and none for the text, and its whole editor hid
+/// behind a tap on the already-selected text. **Edit, Style, Font and
+/// Animation are doors into the one text sheet**, each opening it on its own
+/// tab (`kTextMenuSheetTools`) — no second styling surface, so nothing can
+/// drift from it. Their ids carry a `text_` prefix because `animation`
+/// already means the photo and video overlays' drawer. Split, Copy and Delete
+/// are the handlers every overlay menu shares.
+const EditorMenu _textOverlayMenu = EditorMenu(
+  id: 'text_overlay',
+  tools: [
+    EditorTool(id: 'text_edit', label: 'Edit', icon: LucideIcons.pencil),
+    EditorTool(id: 'text_style', label: 'Style', icon: LucideIcons.palette),
+    EditorTool(
+      id: 'text_font',
+      label: 'Font',
+      icon: LucideIcons.caseSensitive,
+    ),
+    EditorTool(
+      id: 'text_animation',
+      label: 'Animation',
+      icon: LucideIcons.playCircle,
+    ),
+    // Offered only where both halves could exist — the same rule the split
+    // enforces, so the button never promises a cut it would refuse.
+    EditorTool(
+      id: 'split',
+      label: 'Split',
+      icon: LucideIcons.splitSquareHorizontal,
+    ),
+    EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
+    EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
+  ],
+);
+
 final Map<String, EditorMenu> _menus = {
   'root': _rootMenu,
   'edit': _editMenu,
@@ -272,6 +309,7 @@ final Map<String, EditorMenu> _menus = {
   'audio': _audioMenu,
   'image_overlay': _imageOverlayMenu,
   'video_overlay': _videoOverlayMenu,
+  'text_overlay': _textOverlayMenu,
   'transition': const EditorMenu(
     id: 'transition',
     tools: [],
@@ -851,6 +889,26 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     } catch (e) {
       ToastUtils.show(context, e.toString(), isError: true);
     }
+  }
+
+  /// Opens the one text sheet on [tab] for the selected text.
+  ///
+  /// The text menu's Edit, Style, Font and Animation all come here — they are
+  /// doors into the existing sheet, not surfaces of their own.
+  void _openSelectedTextEditor(TextEditorTool tab) {
+    final state = ref.read(videoEditorProvider);
+    final id = state.selectedTextId;
+    if (id == null) return;
+    final overlay = state.textOverlays.where((t) => t.id == id).firstOrNull;
+    if (overlay == null) return;
+    unawaited(
+      showTextEditor(
+        context: context,
+        overlay: overlay,
+        ref: ref,
+        initialTool: tab,
+      ),
+    );
   }
 
   void _selectSegment(String? segmentId) {
@@ -1900,8 +1958,19 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     unawaited(_freezeFrameAtPlayhead());
                   } else if (tool.id == 'replace') {
                     unawaited(_replaceSelectedClip());
+                  } else if (kTextMenuSheetTools[tool.id] case final tab?) {
+                    _openSelectedTextEditor(tab);
                   } else if (tool.id == 'split') {
-                    if (editorState.selectedVideoOverlayId != null) {
+                    if (editorState.selectedTextId != null) {
+                      try {
+                        notifier.splitTextOverlay(
+                          editorState.currentPlaybackPosition,
+                        );
+                        HapticFeedback.selectionClick();
+                      } catch (e) {
+                        ToastUtils.show(context, e.toString(), isError: true);
+                      }
+                    } else if (editorState.selectedVideoOverlayId != null) {
                       try {
                         notifier.splitVideoOverlay(
                           editorState.currentPlaybackPosition,
