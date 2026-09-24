@@ -1997,7 +1997,7 @@ verification**). Selecting a text used to show the **root** menu — tools for m
 none for the text — and its whole editor hid behind a tap on the already-selected text; image
 overlays, video overlays, clips and audio each had a menu. The menu follows the selection through
 every door: `selectTextOverlay`, `addTextOverlay` (the Text tool *and* the emoji picker),
-`duplicateTextOverlay` and `splitTextOverlay` open it, and **`deleteTextOverlay` leaves it
+and `duplicateTextOverlay` open it, and **`deleteTextOverlay` leaves it
 itself** — the canvas frame's ✕ calls delete and nothing else, so a caller-side deselect would
 strand the menu with nothing selected. `addTextOverlay` now also clears any other selection,
 like `addImageOverlay`, or the delete handler (which checks text first) could act on a thing the
@@ -2006,31 +2006,27 @@ surfaces of their own: `kTextMenuSheetTools` maps each id to the tab it opens, a
 the map to the menu declaration and to every tab. The ids carry a `text_` prefix because
 `animation` already opens the photo and video overlays' `AnimationDrawer`.
 
-**Split** cuts at the playhead into two halves with the same words, place and lane, one undo
-step, the right half selected. **The entrance stays on the left half and the exit on the right**
-— copied verbatim, the text would exit before the cut and enter again after it. A loop stays on
-both and **restarts its cycle at the cut**, because a loop's phase is measured from each
-overlay's own start and the model has no offset to carry; accepted, since a split is rarely made
-to keep a loop seamless. **The Split tool and the split share one rule**, `_overlaySplitPoint`
-(each half at least `kMinClipDurationSeconds`, the trim minimum; the cut on a whole millisecond,
-the precision a draft stores), so the button shows exactly where a tap succeeds — a test sweeps
-both edges and fails if the two disagree.
+**A text cannot be split** — built, then removed at the user's call: a text is retimed by its
+trim handles, and a second copy of the words is what Copy is for. `editor_menu_test.dart` pins
+the menu entry and the handler both gone.
 
 **The Split tool is offered by the rule it cuts with, for everything that splits**
 (`isSplitToolEnabledProvider`, `split_gate_test.dart`). The gate used to carry a rule of its own
 and was wrong twice — both demonstrated with a probe before anything changed. It knew only clips,
-requiring `isClipSelected`, which selecting a text *or a video overlay* clears: **the
+requiring `isClipSelected`, which selecting a video overlay clears: **the
 video-overlay menu's Split had never shown.** And for clips it compared the playhead's
 **timeline** seconds against the selected clip's **source** range — the confusion the
 timeline-contract section warns about — so a later clip from another file hid its Split mid-clip
 (clip b at 5–13s over its own 0–8s, playhead 9.0), and near a seam it offered a cut the blade
-refused. Now text and video overlays ask `_overlaySplitPoint`, and clips ask **`_clipCutPoint`,
+refused. Now a video overlay asks `_overlaySplitPoint` (each half at least
+`kMinClipDurationSeconds`, the cut on a whole millisecond, the precision a draft stores), and clips ask **`_clipCutPoint`,
 the one clip-cut rule** — `_cutSegments` throws where it refuses and the freeze sits its still
 beside the clip where it refuses, so the blade, the freeze and the button cannot disagree. The
 sweeps compare gate against action at both edges of every clip and overlay.
 
 **Unhiding the video overlay's Split exposed two faults in `splitVideoOverlay`**, fixed with it:
-both halves kept both animations (now entrance left, exit right, as text), and the source was
+both halves kept both animations (now the entrance stays left and the exit right — copied
+verbatim, the overlay would exit before the cut and enter again after it), and the source was
 cut at the bare timeline offset, ignoring `speed` — the engine plays an overlay at
 `sourceStart + offset × speed` (`NativeTimelineOverlay.sourceAt`), so at 2× the right half started
 early in the footage. The cut now mirrors that mapping, clamp included, so every instant shows the

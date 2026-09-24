@@ -296,8 +296,8 @@ const EditorMenu _textMenu = EditorMenu(
 /// Animation are doors into the one text sheet**, each opening it on its own
 /// tab (`kTextMenuSheetTools`) — no second styling surface, so nothing can
 /// drift from it. Their ids carry a `text_` prefix because `animation`
-/// already means the photo and video overlays' drawer. Split, Copy and Delete
-/// are the handlers every overlay menu shares.
+/// already means the photo and video overlays' drawer. Copy and Delete are the
+/// handlers every overlay menu shares.
 const EditorMenu _textOverlayMenu = EditorMenu(
   id: 'text_overlay',
   tools: [
@@ -312,13 +312,6 @@ const EditorMenu _textOverlayMenu = EditorMenu(
       id: 'text_animation',
       label: 'Animation',
       icon: LucideIcons.playCircle,
-    ),
-    // Offered only where both halves could exist — the same rule the split
-    // enforces, so the button never promises a cut it would refuse.
-    EditorTool(
-      id: 'split',
-      label: 'Split',
-      icon: LucideIcons.splitSquareHorizontal,
     ),
     EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
     EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
@@ -1990,16 +1983,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   } else if (kTextMenuSheetTools[tool.id] case final tab?) {
                     _openSelectedTextEditor(tab);
                   } else if (tool.id == 'split') {
-                    if (editorState.selectedTextId != null) {
-                      try {
-                        notifier.splitTextOverlay(
-                          editorState.currentPlaybackPosition,
-                        );
-                        HapticFeedback.selectionClick();
-                      } catch (e) {
-                        ToastUtils.show(context, e.toString(), isError: true);
-                      }
-                    } else if (editorState.selectedVideoOverlayId != null) {
+                    if (editorState.selectedVideoOverlayId != null) {
                       try {
                         notifier.splitVideoOverlay(
                           editorState.currentPlaybackPosition,

@@ -59,12 +59,23 @@ void main() {
     // switch would silently change nothing.
     final menu = menuSource('_textOverlayMenu');
     expect(menu, contains("id: 'text_overlay'"));
-    for (final id in ['split', 'duplicate', 'delete']) {
+    for (final id in ['duplicate', 'delete']) {
       expect(menu, contains("id: '$id'"), reason: 'the text menu offers $id');
     }
     expect(
       screen.readAsStringSync(),
       contains("'text_overlay': _textOverlayMenu"),
+    );
+  });
+
+  test('a text cannot be split', () {
+    // Built, then removed as not needed: a text is retimed by its trim
+    // handles, and a second copy of the words is what Copy is for.
+    expect(menuSource('_textOverlayMenu'), isNot(contains("id: 'split'")));
+    expect(
+      screen.readAsStringSync(),
+      isNot(contains('splitTextOverlay')),
+      reason: 'no handler reaches a text split',
     );
   });
 

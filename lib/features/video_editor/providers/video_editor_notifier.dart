@@ -3041,58 +3041,6 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
-  /// Cuts the selected text in two at the playhead, as one undo step.
-  ///
-  /// Both halves carry the same words, style, place and lane, so the right
-  /// half *continues* the text rather than being a new one — the point of a
-  /// split is usually to retime or restyle one side of it.
-  ///
-  /// **The entrance stays on the left half and the exit on the right.** Copied
-  /// verbatim, each half would carry both: the text would play its exit
-  /// before the cut and its entrance again after it, a fade out and back in at
-  /// a seam meant to be invisible. A loop runs under the whole span, so both
-  /// halves keep it — though its phase is measured from each overlay's own
-  /// start, so a loop restarts its cycle at the cut. The model has no phase
-  /// offset to carry, and a split is rarely made to keep a loop seamless.
-  ///
-  /// Refused, with the message the user sees, where [_overlaySplitPoint]
-  /// refuses — the same rule that decides whether the Split tool shows, so
-  /// the button is offered exactly where the tap succeeds. With no text
-  /// selected it does nothing, like [splitVideoOverlay].
-  void splitTextOverlay(double playheadSeconds) {
-    final id = state.selectedTextId;
-    if (id == null) return;
-    final index = state.textOverlays.indexWhere((text) => text.id == id);
-    if (index == -1) return;
-    final text = state.textOverlays[index];
-
-    final cut = _overlaySplitPoint(
-      text.startTime,
-      text.endTime,
-      playheadSeconds,
-    );
-    if (cut == null) {
-      throw Exception('Move the playhead further into the text to split it.');
-    }
-
-    saveStateForUndo();
-    final left = text.copyWith(endTime: cut, outAnimation: 'none');
-    final right = text.copyWith(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      startTime: cut,
-      inAnimation: 'none',
-    );
-    final updated = [...state.textOverlays];
-    updated[index] = left;
-    updated.insert(index + 1, right);
-
-    state = state.copyWith(
-      textOverlays: updated,
-      selectedTextId: right.id,
-      currentMenuId: 'text_overlay',
-    );
-  }
-
   /// Cuts the selected video overlay in two at the playhead, as one undo step.
   ///
   /// Unreachable until the Split gate learned about overlays, and wrong in
@@ -3100,7 +3048,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   ///
   /// - **Both halves kept both animations**, so the overlay would exit before
   ///   the cut and enter again after it. The entrance now stays on the left
-  ///   half and the exit on the right, as a text's split does.
+  ///   half and the exit on the right.
   /// - **The source was cut at the bare timeline offset, ignoring `speed`.**
   ///   The engine plays an overlay at `sourceStart + offset × speed`
   ///   (`NativeTimelineOverlay.sourceAt`), so at 2× the right half started
@@ -3338,16 +3286,6 @@ final canDeleteSegmentProvider = Provider.autoDispose<bool>((ref) {
 
 final videoCanvasSizeProvider = StateProvider<Size?>((ref) => null);
 
-/// Where an overlay spanning [start]–[end] may be cut at [playheadSeconds]:
-/// the cut instant, or null where it may not.
-///
-/// **One rule, two consumers**: [VideoEditorNotifier.splitTextOverlay] cuts
-/// here and [isSplitToolEnabledProvider] offers the tool from it, so the
-/// Split button shows exactly where a tap succeeds — never a dead tap, never
-/// a missing tool. Each half must last at least [kMinClipDurationSeconds],
-/// the timeline's own trim minimum, so a split cannot make a piece the trim
-/// handles could not. The cut lands on a whole millisecond, the precision a
-/// draft stores, so both halves save to the same instant and still abut.
 /// Where the blade at [timelineSeconds] would cut [segments]: the clip under
 /// it and how far into that clip — or null where the cut is refused.
 ///
@@ -3380,6 +3318,16 @@ final videoCanvasSizeProvider = StateProvider<Size?>((ref) => null);
   return (index: index, offsetIntoClip: offsetIntoClip);
 }
 
+/// Where an overlay spanning [start]–[end] may be cut at [playheadSeconds]:
+/// the cut instant, or null where it may not.
+///
+/// **One rule, two consumers**: [VideoEditorNotifier.splitVideoOverlay] cuts
+/// here and [isSplitToolEnabledProvider] offers the tool from it, so the
+/// Split button shows exactly where a tap succeeds — never a dead tap, never
+/// a missing tool. Each half must last at least [kMinClipDurationSeconds],
+/// the timeline's own trim minimum, so a split cannot make a piece the trim
+/// handles could not. The cut lands on a whole millisecond, the precision a
+/// draft stores, so both halves save to the same instant and still abut.
 Duration? _overlaySplitPoint(
   Duration start,
   Duration end,
@@ -3398,22 +3346,14 @@ Duration? _overlaySplitPoint(
 /// **Every branch asks the rule its split cuts with**, never a restatement,
 /// so the button shows exactly where a tap succeeds. This gate used to carry
 /// a rule of its own and was wrong twice: it knew only clips, requiring
-/// `isClipSelected` — which selecting a text or a video overlay clears, so
-/// neither's Split could ever show — and for clips it compared the playhead's
+/// `isClipSelected` — which selecting a video overlay clears, so its Split
+/// could never show — and for clips it compared the playhead's
 /// timeline seconds against the clip's *source* range.
 final isSplitToolEnabledProvider = Provider.autoDispose<bool>((ref) {
   final editorState = ref.watch(videoEditorProvider);
   final playhead = editorState.currentPlaybackPosition;
 
   // A selected overlay splits **itself**, not the clip under it.
-  final textId = editorState.selectedTextId;
-  if (textId != null) {
-    final text = editorState.textOverlays
-        .where((overlay) => overlay.id == textId)
-        .firstOrNull;
-    return text != null &&
-        _overlaySplitPoint(text.startTime, text.endTime, playhead) != null;
-  }
   final videoId = editorState.selectedVideoOverlayId;
   if (videoId != null) {
     final video = editorState.videoOverlays
