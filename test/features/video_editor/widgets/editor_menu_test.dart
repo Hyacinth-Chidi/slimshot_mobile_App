@@ -118,8 +118,19 @@ void main() {
     final menu = menuSource('_textMenu');
     expect(menu, contains("id: 'text'"));
     expect(menu, contains("id: 'add_text'"));
-    expect(menu, contains("id: 'text_templates'"));
+    // Choose, then type: a new text wearing the template.
+    expect(menu, contains("id: 'add_template'"));
     expect(screen.readAsStringSync(), contains("'text': _textMenu"));
+  });
+
+  test('a selected text offers Templates: type, then choose', () {
+    // The text's own menu opens the editor on its Templates tab, which puts
+    // a template on the words already there — and swaps it, as often as the
+    // user likes. Distinct from the Text submenu's entry, which makes a new
+    // text: one id each, so neither handler can catch the other's tap.
+    expect(menuSource('_textOverlayMenu'), contains("id: 'text_templates'"));
+    expect(kTextMenuSheetTools['text_templates'], TextEditorTool.templates);
+    expect(menuSource('_textMenu'), isNot(contains("id: 'text_templates'")));
   });
 
   test('no handler adds a text on the Text tool itself any more', () {

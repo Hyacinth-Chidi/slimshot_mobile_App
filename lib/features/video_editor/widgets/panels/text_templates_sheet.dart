@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../logic/text_template_catalog.dart';
-import '../text_overlay/text_template_tile.dart';
+import '../text_overlay/text_template_grid.dart';
 import 'editor_sheet.dart';
 
 /// The Text submenu's Templates: a grid of complete starting looks, each tile
@@ -37,31 +37,7 @@ class TextTemplatesSheet extends StatefulWidget {
   State<TextTemplatesSheet> createState() => _TextTemplatesSheetState();
 }
 
-class _TextTemplatesSheetState extends State<TextTemplatesSheet>
-    with SingleTickerProviderStateMixin {
-  /// One loop of every visible tile.
-  ///
-  /// Longer than the animation tab's: a template tile plays an entrance, a
-  /// hold and an exit in one loop, where an animation tile plays one motion.
-  static const Duration _kTileLoop = Duration(milliseconds: 2400);
-
-  static const double _kEdge = 16;
-
-  /// **One clock for every tile**, rather than a `Ticker` per tile.
-  late final AnimationController _clock;
-
-  @override
-  void initState() {
-    super.initState();
-    _clock = AnimationController(vsync: this, duration: _kTileLoop)..repeat();
-  }
-
-  @override
-  void dispose() {
-    _clock.dispose();
-    super.dispose();
-  }
-
+class _TextTemplatesSheetState extends State<TextTemplatesSheet> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -88,27 +64,14 @@ class _TextTemplatesSheetState extends State<TextTemplatesSheet>
                 ),
               ),
               Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(_kEdge, 0, _kEdge, _kEdge),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    childAspectRatio: 1.1,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemCount: widget.templates.length,
-                  itemBuilder: (context, index) {
-                    final template = widget.templates[index];
-                    return TextTemplateTile(
-                      template: template,
-                      clock: _clock,
-                      onTap: () {
-                        // Close first: the text lands on the canvas, and a
-                        // sheet still covering it would hide what the tap did.
-                        Navigator.of(context).pop();
-                        widget.onTemplateSelected(template);
-                      },
-                    );
+                // No words yet: each tile plays its template's own sample.
+                child: TextTemplateGrid(
+                  templates: widget.templates,
+                  onSelected: (template) {
+                    // Close first: the text lands on the canvas, and a sheet
+                    // still covering it would hide what the tap did.
+                    Navigator.of(context).pop();
+                    widget.onTemplateSelected(template);
                   },
                 ),
               ),

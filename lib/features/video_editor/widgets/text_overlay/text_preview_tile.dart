@@ -22,6 +22,29 @@ import 'text_overlay_painter.dart';
 /// a tile shows, sits on one line; the fit then scales the line to the tile.
 const Size kTextPreviewCanvas = Size(640, 240);
 
+/// How many grapheme clusters of the user's text a tile shows.
+///
+/// Enough characters to read a per-glyph stagger as a stagger, few enough that
+/// a grid laying text out on every frame stays cheap — and a caption can
+/// legitimately be a whole paragraph.
+const int kTextPreviewGlyphs = 8;
+
+/// The words a tile shows: [source] cut to [kTextPreviewGlyphs] **grapheme
+/// clusters**, or [fallback] when there are none.
+///
+/// By cluster and never by `substring`: an emoji is several code units and a
+/// family emoji several clusters' worth of them, so a code-unit cut leaves a
+/// broken surrogate that renders as nothing. Text is created empty in this
+/// app, so a tile is routinely asked for words that do not exist yet — and a
+/// tile drawing nothing teaches nothing about the look it offers.
+String textPreviewWords(String? source, {required String fallback}) {
+  final words = source?.trim() ?? '';
+  if (words.isEmpty) return fallback;
+  final clusters = words.characters;
+  if (clusters.length <= kTextPreviewGlyphs) return words;
+  return clusters.take(kTextPreviewGlyphs).toString();
+}
+
 /// How long a tile rests on the finished look before looping.
 ///
 /// Without it an in-animation would restart the instant its last glyph

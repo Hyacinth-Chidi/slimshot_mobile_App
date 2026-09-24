@@ -4,10 +4,12 @@ import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../logic/text_animation_catalog.dart';
+import '../../logic/text_template_catalog.dart';
 import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../../utils/font_utils.dart';
 import 'text_animation_panel.dart';
+import 'text_template_grid.dart';
 import '../panels/editor_sheet.dart';
 
 /// Opens the text editor sheet for [overlay].
@@ -20,6 +22,7 @@ Future<void> showTextEditor({
   required TextOverlayModel overlay,
   required WidgetRef ref,
   TextEditorTool initialTool = TextEditorTool.keyboard,
+  List<TextTemplate> templates = kTextTemplates,
 }) async {
   await showEditorSheet<void>(
     context,
@@ -28,6 +31,7 @@ Future<void> showTextEditor({
         overlay: overlay,
         ref: ref,
         initialTool: initialTool,
+        templates: templates,
       );
     },
   );
@@ -48,7 +52,7 @@ Future<void> showTextEditor({
   }
 }
 
-enum TextEditorTool { keyboard, style, font, animation }
+enum TextEditorTool { keyboard, templates, style, font, animation }
 
 /// The selected-text menu's entries that open this sheet, and the tab each
 /// opens on.
@@ -60,6 +64,7 @@ enum TextEditorTool { keyboard, style, font, animation }
 /// A test pins the map to the menu declaration and to every tab.
 const Map<String, TextEditorTool> kTextMenuSheetTools = {
   'text_edit': TextEditorTool.keyboard,
+  'text_templates': TextEditorTool.templates,
   'text_style': TextEditorTool.style,
   'text_font': TextEditorTool.font,
   'text_animation': TextEditorTool.animation,
@@ -145,7 +150,12 @@ class _TextEditorBottomSheet extends StatefulWidget {
     required this.overlay,
     required this.ref,
     this.initialTool = TextEditorTool.keyboard,
+    this.templates = kTextTemplates,
   });
+
+  /// The Templates tab's catalog, unless a test supplies its own: the
+  /// catalog's families are Google Fonts, which a widget test cannot load.
+  final List<TextTemplate> templates;
 
   @override
   State<_TextEditorBottomSheet> createState() => _TextEditorBottomSheetState();
@@ -220,29 +230,54 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     super.initState();
     _activeTool = widget.initialTool;
     _textController = TextEditingController(text: widget.overlay.text);
-    _fontFamily = widget.overlay.fontFamily;
-    _textColor = widget.overlay.color;
-    _strokeColor = widget.overlay.strokeColor;
-    _strokeWidth = widget.overlay.strokeWidth;
-    _backgroundColor = widget.overlay.backgroundColor;
-    _shadowColor = widget.overlay.shadowColor;
-    _shadowOpacity = widget.overlay.shadowOpacity;
-    _shadowBlur = widget.overlay.shadowBlurRadius;
-    _shadowDistance = widget.overlay.shadowDistance;
-    _shadowAngle = widget.overlay.shadowAngle;
-    _textAlign = widget.overlay.textAlign;
-    _borderRadius = widget.overlay.borderRadius;
-    _backgroundPadding = widget.overlay.backgroundPadding;
-    _inAnimation = widget.overlay.inAnimation;
-    _outAnimation = widget.overlay.outAnimation;
-    _loopAnimation = widget.overlay.loopAnimation;
-    _inAnimationSpeed = widget.overlay.animationInDuration;
-    _outAnimationSpeed = widget.overlay.animationOutDuration;
-    _loopSpeed = widget.overlay.loopSpeed;
+    _loadLook(widget.overlay);
 
     if (_activeTool == TextEditorTool.keyboard) {
       _focusNode.requestFocus();
     }
+  }
+
+  /// Takes [overlay]'s look into the sheet's own copies of it.
+  ///
+  /// The sheet rewrites the whole text from these copies on every edit
+  /// ([_applyEdits]) — so anything that changes the look from outside them, a
+  /// template, has to come back through here, or the next keystroke would put
+  /// the old look back.
+  void _loadLook(TextOverlayModel overlay) {
+    _fontFamily = overlay.fontFamily;
+    _textColor = overlay.color;
+    _strokeColor = overlay.strokeColor;
+    _strokeWidth = overlay.strokeWidth;
+    _backgroundColor = overlay.backgroundColor;
+    _shadowColor = overlay.shadowColor;
+    _shadowOpacity = overlay.shadowOpacity;
+    _shadowBlur = overlay.shadowBlurRadius;
+    _shadowDistance = overlay.shadowDistance;
+    _shadowAngle = overlay.shadowAngle;
+    _textAlign = overlay.textAlign;
+    _borderRadius = overlay.borderRadius;
+    _backgroundPadding = overlay.backgroundPadding;
+    _inAnimation = overlay.inAnimation;
+    _outAnimation = overlay.outAnimation;
+    _loopAnimation = overlay.loopAnimation;
+    _inAnimationSpeed = overlay.animationInDuration;
+    _outAnimationSpeed = overlay.animationOutDuration;
+    _loopSpeed = overlay.loopSpeed;
+  }
+
+  /// Type, then choose: puts [template] on this text — its words, timing and
+  /// place kept, every part of the look replaced — as one undo step, and
+  /// takes the new look into the sheet's copies ([_loadLook]).
+  void _applyTemplate(TextTemplate template) {
+    widget.ref.read(videoEditorProvider.notifier).updateTextOverlay(
+          widget.overlay.id,
+          (current) =>
+              template.restyle(current.copyWith(text: _textController.text)),
+        );
+    setState(() {
+      _activePresetIndex = null;
+      _loadLook(_currentOverlay());
+    });
   }
 
   TextOverlayModel _applyEdits(TextOverlayModel current) => current.copyWith(
@@ -376,6 +411,12 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
                               'Keyboard',
                               TextEditorTool.keyboard,
                             ),
+                            // Right after the words: type, then choose.
+                            _buildTab(
+                              LucideIcons.layoutTemplate,
+                              'Templates',
+                              TextEditorTool.templates,
+                            ),
                             _buildTab(
                               LucideIcons.palette,
                               'Style',
@@ -435,6 +476,7 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
                   height: _panelHeight,
                   child: switch (_activeTool) {
                     TextEditorTool.keyboard => const SizedBox.shrink(),
+                    TextEditorTool.templates => _buildTemplatesPanel(),
                     TextEditorTool.style => _buildStylePanel(),
                     TextEditorTool.font => _buildFontPanel(),
                     TextEditorTool.animation => _buildAnimationPanel(),
@@ -701,6 +743,27 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
           ),
         ),
       ),
+    );
+  }
+
+  // ------------------------------------------------------------ templates
+
+  /// Every template, previewed in this text's own words, the one it is
+  /// wearing highlighted. A tap puts it on; another tap swaps it.
+  Widget _buildTemplatesPanel() {
+    final current = _currentOverlay();
+    String? wearing;
+    for (final t in widget.templates) {
+      if (t.isAppliedTo(current)) {
+        wearing = t.id;
+        break;
+      }
+    }
+    return TextTemplateGrid(
+      templates: widget.templates,
+      text: _textController.text,
+      selectedId: wearing,
+      onSelected: _applyTemplate,
     );
   }
 

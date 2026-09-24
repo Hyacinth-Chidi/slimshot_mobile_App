@@ -5,12 +5,9 @@ import '../../models/text_overlay_model.dart';
 import 'text_overlay_painter.dart';
 import 'text_preview_tile.dart';
 
-/// How many grapheme clusters of the user's text a tile shows.
-///
-/// Enough characters to read a per-glyph stagger as a stagger, few enough that
-/// twenty tiles laying text out on every frame stays cheap — and a caption can
-/// legitimately be a whole paragraph.
-const int kTextAnimationTileGlyphs = 8;
+/// How many grapheme clusters of the user's text a tile shows — the rule every
+/// preview tile shares ([textPreviewWords]).
+const int kTextAnimationTileGlyphs = kTextPreviewGlyphs;
 
 /// What a tile shows when the overlay has no text of its own.
 ///
@@ -71,13 +68,8 @@ class TextAnimationTile extends StatelessWidget {
   /// family emoji several clusters' worth of them, so a code-unit cut leaves a
   /// broken surrogate that renders as nothing. That exact mistake made emoji
   /// disappear from exports at an earlier stage of this work.
-  String get _tileText {
-    final source = overlay.text.trim();
-    if (source.isEmpty) return kTextAnimationTileSampleText;
-    final clusters = source.characters;
-    if (clusters.length <= kTextAnimationTileGlyphs) return source;
-    return clusters.take(kTextAnimationTileGlyphs).toString();
-  }
+  String get _tileText =>
+      textPreviewWords(overlay.text, fallback: kTextAnimationTileSampleText);
 
   /// The overlay the tile actually paints.
   ///

@@ -2081,8 +2081,11 @@ activeToolIds style/font/animation) were unreachable dead code — nothing ever 
 verification**). It went straight to typing while Add text was all it held, because a one-item
 submenu is a tap tax on the most common action; Templates is the second real entry that pays
 for the tap. Both go through **`_addText`**, so a new text is made one way — at the playhead,
-three seconds, **empty**, the editor opened on the keyboard. Auto captions joins the submenu when
-its server exists; it is not offered before it works.
+three seconds, **empty**, the editor opened on the keyboard. Its Templates (`add_template`) is
+**choose, then type**; the other way round is the selected text's own Templates (below). The two
+ids differ on purpose — `text_templates` is the sheet-tab door — so neither handler can catch
+the other's tap. Auto captions joins the submenu when its server exists; it is not offered
+before it works.
 
 **A template is a complete starting look, and it makes an EMPTY text**
 (`logic/text_template_catalog.dart`, `panels/text_templates_sheet.dart`). Not a preset: the
@@ -2133,6 +2136,20 @@ template tile plays three motions per loop. **Its tests must never `pumpAndSettl
 play forever by design, so it times out after ten simulated minutes; they pump past the sheet's
 motion instead (`settleSheet`).
 
+**Type, then choose: the text editor's Templates tab** (`text_editor_templates_test.dart`,
+**awaiting device verification**). Right after Keyboard, and reached from the selected text's
+menu (Edit, **Templates**, Style, Font, Animation). Every template is previewed **in the text's
+own words** (`textPreviewWords` — the same eight-grapheme rule the animation tiles use, falling
+back to each template's sample while there are none); a tap puts it on through
+`TextTemplate.restyle`, one undo step, words and place kept; another tap swaps it, as often as
+the user likes. The tile of the template the text is wearing is highlighted, found by
+`isAppliedTo` rather than remembered, so it is right on reopening and goes dark the moment a hand
+edit changes the look. **A chosen template must go back through `_loadLook`**: the sheet rewrites
+the whole text from its own copies of every look field on each keystroke, so without it the next
+letter typed put the old look back — the test for it fails when `_loadLook` is removed. Both ways
+in show one grid (`TextTemplateGrid`, with its own clock); the sheet and the tab differ only in
+the words they give it and what a tap does.
+
 **A selected text has a menu of its own** (`_textOverlayMenu`, **awaiting device
 verification**). Selecting a text used to show the **root** menu — tools for making a project,
 none for the text — and its whole editor hid behind a tap on the already-selected text; image
@@ -2142,8 +2159,8 @@ and `duplicateTextOverlay` open it, and **`deleteTextOverlay` leaves it
 itself** — the canvas frame's ✕ calls delete and nothing else, so a caller-side deselect would
 strand the menu with nothing selected. `addTextOverlay` now also clears any other selection,
 like `addImageOverlay`, or the delete handler (which checks text first) could act on a thing the
-toolbar was not about. **Edit, Style, Font and Animation are doors into the one sheet**, not
-surfaces of their own: `kTextMenuSheetTools` maps each id to the tab it opens, and a test pins
+toolbar was not about. **Edit, Templates, Style, Font and Animation are doors into the one
+sheet**, not surfaces of their own: `kTextMenuSheetTools` maps each id to the tab it opens, and a test pins
 the map to the menu declaration and to every tab. The ids carry a `text_` prefix because
 `animation` already opens the photo and video overlays' `AnimationDrawer`.
 

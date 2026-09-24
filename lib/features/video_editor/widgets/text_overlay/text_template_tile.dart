@@ -8,8 +8,9 @@ import '../../models/text_overlay_model.dart';
 import 'text_overlay_painter.dart';
 import 'text_preview_tile.dart';
 
-/// A live preview of one text template: its sample words in its whole look,
-/// playing its animations.
+/// A live preview of one text template in its whole look, playing its
+/// animations — in the text's own words when there are any ([text]), else in
+/// the template's sample.
 ///
 /// **Built by the template itself, painted by the canvas's painter.** The
 /// synthetic overlay is `TextTemplate.apply` — the same call that makes the
@@ -27,9 +28,19 @@ class TextTemplateTile extends StatelessWidget {
     required this.template,
     required this.onTap,
     this.clock,
+    this.text,
+    this.isSelected = false,
   });
 
   final TextTemplate template;
+
+  /// The words to preview the template in: the text being edited, cut to a
+  /// tile's worth ([textPreviewWords]). Null or empty shows [template]'s
+  /// sample — the Text submenu's sheet, where there are no words yet.
+  final String? text;
+
+  /// Whether the text being edited is wearing this template.
+  final bool isSelected;
 
   /// Fired once per tap.
   final VoidCallback onTap;
@@ -37,7 +48,7 @@ class TextTemplateTile extends StatelessWidget {
   /// Drives the playhead — see [TextPreviewTile.clock].
   final Listenable? clock;
 
-  /// The template on the tile canvas, with its sample words, unplaced.
+  /// The template on the tile canvas, in the tile's words, unplaced.
   TextOverlayModel _synthetic(double spanSeconds) => template
       .apply(
         id: 'tile-${template.id}',
@@ -46,7 +57,7 @@ class TextTemplateTile extends StatelessWidget {
         canvasSize: kTextPreviewCanvas,
       )
       .copyWith(
-        text: template.sampleText,
+        text: textPreviewWords(text, fallback: template.sampleText),
         position: Offset.zero,
         scale: 1.0,
       );
@@ -85,8 +96,7 @@ class TextTemplateTile extends StatelessWidget {
       overlay: _synthetic(span),
       spanSeconds: span,
       label: template.name,
-      // A template makes a new text, so there is no current choice to show.
-      isSelected: false,
+      isSelected: isSelected,
       onTap: onTap,
       clock: clock,
     );

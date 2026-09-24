@@ -275,14 +275,16 @@ const EditorMenu _videoOverlayMenu = EditorMenu(
 /// Ways to make text: the root Text tool's submenu.
 ///
 /// Both make a new, **empty** text at the playhead and open the editor on it
-/// (`_addText`) — Add text plain, a template wearing its look. Auto captions
-/// joins them when its server exists; it is not offered before it works.
+/// (`_addText`) — Add text plain, Templates wearing a look chosen first:
+/// choose, then type. The other way round — type, then choose — is the
+/// selected text's own Templates. Auto captions joins them when its server
+/// exists; it is not offered before it works.
 const EditorMenu _textMenu = EditorMenu(
   id: 'text',
   tools: [
     EditorTool(id: 'add_text', label: 'Add text', icon: LucideIcons.type),
     EditorTool(
-      id: 'text_templates',
+      id: 'add_template',
       label: 'Templates',
       icon: LucideIcons.layoutTemplate,
     ),
@@ -293,16 +295,22 @@ const EditorMenu _textMenu = EditorMenu(
 ///
 /// There was no such menu: selecting a text showed the root menu, the tools
 /// for making a project and none for the text, and its whole editor hid
-/// behind a tap on the already-selected text. **Edit, Style, Font and
-/// Animation are doors into the one text sheet**, each opening it on its own
-/// tab (`kTextMenuSheetTools`) — no second styling surface, so nothing can
-/// drift from it. Their ids carry a `text_` prefix because `animation`
+/// behind a tap on the already-selected text. **Edit, Templates, Style, Font
+/// and Animation are doors into the one text sheet**, each opening it on its
+/// own tab (`kTextMenuSheetTools`) — no second styling surface, so nothing can
+/// drift from it. Templates sits after Edit: type, then choose a look, and
+/// change it as often as you like. Their ids carry a `text_` prefix because `animation`
 /// already means the photo and video overlays' drawer. Copy and Delete are the
 /// handlers every overlay menu shares.
 const EditorMenu _textOverlayMenu = EditorMenu(
   id: 'text_overlay',
   tools: [
     EditorTool(id: 'text_edit', label: 'Edit', icon: LucideIcons.pencil),
+    EditorTool(
+      id: 'text_templates',
+      label: 'Templates',
+      icon: LucideIcons.layoutTemplate,
+    ),
     EditorTool(id: 'text_style', label: 'Style', icon: LucideIcons.palette),
     EditorTool(
       id: 'text_font',
@@ -2068,7 +2076,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     }
                   } else if (tool.id == 'add_text') {
                     _addText();
-                  } else if (tool.id == 'text_templates') {
+                  } else if (tool.id == 'add_template') {
                     unawaited(
                       showEditorSheet<void>(
                         context,
