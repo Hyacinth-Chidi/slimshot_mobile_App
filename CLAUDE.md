@@ -2098,8 +2098,29 @@ device. The catalog test pins what a template could otherwise break silently: ev
 slot and is selectable; **a boxed template uses only whole-block animations**, because
 per-character animation cannot run over a background box and export would flatten it and warn on
 every use; placement stays on the canvas and scale inside the pinch range; and a template's
-shadow starts at the same defaults as any new shadow (it picks only the colour). Mutation-checked:
+shadow is inside the Style tab's own ranges and survives a draft unchanged. Mutation-checked:
 a boxed template with a per-glyph animation, and an unknown font, each fail their test.
+
+**Twelve templates, built from everything text can do** (**awaiting device verification** — the
+real faces are Google Fonts, which tests cannot load). A **glow** is a shadow at distance 0 with a
+wide blur in the text's own hue (Neon, Glow, Typewriter); a **retro** or **comic** drop is a hard
+shadow, blur 0, pushed clear of the letters; captions and banners ride a box. Each template sets
+the whole shadow — colour, opacity, blur, distance, angle — not just a colour. **Type, then
+choose**: `TextTemplate.restyle(text)` puts a template on a text that already has words, keeping
+its words, timing, place, rotation, box width and lane and replacing **every** look field —
+including the ones the template leaves empty, so changing from Comic to Caption leaves no outline
+behind (a test runs every pair both ways) — with animations back at natural speed and the
+template's size. `apply` is `restyle` on an empty text, so the two ways in cannot drift.
+`isAppliedTo` says whether a text is wearing a template — the look only, not size (a pinch after
+choosing is placement) — and a test pins that each template recognises its own look and no
+other, which also means no two templates are the same look under different names.
+
+**A preview tile sits on a stage and never wraps.** `AppColors.previewStage` (zinc 600) is the
+tile's inner screen: on the tile's own near-black surface a subtitle's outline and a comic's drop
+vanished, and a test pins the stage's contrast against black (>2.5) and white (>4.5).
+`kTextPreviewCanvas` is 640 wide because text wraps at the canvas width less a margin, and at 240
+that broke HEADLINE and BREAKING in two and wrapped Press Start 2P almost always; at 640 a sample,
+or the eight graphemes of the user's text a tile shows, sits on one line.
 
 **A template tile is the painter too.** `TextTemplateTile` builds its overlay with
 `TextTemplate.apply` itself — the call that makes the real text — given the sample words, and

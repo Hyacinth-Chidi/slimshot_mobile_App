@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../models/text_overlay_model.dart';
 
-/// A complete starting look for a new text — the Text submenu's Templates.
+/// A complete look for a text — typeface, colours, outline or box, shadow,
+/// alignment, size and animations, chosen together so they read as one.
 ///
-/// **Not a preset.** The editor sheet's presets restyle a text that already
-/// exists and deliberately leave its font alone. A template is where a text
-/// *begins*: typeface, colours, stroke or box, alignment, size, its place on
-/// the canvas and its animations, chosen together so they read as one look.
+/// **Two ways in.** The Text submenu's Templates makes a new text wearing one
+/// ([apply]) and opens the keyboard: choose, then type. The text's own
+/// Templates tab puts one on a text that already has words ([restyle]), and
+/// swaps it for another as often as the user likes: type, then choose. Both
+/// are the same operation — [apply] is [restyle] on an empty text.
+///
+/// **Not a preset.** The Style tab's presets restyle colours and leave the
+/// font alone; a template is the whole look, font and motion included.
 ///
 /// **A template makes an empty text.** [sampleText] is what its tile shows so
 /// the look can be judged before it is chosen; it never reaches the project.
@@ -30,6 +35,10 @@ class TextTemplate {
     this.strokeWidth = 0,
     this.backgroundColor = Colors.transparent,
     this.shadowColor = Colors.transparent,
+    this.shadowOpacity = kTextShadowDefaultOpacity,
+    this.shadowBlur = kTextShadowDefaultBlur,
+    this.shadowDistance = kTextShadowDefaultDistance,
+    this.shadowAngle = kTextShadowDefaultAngle,
     this.borderRadius = 16,
     this.backgroundPadding = 16,
     this.textAlign = 'center',
@@ -61,6 +70,12 @@ class TextTemplate {
   /// takes it from there.
   final Color shadowColor;
 
+  /// The rest of the shadow, as the Style tab's controls would set it.
+  final double shadowOpacity;
+  final double shadowBlur;
+  final double shadowDistance;
+  final double shadowAngle;
+
   final double borderRadius;
   final double backgroundPadding;
   final String textAlign;
@@ -88,150 +103,283 @@ class TextTemplate {
     required Duration endTime,
     Size? canvasSize,
   }) {
-    return TextOverlayModel(
-      id: id,
-      // Empty on purpose — see the class comment.
-      text: '',
-      fontFamily: fontFamily,
-      color: color,
-      strokeColor: strokeColor,
-      strokeWidth: strokeWidth,
-      backgroundColor: backgroundColor,
-      shadowColor: shadowColor,
-      borderRadius: borderRadius,
-      backgroundPadding: backgroundPadding,
-      textAlign: textAlign,
-      scale: scale,
-      position: canvasSize == null
-          ? Offset.zero
-          : Offset(
-              placement.dx * canvasSize.width,
-              placement.dy * canvasSize.height,
-            ),
-      startTime: startTime,
-      endTime: endTime,
-      inAnimation: inAnimation,
-      outAnimation: outAnimation,
-      loopAnimation: loopAnimation,
-      referenceCanvasSize: canvasSize,
+    return restyle(
+      TextOverlayModel(
+        id: id,
+        // Empty on purpose — see the class comment.
+        text: '',
+        position: canvasSize == null
+            ? Offset.zero
+            : Offset(
+                placement.dx * canvasSize.width,
+                placement.dy * canvasSize.height,
+              ),
+        startTime: startTime,
+        endTime: endTime,
+        referenceCanvasSize: canvasSize,
+      ),
     );
   }
+
+  /// [text] wearing this template: its words, timing, place, rotation, box
+  /// width and lane kept; **every** part of the look replaced.
+  ///
+  /// Every look field is written, including the ones this template leaves
+  /// empty — no outline, no box, no shadow — so changing from one template to
+  /// another leaves nothing of the first behind. Animations restart at their
+  /// natural pace: a speed the user tuned for the old motion means nothing to
+  /// the new one. The size is the template's, because a title and a caption
+  /// differ in size as much as in anything; the place is the user's.
+  TextOverlayModel restyle(TextOverlayModel text) => text.copyWith(
+        fontFamily: fontFamily,
+        color: color,
+        strokeColor: strokeColor,
+        strokeWidth: strokeWidth,
+        backgroundColor: backgroundColor,
+        borderRadius: borderRadius,
+        backgroundPadding: backgroundPadding,
+        shadowColor: shadowColor,
+        shadowOpacity: shadowOpacity,
+        shadowBlurRadius: shadowBlur,
+        shadowDistance: shadowDistance,
+        shadowAngle: shadowAngle,
+        textAlign: textAlign,
+        scale: scale,
+        inAnimation: inAnimation,
+        outAnimation: outAnimation,
+        loopAnimation: loopAnimation,
+        animationInDuration: kTextAnimationNaturalSpeed,
+        animationOutDuration: kTextAnimationNaturalSpeed,
+        loopSpeed: kTextAnimationNaturalSpeed,
+      );
+
+  /// Whether [text] is wearing this template — what the Templates tab
+  /// highlights.
+  ///
+  /// The look only. Size is left out because it is also placement: a text
+  /// pinched bigger after choosing a template is still wearing it. Speeds are
+  /// left out for the same reason. Any hand edit to the look — a colour, the
+  /// font, an animation — means it is no longer this template.
+  bool isAppliedTo(TextOverlayModel text) =>
+      text.fontFamily == fontFamily &&
+      text.color == color &&
+      text.strokeColor == strokeColor &&
+      text.strokeWidth == strokeWidth &&
+      text.backgroundColor == backgroundColor &&
+      text.borderRadius == borderRadius &&
+      text.backgroundPadding == backgroundPadding &&
+      text.shadowColor == shadowColor &&
+      text.shadowOpacity == shadowOpacity &&
+      text.shadowBlurRadius == shadowBlur &&
+      text.shadowDistance == shadowDistance &&
+      text.shadowAngle == shadowAngle &&
+      text.textAlign == textAlign &&
+      text.inAnimation == inAnimation &&
+      text.outAnimation == outAnimation &&
+      text.loopAnimation == loopAnimation;
 }
 
-/// The templates the Text submenu offers, in the order its sheet shows them.
+/// The templates, in the order their grids show them.
+///
+/// Built from everything a text can do: a **glow** is a shadow at distance 0
+/// with a wide blur in the text's own hue, a **retro** or **comic** drop is a
+/// hard shadow — blur 0 — pushed well clear of the letters, and a caption box
+/// carries the words over busy footage.
 ///
 /// **A boxed template only uses whole-block animations** (fade, zoom, slide,
 /// pulse). Per-character animation cannot run over a background box — the
 /// glyph pass draws letters only — so export would flatten it and warn on
 /// every use. The rest are free to animate letter by letter.
+///
+/// Room to grow: when text gains a feature, a template that shows it off is
+/// one more entry here. Every rule an entry could break is pinned by
+/// `text_template_catalog_test.dart`.
 const List<TextTemplate> kTextTemplates = [
+  // A big title over anything: tall condensed caps, a soft shadow beneath.
   TextTemplate(
     id: 'title',
     name: 'Title',
     sampleText: 'TITLE',
     fontFamily: 'Bebas Neue',
-    shadowColor: Colors.black,
+    shadowColor: Color(0xFF000000),
+    shadowOpacity: 0.55,
+    shadowBlur: 12,
+    shadowDistance: 6,
+    shadowAngle: 90,
     scale: 1.8,
-    placement: Offset(0, -0.25),
+    placement: Offset(0, -0.28),
     inAnimation: 'pop_in',
     outAnimation: 'fade_out',
   ),
-  TextTemplate(
-    id: 'subtitle',
-    name: 'Subtitle',
-    sampleText: 'Subtitle',
-    fontFamily: 'Inter',
-    strokeColor: Colors.black,
-    strokeWidth: 3,
-    scale: 0.9,
-    placement: Offset(0, 0.33),
-    inAnimation: 'fade_in',
-    outAnimation: 'fade_out',
-  ),
-  TextTemplate(
-    id: 'lower_third',
-    name: 'Lower third',
-    sampleText: 'Your name',
-    fontFamily: 'Montserrat',
-    backgroundColor: Colors.black87,
-    borderRadius: 4,
-    backgroundPadding: 8,
-    textAlign: 'left',
-    scale: 0.9,
-    placement: Offset(-0.12, 0.27),
-    inAnimation: 'slide_right',
-    outAnimation: 'fade_out',
-  ),
-  TextTemplate(
-    id: 'headline',
-    name: 'Headline',
-    sampleText: 'HEADLINE',
-    fontFamily: 'Oswald',
-    color: Colors.black,
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    backgroundPadding: 10,
-    scale: 1.2,
-    placement: Offset(0, -0.3),
-    inAnimation: 'slide_up',
-    outAnimation: 'slide_down_out',
-  ),
+  // A neon tube: a pale core, the colour carried entirely by the glow.
   TextTemplate(
     id: 'neon',
     name: 'Neon',
     sampleText: 'NEON',
     fontFamily: 'Righteous',
-    color: Colors.cyanAccent,
-    shadowColor: Colors.cyanAccent,
-    scale: 1.4,
+    color: Color(0xFFE9FDFF),
+    shadowColor: Color(0xFF00E5FF),
+    shadowOpacity: 1,
+    shadowBlur: 18,
+    shadowDistance: 0,
+    scale: 1.5,
     inAnimation: 'fade_in',
     outAnimation: 'fade_out',
     loopAnimation: 'pulse_loop',
   ),
+  // A sticker that pops: fat outline and a hard drop in the same ink.
   TextTemplate(
-    id: 'typewriter',
-    name: 'Typewriter',
-    sampleText: 'type...',
-    fontFamily: 'Press Start 2P',
-    shadowColor: Colors.black,
-    scale: 0.8,
-    inAnimation: 'typing',
-    outAnimation: 'untyping',
+    id: 'comic',
+    name: 'Comic',
+    sampleText: 'BOOM!',
+    fontFamily: 'Permanent Marker',
+    strokeColor: Color(0xFF111111),
+    strokeWidth: 6,
+    shadowColor: Color(0xFF111111),
+    shadowOpacity: 1,
+    shadowBlur: 0,
+    shadowDistance: 7,
+    shadowAngle: 60,
+    scale: 1.4,
+    inAnimation: 'pop_in',
+    outAnimation: 'bounce_out',
   ),
+  // Social caption: rounded type on a soft, translucent pill.
   TextTemplate(
-    id: 'handwritten',
-    name: 'Handwritten',
-    sampleText: 'Hello',
-    fontFamily: 'Pacifico',
-    shadowColor: Colors.black,
-    scale: 1.3,
-    placement: Offset(0, -0.1),
-    inAnimation: 'wave_in',
+    id: 'caption',
+    name: 'Caption',
+    sampleText: 'Caption',
+    fontFamily: 'Nunito',
+    backgroundColor: Color(0x99000000),
+    borderRadius: 12,
+    backgroundPadding: 10,
+    scale: 0.9,
+    placement: Offset(0, 0.33),
+    inAnimation: 'fade_in',
     outAnimation: 'fade_out',
   ),
+  // Classic subtitle: an outline that reads on any footage, a shadow to lift it.
+  TextTemplate(
+    id: 'subtitle',
+    name: 'Subtitle',
+    sampleText: 'Subtitle',
+    fontFamily: 'Inter',
+    strokeColor: Color(0xFF000000),
+    strokeWidth: 3,
+    shadowColor: Color(0xFF000000),
+    shadowOpacity: 0.6,
+    shadowBlur: 6,
+    shadowDistance: 2,
+    shadowAngle: 90,
+    scale: 0.9,
+    placement: Offset(0, 0.36),
+    inAnimation: 'fade_in',
+    outAnimation: 'fade_out',
+  ),
+  // A name on screen: a dark bar sliding in from the left.
+  TextTemplate(
+    id: 'lower_third',
+    name: 'Lower third',
+    sampleText: 'Your name',
+    fontFamily: 'Montserrat',
+    backgroundColor: Color(0xE6111111),
+    borderRadius: 4,
+    backgroundPadding: 10,
+    textAlign: 'left',
+    scale: 0.9,
+    placement: Offset(-0.12, 0.28),
+    inAnimation: 'slide_right',
+    outAnimation: 'slide_left_out',
+  ),
+  // A headline on a bold yellow block.
+  TextTemplate(
+    id: 'headline',
+    name: 'Headline',
+    sampleText: 'HEADLINE',
+    fontFamily: 'Oswald',
+    color: Color(0xFF111111),
+    backgroundColor: Color(0xFFFFD60A),
+    borderRadius: 2,
+    backgroundPadding: 12,
+    scale: 1.2,
+    placement: Offset(0, -0.3),
+    inAnimation: 'slide_down',
+    outAnimation: 'slide_up_out',
+  ),
+  // News banner: white on red, zooming in and out.
   TextTemplate(
     id: 'breaking',
     name: 'Breaking',
     sampleText: 'BREAKING',
     fontFamily: 'Poppins',
-    backgroundColor: Colors.deepOrange,
+    backgroundColor: Color(0xFFE63946),
     borderRadius: 6,
     backgroundPadding: 10,
-    scale: 1.2,
+    scale: 1.1,
     placement: Offset(0, 0.3),
     inAnimation: 'zoom_in',
-    outAnimation: 'fade_out',
+    outAnimation: 'zoom_out_out',
   ),
+  // Seventies poster: warm display type with a hard raspberry drop.
   TextTemplate(
-    id: 'bounce',
-    name: 'Bounce',
-    sampleText: 'Wow!',
-    fontFamily: 'Lobster',
-    color: Colors.amber,
-    strokeColor: Colors.black,
-    strokeWidth: 3,
+    id: 'retro',
+    name: 'Retro',
+    sampleText: 'Retro',
+    fontFamily: 'Abril Fatface',
+    color: Color(0xFFFFD23F),
+    shadowColor: Color(0xFFEE4266),
+    shadowOpacity: 1,
+    shadowBlur: 0,
+    shadowDistance: 6,
+    shadowAngle: 45,
     scale: 1.5,
     inAnimation: 'bounce_in',
     outAnimation: 'pop_out',
+  ),
+  // A neon sign in handwriting: a thin script lit pink.
+  TextTemplate(
+    id: 'glow',
+    name: 'Glow',
+    sampleText: 'Glow',
+    fontFamily: 'Sacramento',
+    color: Color(0xFFFFF0FA),
+    shadowColor: Color(0xFFFF2BD6),
+    shadowOpacity: 1,
+    shadowBlur: 14,
+    shadowDistance: 0,
+    scale: 2.0,
+    inAnimation: 'rise_in',
+    outAnimation: 'fade_out',
+  ),
+  // Quiet and refined: a serif in ivory on a long, soft shadow.
+  TextTemplate(
+    id: 'elegant',
+    name: 'Elegant',
+    sampleText: 'Elegant',
+    fontFamily: 'Playfair Display',
+    color: Color(0xFFFFF6E5),
+    shadowColor: Color(0xFF000000),
+    shadowOpacity: 0.5,
+    shadowBlur: 14,
+    shadowDistance: 4,
+    shadowAngle: 90,
+    scale: 1.3,
+    inAnimation: 'fade_in',
+    outAnimation: 'fade_out',
+  ),
+  // A terminal typing itself out, phosphor green.
+  TextTemplate(
+    id: 'typewriter',
+    name: 'Typewriter',
+    sampleText: 'type...',
+    fontFamily: 'Press Start 2P',
+    color: Color(0xFF39FF14),
+    shadowColor: Color(0xFF39FF14),
+    shadowOpacity: 0.8,
+    shadowBlur: 10,
+    shadowDistance: 0,
+    scale: 0.8,
+    inAnimation: 'typing',
+    outAnimation: 'untyping',
   ),
 ];

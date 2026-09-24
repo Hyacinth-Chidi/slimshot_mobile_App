@@ -11,10 +11,16 @@ import 'text_overlay_painter.dart';
 ///
 /// It is also that overlay's `referenceCanvasSize`, so the render scale is
 /// exactly 1 and the box comes out at the catalog's own font size whatever
-/// device the sheet is opened on. The tile then scales the finished box down
-/// to fit its own bounds — one uniform scale on a measured box, rather than a
+/// device the sheet is opened on. The tile then scales the finished box to
+/// fit its own bounds — one uniform scale on a measured box, rather than a
 /// second definition of how big text is.
-const Size kTextPreviewCanvas = Size(240, 240);
+///
+/// **Wide, so a tile's words never wrap.** Text wraps at the canvas width
+/// less a margin, and at 240 that was ~208px: HEADLINE and BREAKING broke in
+/// two, and Press Start 2P — a full em per letter — wrapped nearly anything.
+/// At 640 a template's sample, or the eight graphemes of the user's own text
+/// a tile shows, sits on one line; the fit then scales the line to the tile.
+const Size kTextPreviewCanvas = Size(640, 240);
 
 /// How long a tile rests on the finished look before looping.
 ///
@@ -177,51 +183,63 @@ class _TextPreviewTileState extends State<TextPreviewTile> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Expanded(
-                // An animation moves glyphs well outside the resting look — a
-                // slide travels 1.5 glyph heights — which is what the clip is
-                // for; the resting look itself always fits.
-                child: ClipRect(
-                  child: Padding(
-                    padding: const EdgeInsets.all(kTextPreviewMargin),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        // **Fills the tile, both ways.** A long text scales
-                        // down to fit and a short one scales up to meet the
-                        // margin — up to [kTextPreviewMaxUpscale] — so every
-                        // tile in a grid carries its look at a similar
-                        // presence instead of some sitting small in the
-                        // middle.
-                        final scale = [
-                          constraints.maxWidth / extent.width,
-                          constraints.maxHeight / extent.height,
-                          kTextPreviewMaxUpscale,
-                        ].reduce((a, b) => a < b ? a : b);
-                        return Center(
-                          child: SizedBox(
-                            width: extent.width * scale,
-                            height: extent.height * scale,
-                            child: FittedBox(
-                              fit: BoxFit.fill,
-                              child: SizedBox.fromSize(
-                                size: extent,
-                                child: Padding(
-                                  padding: EdgeInsets.all(bleed),
-                                  child: CustomPaint(
-                                    size: layout.boxSize,
-                                    painter: TextOverlayPainter(
-                                      overlay: overlay,
-                                      layout: layout,
-                                      canvasSize: kTextPreviewCanvas,
-                                      positionSeconds:
-                                          _phase * widget.spanSeconds,
+                // The stage: a mid-grey screen inside the tile, so a white
+                // fill and a black outline or shadow both read. On the tile's
+                // own near-black surface a subtitle's outline and a comic's
+                // drop simply vanished.
+                child: Container(
+                  margin: const EdgeInsets.fromLTRB(4, 4, 4, 2),
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: AppColors.previewStage,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  // An animation moves glyphs well outside the resting look — a
+                  // slide travels 1.5 glyph heights — which is what the clip is
+                  // for; the resting look itself always fits.
+                  child: ClipRect(
+                    child: Padding(
+                      padding: const EdgeInsets.all(kTextPreviewMargin),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          // **Fills the tile, both ways.** A long text scales
+                          // down to fit and a short one scales up to meet the
+                          // margin — up to [kTextPreviewMaxUpscale] — so every
+                          // tile in a grid carries its look at a similar
+                          // presence instead of some sitting small in the
+                          // middle.
+                          final scale = [
+                            constraints.maxWidth / extent.width,
+                            constraints.maxHeight / extent.height,
+                            kTextPreviewMaxUpscale,
+                          ].reduce((a, b) => a < b ? a : b);
+                          return Center(
+                            child: SizedBox(
+                              width: extent.width * scale,
+                              height: extent.height * scale,
+                              child: FittedBox(
+                                fit: BoxFit.fill,
+                                child: SizedBox.fromSize(
+                                  size: extent,
+                                  child: Padding(
+                                    padding: EdgeInsets.all(bleed),
+                                    child: CustomPaint(
+                                      size: layout.boxSize,
+                                      painter: TextOverlayPainter(
+                                        overlay: overlay,
+                                        layout: layout,
+                                        canvasSize: kTextPreviewCanvas,
+                                        positionSeconds:
+                                            _phase * widget.spanSeconds,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -239,8 +257,9 @@ class _TextPreviewTileState extends State<TextPreviewTile> {
                     color: widget.isSelected
                         ? AppColors.textPrimary
                         : AppColors.textSecondary,
-                    fontWeight:
-                        widget.isSelected ? FontWeight.w600 : FontWeight.w400,
+                    fontWeight: widget.isSelected
+                        ? FontWeight.w600
+                        : FontWeight.w400,
                   ),
                 ),
               ),

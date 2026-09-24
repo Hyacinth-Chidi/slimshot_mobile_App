@@ -130,19 +130,153 @@ void main() {
       expect(applied(canvasSize: null).position, Offset.zero);
     });
 
-    test("a template's shadow starts as every new shadow does", () {
-      // The template picks the colour; the tuning is the editor's defaults,
-      // so a template's shadow is one the Style tab can take from there.
+    test('carries the whole shadow, not just its colour', () {
+      final o = applied();
+      expect(o.shadowOpacity, template.shadowOpacity);
+      expect(o.shadowBlurRadius, template.shadowBlur);
+      expect(o.shadowDistance, template.shadowDistance);
+      expect(o.shadowAngle, template.shadowAngle);
+    });
+  });
+
+  test("every template's shadow is one the controls could have set", () {
+    // A template's shadow is tuned like any other, so it must sit inside the
+    // Style tab's own ranges — or reopening a draft would clamp it into a
+    // different look than the one the tile promised.
+    for (final t in kTextTemplates) {
+      expect(t.shadowOpacity, inInclusiveRange(0, 1), reason: t.id);
+      expect(t.shadowBlur, inInclusiveRange(0, kTextShadowMaxBlur),
+          reason: t.id);
+      expect(t.shadowDistance, inInclusiveRange(0, kTextShadowMaxDistance),
+          reason: t.id);
+      expect(t.shadowAngle, inInclusiveRange(0, 360), reason: t.id);
+      final o = t.apply(
+        id: 'x',
+        startTime: Duration.zero,
+        endTime: const Duration(seconds: 3),
+      );
+      expect(TextOverlayModel.fromJson(o.toJson()).toJson(), o.toJson(),
+          reason: '${t.id} survives a draft unchanged');
+    }
+  });
+
+  group('restyling a text that already exists — type, then choose', () {
+    // Everything a user did that is not the look.
+    TextOverlayModel typed() => TextOverlayModel(
+          id: 'mine',
+          text: 'Hello there',
+          fontFamily: 'Lato',
+          color: const Color(0xFF123456),
+          strokeColor: const Color(0xFF00FF00),
+          strokeWidth: 7,
+          backgroundColor: const Color(0xFF654321),
+          shadowColor: const Color(0xFFFF00FF),
+          shadowDistance: 17,
+          position: const Offset(30, -40),
+          rotation: 0.4,
+          boxWidth: 180,
+          startTime: const Duration(seconds: 2),
+          endTime: const Duration(seconds: 9),
+          laneIndex: 2,
+          referenceCanvasSize: const Size(400, 700),
+          inAnimation: 'spin_in',
+          animationInDuration: 2.5,
+          animationOutDuration: 2.5,
+        );
+
+    test('keeps the words, the timing and the place', () {
       for (final t in kTextTemplates) {
-        final o = t.apply(
-          id: 'x',
+        final o = t.restyle(typed());
+        final mine = typed();
+        expect(o.id, mine.id, reason: t.id);
+        expect(o.text, mine.text, reason: t.id);
+        expect(o.startTime, mine.startTime, reason: t.id);
+        expect(o.endTime, mine.endTime, reason: t.id);
+        expect(o.position, mine.position, reason: t.id);
+        expect(o.rotation, mine.rotation, reason: t.id);
+        expect(o.boxWidth, mine.boxWidth, reason: t.id);
+        expect(o.laneIndex, mine.laneIndex, reason: t.id);
+        expect(o.referenceCanvasSize, mine.referenceCanvasSize, reason: t.id);
+      }
+    });
+
+    test('takes the whole look', () {
+      for (final t in kTextTemplates) {
+        final o = t.restyle(typed());
+        expect(o.fontFamily, t.fontFamily, reason: t.id);
+        expect(o.color, t.color, reason: t.id);
+        expect(o.strokeColor, t.strokeColor, reason: t.id);
+        expect(o.strokeWidth, t.strokeWidth, reason: t.id);
+        expect(o.backgroundColor, t.backgroundColor, reason: t.id);
+        expect(o.borderRadius, t.borderRadius, reason: t.id);
+        expect(o.backgroundPadding, t.backgroundPadding, reason: t.id);
+        expect(o.shadowColor, t.shadowColor, reason: t.id);
+        expect(o.shadowOpacity, t.shadowOpacity, reason: t.id);
+        expect(o.shadowBlurRadius, t.shadowBlur, reason: t.id);
+        expect(o.shadowDistance, t.shadowDistance, reason: t.id);
+        expect(o.shadowAngle, t.shadowAngle, reason: t.id);
+        expect(o.textAlign, t.textAlign, reason: t.id);
+        expect(o.scale, t.scale, reason: t.id);
+        expect(o.inAnimation, t.inAnimation, reason: t.id);
+        expect(o.outAnimation, t.outAnimation, reason: t.id);
+        expect(o.loopAnimation, t.loopAnimation, reason: t.id);
+        // The template's animations at their own pace, not the old speed.
+        expect(o.animationInDuration, kTextAnimationNaturalSpeed, reason: t.id);
+        expect(o.animationOutDuration, kTextAnimationNaturalSpeed,
+            reason: t.id);
+        expect(o.loopSpeed, kTextAnimationNaturalSpeed, reason: t.id);
+      }
+    });
+
+    test('changing templates leaves nothing of the one before', () {
+      // Every pair, both orders: an outline, a box or a shadow the first
+      // template brought must not survive into the second's look.
+      for (final a in kTextTemplates) {
+        for (final b in kTextTemplates) {
+          expect(
+            b.restyle(a.restyle(typed())).toJson(),
+            b.restyle(typed()).toJson(),
+            reason: '${a.id} then ${b.id}',
+          );
+        }
+      }
+    });
+
+    test('a template knows a text wearing it — and no other does', () {
+      // What the Templates tab highlights. It also means no two templates
+      // are the same look under different names.
+      for (final t in kTextTemplates) {
+        final worn = t.restyle(typed());
+        for (final u in kTextTemplates) {
+          expect(u.isAppliedTo(worn), u.id == t.id,
+              reason: '${u.id} on a text wearing ${t.id}');
+        }
+      }
+    });
+
+    test('still recognised after a resize — size is placement, not look', () {
+      final t = kTextTemplates.first;
+      expect(t.isAppliedTo(t.restyle(typed()).copyWith(scale: 3.3)), isTrue);
+    });
+
+    test('a hand edit to the look makes it no template', () {
+      final t = kTextTemplates.first;
+      final edited = t.restyle(typed()).copyWith(
+            color: const Color(0xFF010203),
+          );
+      expect(t.isAppliedTo(edited), isFalse);
+    });
+
+    test('a new text is the same thing: an empty text, restyled', () {
+      // One definition of what a template does to a text, whichever way in.
+      for (final t in kTextTemplates) {
+        final made = t.apply(
+          id: 'n',
           startTime: Duration.zero,
           endTime: const Duration(seconds: 3),
+          canvasSize: const Size(400, 700),
         );
-        expect(o.shadowBlurRadius, kTextShadowDefaultBlur, reason: t.id);
-        expect(o.shadowDistance, kTextShadowDefaultDistance, reason: t.id);
-        expect(o.shadowAngle, kTextShadowDefaultAngle, reason: t.id);
-        expect(o.shadowOpacity, kTextShadowDefaultOpacity, reason: t.id);
+        expect(t.isAppliedTo(made), isTrue, reason: t.id);
       }
     });
   });

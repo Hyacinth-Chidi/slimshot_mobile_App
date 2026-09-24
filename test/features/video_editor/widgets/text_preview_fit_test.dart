@@ -1,5 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/theme/app_colors.dart';
+import 'package:slimshotai/features/video_editor/logic/text_template_catalog.dart';
 import 'package:slimshotai/features/video_editor/logic/text_glyph_layout.dart';
 import 'package:slimshotai/features/video_editor/logic/text_overlay_geometry.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
@@ -134,5 +138,77 @@ void main() {
     );
     expect(box.width / layout.boxSize.width,
         lessThanOrEqualTo(kTextPreviewMaxUpscale + 1e-9));
+  });
+
+  test("a tile's words sit on one line", () {
+    // A tile measured its text on a 240px canvas, so anything wider than
+    // ~208px wrapped: HEADLINE and BREAKING broke in two, and Press Start 2P —
+    // a full em per letter — wrapped almost anything. Eight graphemes of the
+    // user's own text is the most a tile shows, so eight of the test font's
+    // full-em glyphs is the widest case there is.
+    TextOverlayModel inTile(TextTemplate t, String words) => t
+        .apply(
+          id: 't',
+          startTime: Duration.zero,
+          endTime: const Duration(seconds: 1),
+          canvasSize: kTextPreviewCanvas,
+        )
+        .copyWith(
+          fontFamily: kTestFontFamily,
+          text: words,
+          position: Offset.zero,
+          scale: 1,
+        );
+    double lines(TextOverlayModel o) =>
+        TextOverlayLayout.measure(o, kTextPreviewCanvas).textHeight /
+        TextOverlayLayout.measure(o.copyWith(text: 'H'), kTextPreviewCanvas)
+            .textHeight;
+
+    for (final t in kTextTemplates) {
+      expect(lines(inTile(t, t.sampleText)), closeTo(1, 0.01), reason: t.id);
+      expect(lines(inTile(t, 'WWWWWWWW')), closeTo(1, 0.01), reason: t.id);
+    }
+  });
+
+  test('the preview stage lets both white and black styling read', () {
+    // Black outlines and shadows — a subtitle's, a comic's — vanished into
+    // the tile's near-black surface. Relative-luminance contrast, WCAG's
+    // formula: enough against black for an outline to show, and plenty
+    // against white for the fill.
+    double luminance(Color c) {
+      double channel(double v) => v <= 0.03928
+          ? v / 12.92
+          : math.pow((v + 0.055) / 1.055, 2.4).toDouble();
+      return 0.2126 * channel(c.r) +
+          0.7152 * channel(c.g) +
+          0.0722 * channel(c.b);
+    }
+
+    double contrast(Color a, Color b) {
+      final la = luminance(a), lb = luminance(b);
+      final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+      return (hi + 0.05) / (lo + 0.05);
+    }
+
+    const stage = AppColors.previewStage;
+    expect(contrast(stage, const Color(0xFF000000)), greaterThan(2.5));
+    expect(contrast(stage, const Color(0xFFFFFFFF)), greaterThan(4.5));
+  });
+
+  testWidgets('the preview sits on that stage', (tester) async {
+    await pumpTile(tester, look('Title'));
+    final stages = tester
+        .widgetList<Container>(
+          find.descendant(
+            of: find.byType(TextPreviewTile),
+            matching: find.byType(Container),
+          ),
+        )
+        .where(
+          (c) =>
+              (c.decoration as BoxDecoration?)?.color ==
+              AppColors.previewStage,
+        );
+    expect(stages, hasLength(1));
   });
 }

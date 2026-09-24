@@ -18,6 +18,9 @@ class AppColors {
   static const Color warning = Color(0xFFEAB308); // Yellow 500
 
   static const Color border = Color(0xFF3F3F46); // Zinc 700
+  // Behind a text preview (template and animation tiles): mid-grey, so a
+  // white fill and a black outline or shadow both read on it.
+  static const Color previewStage = Color(0xFF52525B); // Zinc 600
   static const Color highlight = Color(0x269333EA); // Purple @ 15% opacity
 
   static const LinearGradient primaryGradient = LinearGradient(
