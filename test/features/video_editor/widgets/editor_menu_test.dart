@@ -99,6 +99,24 @@ void main() {
     );
   });
 
+  test('a selected text has Opacity, as the photo and video menus do', () {
+    // Text opacity is a placement property now — keyframable, and exported —
+    // so it has the same tool, in the same place, as the other overlays.
+    for (final menu in [
+      '_textOverlayMenu',
+      '_imageOverlayMenu',
+      '_videoOverlayMenu',
+    ]) {
+      final source = menuSource(menu);
+      expect(source, contains("id: 'opacity'"), reason: menu);
+      expect(
+        source.indexOf("id: 'opacity'"),
+        lessThan(source.indexOf("id: 'duplicate'")),
+        reason: '$menu: Opacity sits just before Copy',
+      );
+    }
+  });
+
   test('the text menu never reuses the overlays\' Animation id', () {
     // `animation` opens `AnimationDrawer`, the photo and video overlays'
     // sheet. Reusing the id would send a text to the wrong animations — so

@@ -377,8 +377,10 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                       // **One undo entry for the whole drag.** The snapshot is
                       // taken here and every frame after writes live; going
                       // through a snapshotting setter per frame makes undo walk
-                      // the drag back a pixel at a time.
-                      notifier.saveStateForUndo();
+                      // the drag back a pixel at a time. It pauses first: on a
+                      // keyframed clip every frame writes at the playhead, and a
+                      // moving one would leave a trail of diamonds.
+                      notifier.beginLiveEdit();
                     },
                     onChanged: (next) {
                       // **This slider has no idea keyframes exist**, and that

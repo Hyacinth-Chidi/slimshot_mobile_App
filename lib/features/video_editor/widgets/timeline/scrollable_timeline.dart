@@ -1945,7 +1945,6 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                                 key: ValueKey(
                                   'keyframe_diamonds_${keyframeLayout.segment.id}',
                                 ),
-                                segment: keyframeLayout.segment,
                                 widthPx: keyframeLayout.widthPx,
                                 height: _filmstripHeight,
                               ),
@@ -2247,6 +2246,34 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     return widgets;
   }
 
+  /// The selected overlay's diamonds, on its own bar.
+  ///
+  /// The box the bar is drawn in, so they follow it through trims and moves;
+  /// a diamond's progress is overlay-relative, so a trimmed overlay's diamonds
+  /// stretch with it exactly as its motion does. Added **before** the bar's
+  /// trim handles, which then stay on top where they overlap — the order a
+  /// clip's diamonds and handles have. Callers leave it out while the bar is
+  /// being carried: its place is provisional, and a diamond tap must not
+  /// compete with the move, the rule the clip track follows.
+  Widget _overlayKeyframeDiamonds({
+    required String id,
+    required double top,
+    required double left,
+    required double width,
+  }) {
+    return Positioned(
+      top: top,
+      left: left,
+      width: width,
+      height: _laneHeight - 8,
+      child: ClipKeyframeDiamonds(
+        key: ValueKey('keyframe_diamonds_$id'),
+        widthPx: width,
+        height: _laneHeight - 8,
+      ),
+    );
+  }
+
   List<Widget> _buildTextTracks(double lanesTop) {
     final widgets = <Widget>[];
 
@@ -2333,6 +2360,18 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       );
 
       if (isSelected) {
+        // Its diamonds, on its own bar.
+        if (!isBeingDragged) {
+          widgets.add(
+            _overlayKeyframeDiamonds(
+              id: text.id,
+              top: topOffset,
+              left: startPx,
+              width: widthPx,
+            ),
+          );
+        }
+
         widgets.add(
           Positioned(
             top: topOffset,
@@ -2589,6 +2628,18 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       );
 
       if (isSelected) {
+        // Its diamonds, on its own bar.
+        if (!isBeingDragged) {
+          widgets.add(
+            _overlayKeyframeDiamonds(
+              id: image.id,
+              top: imageTrackTop,
+              left: startPx,
+              width: widthPx,
+            ),
+          );
+        }
+
         // Left trim handle
         widgets.add(
           Positioned(
@@ -2858,6 +2909,18 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       );
 
       if (isSelected) {
+        // Its diamonds, on its own bar.
+        if (!isBeingDragged) {
+          widgets.add(
+            _overlayKeyframeDiamonds(
+              id: video.id,
+              top: videoTrackTop,
+              left: startPx,
+              width: widthPx,
+            ),
+          );
+        }
+
         // Left trim handle
         widgets.add(
           Positioned(

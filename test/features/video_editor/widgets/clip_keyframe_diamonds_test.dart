@@ -39,7 +39,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [videoEditorProvider.overrideWith((ref) => notifier)],
-        child: MaterialApp(
+        child: const MaterialApp(
           home: Scaffold(
             body: Stack(
               children: [
@@ -49,7 +49,6 @@ void main() {
                   width: widthPx,
                   height: height,
                   child: ClipKeyframeDiamonds(
-                    segment: notifier.state.segments.first,
                     widthPx: widthPx,
                     height: height,
                   ),

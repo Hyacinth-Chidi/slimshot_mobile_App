@@ -33,6 +33,7 @@ import '../features/video_editor/services/media_import_service.dart';
 import '../features/video_editor/services/native_timeline_preview_service.dart';
 import '../core/models/draft_project.dart';
 import '../features/video_editor/logic/animation/clip_keyframes.dart';
+import '../features/video_editor/logic/animation/overlay_keyframes.dart';
 import '../features/video_editor/widgets/editor_playback_controls.dart';
 import '../features/video_editor/widgets/panels/keyframe_easing_sheet.dart';
 import '../features/video_editor/widgets/panels/transform_sheet.dart';
@@ -322,6 +323,7 @@ const EditorMenu _textOverlayMenu = EditorMenu(
       label: 'Animation',
       icon: LucideIcons.playCircle,
     ),
+    EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
     EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
     EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
   ],
@@ -1622,14 +1624,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       onUndo: _undoLastTimelineEdit,
       onRedo: _redoLastTimelineEdit,
       onExpandPreview: () => _openFullscreenPreview(),
-      // **Only while a clip is selected**, and the icon says which way it acts:
-      // a plus places a diamond at the playhead, a minus removes the one the
-      // playhead is standing on.
-      showsKeyframeControls: editorState.keyframeClipId != null,
+      // **Only while a clip or an overlay is selected**, and the icon says
+      // which way it acts: a plus places a diamond at the playhead, a minus
+      // removes the one the playhead is standing on.
+      showsKeyframeControls: editorState.hasKeyframeTarget,
       isOnKeyframe: editorState.playheadIsOnKeyframe,
-      // Dim while the playhead is on another clip: there is no instant of the
-      // selected clip to pin, and the old clamp pinned its edge instead.
-      canToggleKeyframe: editorState.selectedClipProgress != null,
+      // Dim while the playhead is off the selected item: there is no instant
+      // of it to pin, and the old clamp pinned its edge instead.
+      canToggleKeyframe: editorState.keyframeTargetProgress != null,
       onToggleKeyframe: () {
         HapticFeedback.selectionClick();
         final notifier = ref.read(videoEditorProvider.notifier);
@@ -2425,43 +2427,32 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
 
-    // A clip's opacity goes through the edit rule like every clip property:
-    // base on an unkeyframed clip, the diamond under the playhead otherwise,
-    // and the slider shows what its write will target. Overlays keep their
-    // own path below.
-    final segment = editorState.selectedSegment;
-    if (segment != null &&
-        editorState.selectedImageId == null &&
-        editorState.selectedVideoOverlayId == null) {
+    // Clip or overlay — a text included — opacity goes through the edit rule:
+    // the base with no diamonds, the diamond under the playhead with them, and
+    // the slider shows what its write will target. Every drag starts by
+    // pausing: it writes at the playhead each frame, and on a keyframed item a
+    // moving playhead would leave a trail of diamonds.
+    if (editorState.keyframeOverlay != null) {
       return OpacityPanel(
-        opacity: editorState.clipEditValue(segment, ClipProperty.opacity),
-        onChangeStart: notifier.saveStateForUndo,
-        onChanged: (value) => notifier.setClipProperty(
-          ClipProperty.opacity,
-          value,
-          takeUndoSnapshot: false,
-        ),
+        opacity: editorState.overlayEditValue(OverlayProperty.opacity),
+        onChangeStart: notifier.beginOverlayEdit,
+        onChanged: (value) {
+          notifier.setOverlayOpacity(value, takeUndoSnapshot: false);
+        },
       );
     }
 
-    double currentOpacity = 1.0;
-    if (editorState.selectedImageId != null) {
-      currentOpacity = editorState.imageOverlays
-          .firstWhere((i) => i.id == editorState.selectedImageId)
-          .opacity;
-    } else if (editorState.selectedVideoOverlayId != null) {
-      currentOpacity = editorState.videoOverlays
-          .firstWhere((v) => v.id == editorState.selectedVideoOverlayId)
-          .opacity;
-    }
-
+    final segment = editorState.selectedSegment;
     return OpacityPanel(
-      opacity: currentOpacity,
-      // One snapshot for the drag, as the clip's opacity does.
-      onChangeStart: notifier.saveStateForUndo,
-      onChanged: (value) {
-        notifier.setOverlayOpacity(value, takeUndoSnapshot: false);
-      },
+      opacity: segment == null
+          ? 1.0
+          : editorState.clipEditValue(segment, ClipProperty.opacity),
+      onChangeStart: notifier.beginLiveEdit,
+      onChanged: (value) => notifier.setClipProperty(
+        ClipProperty.opacity,
+        value,
+        takeUndoSnapshot: false,
+      ),
     );
   }
 

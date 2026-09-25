@@ -3,11 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../models/video_segment.dart';
 import '../../providers/video_editor_notifier.dart';
 
-/// The diamonds that mark a clip's keyframed instants, drawn **on the
-/// filmstrip**.
+/// The diamonds that mark the keyframed instants of the selected clip or
+/// overlay, drawn **on the thing itself** — a clip's filmstrip, an overlay's
+/// bar in its lane.
+///
+/// It draws whatever [VideoEditorState.keyframeDiamonds] holds, which is the
+/// keyframe target's: the one the playback bar's plus and minus act on, so
+/// the diamonds on screen are always the ones those controls change.
 ///
 /// On the thumbnail rather than in a row of its own, for two reasons. It is
 /// where a user looking for them expects them — and a row is a lie about what a
@@ -15,10 +19,10 @@ import '../../providers/video_editor_notifier.dart';
 /// diamond pins every property at once. It also costs the timeline no height;
 /// the row this replaces pushed every lane down whenever it opened.
 ///
-/// **Drawn inside the clip's own layout box**, so it inherits the filmstrip's
-/// position through trims, reorders and transition overlaps without a second
-/// copy of the geometry — positioned by `_clipLayouts()` like everything else
-/// on the clip track.
+/// **Drawn inside the item's own layout box**, so it inherits the filmstrip's
+/// position through trims, reorders and transition overlaps — positioned by
+/// `_clipLayouts()` like everything else on the clip track — and an overlay
+/// bar's through trims and moves, without a second copy of either geometry.
 ///
 /// **The selection is the playhead.** A diamond draws as selected when the
 /// playhead is on it; there is no stored selection that could fall out of step
@@ -32,17 +36,14 @@ import '../../providers/video_editor_notifier.dart';
 class ClipKeyframeDiamonds extends ConsumerStatefulWidget {
   const ClipKeyframeDiamonds({
     super.key,
-    required this.segment,
     required this.widthPx,
     required this.height,
   });
 
-  final VideoSegment segment;
-
-  /// The clip's drawn width, which is what a progress is laid out across.
+  /// The item's drawn width, which is what a progress is laid out across.
   final double widthPx;
 
-  /// The filmstrip's height, so a diamond can sit at its vertical centre.
+  /// The item's drawn height, so a diamond can sit at its vertical centre.
   final double height;
 
   /// How wide a diamond's touch target is, regardless of how it is drawn.
@@ -71,7 +72,7 @@ class _ClipKeyframeDiamondsState extends ConsumerState<ClipKeyframeDiamonds> {
   Widget build(BuildContext context) {
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
-    final progresses = editorState.selectedClipKeyframes;
+    final progresses = editorState.keyframeDiamonds;
     if (progresses.isEmpty) return const SizedBox.shrink();
 
     final selected = editorState.playheadKeyframeProgress;
@@ -102,7 +103,9 @@ class _ClipKeyframeDiamondsState extends ConsumerState<ClipKeyframeDiamonds> {
                 onLongPressStart: (_) {
                   HapticFeedback.mediumImpact();
                   // One snapshot for the whole drag; the frames write live.
-                  notifier.saveStateForUndo();
+                  // Paused first: the playhead rides with the diamond, and a
+                  // running engine would pull it back every frame.
+                  notifier.beginLiveEdit();
                   _dragOrigin = progress;
                   _dragCurrent = progress;
                 },
@@ -111,7 +114,7 @@ class _ClipKeyframeDiamondsState extends ConsumerState<ClipKeyframeDiamonds> {
                   final current = _dragCurrent;
                   if (origin == null || current == null) return;
                   // Pixels of travel since the pick-up, as a fraction of the
-                  // clip's drawn width — the same mapping the diamonds are
+                  // item's drawn width — the same mapping the diamonds are
                   // laid out with.
                   final to = origin + details.offsetFromOrigin.dx / widget.widthPx;
                   final moved = notifier.moveKeyframeLive(current, to);

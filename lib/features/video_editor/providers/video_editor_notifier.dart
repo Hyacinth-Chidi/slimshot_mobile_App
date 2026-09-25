@@ -3336,6 +3336,19 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// takes no snapshot either: an undo entry that undoes nothing is a lie.
   void beginOverlayEdit() {
     if (state.keyframeOverlay == null) return;
+    beginLiveEdit();
+  }
+
+  /// Starts any gesture that writes at the playhead on every frame — a
+  /// slider, a diamond being dragged: pauses playback, then takes the one
+  /// undo snapshot the whole gesture shares.
+  ///
+  /// The pause is the point. Such a write lands on the diamond under the
+  /// playhead, or places one between two; with the playhead moving, every
+  /// frame of the drag would place another, and one slider drag would leave a
+  /// trail of diamonds across a keyframed clip or overlay. See
+  /// [beginOverlayEdit] for why clearing `isPlaying` is enough.
+  void beginLiveEdit() {
     saveStateForUndo();
     if (state.isPlaying) state = state.copyWith(isPlaying: false);
   }
