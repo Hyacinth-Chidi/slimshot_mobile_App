@@ -623,16 +623,23 @@ class EditorTimelineOverlay {
 
   final String path;
 
-  final double centerX;
-  final double centerY;
+  /// The overlay's centre, in canvas fractions.
+  ///
+  /// This and [scale], [rotation] and [opacity] are the overlay's keyframable
+  /// placement, each over the overlay's own 0..1 span. On the wire each is a
+  /// **bare number** while nothing is keyframed — the payload every engine
+  /// build has always read — and a keyframe map once something is, which
+  /// `AnimatableDouble.fromWire` on the Kotlin side reads either way.
+  final AnimatableDouble centerX;
+  final AnimatableDouble centerY;
   final double boxWidth;
   final double boxHeight;
-  final double scale;
+  final AnimatableDouble scale;
 
   /// Radians, clockwise, about the overlay's centre.
-  final double rotation;
+  final AnimatableDouble rotation;
 
-  final double opacity;
+  final AnimatableDouble opacity;
   final double startSeconds;
   final double endSeconds;
 
@@ -713,13 +720,13 @@ class EditorTimelineOverlay {
       // payload every build has always read.
       if (!chromaKey.isNone) 'chromaKey': chromaKey.toJson(),
       'path': path,
-      'centerX': centerX,
-      'centerY': centerY,
+      'centerX': centerX.toJson(),
+      'centerY': centerY.toJson(),
       'boxWidth': boxWidth,
       'boxHeight': boxHeight,
-      'scale': scale,
-      'rotation': rotation,
-      'opacity': opacity,
+      'scale': scale.toJson(),
+      'rotation': rotation.toJson(),
+      'opacity': opacity.toJson(),
       'startSeconds': startSeconds,
       'endSeconds': endSeconds,
       'laneIndex': laneIndex,

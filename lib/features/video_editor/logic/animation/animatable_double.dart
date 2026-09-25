@@ -585,6 +585,44 @@ class AnimatableDouble {
       : 'AnimatableDouble($baseValue)';
 }
 
+/// [a] with its base and every keyframe value passed through [f], each
+/// keyframe keeping its progress and its curve.
+///
+/// **Only for an affine [f]** (`v -> k·v + c`). Interpolation, eased or not,
+/// is a weighted average of two neighbouring values, and an affine map
+/// commutes with a weighted average — so resolving the mapped parameter
+/// equals mapping the resolved value, at every progress. That is what lets a
+/// change of units (an overlay's canvas pixels to canvas fractions) travel
+/// with a keyframe track once, instead of being redone per frame on the far
+/// side of the channel.
+///
+/// An unkeyframed parameter stays unkeyframed, so it still goes on the wire as
+/// a bare number. An envelope does not commute with an offset — it *scales*
+/// the base — so a parameter carrying one must not be mapped; none of the
+/// callers' parameters can carry one.
+AnimatableDouble mapAnimatable(
+  AnimatableDouble a,
+  double Function(double) f,
+) {
+  assert(
+    a.envelope == null,
+    'An envelope scales its base; an affine map with an offset does not '
+    'commute with it.',
+  );
+  return AnimatableDouble.sorted(
+    baseValue: f(a.baseValue),
+    envelope: a.envelope,
+    keyframes: [
+      for (final k in a.keyframes)
+        Keyframe(
+          progress: k.progress,
+          value: f(k.value),
+          interpolation: k.interpolation,
+        ),
+    ],
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Envelopes
 // ---------------------------------------------------------------------------

@@ -4,6 +4,8 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
 import '../models/text_overlay_model.dart';
+import 'animation/animatable_double.dart';
+import 'animation/overlay_keyframes.dart';
 import '../utils/font_utils.dart';
 
 /// The one definition of a text overlay's box.
@@ -348,6 +350,66 @@ Offset textOverlayCenter(
     canvasSize.width / 2 + clamped.dx * renderScale,
     canvasSize.height / 2 + clamped.dy * renderScale,
   );
+}
+
+/// A text overlay's placement on the wire to the engine: its centre as canvas
+/// fractions, its scale, rotation and opacity — each an [AnimatableDouble]
+/// carrying the text's keyframes, and a bare number while it has none.
+///
+/// The centre goes through [textOverlayCenter], the layer's own placement,
+/// **one axis at a time**: its clamp is per axis, so x never depends on y and
+/// each track maps alone. Mapping keyframe values rather than resolved ones is
+/// exact wherever the values sit inside the canvas — there the clamp is the
+/// identity and the map affine, see [mapAnimatable] — which is everywhere the
+/// layer lets a drag put a text.
+({
+  AnimatableDouble centerX,
+  AnimatableDouble centerY,
+  AnimatableDouble scale,
+  AnimatableDouble rotation,
+  AnimatableDouble opacity,
+}) textOverlayWirePlacement(TextOverlayModel overlay, Size canvasSize) {
+  final renderScale = textOverlayRenderScale(overlay, canvasSize);
+  final params = overlay.motion.params;
+  return (
+    centerX: mapAnimatable(
+      params[OverlayProperty.x]!,
+      (v) =>
+          textOverlayCenter(
+            overlay.copyWith(position: Offset(v, overlay.position.dy)),
+            canvasSize,
+            renderScale,
+          ).dx /
+          canvasSize.width,
+    ),
+    centerY: mapAnimatable(
+      params[OverlayProperty.y]!,
+      (v) =>
+          textOverlayCenter(
+            overlay.copyWith(position: Offset(overlay.position.dx, v)),
+            canvasSize,
+            renderScale,
+          ).dy /
+          canvasSize.height,
+    ),
+    scale: params[OverlayProperty.scale]!,
+    rotation: params[OverlayProperty.rotation]!,
+    opacity: params[OverlayProperty.opacity]!,
+  );
+}
+
+/// The largest scale [overlay] reaches: the highest point on its keyframed
+/// scale track, else its base.
+///
+/// The export rasterises a text at a density that folds in its scale. Drawn
+/// at the base while a keyframe zooms it past that, the end of the zoom would
+/// be an upscaled raster — soft beside the crisp preview. Every easing curve
+/// stays between its two keyframes, so the highest keyframe is the highest
+/// point.
+double textOverlayPeakScale(TextOverlayModel overlay) {
+  final track = overlay.keyframes.of(OverlayProperty.scale);
+  if (track.isEmpty) return overlay.scale;
+  return track.map((k) => k.value).reduce(math.max);
 }
 
 /// Keeps the box's centre on the canvas. [position] is in reference pixels

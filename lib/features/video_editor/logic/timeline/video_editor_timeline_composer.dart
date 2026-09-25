@@ -4,6 +4,8 @@ import '../../models/audio_track_model.dart';
 import '../../models/editor_timeline.dart';
 import '../../models/video_editor_state.dart';
 import '../../models/video_segment.dart';
+import '../animation/animatable_double.dart';
+import '../animation/overlay_keyframes.dart';
 import '../canvas_geometry.dart';
 import 'timeline_geometry.dart';
 import '../color/color_adjustments.dart';
@@ -248,11 +250,8 @@ class VideoEditorTimelineComposer {
       required String id,
       required String kind,
       required String path,
-      required Offset position,
+      required OverlayMotion motion,
       required double box,
-      required double scale,
-      required double rotation,
-      required double opacity,
       ClipMask mask = ClipMask.none,
       ChromaKey chromaKey = ChromaKey.none,
       required double startSeconds,
@@ -268,17 +267,27 @@ class VideoEditorTimelineComposer {
       double volume = 1.0,
       bool isMuted = false,
     }) {
+      // Placement and its keyframes travel together. The centre's change of
+      // units is affine, so it is applied to the base and to every keyframe
+      // value once, here, and the engine resolves the track in fractions.
+      final params = motion.params;
       return EditorTimelineOverlay(
         id: id,
         kind: kind,
         path: path,
-        centerX: 0.5 + (position.dx / canvas.width),
-        centerY: 0.5 + (position.dy / canvas.height),
+        centerX: mapAnimatable(
+          params[OverlayProperty.x]!,
+          (v) => 0.5 + (v / canvas.width),
+        ),
+        centerY: mapAnimatable(
+          params[OverlayProperty.y]!,
+          (v) => 0.5 + (v / canvas.height),
+        ),
         boxWidth: box / canvas.width,
         boxHeight: box / canvas.height,
-        scale: scale,
-        rotation: rotation,
-        opacity: opacity,
+        scale: params[OverlayProperty.scale]!,
+        rotation: params[OverlayProperty.rotation]!,
+        opacity: params[OverlayProperty.opacity]!,
         mask: mask,
         chromaKey: chromaKey,
         startSeconds: startSeconds,
@@ -306,11 +315,8 @@ class VideoEditorTimelineComposer {
           id: overlay.id,
           kind: 'image',
           path: overlay.imagePath,
-          position: overlay.position,
+          motion: overlay.motion,
           box: _kImageOverlayBoxPx,
-          scale: overlay.scale,
-          rotation: overlay.rotation,
-          opacity: overlay.opacity,
           mask: overlay.mask,
           chromaKey: overlay.chromaKey,
           startSeconds: overlay.startTime.inMilliseconds / 1000.0,
@@ -326,11 +332,8 @@ class VideoEditorTimelineComposer {
           id: overlay.id,
           kind: 'video',
           path: overlay.videoPath,
-          position: overlay.position,
+          motion: overlay.motion,
           box: _kVideoOverlayBoxPx,
-          scale: overlay.scale,
-          rotation: overlay.rotation,
-          opacity: overlay.opacity,
           mask: overlay.mask,
           chromaKey: overlay.chromaKey,
           startSeconds: overlay.timelineStart.inMilliseconds / 1000.0,

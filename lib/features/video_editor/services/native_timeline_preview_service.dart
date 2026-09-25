@@ -363,8 +363,12 @@ class NativeTimelinePreviewService {
     final warnings = <String>[];
 
     for (final text in state.textOverlays) {
+      // Drawn at the largest size it reaches, so a keyframed zoom is as sharp
+      // at its end as a text resting there — see [textOverlayPeakScale]. Only
+      // the raster's density reads the scale; its placement box does not.
+      final raster = text.copyWith(scale: textOverlayPeakScale(text));
       final atlas = await TextOverlayRasterizer.rasterizeAtlas(
-        overlay: text,
+        overlay: raster,
         canvasSize: canvas,
         rasterScale: rasterScale,
       );
@@ -416,7 +420,7 @@ class NativeTimelinePreviewService {
         // a file per export.
         if (atlas != null) tempFiles.add(atlas.pngPath);
         final flat = await TextOverlayRasterizer.rasterize(
-          overlay: text,
+          overlay: raster,
           canvasSize: canvas,
           rasterScale: rasterScale,
         );
@@ -428,11 +432,10 @@ class NativeTimelinePreviewService {
       }
       tempFiles.add(pngPath);
 
-      // The layer's own placement, in canvas fractions: the box centre is the
-      // canvas centre plus the (clamped) offset — the same helper the layer
-      // positions its widget with.
-      final renderScale = textOverlayRenderScale(text, canvas);
-      final center = textOverlayCenter(text, canvas, renderScale);
+      // The layer's own placement, in canvas fractions, keyframes and all: the
+      // box centre is the canvas centre plus the (clamped) offset — the same
+      // helper the layer positions its widget with.
+      final placement = textOverlayWirePlacement(text, canvas);
 
       // The two raster paths need different boxes — see `textOverlayBoxPx`.
       // The flat path contain-fits the PNG and so takes a pixel square; the
@@ -456,13 +459,15 @@ class NativeTimelinePreviewService {
           backgroundBottom:
               (usableAtlas?.backgroundRect?.bottom ?? 0) / boxDivH,
           backgroundRadius: (usableAtlas?.borderRadius ?? 0) / boxDivW,
-          centerX: center.dx / canvas.width,
-          centerY: center.dy / canvas.height,
+          centerX: placement.centerX,
+          centerY: placement.centerY,
           boxWidth: fitBox.width / canvas.width,
           boxHeight: fitBox.height / canvas.height,
-          scale: text.scale,
-          rotation: text.rotation,
-          opacity: 1.0,
+          scale: placement.scale,
+          rotation: placement.rotation,
+          // The text's own, where a constant 1.0 used to go: opacity is a
+          // placement property now, keyframable like the rest.
+          opacity: placement.opacity,
           startSeconds: text.startTime.inMilliseconds / 1000.0,
           endSeconds: text.endTime.inMilliseconds / 1000.0,
           // Above every image/video overlay, matching the preview's stacking

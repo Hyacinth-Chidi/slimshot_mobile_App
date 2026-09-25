@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/models/editor_timeline.dart';
 
 void main() {
@@ -10,13 +11,13 @@ void main() {
       id: 'o1',
       kind: kind,
       path: '/tmp/a.png',
-      centerX: 0.5,
-      centerY: 0.5,
+      centerX: const AnimatableDouble(baseValue: 0.5),
+      centerY: const AnimatableDouble(baseValue: 0.5),
       boxWidth: 0.4,
       boxHeight: 0.4,
-      scale: 1,
-      rotation: 0,
-      opacity: 1,
+      scale: const AnimatableDouble(baseValue: 1),
+      rotation: const AnimatableDouble(baseValue: 0),
+      opacity: const AnimatableDouble(baseValue: 1),
       startSeconds: 0,
       endSeconds: 2,
       laneIndex: 0,
@@ -77,13 +78,13 @@ void main() {
         id: 'o1',
         kind: 'text',
         path: '/tmp/a.png',
-        centerX: 0.5,
-        centerY: 0.5,
+        centerX: AnimatableDouble(baseValue: 0.5),
+        centerY: AnimatableDouble(baseValue: 0.5),
         boxWidth: 0.4,
         boxHeight: 0.4,
-        scale: 1,
-        rotation: 0,
-        opacity: 1,
+        scale: AnimatableDouble(baseValue: 1),
+        rotation: AnimatableDouble(baseValue: 0),
+        opacity: AnimatableDouble(baseValue: 1),
         startSeconds: 0,
         endSeconds: 2,
         laneIndex: 0,
