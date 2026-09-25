@@ -1470,7 +1470,9 @@ means every one of them carries a keyframe at `p`** — that is what makes one m
 filmstrip an honest picture of the clip's state, and what lets a single button serve every
 property with no picker. `logic/animation/clip_keyframes.dart` holds the pure functions
 (`ClipProperty`, `captureKeyframe`, `removeKeyframe`, `setKeyframeEasing`, `keyframeProgresses`);
-they take a segment and return a segment, knowing nothing about the playhead or Riverpod.
+they take a segment and return a segment, knowing nothing about the playhead or Riverpod. Since
+overlay keyframes they are thin adapters over **`keyframe_core.dart`**, which owns what a diamond
+does for clips and overlays alike — see the overlay keyframes section below.
 
 **One rule decides whether an edit is a base value or a keyframe**, and it is the reason no
 control has a keyframe UI of its own. `VideoEditorNotifier._writeClipValue`:
@@ -1614,10 +1616,100 @@ vanishing clip) and **before the effect chain** (a blurred clip at 50% is a blur
 half-present). Resolved per tick by both engines through `opacityAt`, clamped where resolved
 because a keyframe can overshoot; per-lane, change-guarded. The Opacity tool sits beside Volume on
 the clip menu — a fade of the picture next to a fade of the sound — and writes through
-`setClipProperty`, so a fade in is two diamonds. The overlay opacity path is untouched. Fading to
+`setClipProperty`, so a fade in is two diamonds. Overlay opacity goes through the same rule since
+overlay keyframes (next section) — a text's included. Fading to
 the project background rather than to black was the open question; the background it is, since
 that is what the bars already show and a fade that revealed a different colour would read as a
 flash.
+
+### Overlay keyframes — the same diamonds on text, photos and video
+
+**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-09-25-overlay-keyframes-design.md`,
+plan beside it in `plans/`. A text, photo or video overlay keyframes **position (x, y), scale,
+rotation and opacity** with the clip's diamonds, plus button, easing sheet and edit rule. Text
+colour is deliberately not in this batch: it needs its own export colour pass.
+
+**One core, two adapters.** `logic/animation/keyframe_core.dart` is what a diamond *does* —
+capture, remove, move, ease, the edit rule, split — over a `KeyframeParams<P>` map, for any set of
+named `AnimatableDouble`s. Every function returns **the same map instance** when it changes
+nothing, which is how callers tell a refused edit from a done one. `clip_keyframes.dart` and
+`overlay_keyframes.dart` only say which parameters an item has. A fix to what a diamond does is
+therefore one fix: **capturing on an existing diamond keeps it, curve and all** — a split that
+landed exactly on an eased diamond (a tapped diamond parks the playhead there) used to straighten
+the curve leaving it, on clips too.
+
+**The tracks ride beside the plain fields.** `position`, `scale`, `rotation` and `opacity` stay
+exactly what they were — the **base values** every existing reader uses — and
+`OverlayKeyframes` sits next to them; `OverlayMotion` is the two as one value (`motion` /
+`withMotion` on each model). An overlay with no diamonds writes no `keyframes` key and sends the
+engine **byte-identical** JSON — a golden captured before the change pins it. Text gained
+`opacity` with this, and now sends its own where a constant 1.0 used to go.
+
+**`shownAt(seconds)` is what the canvas draws and what a gesture anchors on, and is never written
+back into state.** Progress is overlay-relative (`overlayProgressAt`, 0 for a zero span), so
+trimming an overlay stretches its motion with it — the clip rule.
+
+**The keyframe target** (`VideoEditorState.keyframeOverlay`): the selected overlay, unless a clip
+is selected — a clip wins, as for the mask. `hasKeyframeTarget`, `keyframeTargetProgress` (null
+off the span, never clamped) and `keyframeDiamonds` feed the playback bar and the timeline;
+`playheadKeyframeProgress`, `keyframeCurveTargetProgress` and `keyframeCurve` dispatch. Every
+notifier command dispatches through `_editSelectedOverlayKeyframes`, which reports "handled" even
+when nothing changed, so a command meant for an overlay can never fall through onto a clip.
+**A command that changes nothing takes no undo step** — a second plus from a double tap landing
+before the button flips to minus, a minus off every diamond, a plus off the target — on clips as
+well.
+
+**Live edits** go through `setOverlayMotionLive`, which folds every given property through the
+edit rule on **one** params map — between diamonds the first write places the diamond and the
+rest find it. Three guards, each for a real failure: `id` drops a write whose gesture's overlay is
+no longer selected (a second finger can select another overlay mid-drag, and the first gesture's
+stale callback may fire once more); a value that is not finite is skipped (`jsonEncode` refuses
+NaN, so one bad frame in a keyframe would fail every later draft save); opacity is held to 0..1.
+
+**`beginLiveEdit` pauses, then takes the one snapshot a gesture shares** (`beginOverlayEdit` is
+it, guarded on an overlay being selected). Clearing `isPlaying` is enough because the screen drops
+engine position events and the tail ticker stands still while it is false, so every frame of the
+gesture resolves the same instant. Without the pause, a drag at a moving playhead leaves a trail
+of diamonds — which is why the clip Opacity slider, the Effects intensity slider and a diamond's
+long-press drag now start with it too; they had the same flaw before overlays had keyframes.
+
+**On the canvas** every layer draws `shownAt(playhead)`, and every gesture anchors on
+`overlayEditValue` — the value its write will land on — never on the stored base, which a
+keyframed overlay is not at. A one-finger move writes position only: writing back its unchanged
+scale and rotation snapped a near-straight overlay to the axis. A text fades as one piece through
+an `Opacity`, added only below 1. The text width pills write `boxWidth` directly; the centre shift
+they cause is a position and goes through the rule.
+
+**A scaled-up photo or video can be touched where it is drawn.** The detector used to wrap the
+transforms and so kept the unscaled box — past about 1.4× the corner handles could not be grabbed
+at all (probe-confirmed; the text layer had the same fault). The transforms now sit in a square
+that holds the scaled box at any rotation, with the detector inside them on the real box.
+
+**On the wire** `EditorTimelineOverlay.centerX/centerY/scale/rotation/opacity` are
+`AnimatableDouble`s. The centre's pixels-to-fractions conversion is affine, so `mapAnimatable`
+applies it once to the base and to every keyframe value — resolving the mapped track equals
+mapping the resolved value. A text's centre goes through `textOverlayWirePlacement`, the layer's
+own per-axis clamp one keyframe value at a time — exact wherever the values sit inside the canvas,
+which is everywhere a drag can put them. **A text rasterises at its peak keyframed scale**
+(`textOverlayPeakScale`), or a keyframed zoom would end on an upscaled, soft raster — the
+pinch-scale fault again.
+
+**In Kotlin** `NativeTimelineOverlay` reads the five through `AnimatableDouble.fromWire`;
+`restingStateAt(t)` resolves them at the overlay's progress, and `stateAt(t)` applies the in/out
+presets on top — a fade multiplies a keyframed opacity, a slide adds to a keyframed centre. The
+clamps moved to the resolved values. `OverlayDrawBuilder.draw` reads centre and rotation from the
+frame state and never from the overlay, whose fields are tracks. `OverlayClock.needsRedraw` gains
+one case: a keyframed overlay redraws on every clock step inside its span.
+**`test/fixtures/overlay_motion_fixture.json` pins the two sides** — three keyframed overlays as
+the composer sends them, resolved at seven progresses; regenerate with `UPDATE_OVERLAY_FIXTURE=1
+flutter test test/features/video_editor/logic/timeline/overlay_motion_fixture_test.dart`, then
+re-run the Kotlin suite. The usual caveat: it catches divergence tomorrow, not a wrong curve
+today.
+
+**On the timeline** the selected overlay's diamonds sit on its own bar, in the bar's box and under
+its trim handles (a clip's order), hidden while the bar is carried. A split video overlay pins a
+diamond at the cut and rescales each half; a duplicate is nudged 20px along its **whole** path —
+nudging only the base put a keyframed copy exactly on top of the original.
 
 ### Mask — a window over the picture
 
