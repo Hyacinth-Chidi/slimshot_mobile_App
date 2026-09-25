@@ -13,6 +13,7 @@ import '../../../core/utils/file_utils.dart';
 import '../logic/animation/animatable_double.dart';
 import '../logic/animation/clip_keyframes.dart';
 import '../logic/animation/keyframe_core.dart';
+import '../logic/animation/overlay_keyframes.dart';
 import '../logic/canvas_geometry.dart';
 import '../logic/animation/clip_keyframes.dart' as kf;
 import '../logic/effects/effect_catalog.dart';
@@ -647,6 +648,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   ({
     int undoDepth,
     VideoSegment? segment,
+    TextOverlayModel? text,
     ImageOverlayModel? image,
     VideoOverlayModel? video,
   })? _toolEntry;
@@ -663,6 +665,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     _toolEntry = (
       undoDepth: _undoStack.length,
       segment: state.selectedSegment,
+      text: _selectedTextOverlay,
       image: _selectedImageOverlay,
       video: _selectedVideoOverlay,
     );
@@ -681,6 +684,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     final entry = _toolEntry;
     if (entry != null) {
       final segment = entry.segment;
+      final text = entry.text;
       final image = entry.image;
       final video = entry.video;
       if (_undoStack.length > entry.undoDepth) {
@@ -692,6 +696,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
             : [
                 for (final s in state.segments)
                   if (s.id == segment.id) segment else s,
+              ],
+        textOverlays: text == null
+            ? null
+            : [
+                for (final o in state.textOverlays)
+                  if (o.id == text.id) text else o,
               ],
         imageOverlays: image == null
             ? null
@@ -709,6 +719,15 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       );
     }
     closeActiveTool();
+  }
+
+  TextOverlayModel? get _selectedTextOverlay {
+    final id = state.selectedTextId;
+    if (id == null) return null;
+    for (final o in state.textOverlays) {
+      if (o.id == id) return o;
+    }
+    return null;
   }
 
   ImageOverlayModel? get _selectedImageOverlay {
@@ -2297,17 +2316,35 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
-  /// Places a diamond at the playhead, pinning every property at the value it
-  /// already has there — so the picture does not change.
+  /// Places a diamond at the playhead on the keyframe target — the selected
+  /// overlay, else the selected clip — pinning every property at the value it
+  /// already has there, so the picture does not change.
+  ///
+  /// Does nothing, and takes no undo step, with the playhead off the target or
+  /// already on a diamond. The button shows minus there, so that second case is
+  /// a double tap landing before the rebuild — and an undo entry that undoes
+  /// nothing is a lie.
   void addKeyframeAtPlayhead() {
+    if (state.keyframeTargetProgress == null || state.playheadIsOnKeyframe) {
+      return;
+    }
+    if (_editSelectedOverlayKeyframes(
+      (params, progress, _) => captureKeyframeIn(params, progress),
+    )) {
+      return;
+    }
     _editSelectedClip(
       (segment, progress) =>
           progress == null ? segment : captureKeyframe(segment, progress),
     );
   }
 
-  /// Removes the diamond under the playhead from every property.
+  /// Removes the diamond under the playhead from every property of the
+  /// keyframe target. Nothing under the playhead is nothing to remove, and no
+  /// undo step.
   void removeKeyframeAtPlayhead() {
+    if (!state.playheadIsOnKeyframe) return;
+    if (_editSelectedOverlayKeyframes(removeKeyframeIn)) return;
     _editSelectedClip(
       (segment, progress) => progress == null
           ? segment
@@ -2327,6 +2364,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// does nothing, and the icon is disabled so it should not be reachable.
   void setKeyframeCurve(KeyframeInterpolation curve) {
     if (!state.canEditKeyframeCurve) return;
+    if (_editSelectedOverlayKeyframes(
+      (params, progress, tolerance) =>
+          setKeyframeCurveIn(params, progress, tolerance, curve),
+    )) {
+      return;
+    }
     _editSelectedClip((segment, progress) {
       if (progress == null) return segment;
       // Aliased: the notifier method and the pure function share a name on
@@ -2349,9 +2392,22 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// diamond at the destination), so the caller keeps dragging from where it
   /// really is.
   double? moveKeyframeLive(double from, double to) {
+    final dest = to.clamp(0.0, 1.0).toDouble();
+    final ref = state.keyframeOverlay;
+    if (ref != null) {
+      final moved = moveKeyframeIn(
+        ref.motion.params,
+        from,
+        dest,
+        overlayKeyframeTolerance(ref),
+      );
+      if (moved == null) return null;
+      _replaceOverlayMotion(ref, OverlayMotion.fromParams(moved));
+      seekToKeyframe(dest);
+      return dest;
+    }
     final segment = state.selectedSegment;
     if (segment == null) return null;
-    final dest = to.clamp(0.0, 1.0).toDouble();
     final moved = moveKeyframe(segment, from, dest, keyframeHitToleranceFor(segment));
     if (identical(moved, segment)) return null;
     state = state.copyWith(
@@ -2369,6 +2425,15 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// plus/minus flip reads the playhead, so the playhead has to actually be on
   /// the diamond. Not an undoable edit: it moves the playhead, nothing else.
   void seekToKeyframe(double progress) {
+    final ref = state.keyframeOverlay;
+    if (ref != null) {
+      final start = ref.start.inMicroseconds / 1e6;
+      final span = (ref.end - ref.start).inMicroseconds / 1e6;
+      updatePlaybackPosition(
+        start + progress.clamp(0.0, 1.0).toDouble() * (span > 0 ? span : 0.0),
+      );
+      return;
+    }
     final segment = state.selectedSegment;
     if (segment == null) return;
     final starts = segmentTimelineStarts(state.segments);
@@ -2965,15 +3030,15 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     if (source.isEmpty) return;
     saveStateForUndo();
     final overlay = source.first;
-    final duplicated = overlay.copyWith(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      position: overlay.position + const Offset(20, 20),
-      laneIndex: _laneForCopy(
-        overlay.startTime,
-        overlay.endTime,
-        overlay.laneIndex,
-      ),
-    );
+    final duplicated =
+        overlay.withMotion(_duplicateMotion(overlay.motion)).copyWith(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              laneIndex: _laneForCopy(
+                overlay.startTime,
+                overlay.endTime,
+                overlay.laneIndex,
+              ),
+            );
     state = state.copyWith(
       textOverlays: [...state.textOverlays, duplicated],
       selectedTextId: duplicated.id,
@@ -3057,15 +3122,15 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     if (source.isEmpty) return;
     saveStateForUndo();
     final overlay = source.first;
-    final duplicated = overlay.copyWith(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      position: overlay.position + const Offset(20, 20),
-      laneIndex: _laneForCopy(
-        overlay.startTime,
-        overlay.endTime,
-        overlay.laneIndex,
-      ),
-    );
+    final duplicated =
+        overlay.withMotion(_duplicateMotion(overlay.motion)).copyWith(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              laneIndex: _laneForCopy(
+                overlay.startTime,
+                overlay.endTime,
+                overlay.laneIndex,
+              ),
+            );
     state = state.copyWith(
       imageOverlays: [...state.imageOverlays, duplicated],
       selectedImageId: duplicated.id,
@@ -3143,15 +3208,15 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     if (source.isEmpty) return;
     saveStateForUndo();
     final overlay = source.first;
-    final duplicated = overlay.copyWith(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      position: overlay.position + const Offset(20, 20),
-      laneIndex: _laneForCopy(
-        overlay.timelineStart,
-        overlay.timelineEnd,
-        overlay.laneIndex,
-      ),
-    );
+    final duplicated =
+        overlay.withMotion(_duplicateMotion(overlay.motion)).copyWith(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              laneIndex: _laneForCopy(
+                overlay.timelineStart,
+                overlay.timelineEnd,
+                overlay.laneIndex,
+              ),
+            );
     state = state.copyWith(
       videoOverlays: [...state.videoOverlays, duplicated],
       selectedVideoOverlayId: duplicated.id,
@@ -3176,6 +3241,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   ///   early in the footage and replayed frames the left half had shown. The
   ///   cut now mirrors that mapping — clamp included — so every instant shows
   ///   the frame it showed before the split.
+  ///
+  /// Keyframes are overlay-relative, so each half's are rescaled into its own
+  /// 0..1 after a diamond is pinned at the cut ([splitKeyframesIn]) — the
+  /// motion plays through the seam exactly as it did before.
   ///
   /// Refused where [_overlaySplitPoint] refuses, the rule the Split tool is
   /// offered by. With no overlay selected it does nothing.
@@ -3206,18 +3275,43 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       splitSourceTime = videoOverlay.sourceEnd;
     }
 
+    // Where the cut falls in the original's progress. `_overlaySplitPoint`
+    // keeps it strictly inside, so neither half is degenerate.
+    final spanUs =
+        (videoOverlay.timelineEnd - videoOverlay.timelineStart).inMicroseconds;
+    final cutProgress = spanUs <= 0
+        ? 0.0
+        : (cut - videoOverlay.timelineStart).inMicroseconds / spanUs;
+    VideoOverlayModel withHalfMotion(
+      VideoOverlayModel half, {
+      required bool isLeft,
+    }) {
+      if (videoOverlay.keyframes.isEmpty) return half;
+      return half.withMotion(OverlayMotion.fromParams(splitKeyframesIn(
+        videoOverlay.motion.params,
+        cutProgress,
+        isLeft: isLeft,
+      )));
+    }
+
     saveStateForUndo();
 
-    final firstHalf = videoOverlay.copyWith(
-      timelineEnd: cut,
-      sourceEnd: splitSourceTime,
-      clearAnimationOut: true,
+    final firstHalf = withHalfMotion(
+      videoOverlay.copyWith(
+        timelineEnd: cut,
+        sourceEnd: splitSourceTime,
+        clearAnimationOut: true,
+      ),
+      isLeft: true,
     );
-    final secondHalf = videoOverlay.copyWith(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      timelineStart: cut,
-      sourceStart: splitSourceTime,
-      clearAnimationIn: true,
+    final secondHalf = withHalfMotion(
+      videoOverlay.copyWith(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        timelineStart: cut,
+        sourceStart: splitSourceTime,
+        clearAnimationIn: true,
+      ),
+      isLeft: false,
     );
 
     final updatedOverlays = [...state.videoOverlays];
@@ -3230,26 +3324,124 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
-  /// Sets the selected overlay's opacity. [takeUndoSnapshot] false is the
-  /// per-frame half of a slider drag, which snapshots once when it starts —
-  /// every frame used to snapshot, and Undo walked the drag back a step at a
-  /// time.
-  void setOverlayOpacity(double opacity, {bool takeUndoSnapshot = true}) {
-    final imageId = state.selectedImageId;
-    final videoId = state.selectedVideoOverlayId;
-    if (imageId == null && videoId == null) return;
-    if (takeUndoSnapshot) saveStateForUndo();
-    if (imageId != null) {
-      updateImageOverlayLive(
-        imageId,
-        (overlay) => overlay.copyWith(opacity: opacity),
-      );
-    } else {
-      updateVideoOverlayLive(
-        videoId!,
-        (overlay) => overlay.copyWith(opacity: opacity),
+  /// Starts a live edit of the selected overlay's placement: pauses playback
+  /// and takes the **one** undo snapshot the whole gesture shares.
+  ///
+  /// **Pause first**, for the reason [beginClipCanvasTransform] does: a live
+  /// write lands at the playhead, and on a keyframed overlay a moving playhead
+  /// turns one drag into a trail of diamonds. Clearing `isPlaying` is
+  /// synchronous, and while it is false the screen drops the engine's position
+  /// events and the tail ticker stands still — so every frame of the gesture
+  /// resolves the same instant. With nothing selected it does nothing, and
+  /// takes no snapshot either: an undo entry that undoes nothing is a lie.
+  void beginOverlayEdit() {
+    if (state.keyframeOverlay == null) return;
+    saveStateForUndo();
+    if (state.isPlaying) state = state.copyWith(isPlaying: false);
+  }
+
+  /// One frame of a live edit of the selected overlay's placement, with **no
+  /// undo snapshot** — [beginOverlayEdit] took the gesture's one.
+  ///
+  /// Every given property goes through the edit rule on **one** params map,
+  /// in [OverlayProperty] order ([writeKeyframedValueIn]): base values on an
+  /// overlay with no diamonds, the diamond under the playhead on one with
+  /// them, and between diamonds exactly one new diamond — the first write
+  /// captures it and the rest find it. A property left null is not written,
+  /// so a gesture with no angle to give cannot un-rotate an overlay.
+  ///
+  /// [id], when given, names the overlay the gesture began on; the write is
+  /// dropped if that is no longer the selected one. A second finger can select
+  /// another overlay mid-drag, and the first gesture's callback may fire once
+  /// more before its layer rebuilds — without this it would move the overlay
+  /// the user just picked to wherever the first was being dragged.
+  ///
+  /// A value that is not finite is skipped rather than written: `jsonEncode`
+  /// refuses NaN and infinity, so one bad gesture frame in a keyframe would
+  /// make every later draft save fail. Opacity is held to 0..1.
+  void setOverlayMotionLive({
+    String? id,
+    Offset? position,
+    double? scale,
+    double? rotation,
+    double? opacity,
+  }) {
+    final ref = state.keyframeOverlay;
+    if (ref == null || (id != null && id != ref.id)) return;
+    final progress = overlayProgressOn(ref, state.currentPlaybackPosition);
+    final tolerance = overlayKeyframeTolerance(ref);
+    final before = ref.motion.params;
+    var params = before;
+    void write(OverlayProperty property, double? value) {
+      if (value == null || !value.isFinite) return;
+      params = writeKeyframedValueIn(
+        params,
+        property,
+        value,
+        playheadProgress: progress,
+        tolerance: tolerance,
       );
     }
+
+    write(OverlayProperty.x, position?.dx);
+    write(OverlayProperty.y, position?.dy);
+    write(OverlayProperty.scale, scale);
+    write(OverlayProperty.rotation, rotation);
+    write(OverlayProperty.opacity, opacity?.clamp(0.0, 1.0).toDouble());
+    if (identical(params, before)) return;
+    _replaceOverlayMotion(ref, OverlayMotion.fromParams(params));
+  }
+
+  /// Writes [motion] into the overlay [ref] names, with no undo snapshot.
+  void _replaceOverlayMotion(KeyframeOverlayRef ref, OverlayMotion motion) {
+    switch (ref.kind) {
+      case OverlayKind.text:
+        updateTextOverlayLive(ref.id, (o) => o.withMotion(motion));
+      case OverlayKind.image:
+        updateImageOverlayLive(ref.id, (o) => o.withMotion(motion));
+      case OverlayKind.video:
+        updateVideoOverlayLive(ref.id, (o) => o.withMotion(motion));
+    }
+  }
+
+  /// The overlay half of every keyframe command — [_editSelectedClip]'s twin.
+  ///
+  /// Returns false when no overlay is the keyframe target, so the command
+  /// falls through to the clip; true otherwise, **even when nothing changed**,
+  /// so a command meant for an overlay can never land on a clip. The playhead
+  /// is resolved once, and an edit that hands its input back unchanged (the
+  /// core's refusals) touches nothing and takes no undo snapshot.
+  bool _editSelectedOverlayKeyframes(
+    KeyframeParams<OverlayProperty> Function(
+      KeyframeParams<OverlayProperty> params,
+      double progress,
+      double tolerance,
+    ) edit,
+  ) {
+    final ref = state.keyframeOverlay;
+    if (ref == null) return false;
+    final progress = overlayProgressOn(ref, state.currentPlaybackPosition);
+    if (progress == null) return true;
+    final params = ref.motion.params;
+    final edited = edit(params, progress, overlayKeyframeTolerance(ref));
+    if (identical(edited, params)) return true;
+    saveStateForUndo();
+    _replaceOverlayMotion(ref, OverlayMotion.fromParams(edited));
+    return true;
+  }
+
+  /// Sets the selected overlay's opacity — a text's included — through the
+  /// edit rule, so on a keyframed overlay the Opacity slider keyframes itself
+  /// like every other control.
+  ///
+  /// [takeUndoSnapshot] false is the per-frame half of a slider drag, whose
+  /// start takes the one snapshot — every frame used to snapshot, and Undo
+  /// walked the drag back a step at a time. That start should be
+  /// [beginOverlayEdit], which also pauses, for the trail-of-diamonds reason.
+  void setOverlayOpacity(double opacity, {bool takeUndoSnapshot = true}) {
+    if (state.keyframeOverlay == null) return;
+    if (takeUndoSnapshot) saveStateForUndo();
+    setOverlayMotionLive(opacity: opacity);
   }
 
   void setOverlayAnimation({
@@ -3448,6 +3640,36 @@ final videoCanvasSizeProvider = StateProvider<Size?>((ref) => null);
 /// the timeline's own trim minimum, so a split cannot make a piece the trim
 /// handles could not. The cut lands on a whole millisecond, the precision a
 /// draft stores, so both halves save to the same instant and still abut.
+/// A duplicate's motion: the original's nudged 20px right and down, so the
+/// user can see there are two — through the **whole** path.
+///
+/// On a keyframed overlay the x and y tracks decide where it is drawn, not the
+/// base, so nudging only the base (all a duplicate did before keyframes) would
+/// put the copy exactly on top of the original at every instant. Every
+/// keyframe on those tracks moves with the base, keeping its curve.
+OverlayMotion _duplicateMotion(OverlayMotion motion) {
+  const nudge = Offset(20, 20);
+  AnimatableDouble shifted(AnimatableDouble p, double by) =>
+      AnimatableDouble.sorted(
+        baseValue: p.baseValue + by,
+        envelope: p.envelope,
+        keyframes: [
+          for (final k in p.keyframes)
+            Keyframe(
+              progress: k.progress,
+              value: k.value + by,
+              interpolation: k.interpolation,
+            ),
+        ],
+      );
+  final params = motion.params;
+  return OverlayMotion.fromParams({
+    ...params,
+    OverlayProperty.x: shifted(params[OverlayProperty.x]!, nudge.dx),
+    OverlayProperty.y: shifted(params[OverlayProperty.y]!, nudge.dy),
+  });
+}
+
 Duration? _overlaySplitPoint(
   Duration start,
   Duration end,

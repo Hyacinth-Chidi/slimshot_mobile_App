@@ -46,10 +46,19 @@ void main() {
       expect(keyframeProgressesIn(after), [0.2, 0.5, 0.8]);
     });
 
-    test('on an existing diamond replaces it rather than duplicating', () {
+    test('on an existing diamond keeps it: no duplicate, curve and all', () {
       final twice = captureKeyframeIn(captureKeyframeIn(ramped(), 0.5), 0.5);
       expect(keyframeProgressesIn(twice), [0.2, 0.5, 0.8]);
       expect(twice[_P.a]!.keyframes, hasLength(3));
+      // A split that lands exactly on a diamond pins the cut there; replacing
+      // it with a fresh linear keyframe straightened the curve leaving it.
+      final eased = setKeyframeCurveIn(
+          ramped(), 0.5, tol, KeyframeInterpolation.cubicInOut);
+      final again = captureKeyframeIn(eased, 0.2);
+      for (final key in _P.values) {
+        expect(again[key]!.keyframes.first.interpolation,
+            KeyframeInterpolation.cubicInOut);
+      }
     });
   });
 
@@ -179,6 +188,19 @@ void main() {
 
       near(keyframeProgressesIn(left), [0.4, 1.0]);
       near(keyframeProgressesIn(right), [0.0, 0.6]);
+    });
+
+    test('a cut exactly on an eased diamond keeps the curve leaving it', () {
+      // Tap a diamond — the playhead lands on it — then split. The travel
+      // from that diamond to the next is not cut at all, so the right half
+      // must play it exactly as the original did.
+      final eased = setKeyframeCurveIn(
+          ramped(), 0.5, tol, KeyframeInterpolation.cubicInOut);
+      final right = splitKeyframesIn(eased, 0.2, isLeft: false);
+      for (final p in [0.1, 0.3, 0.5, 0.7]) {
+        expect(at(right, _P.a, p), closeTo(at(eased, _P.a, 0.2 + p * 0.8), 1e-9),
+            reason: 'at $p');
+      }
     });
 
     test('a degenerate cut or no keyframes returns the very same map', () {

@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../logic/animation/animatable_double.dart';
 import '../logic/animation/clip_keyframes.dart';
+import '../logic/animation/keyframe_core.dart';
+import '../logic/animation/overlay_keyframes.dart';
 import '../logic/timeline/timeline_geometry.dart';
 import 'filter_preset.dart';
 import 'media_asset.dart';
@@ -61,6 +63,43 @@ double keyframeHitToleranceFor(VideoSegment segment) {
   final d = segment.duration;
   if (d <= 0) return 1.0;
   return (kKeyframeHitSeconds / d).clamp(0.0, 0.5).toDouble();
+}
+
+/// The kinds of overlay a diamond can sit on.
+enum OverlayKind { text, image, video }
+
+/// The selected overlay as the keyframe controls see it: which one, its
+/// motion, and its span on the timeline. See [VideoEditorState.keyframeOverlay].
+typedef KeyframeOverlayRef = ({
+  OverlayKind kind,
+  String id,
+  OverlayMotion motion,
+  Duration start,
+  Duration end,
+});
+
+/// [kKeyframeHitSeconds] as progress on [ref]'s span — [keyframeHitToleranceFor]
+/// for an overlay, capped the same way, and 1.0 for a span of zero (or less,
+/// in a hand-edited draft) rather than a division by zero.
+double overlayKeyframeTolerance(KeyframeOverlayRef ref) {
+  final span = (ref.end - ref.start).inMicroseconds / 1e6;
+  if (span <= 0) return 1.0;
+  return (kKeyframeHitSeconds / span).clamp(0.0, 0.5).toDouble();
+}
+
+/// Where [seconds] falls in [ref]'s span, 0..1, or null outside it.
+///
+/// The span's edges count as on it, within [kOnClipToleranceSeconds]. An
+/// inverted span — end before start, which only a hand-edited draft can hold
+/// — contains no instant at all, so it can never produce a progress.
+double? overlayProgressOn(KeyframeOverlayRef ref, double seconds) {
+  final start = ref.start.inMicroseconds / 1e6;
+  final end = ref.end.inMicroseconds / 1e6;
+  if (seconds < start - kOnClipToleranceSeconds ||
+      seconds > end + kOnClipToleranceSeconds) {
+    return null;
+  }
+  return overlayProgressAt(ref.start, ref.end, seconds);
 }
 
 class VideoEditorState {
@@ -261,6 +300,116 @@ class VideoEditorState {
   /// whatever is selected, so there is no third state to keep in step.
   String? get keyframeClipId => isClipSelected ? selectedSegmentId : null;
 
+  /// The overlay the keyframe controls act on: the selected text, photo or
+  /// video overlay, resolved once with its motion and its span.
+  ///
+  /// **A selected clip wins**, as it does for the mask: null whenever
+  /// [keyframeClipId] is set. The selection methods keep a clip and an overlay
+  /// from being selected together, so this only decides a state that should
+  /// not arise — but it decides it one way, everywhere, which is what keeps the
+  /// getters below and the notifier's commands from acting on two different
+  /// targets.
+  KeyframeOverlayRef? get keyframeOverlay {
+    if (keyframeClipId != null) return null;
+    final textId = selectedTextId;
+    if (textId != null) {
+      for (final o in textOverlays) {
+        if (o.id == textId) {
+          return (
+            kind: OverlayKind.text,
+            id: o.id,
+            motion: o.motion,
+            start: o.startTime,
+            end: o.endTime,
+          );
+        }
+      }
+    }
+    final imageId = selectedImageId;
+    if (imageId != null) {
+      for (final o in imageOverlays) {
+        if (o.id == imageId) {
+          return (
+            kind: OverlayKind.image,
+            id: o.id,
+            motion: o.motion,
+            start: o.startTime,
+            end: o.endTime,
+          );
+        }
+      }
+    }
+    final videoId = selectedVideoOverlayId;
+    if (videoId != null) {
+      for (final o in videoOverlays) {
+        if (o.id == videoId) {
+          return (
+            kind: OverlayKind.video,
+            id: o.id,
+            motion: o.motion,
+            start: o.timelineStart,
+            end: o.timelineEnd,
+          );
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Where the playhead sits inside the selected overlay, 0..1 — the overlay's
+  /// [selectedClipProgress].
+  ///
+  /// **Null, never clamped**, outside the overlay's span, for the reason the
+  /// clip's is: a plus tapped there would pin a diamond at the edge of an
+  /// overlay that is not even on screen. The span's own edges count as on it.
+  double? get selectedOverlayProgress {
+    final ref = keyframeOverlay;
+    return ref == null ? null : overlayProgressOn(ref, currentPlaybackPosition);
+  }
+
+  /// Whether anything is selected that can carry a diamond — what puts the
+  /// keyframe button in the playback bar.
+  bool get hasKeyframeTarget =>
+      keyframeClipId != null || keyframeOverlay != null;
+
+  /// Where the playhead sits in the keyframe target, 0..1, or null when it is
+  /// off it — what enables the keyframe button.
+  double? get keyframeTargetProgress =>
+      keyframeOverlay != null ? selectedOverlayProgress : selectedClipProgress;
+
+  /// Every diamond on the keyframe target: the selected overlay's, else the
+  /// selected clip's.
+  List<double> get keyframeDiamonds {
+    final ref = keyframeOverlay;
+    if (ref != null) return keyframeProgressesIn(ref.motion.params);
+    return selectedClipKeyframes;
+  }
+
+  /// What a control editing [property] of the selected overlay should
+  /// **show** — [clipEditValue]'s rule, for overlays: the base while nothing
+  /// is keyframed or the playhead is off the overlay, else the value the
+  /// keyframes resolve to at the playhead, which is where the write will land.
+  ///
+  /// Also what a canvas gesture anchors on. Anchoring on the stored base would
+  /// jump a keyframed overlay to its base the moment it was touched.
+  ///
+  /// Neutral (0, or 1 for scale and opacity) with no overlay selected, which
+  /// no control asks for.
+  double overlayEditValue(OverlayProperty property) {
+    final ref = keyframeOverlay;
+    if (ref == null) {
+      return switch (property) {
+        OverlayProperty.scale || OverlayProperty.opacity => 1.0,
+        _ => 0.0,
+      };
+    }
+    final param = ref.motion.params[property]!;
+    if (!ref.motion.hasKeyframes) return param.baseValue;
+    final progress = overlayProgressOn(ref, currentPlaybackPosition);
+    if (progress == null) return param.baseValue;
+    return param.resolveAt(progress);
+  }
+
   /// Every diamond on the selected clip, as clip-relative progresses.
   List<double> get selectedClipKeyframes {
     final segment = selectedSegment;
@@ -275,6 +424,16 @@ class VideoEditorState {
   /// the plus/minus flip, the easing sheet and the timeline agree about what
   /// "here" means without a third piece of state that could fall out of step.
   double? get playheadKeyframeProgress {
+    final ref = keyframeOverlay;
+    if (ref != null) {
+      final progress = overlayProgressOn(ref, currentPlaybackPosition);
+      if (progress == null) return null;
+      return keyframeProgressNearIn(
+        ref.motion.params,
+        progress,
+        overlayKeyframeTolerance(ref),
+      );
+    }
     final segment = selectedSegment;
     final progress = selectedClipProgress;
     if (segment == null || progress == null) return null;
@@ -290,6 +449,16 @@ class VideoEditorState {
   /// Which segment's curve the curve control edits, or null when there is
   /// nothing to ease at the playhead.
   double? get keyframeCurveTargetProgress {
+    final ref = keyframeOverlay;
+    if (ref != null) {
+      final progress = overlayProgressOn(ref, currentPlaybackPosition);
+      if (progress == null) return null;
+      return keyframeCurveTargetIn(
+        ref.motion.params,
+        progress,
+        overlayKeyframeTolerance(ref),
+      );
+    }
     final segment = selectedSegment;
     final progress = selectedClipProgress;
     if (segment == null || progress == null) return null;
@@ -313,6 +482,12 @@ class VideoEditorState {
   /// Linear doubles as "None" in the sheet, which is honest: a segment with no
   /// curve chosen travels in a straight line.
   KeyframeInterpolation get keyframeCurve {
+    final ref = keyframeOverlay;
+    if (ref != null) {
+      final target = keyframeCurveTargetProgress;
+      if (target == null) return KeyframeInterpolation.linear;
+      return keyframeCurveAtIn(ref.motion.params, target);
+    }
     final segment = selectedSegment;
     final target = keyframeCurveTargetProgress;
     if (segment == null || target == null) return KeyframeInterpolation.linear;

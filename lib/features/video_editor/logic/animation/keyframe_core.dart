@@ -92,28 +92,33 @@ double? keyframeProgressNearIn<P>(
 /// Capturing the base value instead would snap an animated parameter back to
 /// its base the moment a second diamond was placed.
 ///
-/// A diamond already at [progress] is replaced rather than duplicated, so
-/// capturing twice at one instant is idempotent. A fresh keyframe is linear,
-/// so the easing sheet opens showing "None" and tells the truth about it.
+/// **A diamond already at [progress] is kept as it is**, value and curve, so
+/// capturing twice at one instant is idempotent. That matters most to a split
+/// that lands exactly on a diamond — a tapped diamond parks the playhead there
+/// — which pins the cut on it: replacing it with a fresh linear keyframe
+/// straightened the curve leaving it, changing travel the cut never touched.
+/// A fresh keyframe is linear, so the easing sheet opens showing "None" and
+/// tells the truth about it.
 KeyframeParams<P> captureKeyframeIn<P>(
   KeyframeParams<P> params,
   double progress,
 ) {
   return {
     for (final e in params.entries)
-      e.key: AnimatableDouble.sorted(
-        baseValue: e.value.baseValue,
-        envelope: e.value.envelope,
-        keyframes: [
-          for (final k in e.value.keyframes)
-            if (!_sameInstant(k.progress, progress)) k,
-          Keyframe(
-            progress: progress,
-            value: e.value.resolveAt(progress),
-            interpolation: KeyframeInterpolation.linear,
-          ),
-        ],
-      ),
+      e.key: e.value.keyframes.any((k) => _sameInstant(k.progress, progress))
+          ? e.value
+          : AnimatableDouble.sorted(
+              baseValue: e.value.baseValue,
+              envelope: e.value.envelope,
+              keyframes: [
+                ...e.value.keyframes,
+                Keyframe(
+                  progress: progress,
+                  value: e.value.resolveAt(progress),
+                  interpolation: KeyframeInterpolation.linear,
+                ),
+              ],
+            ),
   };
 }
 
