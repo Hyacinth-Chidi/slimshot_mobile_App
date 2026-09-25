@@ -62,20 +62,28 @@ class _TextTemplateGridState extends State<TextTemplateGrid>
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      padding: widget.padding,
-      gridDelegate: kTextPreviewGrid,
-      itemCount: widget.templates.length,
-      itemBuilder: (context, index) {
-        final template = widget.templates[index];
-        return TextTemplateTile(
-          template: template,
-          text: widget.text,
-          isSelected: template.id == widget.selectedId,
-          clock: _clock,
-          onTap: () => widget.onSelected(template),
-        );
-      },
+    // Still while it scrolls — see [holdPreviewClockWhileScrolling].
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) =>
+          mounted && holdPreviewClockWhileScrolling(notification, _clock),
+      child: GridView.builder(
+        padding: widget.padding,
+        // The animation tab's and the effects grid's physics: this grid took
+        // the platform's clamping default and stopped dead at its ends.
+        physics: const BouncingScrollPhysics(),
+        gridDelegate: kTextPreviewGrid,
+        itemCount: widget.templates.length,
+        itemBuilder: (context, index) {
+          final template = widget.templates[index];
+          return TextTemplateTile(
+            template: template,
+            text: widget.text,
+            isSelected: template.id == widget.selectedId,
+            clock: _clock,
+            onTap: () => widget.onSelected(template),
+          );
+        },
+      ),
     );
   }
 }

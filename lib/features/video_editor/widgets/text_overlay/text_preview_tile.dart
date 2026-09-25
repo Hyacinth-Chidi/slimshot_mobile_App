@@ -59,6 +59,32 @@ const SliverGridDelegateWithFixedCrossAxisCount kTextPreviewGrid =
   mainAxisSpacing: 10,
 );
 
+/// Holds a preview grid's [clock] still while the grid scrolls, and lets it
+/// run again once the scroll has come to rest — for the grid's
+/// `NotificationListener<ScrollNotification>`. Returns false, so the
+/// notification keeps bubbling.
+///
+/// **Every tile redoes its text layout, and casts its shadow into an
+/// offscreen layer per letter, on each tick of the clock** — measured at
+/// ~12ms a frame for the template catalog on a desktop CPU, several times
+/// that on a phone, plus ~50 offscreen layers for the GPU. At rest that is the
+/// animation; during a scroll it took the frames the scroll needed, and the
+/// grid stuttered and felt heavy under the finger. Held still, a tile is a
+/// picture the scroll only moves. Only the grid's own scrollable counts
+/// (depth 0), and the clock resumes from where it stopped.
+bool holdPreviewClockWhileScrolling(
+  ScrollNotification notification,
+  AnimationController clock,
+) {
+  if (notification.depth != 0) return false;
+  if (notification is ScrollStartNotification) {
+    clock.stop();
+  } else if (notification is ScrollEndNotification && !clock.isAnimating) {
+    clock.repeat();
+  }
+  return false;
+}
+
 /// How long a tile rests on the finished look before looping.
 ///
 /// Without it an in-animation would restart the instant its last glyph

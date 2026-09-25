@@ -1169,6 +1169,18 @@ constant.
 visible tile as its `clock`; only the active category is built, so switching tabs does not leave
 twenty animations running. A `Ticker` per tile would mean twenty tickers.
 
+**The clock holds still while its grid scrolls** (`holdPreviewClockWhileScrolling`, both the
+templates grid and the animation tab; **awaiting device verification**). Device-reported: the
+templates sheet scrolled rough and felt hard to move. Measured before changing anything: every
+tile redoes its text layout and casts its shadow into an offscreen layer per letter on each tick
+— ~12ms of UI work a frame for the catalog on a desktop CPU (0.2ms for a plain text), several
+times that on the phone, plus ~50 offscreen layers — and that took the frames the scroll needed.
+Held on scroll start and resumed on scroll end, a tile is a picture the scroll only moves. **A
+grid replaced mid-scroll never reports the scroll's end**, so the animation tab, whose grid is
+keyed by category, restarts the clock on a category switch or every tile would stay frozen. The
+templates grid also took the platform's clamping physics where its neighbours bounce; it bounces
+now.
+
 **The slider is Speed, not seconds.** It writes the multiplier the model has held since Stage 2
 (`animationInDuration`/`animationOutDuration`, and `loopSpeed` for the Loop tab), labelled `1.4×`.
 `saveStateForUndo()` fires on drag start and `updateTextOverlayLive` per change, so a drag is one

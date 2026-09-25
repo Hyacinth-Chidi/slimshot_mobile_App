@@ -128,37 +128,42 @@ class _TextAnimationPanelState extends State<TextAnimationPanel>
         if (selected != null) _speedRow(),
         const SizedBox(height: 8),
         Expanded(
-          child: GridView.builder(
-            // Keyed by category so each tab gets its own scroll position and
-            // opens at the top. Without it the grid is one widget reused
-            // across the three lists, and switching to a shorter category
-            // inherits the taller one's offset — the tab opens part-way down,
-            // with None scrolled off.
-            key: ValueKey(_category),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            physics: const BouncingScrollPhysics(),
-            // Three to a row, the templates' own layout — see
-            // [kTextPreviewGrid].
-            gridDelegate: kTextPreviewGrid,
-            // The leading None tile clears the slot, so every category has a
-            // way back to no animation.
-            itemCount: animations.length + 1,
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return _noneTile(isSelected: selected == null);
-              }
-              final animation = animations[index - 1];
-              return TextAnimationTile(
-                key: ValueKey('${_category.name}-${animation.id}'),
-                animation: animation,
-                overlay: widget.overlay,
-                isSelected: selected == animation.id,
-                onTap: () => widget.onSelect(_category, animation.id),
-                // Only the visible category's tiles are built at all, so
-                // switching tabs cannot leave twenty animations running.
-                clock: _clock,
-              );
-            },
+          // Still while it scrolls — see [holdPreviewClockWhileScrolling].
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) =>
+                mounted && holdPreviewClockWhileScrolling(notification, _clock),
+            child: GridView.builder(
+              // Keyed by category so each tab gets its own scroll position and
+              // opens at the top. Without it the grid is one widget reused
+              // across the three lists, and switching to a shorter category
+              // inherits the taller one's offset — the tab opens part-way down,
+              // with None scrolled off.
+              key: ValueKey(_category),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              physics: const BouncingScrollPhysics(),
+              // Three to a row, the templates' own layout — see
+              // [kTextPreviewGrid].
+              gridDelegate: kTextPreviewGrid,
+              // The leading None tile clears the slot, so every category has a
+              // way back to no animation.
+              itemCount: animations.length + 1,
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return _noneTile(isSelected: selected == null);
+                }
+                final animation = animations[index - 1];
+                return TextAnimationTile(
+                  key: ValueKey('${_category.name}-${animation.id}'),
+                  animation: animation,
+                  overlay: widget.overlay,
+                  isSelected: selected == animation.id,
+                  onTap: () => widget.onSelect(_category, animation.id),
+                  // Only the visible category's tiles are built at all, so
+                  // switching tabs cannot leave twenty animations running.
+                  clock: _clock,
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -273,7 +278,13 @@ class _TextAnimationPanelState extends State<TextAnimationPanel>
   Widget _categoryButton(String label, TextAnimationCategory category) {
     final isActive = _category == category;
     return GestureDetector(
-      onTap: () => setState(() => _category = category),
+      onTap: () => setState(() {
+        _category = category;
+        // The grid is keyed by category, so this replaces the scrollable; one
+        // replaced mid-scroll never reports the scroll's end, and the clock
+        // it held would stay held — every tile frozen.
+        if (!_clock.isAnimating) _clock.repeat();
+      }),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         alignment: Alignment.center,

@@ -52,7 +52,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   }
 
-  Future<List<TextTemplate>> pumpSheet(WidgetTester tester) async {
+  Future<List<TextTemplate>> pumpSheet(
+    WidgetTester tester, [
+    List<TextTemplate> list = templates,
+  ]) async {
     final chosen = <TextTemplate>[];
     await tester.pumpWidget(
       MaterialApp(
@@ -62,7 +65,7 @@ void main() {
               onPressed: () => showEditorSheet<void>(
                 context,
                 builder: (_) => TextTemplatesSheet(
-                  templates: templates,
+                  templates: list,
                   onTemplateSelected: chosen.add,
                 ),
               ),
@@ -88,6 +91,71 @@ void main() {
     await pumpSheet(tester);
     final grid = tester.widget<GridView>(find.byType(GridView));
     expect(grid.gridDelegate, same(kTextPreviewGrid));
+  });
+
+  testWidgets('scrolls with the bouncing physics the other tile grids use',
+      (tester) async {
+    // The animation tab and the effects grid bounce; this grid took the
+    // platform's clamping default and stopped dead at its ends, which read
+    // as the one grid that was hard to scroll.
+    await pumpSheet(tester);
+    final grid = tester.widget<GridView>(find.byType(GridView));
+    expect(grid.physics, isA<BouncingScrollPhysics>());
+  });
+
+  testWidgets('the tiles hold still while the grid scrolls, and play again '
+      'after', (tester) async {
+    // Every tile redoes its text layout and its shadow layers on each tick
+    // of the shared clock — measured at ~12ms a frame for the catalog on a
+    // desktop CPU, several times that on a phone — and that load took the
+    // frames the scroll needed. While the grid moves, nothing in it animates.
+    final many = [
+      for (var i = 0; i < 12; i++)
+        TextTemplate(
+          id: 't$i',
+          name: 'T$i',
+          sampleText: 'T$i',
+          fontFamily: kTestFontFamily,
+          inAnimation: 'fade_in',
+          loopAnimation: 'wave_loop',
+        ),
+    ];
+    await pumpSheet(tester, many);
+    double playhead() => tester
+        .widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byType(TextTemplateTile).first,
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .map((p) => p.painter)
+        .whereType<TextOverlayPainter>()
+        .first
+        .positionSeconds;
+
+    final before = playhead();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(playhead(), isNot(before), reason: 'the tiles play at rest');
+
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.byType(GridView)));
+    await gesture.moveBy(const Offset(0, -40));
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.moveBy(const Offset(0, -30));
+    await tester.pump(const Duration(milliseconds: 50));
+    final held = playhead();
+    await gesture.moveBy(const Offset(0, -30));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(playhead(), held, reason: 'held while the finger scrolls');
+
+    await gesture.up();
+    // Past the fling and any bounce, frame by frame.
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final settled = playhead();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(playhead(), isNot(settled), reason: 'playing again once it stops');
   });
 
   testWidgets('offers one tile per template', (tester) async {

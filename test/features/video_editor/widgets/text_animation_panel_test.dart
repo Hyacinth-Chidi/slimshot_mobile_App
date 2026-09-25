@@ -4,6 +4,7 @@ import 'package:slimshotai/features/video_editor/logic/text_animation_catalog.da
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_animation_panel.dart';
 import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_animation_tile.dart';
+import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_overlay_painter.dart';
 import 'package:slimshotai/features/video_editor/widgets/text_overlay/text_preview_tile.dart';
 
 import '../../../support/test_fonts.dart';
@@ -106,6 +107,89 @@ void main() {
     final grid = tester.widget<GridView>(find.byType(GridView));
     expect(grid.gridDelegate, same(kTextPreviewGrid));
     expect(kTextPreviewGrid.crossAxisCount, 3);
+  });
+
+  testWidgets('the tiles hold still while the grid scrolls, and play again '
+      'after', (tester) async {
+    // The same load as the templates grid: once a text wears a shadowed
+    // template, every tile here carries per-letter shadow layers too.
+    await pumpPanel(
+      tester,
+      overlay: TextOverlayModel(
+        id: 'overlay-1',
+        text: 'Hello',
+        fontFamily: kTestFontFamily,
+        shadowColor: Colors.black,
+        referenceCanvasSize: const Size(400, 700),
+      ),
+    );
+    double playhead() => tester
+        .widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byType(TextAnimationTile).first,
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .map((p) => p.painter)
+        .whereType<TextOverlayPainter>()
+        .first
+        .positionSeconds;
+
+    final before = playhead();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(playhead(), isNot(before), reason: 'the tiles play at rest');
+
+    final gesture =
+        await tester.startGesture(tester.getCenter(find.byType(GridView)));
+    await gesture.moveBy(const Offset(0, -40));
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.moveBy(const Offset(0, -30));
+    await tester.pump(const Duration(milliseconds: 50));
+    final held = playhead();
+    await gesture.moveBy(const Offset(0, -30));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(playhead(), held, reason: 'held while the finger scrolls');
+
+    await gesture.up();
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final settled = playhead();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(playhead(), isNot(settled), reason: 'playing again once it stops');
+  });
+
+  testWidgets('switching category mid-scroll leaves the tiles playing',
+      (tester) async {
+    // The grid is keyed by category, so a switch replaces the scrollable —
+    // and one that is disposed mid-scroll never reports the scroll's end,
+    // which would leave the clock held and every tile frozen.
+    await pumpPanel(tester, overlay: overlayWith());
+    double playhead() => tester
+        .widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byType(TextAnimationTile).first,
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .map((p) => p.painter)
+        .whereType<TextOverlayPainter>()
+        .first
+        .positionSeconds;
+
+    final scroll =
+        await tester.startGesture(tester.getCenter(find.byType(GridView)));
+    await scroll.moveBy(const Offset(0, -40));
+    await tester.pump(const Duration(milliseconds: 50));
+    await scroll.moveBy(const Offset(0, -30));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await openTab(tester, 'Out');
+    await scroll.up();
+    await tester.pump(const Duration(milliseconds: 100));
+    final after = playhead();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(playhead(), isNot(after), reason: 'the new tab plays');
   });
 
   testWidgets('offers three categories', (tester) async {
