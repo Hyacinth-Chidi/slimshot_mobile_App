@@ -1,4 +1,6 @@
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
@@ -23,6 +25,9 @@ class VideoOverlayLayer extends ConsumerStatefulWidget {
 }
 
 class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
+  /// The square the content is fitted into, in canvas pixels.
+  static const double _kContentBox = 240.0;
+
   /// Gesture state only — this layer no longer plays or draws anything.
   ///
   /// **Both the preview and the export now draw video overlays through
@@ -171,67 +176,79 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
       Widget videoWidget = OverlayContentBox(
         path: overlay.videoPath,
         isVideo: true,
-        box: 240,
+        box: _kContentBox,
       );
 
       final centerX = (canvasSize.width / 2) + clampedPosition.dx + animOffset.dx;
       final centerY = (canvasSize.height / 2) + clampedPosition.dy + animOffset.dy;
 
+      // **Every RenderBox gates hit-testing on its own size, and a Transform
+      // does not change its child's.** The detector used to wrap the
+      // transforms and so kept the unscaled box: scaled past about 1.4x, the
+      // corner handles and the outer band of the picture lay outside it and
+      // could not be touched. The transforms now sit inside a square that
+      // holds the scaled box at any rotation, and the detector inside them,
+      // on the real box — the text layer's structure, for the same reason.
+      final drawnScale = shown.scale * animScale;
+      final extent = (_kContentBox + 2 * padXY) *
+          math.max(1.0, drawnScale) *
+          math.sqrt2;
       children.add(Positioned(
-        left: centerX,
-        top: centerY,
-        child: FractionalTranslation(
-          translation: const Offset(-0.5, -0.5),
-          child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: () => onOverlayTapped(overlay.id),
-              onScaleStart: (details) {
-                if (!isSelected) return;
-                // Pauses and takes the one undo snapshot the whole gesture
-                // shares; the frames in between write with none.
-                ref.read(videoEditorProvider.notifier).beginOverlayEdit();
-                // Anchored on where the overlay is drawn — the value the write
-                // will land on — never on its stored base, which a keyframed
-                // overlay is not at.
-                final state = ref.read(videoEditorProvider);
-                _basePan = Offset(
-                  state.overlayEditValue(OverlayProperty.x),
-                  state.overlayEditValue(OverlayProperty.y),
-                );
-                _baseFocalPoint = details.focalPoint;
-                _baseScale = state.overlayEditValue(OverlayProperty.scale);
-                _baseRotation = state.overlayEditValue(OverlayProperty.rotation);
-                setState(() => _movingId = overlay.id);
-              },
-              onScaleEnd: (_) {
-                if (_movingId != null) setState(() => _movingId = null);
-              },
-              onScaleUpdate: (details) {
-                if (!isSelected) return;
-                final movedPosition =
-                    _basePan + (details.focalPoint - _baseFocalPoint);
-                // Scale and rotation only when a second finger gives them; a
-                // one-finger move has nothing to say about either.
-                final pinching = details.pointerCount > 1;
-                // Through the edit rule: a base value on an overlay with no
-                // diamonds, the diamond under the playhead on one with them.
-                ref.read(videoEditorProvider.notifier).setOverlayMotionLive(
-                  id: overlay.id,
-                  position: _clampPosition(
-                    overlay,
-                    movedPosition,
-                    canvasSize: canvasSize,
-                  ),
-                  scale: pinching
-                      ? (_baseScale * details.scale).clamp(0.1, 10.0).toDouble()
-                      : null,
-                  rotation: pinching ? _baseRotation + details.rotation : null,
-                );
-              },
-              child: Transform.scale(
-                scale: shown.scale * animScale,
-                child: Transform.rotate(
-                  angle: shown.rotation,
+        left: centerX - extent / 2,
+        top: centerY - extent / 2,
+        width: extent,
+        height: extent,
+        child: Transform.scale(
+          scale: drawnScale,
+          child: Transform.rotate(
+            angle: shown.rotation,
+            child: Center(
+              child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => onOverlayTapped(overlay.id),
+                  onScaleStart: (details) {
+                    if (!isSelected) return;
+                    // Pauses and takes the one undo snapshot the whole gesture
+                    // shares; the frames in between write with none.
+                    ref.read(videoEditorProvider.notifier).beginOverlayEdit();
+                    // Anchored on where the overlay is drawn — the value the write
+                    // will land on — never on its stored base, which a keyframed
+                    // overlay is not at.
+                    final state = ref.read(videoEditorProvider);
+                    _basePan = Offset(
+                      state.overlayEditValue(OverlayProperty.x),
+                      state.overlayEditValue(OverlayProperty.y),
+                    );
+                    _baseFocalPoint = details.focalPoint;
+                    _baseScale = state.overlayEditValue(OverlayProperty.scale);
+                    _baseRotation = state.overlayEditValue(OverlayProperty.rotation);
+                    setState(() => _movingId = overlay.id);
+                  },
+                  onScaleEnd: (_) {
+                    if (_movingId != null) setState(() => _movingId = null);
+                  },
+                  onScaleUpdate: (details) {
+                    if (!isSelected) return;
+                    final movedPosition =
+                        _basePan + (details.focalPoint - _baseFocalPoint);
+                    // Scale and rotation only when a second finger gives them; a
+                    // one-finger move has nothing to say about either.
+                    final pinching = details.pointerCount > 1;
+                    // Through the edit rule: a base value on an overlay with no
+                    // diamonds, the diamond under the playhead on one with them.
+                    ref.read(videoEditorProvider.notifier).setOverlayMotionLive(
+                      id: overlay.id,
+                      position: _clampPosition(
+                        overlay,
+                        movedPosition,
+                        canvasSize: canvasSize,
+                      ),
+                      scale: pinching
+                          ? (_baseScale * details.scale).clamp(0.1, 10.0).toDouble()
+                          : null,
+                      rotation: pinching ? _baseRotation + details.rotation : null,
+                    );
+                  },
                   child: Stack(
                     clipBehavior: Clip.none,
                     alignment: Alignment.center,
