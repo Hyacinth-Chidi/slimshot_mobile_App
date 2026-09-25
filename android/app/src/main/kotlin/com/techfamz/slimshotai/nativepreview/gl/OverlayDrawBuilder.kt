@@ -250,7 +250,7 @@ internal class OverlayDrawBuilder(
         t: Double,
         timing: TextAnimationTiming?,
     ): NativeTimelineOverlay.FrameState {
-        if (timing != null && timing.isActive) return overlay.restingState()
+        if (timing != null && timing.isActive) return overlay.restingStateAt(t)
         return overlay.stateAt(t)
     }
 
@@ -508,12 +508,15 @@ internal class OverlayDrawBuilder(
             textureId = textureId,
             isExternal = isExternal,
             contentAspect = if (contentAspect > 0.0) contentAspect else 1.0,
-            centerX = overlay.centerX + state.offsetX,
-            centerY = overlay.centerY + state.offsetY,
+            // Everything placed is read from the frame state, where the
+            // keyframes were resolved for this instant — never from the
+            // overlay, whose fields are tracks, not values.
+            centerX = state.centerX + state.offsetX,
+            centerY = state.centerY + state.offsetY,
             boxWidth = overlay.boxWidth,
             boxHeight = overlay.boxHeight,
             scale = state.scale,
-            rotation = overlay.rotation,
+            rotation = state.rotation,
             opacity = state.opacity,
             texMatrix = texMatrix,
             mask = overlay.mask,

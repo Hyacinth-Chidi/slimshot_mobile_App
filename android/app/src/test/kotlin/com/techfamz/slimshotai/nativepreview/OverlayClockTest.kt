@@ -118,6 +118,36 @@ class OverlayClockTest {
     }
 
     @Test
+    fun `a keyframed overlay is a new picture whenever the clock moves inside it`() {
+        // Its placement is a function of the playhead, so every step of the
+        // clock inside its span moves it — at rest or not, over a still photo
+        // clip where nothing else would ask for a draw.
+        val keyframed = NativeTimelineOverlay.fromMap(
+            mapOf(
+                "id" to "k",
+                "kind" to "image",
+                "path" to "/p.png",
+                "startSeconds" to 2.0,
+                "endSeconds" to 8.0,
+                "centerX" to mapOf(
+                    "baseValue" to 0.5,
+                    "keyframes" to listOf(
+                        mapOf("progress" to 0.0, "value" to 0.2),
+                        mapOf("progress" to 1.0, "value" to 0.8),
+                    ),
+                ),
+            ),
+        )!!
+        val list = listOf(keyframed)
+        assertTrue(OverlayClock.needsRedraw(list, 4.0, 4.016))
+        assertTrue("a scrub backwards", OverlayClock.needsRedraw(list, 5.0, 3.0))
+        assertFalse("a clock that has not moved", OverlayClock.needsRedraw(list, 4.0, 4.0))
+        assertFalse("off screen", OverlayClock.needsRedraw(list, 9.0, 9.5))
+        // An overlay with no keyframes still asks for nothing mid-span.
+        assertFalse(OverlayClock.needsRedraw(listOf(overlay()), 4.0, 4.016))
+    }
+
+    @Test
     fun `stepping forward a frame never seeks the overlay's decoder`() {
         // A seek flushes the codec; doing it on ordinary playback would be the
         // decoder-flush storm of dead-ends entry 11 in a third place.

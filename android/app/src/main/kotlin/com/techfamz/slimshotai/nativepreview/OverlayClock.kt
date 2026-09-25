@@ -17,8 +17,8 @@ internal object OverlayClock {
      * still over 30fps video, and keep the GPU awake over a paused photo —
      * which is the opposite of why overlays moved off the widget layer. A
      * redraw is owed only where the drawn result actually changes: the instant
-     * an overlay appears or disappears, and every step inside an animation
-     * window.
+     * an overlay appears or disappears, every step inside an animation
+     * window, and every step at all over an overlay with keyframes.
      *
      * Order-free on purpose: a scrub runs the playhead backwards, and a
      * crossing is a crossing in either direction.
@@ -44,6 +44,10 @@ internal object OverlayClock {
             // without this its footage would freeze; a scrub backwards is a
             // new frame too.
             if (overlay.isVideo && previous != now) return true
+
+            // A keyframed overlay's placement is a function of the clock, so
+            // it moves on every step inside its span — at rest or not.
+            if (overlay.hasKeyframes && previous != now) return true
 
             // Inside an animation window the overlay is different every frame.
             //

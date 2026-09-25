@@ -1,0 +1,413 @@
+{
+  "overlays": [
+    {
+      "wire": {
+        "id": "everything",
+        "kind": "image",
+        "path": "/a.png",
+        "centerX": {
+          "baseValue": 0.5277777777777778,
+          "keyframes": [
+            {
+              "progress": 0.0,
+              "value": 0.33333333333333337,
+              "interpolation": "cubicInOut"
+            },
+            {
+              "progress": 1.0,
+              "value": 0.75,
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "centerY": {
+          "baseValue": 0.53125,
+          "keyframes": [
+            {
+              "progress": 0.1,
+              "value": 0.5625,
+              "interpolation": "quadOut"
+            },
+            {
+              "progress": 0.6,
+              "value": 0.3125,
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "boxWidth": 0.5555555555555556,
+        "boxHeight": 0.3125,
+        "scale": {
+          "baseValue": 1.2,
+          "keyframes": [
+            {
+              "progress": 0.0,
+              "value": 0.5,
+              "interpolation": "linear"
+            },
+            {
+              "progress": 0.5,
+              "value": 2.0,
+              "interpolation": "bounceOut"
+            },
+            {
+              "progress": 1.0,
+              "value": 1.0,
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "rotation": {
+          "baseValue": 0.1,
+          "keyframes": [
+            {
+              "progress": 0.25,
+              "value": -0.4,
+              "interpolation": "linear"
+            },
+            {
+              "progress": 0.9,
+              "value": 1.1,
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "opacity": {
+          "baseValue": 0.9,
+          "keyframes": [
+            {
+              "progress": 0.0,
+              "value": 0.2,
+              "interpolation": "linear"
+            },
+            {
+              "progress": 1.0,
+              "value": 1.0,
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "startSeconds": 1.25,
+        "endSeconds": 5.75,
+        "laneIndex": 0,
+        "slideOffsetX": 0.5555555555555556,
+        "slideOffsetY": 0.3125,
+        "animationIn": null,
+        "animationOut": null,
+        "animationLoop": null,
+        "animationInSeconds": 0.5,
+        "animationOutSeconds": 0.5,
+        "speedIn": 1.0,
+        "speedOut": 1.0,
+        "speedLoop": 1.0,
+        "sourceStart": 0.0,
+        "sourceEnd": 0.0,
+        "speed": 1.0,
+        "volume": 1.0,
+        "isMuted": false,
+        "glyphs": null,
+        "backgroundLeft": 0.0,
+        "backgroundTop": 0.0,
+        "backgroundRight": 0.0,
+        "backgroundBottom": 0.0,
+        "backgroundRadius": 0.0
+      },
+      "samples": [
+        {
+          "progress": 0.0,
+          "centerX": 0.33333333333333337,
+          "centerY": 0.5625,
+          "scale": 0.5,
+          "rotation": -0.4,
+          "opacity": 0.2
+        },
+        {
+          "progress": 0.1,
+          "centerX": 0.335,
+          "centerY": 0.5625,
+          "scale": 0.8,
+          "rotation": -0.4,
+          "opacity": 0.28
+        },
+        {
+          "progress": 0.25,
+          "centerX": 0.35937500000000006,
+          "centerY": 0.435,
+          "scale": 1.25,
+          "rotation": -0.4,
+          "opacity": 0.4
+        },
+        {
+          "progress": 0.5,
+          "centerX": 0.5416666666666667,
+          "centerY": 0.3225,
+          "scale": 2.0,
+          "rotation": 0.17692307692307685,
+          "opacity": 0.6000000000000001
+        },
+        {
+          "progress": 0.6,
+          "centerX": 0.6433333333333333,
+          "centerY": 0.3125,
+          "scale": 1.6975000000000002,
+          "rotation": 0.4076923076923077,
+          "opacity": 0.6799999999999999
+        },
+        {
+          "progress": 0.9,
+          "centerX": 0.7483333333333333,
+          "centerY": 0.3125,
+          "scale": 1.06,
+          "rotation": 1.1,
+          "opacity": 0.9200000000000002
+        },
+        {
+          "progress": 1.0,
+          "centerX": 0.75,
+          "centerY": 0.3125,
+          "scale": 1.0,
+          "rotation": 1.1,
+          "opacity": 1.0
+        }
+      ]
+    },
+    {
+      "wire": {
+        "id": "single",
+        "kind": "image",
+        "path": "/c.png",
+        "centerX": 0.3888888888888889,
+        "centerY": {
+          "baseValue": 0.5,
+          "keyframes": [
+            {
+              "progress": 0.4,
+              "value": 0.625,
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "boxWidth": 0.5555555555555556,
+        "boxHeight": 0.3125,
+        "scale": {
+          "baseValue": 1.0,
+          "keyframes": [
+            {
+              "progress": 0.4,
+              "value": 1.75,
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "rotation": 0.0,
+        "opacity": 1.0,
+        "startSeconds": 0.0,
+        "endSeconds": 2.0,
+        "laneIndex": 1,
+        "slideOffsetX": 0.5555555555555556,
+        "slideOffsetY": 0.3125,
+        "animationIn": null,
+        "animationOut": null,
+        "animationLoop": null,
+        "animationInSeconds": 0.5,
+        "animationOutSeconds": 0.5,
+        "speedIn": 1.0,
+        "speedOut": 1.0,
+        "speedLoop": 1.0,
+        "sourceStart": 0.0,
+        "sourceEnd": 0.0,
+        "speed": 1.0,
+        "volume": 1.0,
+        "isMuted": false,
+        "glyphs": null,
+        "backgroundLeft": 0.0,
+        "backgroundTop": 0.0,
+        "backgroundRight": 0.0,
+        "backgroundBottom": 0.0,
+        "backgroundRadius": 0.0
+      },
+      "samples": [
+        {
+          "progress": 0.0,
+          "centerX": 0.3888888888888889,
+          "centerY": 0.625,
+          "scale": 1.75,
+          "rotation": 0.0,
+          "opacity": 1.0
+        },
+        {
+          "progress": 0.1,
+          "centerX": 0.3888888888888889,
+          "centerY": 0.625,
+          "scale": 1.75,
+          "rotation": 0.0,
+          "opacity": 1.0
+        },
+        {
+          "progress": 0.25,
+          "centerX": 0.3888888888888889,
+          "centerY": 0.625,
+          "scale": 1.75,
+          "rotation": 0.0,
+          "opacity": 1.0
+        },
+        {
+          "progress": 0.5,
+          "centerX": 0.3888888888888889,
+          "centerY": 0.625,
+          "scale": 1.75,
+          "rotation": 0.0,
+          "opacity": 1.0
+        },
+        {
+          "progress": 0.6,
+          "centerX": 0.3888888888888889,
+          "centerY": 0.625,
+          "scale": 1.75,
+          "rotation": 0.0,
+          "opacity": 1.0
+        },
+        {
+          "progress": 0.9,
+          "centerX": 0.3888888888888889,
+          "centerY": 0.625,
+          "scale": 1.75,
+          "rotation": 0.0,
+          "opacity": 1.0
+        },
+        {
+          "progress": 1.0,
+          "centerX": 0.3888888888888889,
+          "centerY": 0.625,
+          "scale": 1.75,
+          "rotation": 0.0,
+          "opacity": 1.0
+        }
+      ]
+    },
+    {
+      "wire": {
+        "id": "partial",
+        "kind": "video",
+        "path": "/b.mp4",
+        "centerX": {
+          "baseValue": 0.4583333333333333,
+          "keyframes": [
+            {
+              "progress": 0.5,
+              "value": 0.5694444444444444,
+              "interpolation": "linear"
+            },
+            {
+              "progress": 0.9,
+              "value": 0.4027777777777778,
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "centerY": 0.5546875,
+        "boxWidth": 0.6666666666666666,
+        "boxHeight": 0.375,
+        "scale": 0.8,
+        "rotation": -0.25,
+        "opacity": {
+          "baseValue": 0.7,
+          "keyframes": [
+            {
+              "progress": 0.25,
+              "value": 1.0,
+              "interpolation": "hold"
+            },
+            {
+              "progress": 0.6,
+              "value": 0.3,
+              "interpolation": "linear"
+            }
+          ]
+        },
+        "startSeconds": 3.0,
+        "endSeconds": 9.5,
+        "laneIndex": 2,
+        "slideOffsetX": 0.5555555555555556,
+        "slideOffsetY": 0.3125,
+        "animationIn": null,
+        "animationOut": null,
+        "animationLoop": null,
+        "animationInSeconds": 0.5,
+        "animationOutSeconds": 0.5,
+        "speedIn": 1.0,
+        "speedOut": 1.0,
+        "speedLoop": 1.0,
+        "sourceStart": 2.0,
+        "sourceEnd": 12.0,
+        "speed": 1.0,
+        "volume": 1.0,
+        "isMuted": false,
+        "glyphs": null,
+        "backgroundLeft": 0.0,
+        "backgroundTop": 0.0,
+        "backgroundRight": 0.0,
+        "backgroundBottom": 0.0,
+        "backgroundRadius": 0.0
+      },
+      "samples": [
+        {
+          "progress": 0.0,
+          "centerX": 0.5694444444444444,
+          "centerY": 0.5546875,
+          "scale": 0.8,
+          "rotation": -0.25,
+          "opacity": 1.0
+        },
+        {
+          "progress": 0.1,
+          "centerX": 0.5694444444444444,
+          "centerY": 0.5546875,
+          "scale": 0.8,
+          "rotation": -0.25,
+          "opacity": 1.0
+        },
+        {
+          "progress": 0.25,
+          "centerX": 0.5694444444444444,
+          "centerY": 0.5546875,
+          "scale": 0.8,
+          "rotation": -0.25,
+          "opacity": 1.0
+        },
+        {
+          "progress": 0.5,
+          "centerX": 0.5694444444444444,
+          "centerY": 0.5546875,
+          "scale": 0.8,
+          "rotation": -0.25,
+          "opacity": 1.0
+        },
+        {
+          "progress": 0.6,
+          "centerX": 0.5277777777777778,
+          "centerY": 0.5546875,
+          "scale": 0.8,
+          "rotation": -0.25,
+          "opacity": 0.3
+        },
+        {
+          "progress": 0.9,
+          "centerX": 0.4027777777777778,
+          "centerY": 0.5546875,
+          "scale": 0.8,
+          "rotation": -0.25,
+          "opacity": 0.3
+        },
+        {
+          "progress": 1.0,
+          "centerX": 0.4027777777777778,
+          "centerY": 0.5546875,
+          "scale": 0.8,
+          "rotation": -0.25,
+          "opacity": 0.3
+        }
+      ]
+    }
+  ]
+}

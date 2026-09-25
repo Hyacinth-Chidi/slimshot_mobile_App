@@ -46,21 +46,29 @@ internal data class NativeTimelineGlyph(
  * arithmetic in `image_overlay_layer.dart`. Export calls it with the output
  * clock, so an overlay fades and slides identically however fast the export
  * runs. If the Flutter layer's curves change, this must change with them.
+ *
+ * **Placement is keyframable.** [centerX], [centerY], [scale], [rotation] and
+ * [opacity] are [AnimatableDouble]s over the overlay's own 0..1 span
+ * ([progressAt]): a bare number on the wire while nothing is keyframed, a
+ * keyframe map once something is. The keyframes are resolved first and the
+ * preset animations applied on top, so a fade in on a keyframed opacity fades
+ * in to wherever the keyframes have taken it.
  */
 internal data class NativeTimelineOverlay(
     val id: String,
     /** `image`, `video`, or `text`. */
     val kind: String,
     val path: String,
-    val centerX: Double,
-    val centerY: Double,
+    /** The centre, as canvas fractions. */
+    val centerX: AnimatableDouble,
+    val centerY: AnimatableDouble,
     /** The fit box, as fractions of canvas width/height (a square in pixels). */
     val boxWidth: Double,
     val boxHeight: Double,
-    val scale: Double,
+    val scale: AnimatableDouble,
     /** Radians, clockwise, about the overlay's centre. */
-    val rotation: Double,
-    val opacity: Double,
+    val rotation: AnimatableDouble,
+    val opacity: AnimatableDouble,
     val startSeconds: Double,
     val endSeconds: Double,
     /** Draw order — higher lanes paint on top. */
@@ -149,6 +157,26 @@ internal data class NativeTimelineOverlay(
     val isVideo: Boolean get() = kind == "video"
 
     /**
+     * Whether any placement property is keyframed — the overlay then moves on
+     * every step of the clock inside its span. Worked out once: the preview
+     * asks it on every tick.
+     */
+    val hasKeyframes: Boolean = centerX.isAnimated || centerY.isAnimated ||
+        scale.isAnimated || rotation.isAnimated || opacity.isAnimated
+
+    /**
+     * How far [timelineSeconds] is through the overlay's span, 0..1 — where
+     * its keyframes are placed. Overlay-relative, as the Dart
+     * `overlayProgressAt` is, so trimming an overlay stretches its motion with
+     * it. A span of zero or less is progress 0, never a division by zero.
+     */
+    fun progressAt(timelineSeconds: Double): Double {
+        val span = endSeconds - startSeconds
+        if (span <= 0.0) return 0.0
+        return ((timelineSeconds - startSeconds) / span).coerceIn(0.0, 1.0)
+    }
+
+    /**
      * A text overlay with glyphs to draw. A `text` overlay that arrived without
      * them (the atlas exceeded the texture limit) falls back to the plain image
      * path, which is why this checks both.
@@ -178,32 +206,50 @@ internal data class NativeTimelineOverlay(
     /** The gain this overlay's sound is mixed at: zero once muted. */
     val effectiveVolume: Double get() = if (isMuted) 0.0 else volume.coerceIn(0.0, 1.0)
 
-    /** What the animations do to this overlay at one instant. */
+    /** Where this overlay is, and what the animations do to it, at one instant. */
     data class FrameState(
         val opacity: Double,
         val scale: Double,
-        /** Canvas-fraction displacement of the centre. */
+        /** Canvas-fraction displacement of the centre, from a preset slide. */
         val offsetX: Double,
         val offsetY: Double,
+        /** The centre before any preset slide: keyframed, resolved here. */
+        val centerX: Double,
+        val centerY: Double,
+        /** Radians: keyframed, resolved here. */
+        val rotation: Double,
     )
 
     /**
-     * The overlay with **no animation applied** — its authored opacity, scale
-     * and position.
+     * The overlay at [timelineSeconds] with its keyframes resolved and **no
+     * preset animation** applied.
      *
      * A text overlay whose glyphs carry their own animated state uses this
      * instead of [stateAt]: both read the same `animationIn`/`animationOut`
-     * ids, so applying the box-level curve as well would animate the text twice.
+     * ids, so applying the box-level curve as well would animate the text
+     * twice. Keyframes are not a preset — they are where the text *is* — so
+     * they apply here as everywhere.
+     *
+     * The clamps sit on the **resolved** values, not the parse: a keyframe
+     * moves the value after `fromMap` has run, and a hand-edited draft can put
+     * anything in one.
      */
-    fun restingState(): FrameState = FrameState(
-        opacity = opacity.coerceIn(0.0, 1.0),
-        scale = scale.coerceAtLeast(0.0),
-        offsetX = 0.0,
-        offsetY = 0.0,
-    )
+    fun restingStateAt(timelineSeconds: Double): FrameState {
+        val p = progressAt(timelineSeconds)
+        return FrameState(
+            opacity = opacity.resolveAt(p).coerceIn(0.0, 1.0),
+            scale = scale.resolveAt(p).coerceAtLeast(0.0),
+            offsetX = 0.0,
+            offsetY = 0.0,
+            centerX = centerX.resolveAt(p),
+            centerY = centerY.resolveAt(p),
+            rotation = rotation.resolveAt(p),
+        )
+    }
 
     /**
-     * Animation state at [timelineSeconds].
+     * Animation state at [timelineSeconds]: the keyframes resolved
+     * ([restingStateAt]), then the preset animations on top.
      *
      * The multipliers compose exactly as the Flutter layer composes them: the
      * in-animation runs over the first [animationInSeconds] of the overlay's
@@ -211,8 +257,9 @@ internal data class NativeTimelineOverlay(
      * be live at once on a very short overlay.
      */
     fun stateAt(timelineSeconds: Double): FrameState {
+        val resting = restingStateAt(timelineSeconds)
         var animScale = 1.0
-        var animOpacity = opacity
+        var animOpacity = resting.opacity
         var offsetX = 0.0
         var offsetY = 0.0
 
@@ -248,9 +295,9 @@ internal data class NativeTimelineOverlay(
             }
         }
 
-        return FrameState(
+        return resting.copy(
             opacity = animOpacity.coerceIn(0.0, 1.0),
-            scale = (scale * animScale).coerceAtLeast(0.0),
+            scale = (resting.scale * animScale).coerceAtLeast(0.0),
             offsetX = offsetX,
             offsetY = offsetY,
         )
@@ -293,13 +340,15 @@ internal data class NativeTimelineOverlay(
                 id = id,
                 kind = kind,
                 path = path,
-                centerX = map.number("centerX") ?: 0.5,
-                centerY = map.number("centerY") ?: 0.5,
+                // A number or a keyframe map, whichever the composer sent. The
+                // clamps moved to the resolved values — see `restingStateAt`.
+                centerX = AnimatableDouble.fromWire(map["centerX"], 0.5),
+                centerY = AnimatableDouble.fromWire(map["centerY"], 0.5),
                 boxWidth = map.number("boxWidth") ?: 0.25,
                 boxHeight = map.number("boxHeight") ?: 0.25,
-                scale = (map.number("scale") ?: 1.0).coerceAtLeast(0.0),
-                rotation = map.number("rotation") ?: 0.0,
-                opacity = (map.number("opacity") ?: 1.0).coerceIn(0.0, 1.0),
+                scale = AnimatableDouble.fromWire(map["scale"], 1.0),
+                rotation = AnimatableDouble.fromWire(map["rotation"], 0.0),
+                opacity = AnimatableDouble.fromWire(map["opacity"], 1.0),
                 startSeconds = start,
                 endSeconds = end,
                 laneIndex = (map["laneIndex"] as? Number)?.toInt() ?: 0,
