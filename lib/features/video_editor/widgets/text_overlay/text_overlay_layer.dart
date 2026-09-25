@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
+import '../../logic/animation/overlay_keyframes.dart';
 import '../../logic/text_overlay_geometry.dart';
 import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
@@ -28,6 +29,13 @@ import 'text_overlay_painter.dart';
 /// Every drag is anchor-based (start value + total displacement), never a
 /// running sum of deltas — a clamped frame would otherwise leave the handle
 /// offset from the finger, the lesson the timeline's trim handles taught.
+///
+/// **A keyframed text is drawn where its keyframes put it at the playhead**
+/// ([TextOverlayModel.shownAt]), and every gesture anchors on that — the
+/// value its write will land on ([VideoEditorState.overlayEditValue]) — and
+/// writes through the edit rule ([VideoEditorNotifier.setOverlayMotionLive]).
+/// Anchoring on the stored base would jump the text to its base the moment it
+/// was touched.
 class TextOverlayLayer extends ConsumerStatefulWidget {
   final Size videoCanvasSize;
   final void Function(TextOverlayModel, bool) onShowTextEditor;
@@ -70,6 +78,13 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
 
   VideoEditorNotifier get _notifier => ref.read(videoEditorProvider.notifier);
 
+  /// Where the selected text's [property] is, as the next write will see it.
+  double _editValue(OverlayProperty property) =>
+      ref.read(videoEditorProvider).overlayEditValue(property);
+
+  Offset get _editPosition =>
+      Offset(_editValue(OverlayProperty.x), _editValue(OverlayProperty.y));
+
   @override
   Widget build(BuildContext context) {
     final editorState = ref.watch(videoEditorProvider);
@@ -88,13 +103,15 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
       final endMs = overlay.endTime.inMilliseconds;
       if (currentPosMs < startMs || currentPosMs >= endMs) continue;
 
-      final layout = TextOverlayLayout.measure(overlay, canvasSize);
-      final center = textOverlayCenter(overlay, canvasSize, layout.renderScale);
+      // Where its keyframes put it now — the text itself when it has none.
+      final shown = overlay.shownAt(editorState.currentPlaybackPosition);
+      final layout = TextOverlayLayout.measure(shown, canvasSize);
+      final center = textOverlayCenter(shown, canvasSize, layout.renderScale);
       final isSelected = overlay.id == editorState.selectedTextId;
 
       children.add(
         _buildBody(
-          overlay,
+          shown,
           layout,
           center,
           isSelected,
@@ -104,7 +121,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
       if (isSelected) {
         // Built after the loop so it paints above every body, whichever lane
         // the selected text is on.
-        selectedFrame = _buildFrame(overlay, layout, center);
+        selectedFrame = _buildFrame(shown, layout, center);
       }
     }
     if (selectedFrame != null) children.add(selectedFrame);
@@ -114,6 +131,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
 
   // ---------------------------------------------------------------- body --
 
+  /// [overlay] is the text as it is **shown** at the playhead.
   Widget _buildBody(
     TextOverlayModel overlay,
     TextOverlayLayout layout,
@@ -129,7 +147,13 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
     // what the inverse transforms hand the hit test on the way in.
     final side = math.max(scaledDiagonal, math.max(box.width, box.height));
 
-    final content = _textBox(overlay, layout, positionSeconds);
+    // The whole text fades as one — outline, fill, box and shadow together,
+    // as the export's glyph pass multiplies it in. Only below 1: an Opacity
+    // at 1 is a compositing layer paid for nothing.
+    final opacity = overlay.opacity.clamp(0.0, 1.0).toDouble();
+    final painted = _textBox(overlay, layout, positionSeconds);
+    final content =
+        opacity < 1.0 ? Opacity(opacity: opacity, child: painted) : painted;
 
     return Positioned(
       left: center.dx - side / 2,
@@ -162,31 +186,37 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
                 },
                 onScaleStart: (details) {
                   if (!isSelected) _notifier.selectTextOverlay(overlay.id);
-                  _notifier.saveStateForUndo();
-                  _bodyBasePosition = overlay.position;
+                  // Pauses and takes the gesture's one undo snapshot. After
+                  // selecting, so the text is the edit's target.
+                  _notifier.beginOverlayEdit();
+                  _bodyBasePosition = _editPosition;
                   _bodyBaseFocal = details.focalPoint;
-                  _bodyBaseScale = overlay.scale;
-                  _bodyBaseRotation = overlay.rotation;
+                  _bodyBaseScale = _editValue(OverlayProperty.scale);
+                  _bodyBaseRotation = _editValue(OverlayProperty.rotation);
                 },
                 onScaleUpdate: (details) {
                   final renderScale = layout.renderScale;
                   final moved = _bodyBasePosition +
                       (details.focalPoint - _bodyBaseFocal) / renderScale;
-                  final newScale = (_bodyBaseScale * details.scale)
-                      .clamp(kMinTextScale, kMaxTextScale);
-                  final newRotation =
-                      _snapRotation(_bodyBaseRotation + details.rotation);
-                  _notifier.updateTextOverlayLive(
-                    overlay.id,
-                    (o) => o.copyWith(
-                      position: clampTextOverlayPosition(
-                        moved,
-                        widget.videoCanvasSize,
-                        renderScale,
-                      ),
-                      scale: newScale,
-                      rotation: newRotation,
+                  // Scale and rotation only when a second finger gives them:
+                  // a one-finger move writing its unchanged values back would
+                  // still snap a near-straight text to the axis.
+                  final pinching = details.pointerCount > 1;
+                  _notifier.setOverlayMotionLive(
+                    id: overlay.id,
+                    position: clampTextOverlayPosition(
+                      moved,
+                      widget.videoCanvasSize,
+                      renderScale,
                     ),
+                    scale: pinching
+                        ? (_bodyBaseScale * details.scale)
+                            .clamp(kMinTextScale, kMaxTextScale)
+                            .toDouble()
+                        : null,
+                    rotation: pinching
+                        ? _snapRotation(_bodyBaseRotation + details.rotation)
+                        : null,
                   );
                 },
                 child: content,
@@ -305,11 +335,11 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onPanStart: (details) {
-          _notifier.saveStateForUndo();
+          _notifier.beginOverlayEdit();
           _handleCenter = center;
           _handleStartVector = _toLocal(details.globalPosition) - center;
-          _handleBaseScale = overlay.scale;
-          _handleBaseRotation = overlay.rotation;
+          _handleBaseScale = _editValue(OverlayProperty.scale);
+          _handleBaseRotation = _editValue(OverlayProperty.rotation);
         },
         onPanUpdate: (details) {
           final vector = _toLocal(details.globalPosition) - _handleCenter;
@@ -322,9 +352,10 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
                 math.atan2(vector.dy, vector.dx) -
                 math.atan2(_handleStartVector.dy, _handleStartVector.dx),
           );
-          _notifier.updateTextOverlayLive(
-            overlay.id,
-            (o) => o.copyWith(scale: newScale, rotation: newRotation),
+          _notifier.setOverlayMotionLive(
+            id: overlay.id,
+            scale: newScale.toDouble(),
+            rotation: newRotation,
           );
         },
         child: const Center(child: _HandleDisc(icon: LucideIcons.rotateCw, size: 30)),
@@ -346,9 +377,9 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onPanStart: (details) {
-          _notifier.saveStateForUndo();
+          _notifier.beginOverlayEdit();
           _widthBase = layout.boxSize.width / layout.renderScale;
-          _widthBasePosition = overlay.position;
+          _widthBasePosition = _editPosition;
           _widthStartLocal = _toLocal(details.globalPosition);
         },
         onPanUpdate: (details) {
@@ -368,10 +399,13 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
             widget.videoCanvasSize,
             renderScale,
           );
+          // The width is not keyframable; the centre is, so its shift goes
+          // through the edit rule like any other move.
           _notifier.updateTextOverlayLive(
             overlay.id,
-            (o) => o.copyWith(boxWidth: newWidth, position: newPosition),
+            (o) => o.copyWith(boxWidth: newWidth),
           );
+          _notifier.setOverlayMotionLive(id: overlay.id, position: newPosition);
         },
         child: Center(
           child: Transform.rotate(

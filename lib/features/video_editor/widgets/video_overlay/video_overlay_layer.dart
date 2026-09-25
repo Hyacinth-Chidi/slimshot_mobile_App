@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
+import '../../logic/animation/overlay_keyframes.dart';
 import '../../models/video_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../overlay_content_box.dart';
@@ -69,23 +70,22 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
       clipBehavior: Clip.hardEdge,
       children: _buildVideoOverlays(
         widget.videoCanvasSize,
-        (editorState.currentPlaybackPosition * 1000).toInt(),
+        editorState.currentPlaybackPosition,
         editorState.videoOverlays,
         editorState.selectedVideoOverlayId,
         notifier.selectVideoOverlay,
-        notifier.updateVideoOverlayLive,
       ),
     );
   }
 
   List<Widget> _buildVideoOverlays(
     Size canvasSize,
-    int currentPosMs,
+    double positionSeconds,
     List<VideoOverlayModel> videoOverlays,
     String? selectedOverlayId,
     void Function(String?) onOverlayTapped,
-    void Function(String, VideoOverlayModel Function(VideoOverlayModel)) onUpdateOverlay,
   ) {
+    final currentPosMs = (positionSeconds * 1000).toInt();
     var filteredOverlays = videoOverlays;
     if (widget.targetLaneIndex != null) {
       filteredOverlays = filteredOverlays.where((o) => o.laneIndex == widget.targetLaneIndex).toList();
@@ -100,12 +100,16 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
         continue;
       }
 
+      // Where its keyframes put it at the playhead — the overlay itself when
+      // it has none. The box, frame and handles all follow the picture, which
+      // the engine draws from the same keyframes.
+      final shown = overlay.shownAt(positionSeconds);
       final isSelected = overlay.id == selectedOverlayId;
-      final padXY = isSelected ? 64.0 / overlay.scale : 0.0;
-      
+      final padXY = isSelected ? 64.0 / shown.scale : 0.0;
+
       final clampedPosition = _clampPosition(
-        overlay,
-        overlay.position,
+        shown,
+        shown.position,
         canvasSize: canvasSize,
       );
 
@@ -183,13 +187,20 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
               onTap: () => onOverlayTapped(overlay.id),
               onScaleStart: (details) {
                 if (!isSelected) return;
-                // One undo step for the whole gesture; the frames in between
-                // go through the live write, which takes no snapshot.
-                ref.read(videoEditorProvider.notifier).saveStateForUndo();
-                _basePan = overlay.position;
+                // Pauses and takes the one undo snapshot the whole gesture
+                // shares; the frames in between write with none.
+                ref.read(videoEditorProvider.notifier).beginOverlayEdit();
+                // Anchored on where the overlay is drawn — the value the write
+                // will land on — never on its stored base, which a keyframed
+                // overlay is not at.
+                final state = ref.read(videoEditorProvider);
+                _basePan = Offset(
+                  state.overlayEditValue(OverlayProperty.x),
+                  state.overlayEditValue(OverlayProperty.y),
+                );
                 _baseFocalPoint = details.focalPoint;
-                _baseScale = overlay.scale;
-                _baseRotation = overlay.rotation;
+                _baseScale = state.overlayEditValue(OverlayProperty.scale);
+                _baseRotation = state.overlayEditValue(OverlayProperty.rotation);
                 setState(() => _movingId = overlay.id);
               },
               onScaleEnd: (_) {
@@ -197,29 +208,30 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
               },
               onScaleUpdate: (details) {
                 if (!isSelected) return;
-                final newScale = (_baseScale * details.scale).clamp(0.1, 10.0);
-                final newRotation = _baseRotation + details.rotation;
                 final movedPosition =
                     _basePan + (details.focalPoint - _baseFocalPoint);
-                final updatedOverlay = overlay.copyWith(
-                  scale: newScale,
-                  rotation: newRotation,
-                );
-                final clamped = _clampPosition(
-                  updatedOverlay,
-                  movedPosition,
-                  canvasSize: canvasSize,
-                );
-
-                onUpdateOverlay(
-                  overlay.id,
-                  (_) => updatedOverlay.copyWith(position: clamped),
+                // Scale and rotation only when a second finger gives them; a
+                // one-finger move has nothing to say about either.
+                final pinching = details.pointerCount > 1;
+                // Through the edit rule: a base value on an overlay with no
+                // diamonds, the diamond under the playhead on one with them.
+                ref.read(videoEditorProvider.notifier).setOverlayMotionLive(
+                  id: overlay.id,
+                  position: _clampPosition(
+                    overlay,
+                    movedPosition,
+                    canvasSize: canvasSize,
+                  ),
+                  scale: pinching
+                      ? (_baseScale * details.scale).clamp(0.1, 10.0).toDouble()
+                      : null,
+                  rotation: pinching ? _baseRotation + details.rotation : null,
                 );
               },
               child: Transform.scale(
-                scale: overlay.scale * animScale,
+                scale: shown.scale * animScale,
                 child: Transform.rotate(
-                  angle: overlay.rotation,
+                  angle: shown.rotation,
                   child: Stack(
                     clipBehavior: Clip.none,
                     alignment: Alignment.center,
@@ -236,15 +248,15 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
                           right: padXY,
                           child: CustomPaint(
                             painter: _DashedBorderPainter(
-                              strokeWidth: 2 / overlay.scale,
+                              strokeWidth: 2 / shown.scale,
                               color: Colors.white70,
                             ),
                           ),
                         ),
-                        Positioned(top: padXY, left: padXY, child: FractionalTranslation(translation: const Offset(-0.5, -0.5), child: Transform.scale(scale: 1 / overlay.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, -1, -1, onUpdateOverlay))))),
-                        Positioned(top: padXY, right: padXY, child: FractionalTranslation(translation: const Offset(0.5, -0.5), child: Transform.scale(scale: 1 / overlay.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, 1, -1, onUpdateOverlay))))),
-                        Positioned(bottom: padXY, left: padXY, child: FractionalTranslation(translation: const Offset(-0.5, 0.5), child: Transform.scale(scale: 1 / overlay.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, -1, 1, onUpdateOverlay))))),
-                        Positioned(bottom: padXY, right: padXY, child: FractionalTranslation(translation: const Offset(0.5, 0.5), child: Transform.scale(scale: 1 / overlay.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, 1, 1, onUpdateOverlay))))),
+                        Positioned(top: padXY, left: padXY, child: FractionalTranslation(translation: const Offset(-0.5, -0.5), child: Transform.scale(scale: 1 / shown.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, -1, -1))))),
+                        Positioned(top: padXY, right: padXY, child: FractionalTranslation(translation: const Offset(0.5, -0.5), child: Transform.scale(scale: 1 / shown.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, 1, -1))))),
+                        Positioned(bottom: padXY, left: padXY, child: FractionalTranslation(translation: const Offset(-0.5, 0.5), child: Transform.scale(scale: 1 / shown.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, -1, 1))))),
+                        Positioned(bottom: padXY, right: padXY, child: FractionalTranslation(translation: const Offset(0.5, 0.5), child: Transform.scale(scale: 1 / shown.scale, child: _buildCornerDot((_) => _handleResizeStart(overlay), (d) => _handleResizeUpdate(d, overlay, 1, 1))))),
                         
                         Positioned(
                           top: padXY,
@@ -252,9 +264,9 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
                           child: FractionalTranslation(
                             translation: const Offset(0, -1.0), 
                             child: Transform.translate(
-                              offset: Offset(0, -16 / overlay.scale),
+                              offset: Offset(0, -16 / shown.scale),
                               child: Transform.scale(
-                                scale: 1 / overlay.scale,
+                                scale: 1 / shown.scale,
                                 alignment: Alignment.bottomLeft,
                                 child: _buildFloatingActionBar(overlay),
                               ),
@@ -288,8 +300,10 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
   }
 
   void _handleResizeStart(VideoOverlayModel overlay) {
-    ref.read(videoEditorProvider.notifier).saveStateForUndo();
-    _resizeBaseScale = overlay.scale;
+    ref.read(videoEditorProvider.notifier).beginOverlayEdit();
+    // From the drawn size, as the body's own gesture anchors.
+    _resizeBaseScale =
+        ref.read(videoEditorProvider).overlayEditValue(OverlayProperty.scale);
     _accumulatedResizeDx = 0.0;
     _accumulatedResizeDy = 0.0;
   }
@@ -299,7 +313,6 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
     VideoOverlayModel overlay,
     double dirX,
     double dirY,
-    void Function(String, VideoOverlayModel Function(VideoOverlayModel)) onUpdate,
   ) {
     _accumulatedResizeDx += details.delta.dx * dirX;
     _accumulatedResizeDy += details.delta.dy * dirY;
@@ -307,7 +320,10 @@ class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
     final expansion = (_accumulatedResizeDx + _accumulatedResizeDy) / 2.0;
     final newScale = (_resizeBaseScale + expansion * 0.02).clamp(0.1, 10.0);
     
-    onUpdate(overlay.id, (o) => o.copyWith(scale: newScale));
+    ref.read(videoEditorProvider.notifier).setOverlayMotionLive(
+      id: overlay.id,
+      scale: newScale.toDouble(),
+    );
   }
 
   Widget _buildCornerDot(GestureDragStartCallback onPanStart, GestureDragUpdateCallback onPanUpdate) {
