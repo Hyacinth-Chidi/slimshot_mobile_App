@@ -55,6 +55,10 @@ const List<({String code, String name})> kCaptionLanguages = [
   (code: 'ha', name: 'Hausa'),
 ];
 
+/// Whether [code] is a language the sheet offers.
+bool isCaptionLanguage(Object? code) =>
+    code is String && kCaptionLanguages.any((l) => l.code == code);
+
 /// What a project's caption set was made with — what the sheet reopens on and
 /// what a regeneration starts from.
 class CaptionSettings {
@@ -82,7 +86,9 @@ class CaptionSettings {
         'length': length.name,
       };
 
-  /// Null for anything without a set id; unknown names read as the defaults.
+  /// Null for anything without a set id; unknown names read as the defaults,
+  /// and a language the sheet does not list as Auto detect — the sheet labels
+  /// a language from its list, so an unknown one could not be shown.
   static CaptionSettings? fromJson(Object? json) {
     if (json is! Map) return null;
     final setId = json['setId'];
@@ -92,7 +98,7 @@ class CaptionSettings {
       setId: setId,
       source: CaptionSource.values.asNameMap()[json['source']] ??
           CaptionSource.video,
-      language: language is String ? language : null,
+      language: isCaptionLanguage(language) ? language as String : null,
       length: CaptionLength.values.asNameMap()[json['length']] ??
           CaptionLength.phrase,
     );

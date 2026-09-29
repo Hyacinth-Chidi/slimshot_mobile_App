@@ -1809,7 +1809,10 @@ and its times **relative to the caption's start**, so dragging a caption bar mov
 Both keys are omitted on ordinary text, so a draft without captions is byte-identical.
 `VideoEditorState.captionSettings` remembers how the set was made (source, language, length) and
 is what the sheet reopens on; persisted on the draft, omitted when null. A word whose offsets are
-out of reach of a hand-edited text is clamped or dropped on read, never thrown on.
+out of reach of a hand-edited text is clamped or dropped on read, never thrown on, and **a
+language the sheet does not list reads as Auto detect** (`isCaptionLanguage`) — the sheet labels
+a language from its list, so an unknown code from a later build's draft left Auto captions unable
+to open for that project.
 
 **The audio is the export's own mix, which is why word times need no conversion.**
 `renderCaptionAudio` runs `AudioExportMixer` under `MixConfig.CAPTIONS` — mono 16 kHz AAC at
@@ -1839,8 +1842,10 @@ names one upload: once the server holds a job for it the same key answers with t
 failed one included, so a retry after a server-side failure takes a fresh key — and a retry
 after a lost response must reuse its key, or it becomes a second job (and, later, a second
 charge). Both directions are mutation-checked. `CaptionService` polls at the server's
-`pollAfterMs` and gives up after 10 minutes; every failure is one line from
-`captionErrorMessage`, no title.
+`pollAfterMs` and gives up after 10 minutes. **A dropped poll is ridden out**
+(`maxPollFailures`, 3 in a row): one lost request on a mobile connection says nothing about a
+job the server is still working on, and giving up on it means rendering and uploading it again
+under a new key. Every failure is one line from `captionErrorMessage`, no title.
 
 **Spacing is rebuilt from the transcript** (`rebuildTranscriptSpacing`): the server drops the
 provider's spacing tokens, and joining words with a space would put spaces through Chinese and
@@ -1853,7 +1858,11 @@ Phrase 3 words or 20 characters; Line 7 or 32, characters being grapheme cluster
 than the limit stands alone; a token with no letter or digit never starts a caption of its own.
 A caption holds `kCaptionHoldSeconds` (0.4) past its last word, never past the next caption's
 start — which is also why there is no separate minimum length: a caption is shorter than the
-hold only where the next one leaves no room to extend it. **Captions never overlap, whatever
+hold only where the next one leaves no room to extend it. **The hold never runs past the end of
+the sound** (`endLimitSeconds`, the rendered audio's length): speech that reaches the end of the
+video is the ordinary case, text overlays count toward the project's end, and a hold beyond it
+made the project — and the exported file — up to 0.4s longer, a tail of bare background. A word
+that itself outlasts the limit is kept whole. **Captions never overlap, whatever
 order the provider's times arrive in** — each starts no earlier than the previous one ends — so
 a set always fits one lane.
 
@@ -1878,8 +1887,16 @@ misplace every later word; any way it closes before the words land cancels the r
   `ExpiredStills` frees a still once every overlay using its path has ended; export only, since
   a preview playhead scrubs back.
 - **Export did not wait for fonts.** A font still downloading was rasterised in the fallback
-  face while the preview showed the real one. `exportVideo` awaits `GoogleFonts.pendingFonts()`
-  first (`fontsReady`, injectable for tests).
+  face while the preview showed the real one. `exportVideo` now waits for
+  `GoogleFonts.pendingFonts()` — **through `awaitExportFonts`, never bare**
+  (`services/export_fonts.dart`). `pendingFonts()` is `Future.wait` over a set a *failed*
+  download is never removed from (google_fonts 6.3.3, `google_fonts_base.dart`), so after one
+  failed font — the Font tab opened offline is enough — it throws on every call until the app
+  restarts, and a download has no timeout of its own. The first version awaited it bare, which
+  would have failed every export for the rest of the session, text or no text; the review caught
+  it before a device did. The wait is bounded (`kExportFontWait`, 5s) and cannot throw, and going
+  ahead without a font is **said** (`exportFontWarning`) — only for a project that draws text,
+  since the font that failed may be one a sheet merely listed.
 
 ### Apply to all — a copy, not a mode
 

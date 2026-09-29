@@ -136,6 +136,16 @@ void main() {
       expect(CaptionSettings.fromJson('junk'), isNull);
     });
 
+    test('a language the sheet does not list reads as Auto detect', () {
+      // A draft from a build with a longer list, or a hand-edited one. The
+      // sheet labels a language from the list, so an unknown code kept here
+      // would leave Auto captions unable to open for that project.
+      expect(
+        CaptionSettings.fromJson({'setId': 's', 'language': 'xx'}),
+        const CaptionSettings(setId: 's'),
+      );
+    });
+
     test('each source names the sounds the native pass mixes', () {
       expect(CaptionSource.video.include, ['clips', 'overlays']);
       expect(CaptionSource.tracks.include, ['tracks']);

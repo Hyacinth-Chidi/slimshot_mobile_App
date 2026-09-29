@@ -22,7 +22,9 @@ class AutoCaptionSheet extends StatefulWidget {
 
 class _AutoCaptionSheetState extends State<AutoCaptionSheet> {
   late CaptionSource _source = widget.initial?.source ?? CaptionSource.video;
-  late String? _language = widget.initial?.language;
+  late String? _language = isCaptionLanguage(widget.initial?.language)
+      ? widget.initial!.language
+      : null;
   late CaptionLength _length = widget.initial?.length ?? CaptionLength.phrase;
 
   static String _sourceLabel(CaptionSource s) => switch (s) {

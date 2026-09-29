@@ -102,6 +102,19 @@ void main() {
     });
   });
 
+  testWidgets('an unlisted language opens the sheet on Auto detect',
+      (tester) async {
+    final popped = await open(
+      tester,
+      (_) => const AutoCaptionSheet(
+        initial: CaptionSettings(setId: 's', language: 'xx'),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    await tapKey(tester, 'caption_generate');
+    expect((popped.single as CaptionRequest).language, isNull);
+  });
+
   group('CaptionProgressSheet', () {
     const hello = CaptionTranscript(
       text: 'Hello',

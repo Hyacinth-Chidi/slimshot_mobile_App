@@ -15,6 +15,7 @@ import '../models/editor_timeline.dart';
 import '../models/text_overlay_model.dart';
 import '../models/video_editor_state.dart';
 import 'caption_audio_result.dart';
+import 'export_fonts.dart';
 import 'text_atlas_overlay.dart';
 import 'text_overlay_rasterizer.dart';
 
@@ -28,11 +29,13 @@ class NativeTimelinePreviewService {
     VideoEditorTimelineComposer timelineComposer =
         const VideoEditorTimelineComposer(),
     Future<void> Function()? fontsReady,
+    Duration fontsTimeout = kExportFontWait,
   })  : _methodChannel = methodChannel ??
             const MethodChannel('slimshot_ai/native_timeline_preview'),
         _playbackEventChannel = playbackEventChannel ?? _defaultEventChannel,
         _timelineComposer = timelineComposer,
-        _fontsReady = fontsReady ?? _pendingFonts;
+        _fontsReady = fontsReady ?? _pendingFonts,
+        _fontsTimeout = fontsTimeout;
 
   final MethodChannel _methodChannel;
   final EventChannel _playbackEventChannel;
@@ -40,6 +43,7 @@ class NativeTimelinePreviewService {
 
   /// Completes once every font a text may use has finished loading.
   final Future<void> Function() _fontsReady;
+  final Duration _fontsTimeout;
 
   static Future<void> _pendingFonts() async {
     await GoogleFonts.pendingFonts();
@@ -290,9 +294,13 @@ class NativeTimelinePreviewService {
     void Function(String message)? onWarning,
   }) async {
     // A font still downloading when export starts would be rasterised in the
-    // fallback face while the preview shows the real one — the file would
-    // differ from the canvas with nothing saying why.
-    await _fontsReady();
+    // fallback face while the preview shows the real one. The wait is bounded
+    // and cannot fail the export (`awaitExportFonts`); going ahead without a
+    // font is said, not hidden.
+    final fontsLoaded =
+        await awaitExportFonts(_fontsReady, limit: _fontsTimeout);
+    final fontWarning = exportFontWarning(state, fontsLoaded: fontsLoaded);
+    if (fontWarning != null) onWarning?.call(fontWarning);
 
     // Text is rasterised by Flutter's own text engine and handed to the
     // native overlay pass as images — reimplementing text layout in Android

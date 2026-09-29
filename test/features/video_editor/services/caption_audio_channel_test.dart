@@ -157,4 +157,33 @@ void main() {
     await export;
     expect(calls.single.method, 'exportVideo');
   });
+
+  group('a font is never a reason an export fails', () {
+    const exported = {
+      'outputPath': '/tmp/o.mp4',
+      'durationSeconds': 5.0,
+      'frameCount': 150,
+      'degradedTransitions': 0,
+    };
+
+    test('a font that failed to load still exports', () async {
+      answer = (_) async => exported;
+      final warnings = <String>[];
+      final result = await NativeTimelinePreviewService(
+        fontsReady: () async => throw Exception('Failed to load font'),
+      ).exportVideo(state, outputPath: '/tmp/o.mp4', onWarning: warnings.add);
+      expect(result.outputPath, '/tmp/o.mp4');
+      expect(calls.single.method, 'exportVideo');
+      expect(warnings, isEmpty, reason: 'this project draws no text');
+    });
+
+    test('a font that never loads does not stall the export', () async {
+      answer = (_) async => exported;
+      final result = await NativeTimelinePreviewService(
+        fontsReady: () => Completer<void>().future,
+        fontsTimeout: const Duration(milliseconds: 20),
+      ).exportVideo(state, outputPath: '/tmp/o.mp4');
+      expect(result.outputPath, '/tmp/o.mp4');
+    });
+  });
 }

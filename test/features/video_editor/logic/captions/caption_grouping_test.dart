@@ -142,6 +142,37 @@ void main() {
       expect(d[1].start, const Duration(milliseconds: 1500));
     });
 
+    test('the last hold stops where the sound ends', () {
+      // Speech that runs to the end of the video is the ordinary case. A hold
+      // past it would make the project — and the exported file — longer than
+      // the video, with a tail of bare background nobody asked for.
+      final d = groupCaptionWords(
+        [sw('Hi.', 1.0, 1.3, sep: ''), sw('Bye.', 3.0, 3.2)],
+        CaptionLength.line,
+        endLimitSeconds: 3.3,
+      );
+      expect(d[0].end, const Duration(milliseconds: 1700));
+      expect(d[1].end, const Duration(milliseconds: 3300));
+    });
+
+    test('a word that itself outlasts the sound is kept whole', () {
+      final d = groupCaptionWords(
+        [sw('Bye.', 3.0, 3.4, sep: '')],
+        CaptionLength.line,
+        endLimitSeconds: 3.2,
+      );
+      expect(d.single.end, const Duration(milliseconds: 3400));
+    });
+
+    test('a caption has a length even where the sound ends on its word', () {
+      final d = groupCaptionWords(
+        [sw('Bye.', 3.0, 3.0, sep: '')],
+        CaptionLength.line,
+        endLimitSeconds: 3.0,
+      );
+      expect(d.single.end > d.single.start, isTrue);
+    });
+
     test('provider times that overlap or run backwards never overlap captions',
         () {
       final d = groupCaptionWords([

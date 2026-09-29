@@ -39,6 +39,11 @@ class CaptionService {
 
   static const Duration defaultPollAfter = Duration(milliseconds: 1500);
 
+  /// Polls that may fail in a row before the job is given up on. One dropped
+  /// request on a mobile connection says nothing about a job the server is
+  /// still working on, and giving up on it means uploading it again.
+  static const int maxPollFailures = 3;
+
   /// Uploads [audioPath] and returns the job. [idempotencyKey] names this
   /// upload: sent again with the same key, the server answers with the same
   /// job instead of starting a second one.
@@ -82,6 +87,7 @@ class CaptionService {
   }) async {
     final began = _clock();
     var wait = job.pollAfter;
+    var failures = 0;
     while (true) {
       if (isCancelled()) throw const CaptionCancelled();
       if (_clock().difference(began) >= pollLimit) {
@@ -90,9 +96,19 @@ class CaptionService {
       await _delay(wait);
       if (isCancelled()) throw const CaptionCancelled();
 
-      final data = await _api.send(
-        () => http.Request('GET', _api.uri('/captions/${job.jobId}')),
-      );
+      final Map<String, dynamic> data;
+      try {
+        data = await _api.send(
+          () => http.Request('GET', _api.uri('/captions/${job.jobId}')),
+        );
+        failures = 0;
+      } on SlimshotApiException catch (e) {
+        if (e.code != SlimshotApiException.network ||
+            ++failures >= maxPollFailures) {
+          rethrow;
+        }
+        continue;
+      }
       switch (data['status']) {
         case 'completed':
           final result = data['result'];

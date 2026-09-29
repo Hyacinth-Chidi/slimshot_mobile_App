@@ -177,6 +177,64 @@ void main() {
       );
     });
 
+    test('a dropped poll is ridden out: the job is still running', () async {
+      // One lost request on a mobile connection must not throw away a job
+      // the server is still working on — the retry would upload it again.
+      var polls = 0;
+      final service = serviceWith(MockClient((_) async {
+        if (++polls < 3) throw http.ClientException('dropped');
+        return envelope({
+          'jobId': 'cap_1',
+          'status': 'completed',
+          'result': {
+            'text': 'Hi',
+            'words': [
+              {'text': 'Hi', 'start': 0.1, 'end': 0.3},
+            ],
+          },
+        });
+      }));
+      final transcript = await service.result(job, isCancelled: () => false);
+      expect(transcript.words.single.text, 'Hi');
+      expect(polls, 3);
+    });
+
+    test('polls that keep failing end as No connection', () async {
+      var polls = 0;
+      final service = serviceWith(MockClient((_) async {
+        polls++;
+        throw http.ClientException('offline');
+      }));
+      await expectLater(
+        service.result(job, isCancelled: () => false),
+        throwsA(
+          isA<SlimshotApiException>()
+              .having((e) => e.code, 'code', SlimshotApiException.network),
+        ),
+      );
+      expect(polls, CaptionService.maxPollFailures);
+    });
+
+    test('a poll that answers resets the count of failures', () async {
+      var polls = 0;
+      final service = serviceWith(MockClient((_) async {
+        polls++;
+        // fail, fail, answer, fail, fail, answer: never three in a row.
+        if (polls % 3 != 0) throw http.ClientException('dropped');
+        return envelope(
+          polls < 6
+              ? {'jobId': 'cap_1', 'status': 'processing', 'pollAfterMs': 10}
+              : {
+                  'jobId': 'cap_1',
+                  'status': 'completed',
+                  'result': {'text': '', 'words': <Object>[]},
+                },
+        );
+      }));
+      await service.result(job, isCancelled: () => false);
+      expect(polls, 6);
+    });
+
     test('a cancel stops polling before the next request', () async {
       var polls = 0;
       var cancelled = false;

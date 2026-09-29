@@ -100,6 +100,7 @@ class CaptionPipeline {
       final drafts = groupCaptionWords(
         rebuildTranscriptSpacing(transcript.text, transcript.words),
         request.length,
+        endLimitSeconds: audio.durationSeconds,
       );
       if (drafts.isEmpty) throw const CaptionFailure(CaptionFailure.noSpeech);
       _key = null;

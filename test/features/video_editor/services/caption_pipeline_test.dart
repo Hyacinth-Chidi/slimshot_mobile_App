@@ -73,6 +73,17 @@ void main() {
     expect(deleted, ['/tmp/captions.m4a']);
   });
 
+  test('no caption outlasts the sound it was heard in', () async {
+    final drafts = await pipeline(
+      render: (_) async => const CaptionAudioResult(
+        outputPath: '/tmp/captions.m4a',
+        durationSeconds: 1.0,
+        hasSound: true,
+      ),
+    ).run(const CaptionRequest(), onProgress: (_, __) {});
+    expect(drafts.single.end, const Duration(milliseconds: 1000));
+  });
+
   test('the chosen sound and language reach the steps that use them',
       () async {
     CaptionSource? rendered;

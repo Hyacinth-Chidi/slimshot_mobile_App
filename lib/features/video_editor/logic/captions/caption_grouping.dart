@@ -48,10 +48,17 @@ final RegExp _letterOrDigit = RegExp(r'[\p{L}\p{N}]', unicode: true);
 /// Every caption starts no earlier than the previous one ends and has a
 /// length, whatever order or overlap the provider's times arrive in, so a set
 /// always fits on one lane.
+///
+/// [endLimitSeconds] is where the sound ends. The hold never runs past it:
+/// speech that reaches the end of the video is the ordinary case, and a hold
+/// beyond it would make the project — and the exported file — longer than the
+/// video, with a tail of bare background. A word that itself outlasts the
+/// limit is kept whole.
 List<CaptionDraft> groupCaptionWords(
   List<SpacedWord> words,
-  CaptionLength length,
-) {
+  CaptionLength length, {
+  double? endLimitSeconds,
+}) {
   final groups = <List<SpacedWord>>[];
   var current = <SpacedWord>[];
   var chars = 0;
@@ -97,10 +104,16 @@ List<CaptionDraft> groupCaptionWords(
       start,
     );
     var end = lastEnd + ms(kCaptionHoldSeconds);
+    if (endLimitSeconds != null) {
+      end = math.min(end, math.max(lastEnd, ms(endLimitSeconds)));
+    }
     if (i + 1 < groups.length) {
       final next = ms(groups[i + 1].first.word.start);
       if (next > start) end = math.min(end, next);
     }
+    // Every caption has a length, even one whose only word has none and
+    // which the sound's end leaves no room to hold.
+    if (end <= start) end = start + 1;
 
     final text = StringBuffer();
     final captionWords = <CaptionWord>[];
