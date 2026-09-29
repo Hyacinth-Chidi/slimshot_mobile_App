@@ -25,6 +25,7 @@ import '../../services/video_thumbnail_service.dart';
 import '../panels/cover_picker_sheet.dart';
 import 'clip_filmstrip.dart';
 import 'clip_keyframe_diamonds.dart';
+import 'lane_gutter_icons.dart';
 import 'transition_marker.dart';
 import '../panels/editor_sheet.dart';
 
@@ -1652,16 +1653,13 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     ];
 
     for (var lane = 0; lane <= maxLane; lane++) {
-      final icons = <IconData>[
-        if (widget.audioTracks.any((a) => a.laneIndex == lane))
-          LucideIcons.music,
-        if (widget.textOverlays.any((t) => t.laneIndex == lane))
-          LucideIcons.type,
-        if (widget.imageOverlays.any((i) => i.laneIndex == lane))
-          LucideIcons.image,
-        if (widget.videoOverlays.any((v) => v.laneIndex == lane))
-          LucideIcons.video,
-      ];
+      final icons = laneGutterIcons(
+        lane: lane,
+        audios: widget.audioTracks,
+        texts: widget.textOverlays,
+        images: widget.imageOverlays,
+        videos: widget.videoOverlays,
+      );
       if (icons.isEmpty) continue;
 
       widgets.add(

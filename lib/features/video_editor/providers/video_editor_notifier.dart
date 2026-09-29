@@ -31,6 +31,8 @@ import '../models/video_segment.dart';
 import '../services/media_import_service.dart';
 import '../services/video_editor_service.dart';
 import '../services/video_thumbnail_service.dart';
+import '../logic/captions/caption_grouping.dart';
+import '../logic/captions/caption_placement.dart';
 import '../logic/captions/caption_settings.dart';
 import '../logic/color/color_adjustments.dart';
 import '../logic/mask/clip_mask.dart';
@@ -2963,6 +2965,50 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       isClipSelected: false,
       currentMenuId: 'text_overlay',
     );
+  }
+
+  /// Puts a caption set on the timeline — replacing the project's current one,
+  /// if any — as one undo step.
+  ///
+  /// The old set goes before a lane is chosen, so the new captions take the
+  /// lane it freed instead of opening one beneath it; plain text is untouched.
+  void placeCaptions(
+    List<CaptionDraft> drafts,
+    CaptionSettings settings, {
+    Size? canvasSize,
+  }) {
+    if (drafts.isEmpty) return;
+    saveStateForUndo();
+    final kept = [
+      for (final t in state.textOverlays)
+        if (!t.isCaption) t,
+    ];
+    double seconds(Duration d) => d.inMicroseconds / 1e6;
+    final lane = firstFreeLane(
+      laneSpansOf(
+        texts: kept,
+        images: state.imageOverlays,
+        videos: state.videoOverlays,
+        audios: state.audioTracks,
+      ),
+      seconds(drafts.first.start),
+      seconds(drafts.last.end),
+    );
+    state = state.copyWith(
+      textOverlays: [
+        ...kept,
+        ...buildCaptionOverlays(
+          drafts: drafts,
+          setId: settings.setId,
+          lane: lane,
+          canvasSize: canvasSize,
+        ),
+      ],
+      captionSettings: settings,
+      clearSelectedTextId: true,
+      currentMenuId: 'root',
+    );
+    _compactLanes();
   }
 
   /// Selects a text, and opens **its** menu — or returns to root on null.
