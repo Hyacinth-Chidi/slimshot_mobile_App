@@ -1794,6 +1794,93 @@ belonged to the old file**: the proxy rendered from it, and a reversal that depe
 proxy. One undo step; the file joins the asset pool once, and the old asset stays for anything else
 using it. The screen takes the first pick from the same picker Add uses and re-syncs the preview.
 
+### Auto captions — generating a set (Stage 1)
+
+**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-09-29-auto-captions-design.md`,
+Stage 1 plan beside it in `plans/`. Stages 2–4 (editing, word highlight, caption styles) are
+specified and not built. Sign-in and credits come later and have exactly one hook:
+`CaptionAccess.ensureAllowed`, called once before any audio is rendered, which always opens today.
+
+**A caption is an ordinary text overlay**, for the emoji reason: a dedicated caption kind would
+be a second implementation of the text pipeline. `TextOverlayModel` gains `captionSetId` (a
+string, not a flag — a translated second set is the obvious next feature) and `captionWords`:
+each word's **UTF-16** range in the text, the unit `TextGlyphBox.charIndex` already counts in,
+and its times **relative to the caption's start**, so dragging a caption bar moves its words.
+Both keys are omitted on ordinary text, so a draft without captions is byte-identical.
+`VideoEditorState.captionSettings` remembers how the set was made (source, language, length) and
+is what the sheet reopens on; persisted on the draft, omitted when null. A word whose offsets are
+out of reach of a hand-edited text is clamped or dropped on read, never thrown on.
+
+**The audio is the export's own mix, which is why word times need no conversion.**
+`renderCaptionAudio` runs `AudioExportMixer` under `MixConfig.CAPTIONS` — mono 16 kHz AAC at
+48 kbps, from timeline 0 at timeline rate — so the server's "seconds from the start of the file"
+*are* timeline seconds, through trims, flat speed, speed curves and crossfades. `MixConfig` is
+the mixer's rate, layout and gain rule as a value; `MixConfig.EXPORT` is exactly what the export
+had. Captions mix at **unity gain**: volume, its keyframes and the project mute are ignored (a
+muted clip's words were still spoken), the transition crossfade is kept because it is timing, not
+level. **Reversed clips are skipped inside the mixer**, not filtered from its clip list —
+`crossfadeGain` finds a transition's clips by *index*, so a filtered list would fade the wrong
+ones. The source choice (`CaptionSource`: Video sound = clips + video overlays, Audio tracks,
+All) travels as `include`; the pass runs to the end of the last included sound, and a selection
+with nothing audible answers `hasSound: false` before anything is uploaded.
+
+**`SlimshotApi` (`core/services/`) is the app's one server client** — captions are the first
+server feature of several. The address comes only from `--dart-define=SLIMSHOT_API_URL=…`;
+**without it the tool is not shown** (`isToolbarToolVisible`'s `hasCaptionServer`), which is the
+"not offered before it works" rule as code. It registers the device once, keeps the token in
+`shared_preferences` (an anonymous token grants only caption jobs; secure storage arrives with
+sign-in), and on a 401 re-registers **once** — a second refusal is an answer, not a loop; a test
+with the `if` turned into a `while` hangs. **Debug builds allow cleartext** for the LAN test
+server (`android/app/src/debug/AndroidManifest.xml`); release does not, so the deployed server
+must be HTTPS.
+
+**The upload key is reused only after an upload that never landed** (`CaptionPipeline`). A key
+names one upload: once the server holds a job for it the same key answers with that job, a
+failed one included, so a retry after a server-side failure takes a fresh key — and a retry
+after a lost response must reuse its key, or it becomes a second job (and, later, a second
+charge). Both directions are mutation-checked. `CaptionService` polls at the server's
+`pollAfterMs` and gives up after 10 minutes; every failure is one line from
+`captionErrorMessage`, no title.
+
+**Spacing is rebuilt from the transcript** (`rebuildTranscriptSpacing`): the server drops the
+provider's spacing tokens, and joining words with a space would put spaces through Chinese and
+Japanese. Each word is found, in order, in the transcript `text`; what lies between two words is
+the separator.
+
+**Grouping** (`groupCaptionWords`): a caption breaks after sentence-ending punctuation, before a
+word following a pause of `kCaptionPauseBreakSeconds` (0.6), and at the length limit — Word 1;
+Phrase 3 words or 20 characters; Line 7 or 32, characters being grapheme clusters. A word longer
+than the limit stands alone; a token with no letter or digit never starts a caption of its own.
+A caption holds `kCaptionHoldSeconds` (0.4) past its last word, never past the next caption's
+start — which is also why there is no separate minimum length: a caption is shorter than the
+hold only where the next one leaves no room to extend it. **Captions never overlap, whatever
+order the provider's times arrive in** — each starts no earlier than the previous one ends — so
+a set always fits one lane.
+
+**Placement** (`placeCaptions`): the Subtitle template's look **without its fades** (a
+half-second fade is most of a one-second caption's life), on the first lane free across the
+whole set, one undo step. `boxWidth` stays unset: every caption shares one reference canvas, so
+they already wrap alike, and a fixed width would stretch a boxed style's background across the
+canvas. **A new set replaces the old** — removed *before* the lane is chosen, so the new set
+takes the lane it freed — after "Replace captions?"; plain text is untouched. The gutter marks a
+caption lane with `subtitles` (`laneGutterIcons`). The progress sheet is **modal on purpose**:
+the audio is a snapshot of the timeline, and a clip moved while the server listens would
+misplace every later word; any way it closes before the words land cancels the run.
+
+**Three export faults fixed on the way, all of which a caption set would have hit first:**
+
+- **A video overlay's sound was mixed twice.** Since the mixer learned to take overlays at their
+  own speed, `startExport` *also* kept listing each video overlay as a 1× audio track — double
+  volume at normal speed, two voices out of step at any other. `TimelineAudioTracks` is now the
+  one reader of a timeline's tracks, and it reads imported tracks only.
+- **Still textures were never freed during an export** — `imageTextures` emptied only on full
+  release, so a hundred captions meant a hundred text atlases on the GPU at once.
+  `ExpiredStills` frees a still once every overlay using its path has ended; export only, since
+  a preview playhead scrubs back.
+- **Export did not wait for fonts.** A font still downloading was rasterised in the fallback
+  face while the preview showed the real one. `exportVideo` awaits `GoogleFonts.pendingFonts()`
+  first (`fontsReady`, injectable for tests).
+
 ### Apply to all — a copy, not a mode
 
 Transform, the clip crop and Effects each carry an `ApplyToAllButton`: one tap copies the selected
@@ -2193,8 +2280,8 @@ for the tap. Both go through **`_addText`**, so a new text is made one way — a
 three seconds, **empty**, the editor opened on the keyboard. Its Templates (`add_template`) is
 **choose, then type**; the other way round is the selected text's own Templates (below). The two
 ids differ on purpose — `text_templates` is the sheet-tab door — so neither handler can catch
-the other's tap. Auto captions joins the submenu when its server exists; it is not offered
-before it works.
+the other's tap. **Auto captions** is the third entry, shown only in a build that carries a
+server address — it is not offered before it works (see the auto captions section).
 
 **A template is a complete starting look, and it makes an EMPTY text**
 (`logic/text_template_catalog.dart`, `panels/text_templates_sheet.dart`). Not a preset: the
@@ -2537,7 +2624,9 @@ the model, settable in the tool, and honoured by **nothing** — the plugin igno
 in the file. It is now in `sourceAt`, which both engines resolve through. And **a video overlay's
 sound was never mixed into the export**: clip audio and imported music were, its was not, so an
 overlay you could hear on the canvas was silent in the file. `AudioExportMixer` now takes it as
-one more windowed source, at its own speed so the sound runs with the picture.
+one more windowed source, at its own speed so the sound runs with the picture. **That fix left
+it mixed twice** — the export kept its older 1× track entry for the same overlay beside the new
+source — until `TimelineAudioTracks` (auto captions section).
 
 **What the Flutter layers are now**: the box the user grabs. The selection frame, corner dots,
 rotate/scale handle and action bar, laid out from the same geometry the composer sends the engine
