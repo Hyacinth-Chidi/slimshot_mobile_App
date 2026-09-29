@@ -39,6 +39,7 @@ import '../features/video_editor/widgets/panels/keyframe_easing_sheet.dart';
 import '../features/video_editor/widgets/panels/transform_sheet.dart';
 import '../features/video_editor/widgets/timeline/scrollable_timeline.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:path_provider/path_provider.dart';
 import '../features/video_editor/widgets/video_editor_top_bar.dart';
 import '../features/video_editor/widgets/panels/audio_drawer.dart';
 import '../features/video_editor/widgets/panels/effects_panel.dart';
@@ -61,6 +62,15 @@ import '../features/video_editor/widgets/panels/animation_drawer.dart';
 import '../features/video_editor/widgets/panels/editor_panel_switcher.dart';
 import '../features/video_editor/widgets/panels/background_sheet.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
+import '../core/services/slimshot_api.dart';
+import '../features/video_editor/logic/captions/caption_grouping.dart';
+import '../features/video_editor/logic/captions/caption_settings.dart';
+import '../features/video_editor/services/caption_access.dart';
+import '../features/video_editor/services/caption_pipeline.dart';
+import '../features/video_editor/services/caption_service.dart';
+import '../features/video_editor/widgets/panels/auto_caption_sheet.dart';
+import '../features/video_editor/widgets/panels/caption_progress_sheet.dart';
+import '../features/video_editor/widgets/panels/replace_captions_dialog.dart';
 import '../features/video_editor/widgets/editor_tool_tile.dart';
 import '../features/video_editor/widgets/panels/adjust_sheet.dart';
 import '../features/video_editor/widgets/panels/chroma_key_sheet.dart';
@@ -278,8 +288,8 @@ const EditorMenu _videoOverlayMenu = EditorMenu(
 /// Both make a new, **empty** text at the playhead and open the editor on it
 /// (`_addText`) — Add text plain, Templates wearing a look chosen first:
 /// choose, then type. The other way round — type, then choose — is the
-/// selected text's own Templates. Auto captions joins them when its server
-/// exists; it is not offered before it works.
+/// selected text's own Templates. Auto captions is the third way, offered only
+/// in a build that carries a server address (`isToolbarToolVisible`).
 const EditorMenu _textMenu = EditorMenu(
   id: 'text',
   tools: [
@@ -288,6 +298,11 @@ const EditorMenu _textMenu = EditorMenu(
       id: 'add_template',
       label: 'Templates',
       icon: LucideIcons.layoutTemplate,
+    ),
+    EditorTool(
+      id: 'auto_captions',
+      label: 'Auto captions',
+      icon: LucideIcons.subtitles,
     ),
   ],
 );
@@ -1000,6 +1015,76 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     // Selects it and opens its menu, which the editor closing leaves showing.
     ref.read(videoEditorProvider.notifier).addTextOverlay(overlay);
     unawaited(showTextEditor(context: context, overlay: overlay, ref: ref));
+  }
+
+  /// Text → Auto captions: choose, wait for the words, place them.
+  ///
+  /// The audio is a snapshot of the timeline, so playback stops and the
+  /// progress sheet holds the editor until the words land. The captions are
+  /// placed as one undo step, replacing an existing set only after asking.
+  Future<void> _startAutoCaptions() async {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final request = await showEditorSheet<CaptionRequest>(
+      context,
+      builder: (_) => AutoCaptionSheet(
+        initial: ref.read(videoEditorProvider).captionSettings,
+      ),
+    );
+    if (request == null || !mounted) return;
+    if (!await CaptionAccess.ensureAllowed(context) || !mounted) return;
+    if (ref.read(videoEditorProvider).hasCaptions &&
+        !await confirmReplaceCaptions(context)) {
+      return;
+    }
+    if (!mounted) return;
+
+    notifier.setPlaying(false);
+    _audioPlayerManager.pauseAll();
+    unawaited(_nativePreviewService.pause());
+
+    final api = SlimshotApi(baseUrl: SlimshotApi.configuredBaseUrl);
+    final captions = CaptionService(api);
+    final pipeline = CaptionPipeline(
+      audioPath: () async {
+        final dir = await getTemporaryDirectory();
+        return '${dir.path}/captions_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      },
+      renderAudio: (path, source, onProgress) =>
+          _nativePreviewService.renderCaptionAudio(
+        ref.read(videoEditorProvider),
+        outputPath: path,
+        source: source,
+        onProgress: onProgress,
+      ),
+      startJob: (path, language, key) => captions.start(
+        audioPath: path,
+        language: language,
+        idempotencyKey: key,
+      ),
+      awaitJob: (job, isCancelled) =>
+          captions.result(job, isCancelled: isCancelled),
+      onCancel: () {
+        unawaited(_nativePreviewService.cancelCaptionAudio());
+        api.close();
+      },
+    );
+    final drafts = await showEditorSheet<List<CaptionDraft>>(
+      context,
+      builder: (_) => CaptionProgressSheet(pipeline: pipeline, request: request),
+    );
+    api.close();
+    if (drafts == null || !mounted) return;
+
+    notifier.placeCaptions(
+      drafts,
+      CaptionSettings(
+        setId: 'captions_${DateTime.now().millisecondsSinceEpoch}',
+        source: request.source,
+        language: request.language,
+        length: request.length,
+      ),
+      canvasSize: ref.read(videoCanvasSizeProvider),
+    );
   }
 
   /// Drops [emoji] on the canvas as a text overlay.
@@ -1857,6 +1942,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
             hasImageSelected: editorState.selectedImageId != null,
             hasVideoOverlaySelected:
                 editorState.selectedVideoOverlayId != null,
+            hasCaptionServer: SlimshotApi.isConfigured,
           ),
         )
         .toList();
@@ -2088,6 +2174,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                         ),
                       ),
                     );
+                  } else if (tool.id == 'auto_captions') {
+                    unawaited(_startAutoCaptions());
                   } else if (tool.id == 'overlay') {
                     _showOverlaySelectionMenu(buttonContext);
                   } else if (tool.id == 'background') {

@@ -14,6 +14,7 @@ bool isToolbarToolVisible(
   required bool hasTextSelected,
   required bool hasImageSelected,
   required bool hasVideoOverlaySelected,
+  required bool hasCaptionServer,
 }) {
   switch (toolId) {
     case 'delete':
@@ -33,6 +34,10 @@ bool isToolbarToolVisible(
       // With several clips and none selected, a slider would not know which
       // clip it moved; a lone clip is the only one it can mean.
       return clipCount <= 1 || isClipSelected;
+    case 'auto_captions':
+      // Not offered before it works: a build without a server address has
+      // nowhere to send the audio.
+      return hasCaptionServer;
   }
   // Animation used to be hidden for every video overlay — a rule from before
   // overlays were drawn by the engine, which animates them as it does photos.

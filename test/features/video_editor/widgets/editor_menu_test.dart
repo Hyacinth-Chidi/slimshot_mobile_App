@@ -163,4 +163,13 @@ void main() {
     // this one does not promise something that already exists elsewhere.
     expect(menuSource('_audioMenu'), contains("id: 'effects'"));
   });
+
+  test('the Text tool offers Auto captions, and the screen handles it', () {
+    expect(menuSource('_textMenu'), contains("id: 'auto_captions'"));
+    expect(
+      screen.readAsStringSync(),
+      contains("tool.id == 'auto_captions'"),
+      reason: 'a declared tool with no handler is a dead signpost',
+    );
+  });
 }

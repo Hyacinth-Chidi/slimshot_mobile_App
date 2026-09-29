@@ -4,4 +4,8 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- The caption server under test runs on the development PC over plain
+         HTTP. Debug builds only: release has no cleartext, and the deployed
+         server must be HTTPS. -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>

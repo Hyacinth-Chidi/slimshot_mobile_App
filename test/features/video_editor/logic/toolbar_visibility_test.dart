@@ -21,6 +21,7 @@ void main() {
     bool text = false,
     bool image = false,
     bool video = false,
+    bool captionServer = true,
   }) =>
       isToolbarToolVisible(
         id,
@@ -31,6 +32,7 @@ void main() {
         hasTextSelected: text,
         hasImageSelected: image,
         hasVideoOverlaySelected: video,
+        hasCaptionServer: captionServer,
       );
 
   /// The tool ids a `const EditorMenu` declares, without the menu's own id.
@@ -112,5 +114,13 @@ void main() {
         File('lib/screens/video_editor_screen.dart').readAsStringSync();
     expect(screen, contains('isToolbarToolVisible('));
     expect(screen, isNot(contains("tool.id == 'volume' || tool.id == 'speed'")));
+  });
+
+  test('Auto captions is offered only in a build that has a server', () {
+    // "Not offered before it works": without SLIMSHOT_API_URL there is
+    // nothing to send the audio to.
+    expect(visible('auto_captions', captionServer: false), isFalse);
+    expect(visible('auto_captions', captionServer: true), isTrue);
+    expect(declaredTools('_textMenu'), contains('auto_captions'));
   });
 }
