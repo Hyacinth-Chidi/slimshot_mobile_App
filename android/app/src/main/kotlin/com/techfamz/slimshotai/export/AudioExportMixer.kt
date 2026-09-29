@@ -43,6 +43,8 @@ internal class AudioExportMixer(
     private val masterVolume: Double,
     private val transitions: List<NativeTimelineTransitionIntent>,
     private val durationSeconds: Double,
+    /** Rate, channels, bit rate and gain rule — the export's unless a caller says otherwise. */
+    private val config: MixConfig = MixConfig.EXPORT,
 ) {
 
     /** An imported audio track laid on the timeline. */
@@ -159,24 +161,25 @@ internal class AudioExportMixer(
         try {
             val format = MediaFormat.createAudioFormat(
                 MediaFormat.MIMETYPE_AUDIO_AAC,
-                SAMPLE_RATE,
-                CHANNELS,
+                config.sampleRate,
+                config.channels,
             ).apply {
-                setInteger(MediaFormat.KEY_BIT_RATE, BIT_RATE)
+                setInteger(MediaFormat.KEY_BIT_RATE, config.bitRate)
                 setInteger(
                     MediaFormat.KEY_AAC_PROFILE,
                     android.media.MediaCodecInfo.CodecProfileLevel.AACObjectLC,
                 )
-                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, BLOCK_FRAMES * CHANNELS * 4)
+                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, BLOCK_FRAMES * config.channels * 4)
             }
             encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             encoder.start()
 
-            val totalFrames = (durationSeconds * SAMPLE_RATE).toLong()
-            val mix = FloatArray(BLOCK_FRAMES * CHANNELS)
-            val scratch = FloatArray(BLOCK_FRAMES * CHANNELS)
+            val totalFrames = (durationSeconds * config.sampleRate).toLong()
+            val mix = FloatArray(BLOCK_FRAMES * STEREO)
+            val scratch = FloatArray(BLOCK_FRAMES * STEREO)
+            val samples = ShortArray(BLOCK_FRAMES * STEREO)
             val pcm = ByteBuffer
-                .allocateDirect(BLOCK_FRAMES * CHANNELS * 2)
+                .allocateDirect(BLOCK_FRAMES * config.channels * 2)
                 .order(ByteOrder.nativeOrder())
 
             var frame = 0L
@@ -190,13 +193,8 @@ internal class AudioExportMixer(
                 }
 
                 pcm.clear()
-                for (i in 0 until block * CHANNELS) {
-                    // Clip rather than wrap: summed sources can exceed full
-                    // scale, and wrapping turns a loud moment into a crack.
-                    val sample = (mix[i] * PCM_16_SCALE)
-                        .coerceIn(-PCM_16_SCALE, PCM_16_SCALE - 1)
-                    pcm.putShort(sample.toInt().toShort())
-                }
+                val count = config.writePcm(mix, block, samples)
+                for (i in 0 until count) pcm.putShort(samples[i])
                 pcm.flip()
 
                 queue(encoder, pcm, frame, muxer)
@@ -241,8 +239,8 @@ internal class AudioExportMixer(
         mix: FloatArray,
         scratch: FloatArray,
     ) {
-        val blockStart = startFrame.toDouble() / SAMPLE_RATE
-        val blockEnd = (startFrame + block).toDouble() / SAMPLE_RATE
+        val blockStart = startFrame.toDouble() / config.sampleRate
+        val blockEnd = (startFrame + block).toDouble() / config.sampleRate
         if (blockEnd <= source.timelineStart || blockStart >= source.timelineEnd) return
 
         if (!source.started) {
@@ -254,7 +252,7 @@ internal class AudioExportMixer(
         framesRead += produced
 
         for (i in 0 until produced) {
-            val t = (startFrame + i).toDouble() / SAMPLE_RATE
+            val t = (startFrame + i).toDouble() / config.sampleRate
             if (t < source.timelineStart || t >= source.timelineEnd) continue
             val gain = source.gainAt(t).toFloat()
             if (gain == 0f) continue
@@ -287,7 +285,7 @@ internal class AudioExportMixer(
                 index,
                 0,
                 size,
-                startFrame * 1_000_000L / SAMPLE_RATE,
+                startFrame * 1_000_000L / config.sampleRate,
                 0,
             )
             drain(encoder, muxer, endOfStream = false)
@@ -309,7 +307,7 @@ internal class AudioExportMixer(
                     index,
                     0,
                     0,
-                    frame * 1_000_000L / SAMPLE_RATE,
+                    frame * 1_000_000L / config.sampleRate,
                     MediaCodec.BUFFER_FLAG_END_OF_STREAM,
                 )
                 return true
@@ -362,7 +360,11 @@ internal class AudioExportMixer(
                 skipped += "${clip.id}:image"
                 continue
             }
-            if (masterVolume <= 0.0) {
+            if (config.skipsReversedClips && clip.isReversed) {
+                skipped += "${clip.id}:reversed"
+                continue
+            }
+            if (!config.unityGain && masterVolume <= 0.0) {
                 skipped += "muted"
                 continue
             }
@@ -371,7 +373,7 @@ internal class AudioExportMixer(
             // *is* 0, so reading `baseValue` here would skip the whole clip and
             // export it with no sound at all. Only a flat, genuinely silent
             // parameter is worth skipping — the saving is one decoder.
-            if (!clip.volume.isAnimated && clip.volume.baseValue <= 0.0) {
+            if (!config.unityGain && !clip.volume.isAnimated && clip.volume.baseValue <= 0.0) {
                 skipped += "${clip.id}:vol0"
                 continue
             }
@@ -389,7 +391,7 @@ internal class AudioExportMixer(
             } else {
                 { s -> curve.speedAtSource(((s - clip.sourceStart) / span).coerceIn(0.0, 1.0)) }
             }
-            val reader = PcmAudioSource(clip.playbackVideoPath, clip.speed, SAMPLE_RATE, speedAtSource)
+            val reader = PcmAudioSource(clip.playbackVideoPath, clip.speed, config.sampleRate, speedAtSource)
             if (!reader.open()) {
                 skipped += (reader.failureReason ?: "${clip.id}:openFailed")
                 continue
@@ -406,22 +408,24 @@ internal class AudioExportMixer(
                     // canvas. The equal-power transition crossfade rides on top
                     // rather than replacing it.
                     gainAt = { t ->
-                        masterVolume *
-                            clip.volumeAt(clip.clipProgressAt(t)) *
-                            crossfadeGain(clip, t)
+                        config.gain(
+                            masterVolume * clip.volumeAt(clip.clipProgressAt(t)),
+                            crossfadeGain(clip, t),
+                        )
                     },
                 ),
             )
         }
 
         for (overlay in overlays) {
-            if (!overlay.hasAudibleSound) continue
+            if (!overlay.isVideo) continue
+            if (!config.unityGain && !overlay.hasAudibleSound) continue
             if (!File(overlay.path).exists()) continue
 
             // Its own speed, so the sound runs with the picture: the video
             // decoder is stepped through `sourceAt`, which reads the same
             // field.
-            val reader = PcmAudioSource(overlay.path, overlay.speed, SAMPLE_RATE)
+            val reader = PcmAudioSource(overlay.path, overlay.speed, config.sampleRate)
             if (!reader.open()) {
                 skipped += (reader.failureReason ?: "${overlay.id}:openFailed")
                 continue
@@ -435,16 +439,16 @@ internal class AudioExportMixer(
                     timelineEnd = overlay.endSeconds,
                     // The master volume applies, as it does to everything else
                     // audible; the overlay's own mute already zeroed this.
-                    gainAt = { masterVolume * overlay.effectiveVolume },
+                    gainAt = { config.gain(masterVolume * overlay.effectiveVolume) },
                 ),
             )
         }
 
         for (track in audioTracks) {
-            if (track.volume <= 0.0) continue
+            if (!config.unityGain && track.volume <= 0.0) continue
             if (!File(track.filePath).exists()) continue
 
-            val reader = PcmAudioSource(track.filePath, 1.0, SAMPLE_RATE)
+            val reader = PcmAudioSource(track.filePath, 1.0, config.sampleRate)
             if (!reader.open()) continue
             reader.seekTo((track.sourceStart * 1_000_000L).toLong())
 
@@ -453,7 +457,7 @@ internal class AudioExportMixer(
                     reader = reader,
                     timelineStart = track.timelineStart,
                     timelineEnd = track.timelineEnd,
-                    gainAt = { track.volume },
+                    gainAt = { config.gain(track.volume) },
                 ),
             )
         }
@@ -484,12 +488,10 @@ internal class AudioExportMixer(
 
     private companion object {
         const val TAG = "SlimshotExport"
-        const val SAMPLE_RATE = 44100
-        const val CHANNELS = 2
-        const val BIT_RATE = 128_000
+        /** `PcmAudioSource` always delivers stereo; [MixConfig] folds it to the output layout. */
+        const val STEREO = 2
         const val BLOCK_FRAMES = 1024
         const val TIMEOUT_US = 10_000L
-        const val PCM_16_SCALE = 32768f
         const val END_OF_STREAM_ATTEMPTS = 50
 
         /** ~0.23s of audio per report: often enough to read as continuous. */
