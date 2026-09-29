@@ -38,7 +38,7 @@ void main() {
 
   setUp(() async {
     final dir = await Directory.systemTemp.createTemp('captions');
-    audio = File('${dir.path}/a.m4a')..writeAsBytesSync([1, 2, 3, 4]);
+    audio = File('${dir.path}/a.wav')..writeAsBytesSync([1, 2, 3, 4]);
   });
 
   CaptionService serviceWith(
@@ -81,8 +81,9 @@ void main() {
       expect(upload.headers['Authorization'], 'Bearer tok');
       expect(upload.headers['Content-Type'], startsWith('multipart/form-data'));
       final body = latin1.decode(upload.bodyBytes);
-      expect(body, contains('name="audio"; filename="captions.m4a"'));
-      expect(body, contains('content-type: audio/mp4'));
+      // Plain PCM: an AAC encoder's priming samples made every word late.
+      expect(body, contains('name="audio"; filename="captions.wav"'));
+      expect(body, contains('content-type: audio/wav'));
       expect(body, contains('name="language"'));
     });
 

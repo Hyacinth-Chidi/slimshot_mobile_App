@@ -1815,8 +1815,8 @@ a language from its list, so an unknown code from a later build's draft left Aut
 to open for that project.
 
 **The audio is the export's own mix, which is why word times need no conversion.**
-`renderCaptionAudio` runs `AudioExportMixer` under `MixConfig.CAPTIONS` — mono 16 kHz AAC at
-48 kbps, from timeline 0 at timeline rate — so the server's "seconds from the start of the file"
+`renderCaptionAudio` runs `AudioExportMixer` under `MixConfig.CAPTIONS` — mono 16 kHz **PCM in
+a WAV** (`writeWavTo`, `WavWriter`), from timeline 0 at timeline rate — so the server's "seconds from the start of the file"
 *are* timeline seconds, through trims, flat speed, speed curves and crossfades. `MixConfig` is
 the mixer's rate, layout and gain rule as a value; `MixConfig.EXPORT` is exactly what the export
 had. Captions mix at **unity gain**: volume, its keyframes and the project mute are ignored (a
@@ -1826,6 +1826,19 @@ level. **Reversed clips are skipped inside the mixer**, not filtered from its cl
 ones. The source choice (`CaptionSource`: Video sound = clips + video overlays, Audio tracks,
 All) travels as `include`; the pass runs to the end of the last included sound, and a selection
 with nothing audible answers `hasSound: false` before anything is uploaded.
+
+**Captions showed a little after their words** (device-reported, about 50ms; fix **awaiting
+device verification**). Two causes, both addressed. **The audio was AAC**: an AAC encoder opens
+every stream with a run of priming samples — tens of milliseconds at 16 kHz — and nothing in
+the file told the transcriber to skip them, so every word was heard that much late. The caption
+audio is now uncompressed, where the first sample of the file is the first instant of the
+timeline; it costs about 2 MB a minute on upload (`uploadTimeout` is 5 minutes for it), and the
+export's AAC path is untouched — both outputs share one mixing loop (`mixBlocks`). **And a
+caption that starts on its word reads as late**: `kCaptionLeadSeconds` (0.06) shows each caption
+that long before its first word, covering the frame or two the preview spends getting it to the
+screen. Only the caption's *appearance* leads — word times are measured from the caption's start
+and have the lead added back, so Stage 3's highlight stays on the spoken word. The previous
+caption makes way for the next one's lead.
 
 **`SlimshotApi` (`core/services/`) is the app's one server client** — captions are the first
 server feature of several. The address comes only from `--dart-define=SLIMSHOT_API_URL=…`;

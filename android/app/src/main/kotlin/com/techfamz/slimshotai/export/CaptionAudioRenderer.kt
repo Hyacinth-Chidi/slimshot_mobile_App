@@ -7,11 +7,18 @@ import java.io.File
 
 /**
  * Renders the sound auto captions listen to: the chosen sources through the
- * export's own mixer, mono 16 kHz AAC in an M4A, starting at timeline 0.
+ * export's own mixer, mono 16 kHz PCM in a WAV, starting at timeline 0.
  *
  * Starting at timeline 0 and running at timeline rate is the point: the server
  * reports word times from the start of the file, so they arrive as timeline
  * times — through trims, speed, curves and crossfades — with no conversion.
+ *
+ * **PCM, not AAC**, for the same reason. Device-reported: captions showed a
+ * little after their words. An AAC encoder opens every stream with a run of
+ * priming samples — tens of milliseconds at this rate — and nothing in the
+ * file told the transcriber to skip them, so every word was heard that much
+ * late. A WAV has no codec to delay anything. It is larger (about 2 MB a
+ * minute), which a short-form video can afford.
  */
 @UnstableApi
 internal class CaptionAudioRenderer(
@@ -51,18 +58,8 @@ internal class CaptionAudioRenderer(
             return silent
         }
 
-        val muxer = try {
-            ExportMuxer(outputPath, expectedTracks = 1)
-        } catch (error: Exception) {
-            // The sources are already open, and only `encodeTo` would close them.
-            mixer.release()
-            throw error
-        }
-        try {
-            mixer.encodeTo(muxer, isCancelled = { cancelled }, onProgress = onProgress)
-        } finally {
-            muxer.close()
-        }
+        // Closes the sources itself, whether or not the file could be opened.
+        mixer.writeWavTo(File(outputPath), isCancelled = { cancelled }, onProgress = onProgress)
 
         if (cancelled || mixer.producedNothing) {
             File(outputPath).delete()

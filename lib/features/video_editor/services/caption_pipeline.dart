@@ -14,7 +14,7 @@ import 'caption_service.dart';
 /// The name of a run's audio file. It carries the temp prefix so the startup
 /// sweep finds it: a run killed part-way never reaches its own cleanup.
 String captionAudioFileName(DateTime now) =>
-    '${FileUtils.filePrefix}captions_${now.millisecondsSinceEpoch}.m4a';
+    '${FileUtils.filePrefix}captions_${now.millisecondsSinceEpoch}.wav';
 
 /// Where a run is, for the progress sheet.
 enum CaptionStage { preparing, uploading, listening, placing }

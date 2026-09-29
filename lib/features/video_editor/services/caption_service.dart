@@ -29,8 +29,9 @@ class CaptionService {
   final Future<void> Function(Duration) _delay;
   final DateTime Function() _clock;
 
-  /// Minutes of speech on a slow connection.
-  static const Duration uploadTimeout = Duration(seconds: 120);
+  /// Minutes of speech, uncompressed (about 2 MB a minute), on a slow
+  /// connection.
+  static const Duration uploadTimeout = Duration(minutes: 5);
 
   /// How long a job may take before the app stops asking. The server keeps a
   /// finished result for 180s, so a job that is merely late is never given up
@@ -61,8 +62,8 @@ class CaptionService {
             http.MultipartFile.fromBytes(
               'audio',
               bytes,
-              filename: 'captions.m4a',
-              contentType: MediaType('audio', 'mp4'),
+              filename: 'captions.wav',
+              contentType: MediaType('audio', 'wav'),
             ),
           );
         if (language != null) request.fields['language'] = language;

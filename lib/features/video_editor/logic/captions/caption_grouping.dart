@@ -14,6 +14,14 @@ const double kCaptionPauseBreakSeconds = 0.6;
 /// every caption at least 0.4s long wherever there is room for it.
 const double kCaptionHoldSeconds = 0.4;
 
+/// How long before its first word a caption shows.
+///
+/// Device-reported: captions that start *on* the word read as late. The eye
+/// wants the text there when the sound begins, and the preview spends a frame
+/// or two getting it to the screen. The words keep their own times — only the
+/// caption's appearance leads.
+const double kCaptionLeadSeconds = 0.06;
+
 /// One caption before it becomes a text overlay.
 class CaptionDraft {
   const CaptionDraft({
@@ -95,11 +103,15 @@ List<CaptionDraft> groupCaptionWords(
   close();
 
   int ms(double seconds) => (seconds * 1000).round();
+  final lead = ms(kCaptionLeadSeconds);
   final drafts = <CaptionDraft>[];
   var floor = 0;
   for (var i = 0; i < groups.length; i++) {
     final group = groups[i];
-    final start = math.max(ms(group.first.word.start), floor);
+    final start = math.max(
+      math.max(0, ms(group.first.word.start) - lead),
+      floor,
+    );
     final lastEnd = math.max(
       group.map((x) => ms(x.word.end)).reduce(math.max),
       start,
@@ -109,7 +121,8 @@ List<CaptionDraft> groupCaptionWords(
       end = math.min(end, math.max(lastEnd, ms(endLimitSeconds)));
     }
     if (i + 1 < groups.length) {
-      final next = ms(groups[i + 1].first.word.start);
+      // The next caption leads its word too, so this one makes way for it.
+      final next = math.max(0, ms(groups[i + 1].first.word.start) - lead);
       if (next > start) end = math.min(end, next);
     }
     // Every caption has a length, even one whose only word has none and

@@ -136,12 +136,32 @@ void main() {
   });
 
   group('when a caption shows', () {
+    test('it shows a moment before its first word is spoken', () {
+      // Text that arrives with the word reads as late: the eye needs the
+      // caption there when the sound starts, and a preview frame is not free.
+      final d = groupCaptionWords(
+        [sw('Hi.', 1.0, 1.3, sep: ''), sw('Bye.', 3.0, 3.2)],
+        CaptionLength.line,
+      );
+      expect(kCaptionLeadSeconds, 0.06);
+      expect(d[0].start, const Duration(milliseconds: 940));
+      expect(d[1].start, const Duration(milliseconds: 2940));
+    });
+
+    test('a caption at the very start cannot begin before zero', () {
+      final d = groupCaptionWords(
+        [sw('Hi.', 0.02, 0.3, sep: '')],
+        CaptionLength.line,
+      );
+      expect(d.single.start, Duration.zero);
+      expect(d.single.words.single.start, const Duration(milliseconds: 20));
+    });
+
     test('it holds 0.4s past its last word when nothing follows soon', () {
       final d = groupCaptionWords(
         [sw('Hi.', 1.0, 1.3, sep: ''), sw('Bye.', 3.0, 3.2)],
         CaptionLength.line,
       );
-      expect(d[0].start, const Duration(milliseconds: 1000));
       expect(d[0].end, const Duration(milliseconds: 1700));
       expect(d[1].end, const Duration(milliseconds: 3600));
     });
@@ -151,8 +171,9 @@ void main() {
         [sw('Hi.', 1.0, 1.3, sep: ''), sw('Bye.', 1.5, 1.7)],
         CaptionLength.line,
       );
-      expect(d[0].end, const Duration(milliseconds: 1500));
-      expect(d[1].start, const Duration(milliseconds: 1500));
+      // …which itself begins a moment before its word.
+      expect(d[0].end, const Duration(milliseconds: 1440));
+      expect(d[1].start, const Duration(milliseconds: 1440));
     });
 
     test('the last hold stops where the sound ends', () {
@@ -208,7 +229,9 @@ void main() {
   });
 
   group('what a caption holds', () {
-    test('UTF-16 offsets, and word times relative to the caption', () {
+    test('UTF-16 offsets, and word times that stay on the spoken word', () {
+      // The caption starts early; its words do not. A word's time is measured
+      // from the caption's start, so the lead is added back to each.
       final d = groupCaptionWords(
         [sw('Hello,', 2.0, 2.4, sep: ''), sw('world', 2.5, 2.9)],
         CaptionLength.phrase,
@@ -218,14 +241,14 @@ void main() {
         CaptionWord(
           textStart: 0,
           textEnd: 6,
-          start: Duration.zero,
-          end: Duration(milliseconds: 400),
+          start: Duration(milliseconds: 60),
+          end: Duration(milliseconds: 460),
         ),
         CaptionWord(
           textStart: 7,
           textEnd: 12,
-          start: Duration(milliseconds: 500),
-          end: Duration(milliseconds: 900),
+          start: Duration(milliseconds: 560),
+          end: Duration(milliseconds: 960),
         ),
       ]);
     });

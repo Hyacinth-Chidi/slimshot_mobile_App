@@ -174,41 +174,16 @@ internal class AudioExportMixer(
             encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             encoder.start()
 
-            val totalFrames = (durationSeconds * config.sampleRate).toLong()
-            val mix = FloatArray(BLOCK_FRAMES * STEREO)
-            val scratch = FloatArray(BLOCK_FRAMES * STEREO)
-            val samples = ShortArray(BLOCK_FRAMES * STEREO)
             val pcm = ByteBuffer
                 .allocateDirect(BLOCK_FRAMES * config.channels * 2)
                 .order(ByteOrder.nativeOrder())
 
-            var frame = 0L
-            var blocksSinceReport = 0
-            while (frame < totalFrames && !isCancelled()) {
-                val block = minOf(BLOCK_FRAMES.toLong(), totalFrames - frame).toInt()
-                java.util.Arrays.fill(mix, 0f)
-
-                for (source in sources) {
-                    mixSource(source, frame, block, mix, scratch)
-                }
-
+            val frame = mixBlocks(sources, isCancelled, onProgress) { samples, count, at ->
                 pcm.clear()
-                val count = config.writePcm(mix, block, samples)
                 for (i in 0 until count) pcm.putShort(samples[i])
                 pcm.flip()
-
-                queue(encoder, pcm, frame, muxer)
-                frame += block
-
-                // The audio pass runs to completion before a single video frame
-                // is drawn, so without this the progress bar sits at zero for
-                // its whole duration and the export reads as frozen.
-                if (++blocksSinceReport >= PROGRESS_EVERY_BLOCKS) {
-                    blocksSinceReport = 0
-                    onProgress((frame.toDouble() / totalFrames).coerceIn(0.0, 1.0))
-                }
+                queue(encoder, pcm, at, muxer)
             }
-            onProgress(1.0)
 
             if (signalEnd(encoder, frame)) {
                 drain(encoder, muxer, endOfStream = true)
@@ -230,6 +205,76 @@ internal class AudioExportMixer(
             encoder.release()
             codec = null
         }
+    }
+
+    /**
+     * Renders the whole mix as 16-bit PCM into a WAV at [file] — no encoder,
+     * so nothing delays the first sample. What the caption pass uses.
+     */
+    fun writeWavTo(
+        file: File,
+        isCancelled: () -> Boolean,
+        onProgress: (Double) -> Unit = {},
+    ) {
+        val sources = prepared ?: buildSources().also { prepared = it }
+        try {
+            if (sources.isEmpty()) {
+                onProgress(1.0)
+                return
+            }
+            WavWriter(file, config.sampleRate, config.channels).use { wav ->
+                val frames = mixBlocks(sources, isCancelled, onProgress) { samples, count, _ ->
+                    wav.write(samples, count)
+                    samplesWritten += count
+                    bytesWritten += count * 2L
+                }
+                Log.i(TAG, "audio written: frames=$frames read=$framesRead bytes=$bytesWritten")
+            }
+        } finally {
+            sources.forEach { it.reader.release() }
+            prepared = null
+        }
+    }
+
+    /**
+     * Mixes the timeline block by block, handing each block to [onBlock] as
+     * 16-bit samples in the config's layout with the frame it starts at.
+     * Returns the frames mixed. The one loop both outputs share.
+     */
+    private fun mixBlocks(
+        sources: List<Source>,
+        isCancelled: () -> Boolean,
+        onProgress: (Double) -> Unit,
+        onBlock: (samples: ShortArray, count: Int, frame: Long) -> Unit,
+    ): Long {
+        val totalFrames = (durationSeconds * config.sampleRate).toLong()
+        val mix = FloatArray(BLOCK_FRAMES * STEREO)
+        val scratch = FloatArray(BLOCK_FRAMES * STEREO)
+        val samples = ShortArray(BLOCK_FRAMES * STEREO)
+
+        var frame = 0L
+        var blocksSinceReport = 0
+        while (frame < totalFrames && !isCancelled()) {
+            val block = minOf(BLOCK_FRAMES.toLong(), totalFrames - frame).toInt()
+            java.util.Arrays.fill(mix, 0f)
+
+            for (source in sources) {
+                mixSource(source, frame, block, mix, scratch)
+            }
+
+            onBlock(samples, config.writePcm(mix, block, samples), frame)
+            frame += block
+
+            // The audio pass runs to completion before a single video frame
+            // is drawn, so without this the progress bar sits at zero for
+            // its whole duration and the export reads as frozen.
+            if (++blocksSinceReport >= PROGRESS_EVERY_BLOCKS) {
+                blocksSinceReport = 0
+                onProgress((frame.toDouble() / totalFrames).coerceIn(0.0, 1.0))
+            }
+        }
+        onProgress(1.0)
+        return frame
     }
 
     private fun mixSource(

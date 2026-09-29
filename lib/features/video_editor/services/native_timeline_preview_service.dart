@@ -616,7 +616,8 @@ class NativeTimelinePreviewService {
   }
 
   /// Renders the sound auto captions listen to — [source] through the
-  /// export's own mixer, mono 16 kHz AAC from timeline 0 — into [outputPath].
+  /// export's own mixer, mono 16 kHz PCM in a WAV from timeline 0 — into
+  /// [outputPath].
   ///
   /// Throws [CaptionAudioCancelled] when [cancelCaptionAudio] stopped it.
   Future<CaptionAudioResult> renderCaptionAudio(

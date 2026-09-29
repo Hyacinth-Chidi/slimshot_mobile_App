@@ -79,7 +79,7 @@ void main() {
     // takes files that carry its prefix.
     final name = captionAudioFileName(DateTime.fromMillisecondsSinceEpoch(42));
     expect(name, startsWith(FileUtils.filePrefix));
-    expect(name, endsWith('_42.m4a'));
+    expect(name, endsWith('_42.wav'));
   });
 
   test('no caption outlasts the sound it was heard in', () async {
