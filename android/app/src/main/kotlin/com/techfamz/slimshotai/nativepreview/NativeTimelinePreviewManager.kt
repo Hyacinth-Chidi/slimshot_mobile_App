@@ -5,7 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.media3.common.util.UnstableApi
-import com.techfamz.slimshotai.export.AudioExportMixer
+import com.techfamz.slimshotai.export.TimelineAudioTracks
 import com.techfamz.slimshotai.export.ExportCapabilities
 import com.techfamz.slimshotai.export.VideoExportEngine
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
@@ -63,30 +63,6 @@ class NativeTimelinePreviewManager(
      * and the export decoders write into the same lanes ExoPlayer fills.
      */
     /** Reads the composer's `audioTracks` array — the imported music and voice-overs. */
-    private fun parseAudioTracks(
-        timeline: Map<String, Any?>,
-    ): List<AudioExportMixer.TimelineAudioTrack> {
-        val raw = timeline["audioTracks"] as? List<*> ?: return emptyList()
-        return raw.mapNotNull { entry ->
-            val map = entry as? Map<*, *> ?: return@mapNotNull null
-            val path = map["filePath"] as? String ?: return@mapNotNull null
-            if (path.isBlank()) return@mapNotNull null
-
-            val timelineStart = (map["timelineStart"] as? Number)?.toDouble() ?: 0.0
-            val timelineEnd = (map["timelineEnd"] as? Number)?.toDouble()
-                ?: return@mapNotNull null
-            if (timelineEnd <= timelineStart) return@mapNotNull null
-
-            AudioExportMixer.TimelineAudioTrack(
-                filePath = path,
-                sourceStart = (map["sourceStart"] as? Number)?.toDouble() ?: 0.0,
-                timelineStart = timelineStart,
-                timelineEnd = timelineEnd,
-                volume = ((map["volume"] as? Number)?.toDouble() ?: 1.0).coerceIn(0.0, 1.0),
-            )
-        }
-    }
-
     /**
      * Export dimensions for a canvas of [aspect] at [shortSidePx].
      *
@@ -172,21 +148,10 @@ class NativeTimelinePreviewManager(
 
         val overlays = NativeTimelineOverlays.fromTimeline(timeline)
 
-        // A video overlay's sound is one more source to the mixer, windowed to
-        // the overlay's span — the same shape as an imported music track.
-        val overlayAudio = overlays
-            .filter { it.isVideo && !it.isMuted && it.volume > 0.0 }
-            .map {
-                AudioExportMixer.TimelineAudioTrack(
-                    filePath = it.path,
-                    sourceStart = it.sourceStart,
-                    timelineStart = it.startSeconds,
-                    timelineEnd = it.endSeconds,
-                    volume = it.volume,
-                )
-            }
-
-        val audioTracks = parseAudioTracks(timeline) + overlayAudio
+        // Imported tracks only. A video overlay's sound reaches the mixer
+        // through `overlays`, at its own speed — listing it here as well mixed
+        // it twice.
+        val audioTracks = TimelineAudioTracks.fromTimeline(timeline)
         // A muted project exports silent rather than exporting the wrong sound.
         val masterVolume = if (timeline["isMuted"] == true) 0.0 else 1.0
 
