@@ -22,6 +22,7 @@ void main() {
     bool image = false,
     bool video = false,
     bool captionServer = true,
+    bool caption = false,
   }) =>
       isToolbarToolVisible(
         id,
@@ -33,6 +34,7 @@ void main() {
         hasImageSelected: image,
         hasVideoOverlaySelected: video,
         hasCaptionServer: captionServer,
+        hasCaptionSelected: caption,
       );
 
   /// The tool ids a `const EditorMenu` declares, without the menu's own id.
@@ -74,6 +76,8 @@ void main() {
             id,
             canDeleteSegment: false,
             text: kind == 'text',
+            // The text menu's fullest selection: a text that is a caption.
+            caption: kind == 'text',
             image: kind == 'image',
             video: kind == 'video',
           ),
@@ -114,6 +118,13 @@ void main() {
         File('lib/screens/video_editor_screen.dart').readAsStringSync();
     expect(screen, contains('isToolbarToolVisible('));
     expect(screen, isNot(contains("tool.id == 'volume' || tool.id == 'speed'")));
+  });
+
+  test('Captions is offered for a caption, not for ordinary text', () {
+    // The list edits a caption set; a title has none to list.
+    expect(visible('captions', text: true, caption: true), isTrue);
+    expect(visible('captions', text: true), isFalse);
+    expect(declaredTools('_textOverlayMenu'), contains('captions'));
   });
 
   test('Auto captions is offered only in a build that has a server', () {

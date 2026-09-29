@@ -1797,8 +1797,8 @@ using it. The screen takes the first pick from the same picker Add uses and re-s
 ### Auto captions — generating a set (Stage 1)
 
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-09-29-auto-captions-design.md`,
-Stage 1 plan beside it in `plans/`. Stages 2–4 (editing, word highlight, caption styles) are
-specified and not built. Sign-in and credits come later and have exactly one hook:
+Stage 1 plan beside it in `plans/`. Stage 2 (editing) is the next section; Stages 3–4 (word
+highlight, caption styles) are specified and not built. Sign-in and credits come later and have exactly one hook:
 `CaptionAccess.ensureAllowed`, called once before any audio is rendered, which always opens today.
 
 **A caption is an ordinary text overlay**, for the emoji reason: a dedicated caption kind would
@@ -1927,6 +1927,57 @@ misplace every later word; any way it closes before the words land cancels the r
   it before a device did. The wait is bounded (`kExportFontWait`, 5s) and cannot throw, and going
   ahead without a font is **said** (`exportFontWarning`) — only for a project that draws text,
   since the font that failed may be one a sheet merely listed.
+
+### Auto captions — editing a set (Stage 2)
+
+**Awaiting device verification.** Plan: `docs/superpowers/plans/2026-09-30-auto-captions-stage2.md`.
+
+**One rule runs through all of it: a word stays on the instant it was spoken.** Word times are
+stored relative to their caption's start, so anything that moves that start — a trim, a split, a
+merge — moves them back by as much (`logic/captions/caption_edits.dart`, pure functions over
+captions that know nothing of the playhead or of undo).
+
+**Retiming lives in the notifier, not in any one editor.** Every text write goes through
+`_setText`, and a caption whose text changed is retimed there (`retimeCaptionWords`) — so the
+caption list, the text editor and anything added later fix words the same way, and there is no
+editor that can forget to. Old and new words are aligned by longest common subsequence with case
+and punctuation set aside (`hello` and `Hello,` are one word); **a matched word keeps its times
+exactly**; a run of new words shares the room between its matched neighbours, by length; with
+nothing matched — a rewrite — they share the whole caption. Words are whitespace-separated,
+except that each character of a script written without spaces (Han, kana; not Hangul, which
+spaces its words) is a word of its own with its punctuation attached, which is how a provider
+returns those languages.
+
+**A caption set moves as one** (`_moveCaptionSet`, `followCaptionMotion`). Moving, pinching or
+turning one caption on the canvas gives every other caption of its set the same change — a
+caption that sits somewhere else each second reads as a fault. The edited caption goes through
+the edit rule like any text; the others take the *delta* between what it showed before and
+after, on their base values **and every keyframe value**, so a keyframed caption keeps its
+motion and takes the move. Only `setOverlayMotionLive` does this — a keyframe command (placing
+or removing a diamond) is about one caption's path and leaves the set alone. No snapshot of its
+own: the gesture took one, so one Undo puts the whole set back. **Box width is the set's too**
+(`_setText`) — it is what makes captions wrap alike. Ordinary text still moves alone.
+
+**The caption list** (`CaptionBatchSheet`) opens from **Captions** on a selected caption's menu —
+shown only for a caption (`isToolbarToolVisible`'s `hasCaptionSelected`). Each row is the
+caption's start (`1:04.2`; a tap seeks there and selects it), its text, and Split / Merge with
+next / Delete. The header holds Length — which **re-cuts** the whole set, hand fixes included,
+keeping the look and place of its first caption — and Delete all. It is a list to read and type
+into, not a choice about the picture, so it takes the audio library's 0.7 height and rides above
+the keyboard; rows are a fixed height so the list can open on the caption it was opened from
+without laying out the ones before it. **Typing is one undo step per caption, taken on the first
+change, not on focus**: a field only looked at leaves nothing to undo. The fields follow the
+project through `ref.listen`, not in `build` — setting a controller's text during a build
+notifies its listeners mid-build. A caption left with no words is removed when the list closes.
+
+**Split, merge, delete all and re-cut are each one undo step — and none where there is nothing
+to do**: a split at either end of the text, a merge on the last caption. Split cuts at the word
+boundary nearest the cursor, and the right half leads its first word like any caption. **The
+timeline Split tool stays off for text**; splitting a caption is a list action.
+
+Not yet decided, left as they are: a *duplicated* caption keeps its set, so it moves with it and
+goes at the next re-cut or regeneration; a template chosen on one caption restyles that caption
+only, until Stage 4's apply-to-all.
 
 ### Apply to all — a copy, not a mode
 

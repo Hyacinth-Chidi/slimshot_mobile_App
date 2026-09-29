@@ -164,6 +164,15 @@ void main() {
     expect(menuSource('_audioMenu'), contains("id: 'effects'"));
   });
 
+  test('a selected caption offers its list, and the screen handles it', () {
+    expect(menuSource('_textOverlayMenu'), contains("id: 'captions'"));
+    expect(
+      screen.readAsStringSync(),
+      contains("tool.id == 'captions'"),
+      reason: 'a declared tool with no handler is a dead signpost',
+    );
+  });
+
   test('the Text tool offers Auto captions, and the screen handles it', () {
     expect(menuSource('_textMenu'), contains("id: 'auto_captions'"));
     expect(

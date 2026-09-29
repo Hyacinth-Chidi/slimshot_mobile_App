@@ -15,6 +15,7 @@ bool isToolbarToolVisible(
   required bool hasImageSelected,
   required bool hasVideoOverlaySelected,
   required bool hasCaptionServer,
+  required bool hasCaptionSelected,
 }) {
   switch (toolId) {
     case 'delete':
@@ -34,6 +35,9 @@ bool isToolbarToolVisible(
       // With several clips and none selected, a slider would not know which
       // clip it moved; a lone clip is the only one it can mean.
       return clipCount <= 1 || isClipSelected;
+    case 'captions':
+      // The list edits a caption set; a title has none to list.
+      return hasCaptionSelected;
     case 'auto_captions':
       // Not offered before it works: a build without a server address has
       // nowhere to send the audio.

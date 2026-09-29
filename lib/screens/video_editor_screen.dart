@@ -69,6 +69,7 @@ import '../features/video_editor/services/caption_access.dart';
 import '../features/video_editor/services/caption_pipeline.dart';
 import '../features/video_editor/services/caption_service.dart';
 import '../features/video_editor/widgets/panels/auto_caption_sheet.dart';
+import '../features/video_editor/widgets/panels/caption_batch_sheet.dart';
 import '../features/video_editor/widgets/panels/caption_progress_sheet.dart';
 import '../features/video_editor/widgets/panels/replace_captions_dialog.dart';
 import '../features/video_editor/widgets/editor_tool_tile.dart';
@@ -321,6 +322,9 @@ const EditorMenu _textMenu = EditorMenu(
 const EditorMenu _textOverlayMenu = EditorMenu(
   id: 'text_overlay',
   tools: [
+    // A caption's own: the list of its whole set. Shown only for a caption
+    // (`isToolbarToolVisible`).
+    EditorTool(id: 'captions', label: 'Captions', icon: LucideIcons.subtitles),
     EditorTool(id: 'text_edit', label: 'Edit', icon: LucideIcons.pencil),
     EditorTool(
       id: 'text_templates',
@@ -1015,6 +1019,31 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     // Selects it and opens its menu, which the editor closing leaves showing.
     ref.read(videoEditorProvider.notifier).addTextOverlay(overlay);
     unawaited(showTextEditor(context: context, overlay: overlay, ref: ref));
+  }
+
+  /// The selected caption's list: every caption of its set, to read down and
+  /// fix. A caption left with no words is removed when the list closes — the
+  /// rule the text editor has for a text left empty.
+  Future<void> _showCaptionList() async {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    notifier.setPlaying(false);
+    _audioPlayerManager.pauseAll();
+    unawaited(_nativePreviewService.pause());
+
+    await showEditorSheet<void>(
+      context,
+      builder: (_) => CaptionBatchSheet(
+        initialCaptionId: ref.read(videoEditorProvider).selectedTextId,
+        onSeek: (seconds) {
+          notifier.updatePlaybackPosition(seconds);
+          unawaited(
+            _seekNativePreviewToTimeline(ref.read(videoEditorProvider)),
+          );
+        },
+      ),
+    );
+    if (!mounted) return;
+    notifier.removeEmptyCaptions();
   }
 
   /// Text → Auto captions: choose, wait for the words, place them.
@@ -1943,6 +1972,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
             hasVideoOverlaySelected:
                 editorState.selectedVideoOverlayId != null,
             hasCaptionServer: SlimshotApi.isConfigured,
+            hasCaptionSelected: editorState.textOverlays.any(
+              (t) => t.id == editorState.selectedTextId && t.isCaption,
+            ),
           ),
         )
         .toList();
@@ -2174,6 +2206,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                         ),
                       ),
                     );
+                  } else if (tool.id == 'captions') {
+                    unawaited(_showCaptionList());
                   } else if (tool.id == 'auto_captions') {
                     unawaited(_startAutoCaptions());
                   } else if (tool.id == 'overlay') {
