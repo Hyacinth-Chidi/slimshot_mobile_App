@@ -44,6 +44,9 @@ class DraftProject {
   
   final bool isMuted;
 
+  /// `CaptionSettings.toJson()`, or null for a project with no captions.
+  final Map<String, dynamic>? captionSettings;
+
   const DraftProject({
     required this.id,
     required this.sourceVideoPath,
@@ -70,6 +73,7 @@ class DraftProject {
     this.backgroundImagePath,
     this.adjustments = ColorAdjustments.none,
     required this.isMuted,
+    this.captionSettings,
   });
 
   Map<String, dynamic> toJson() {
@@ -99,6 +103,7 @@ class DraftProject {
       if (backgroundImagePath != null) 'backgroundImagePath': backgroundImagePath,
       if (!adjustments.isIdentity) 'adjustments': adjustments.toJson(),
       'isMuted': isMuted,
+      if (captionSettings != null) 'captionSettings': captionSettings,
     };
   }
 
@@ -131,6 +136,9 @@ class DraftProject {
       backgroundImagePath: json['backgroundImagePath'] as String?,
       adjustments: ColorAdjustments.fromJson(json['adjustments']),
       isMuted: json['isMuted'] as bool? ?? false,
+      captionSettings: json['captionSettings'] is Map
+          ? Map<String, dynamic>.from(json['captionSettings'] as Map)
+          : null,
     );
   }
 }

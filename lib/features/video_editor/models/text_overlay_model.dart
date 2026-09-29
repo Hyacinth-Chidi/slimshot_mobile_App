@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../logic/animation/overlay_keyframes.dart';
+import '../logic/captions/caption_word.dart';
 
 /// A speed of 1 runs an animation at the catalog's own natural duration.
 const double kTextAnimationNaturalSpeed = 1.0;
@@ -134,6 +135,18 @@ class TextOverlayModel {
   /// Empty on every overlay nobody has placed a diamond on.
   OverlayKeyframes keyframes;
 
+  /// The caption set this text belongs to, or null for ordinary text.
+  ///
+  /// A string rather than a flag: one set per project today, but a translated
+  /// second set is the obvious next feature, and an id now costs no migration
+  /// then.
+  String? captionSetId;
+
+  /// A caption's spoken words, in text order; null for ordinary text.
+  List<CaptionWord>? captionWords;
+
+  bool get isCaption => captionSetId != null;
+
   TextOverlayModel({
     required this.id,
     required this.text,
@@ -168,6 +181,8 @@ class TextOverlayModel {
     this.referenceCanvasSize,
     this.opacity = 1.0,
     this.keyframes = OverlayKeyframes.none,
+    this.captionSetId,
+    this.captionWords,
   });
 
   TextOverlayModel copyWith({
@@ -202,6 +217,9 @@ class TextOverlayModel {
     Size? referenceCanvasSize,
     double? opacity,
     OverlayKeyframes? keyframes,
+    String? captionSetId,
+    List<CaptionWord>? captionWords,
+    bool clearCaption = false,
   }) {
     return TextOverlayModel(
       id: id ?? this.id,
@@ -235,6 +253,8 @@ class TextOverlayModel {
       referenceCanvasSize: referenceCanvasSize ?? this.referenceCanvasSize,
       opacity: opacity ?? this.opacity,
       keyframes: keyframes ?? this.keyframes,
+      captionSetId: clearCaption ? null : captionSetId ?? this.captionSetId,
+      captionWords: clearCaption ? null : captionWords ?? this.captionWords,
     );
   }
 
@@ -315,6 +335,10 @@ class TextOverlayModel {
       'opacity': opacity,
       // Omitted while unset, so an un-keyframed text writes what it always did.
       if (!keyframes.isEmpty) 'keyframes': keyframes.toJson(),
+      // Omitted on ordinary text, so a draft without captions is unchanged.
+      if (captionSetId != null) 'captionSetId': captionSetId,
+      if (captionWords != null)
+        'captionWords': [for (final w in captionWords!) w.toJson()],
     };
   }
 
@@ -385,11 +409,11 @@ class TextOverlayModel {
         ? Color(json['shadowColor'] as int)
         : Colors.transparent;
     final shadow = _shadowFrom(json, shadowColor);
-
+    final text = json['text'] as String;
 
     return TextOverlayModel(
       id: json['id'] as String,
-      text: json['text'] as String,
+      text: text,
       color: json['color'] != null ? Color(json['color'] as int) : Colors.white,
       fontFamily: json['fontFamily'] as String? ?? 'Roboto',
       backgroundColor: json['backgroundColor'] != null ? Color(json['backgroundColor'] as int) : Colors.transparent,
@@ -427,6 +451,9 @@ class TextOverlayModel {
           .clamp(0.0, 1.0)
           .toDouble(),
       keyframes: OverlayKeyframes.fromJson(json['keyframes']),
+      captionSetId:
+          json['captionSetId'] is String ? json['captionSetId'] as String : null,
+      captionWords: CaptionWord.listFromJson(json['captionWords'], text.length),
     );
   }
 }

@@ -14,6 +14,7 @@ import 'text_overlay_model.dart';
 import 'video_overlay_model.dart';
 import 'video_segment.dart';
 import 'audio_track_model.dart';
+import '../logic/captions/caption_settings.dart';
 import '../logic/color/color_adjustments.dart';
 
 /// How far outside a clip's timeline span the playhead may sit and still count
@@ -151,6 +152,7 @@ class VideoEditorState {
     this.backgroundBlurIntensity = 20.0,
     this.backgroundImagePath,
     this.adjustments = ColorAdjustments.none,
+    this.captionSettings,
     this.selectedTransitionSegmentId,
   });
 
@@ -229,6 +231,12 @@ class VideoEditorState {
   /// into the canvas look after the project filter. Coexists with per-clip
   /// adjustments; see `logic/color/color_adjustments.dart`.
   final ColorAdjustments adjustments;
+
+  /// What the project's caption set was made with; null until one exists.
+  final CaptionSettings? captionSettings;
+
+  /// Whether any text on the timeline is a caption.
+  bool get hasCaptions => textOverlays.any((t) => t.isCaption);
   final String? selectedTransitionSegmentId;
 
   /// The first imported file, as an [XFile].
@@ -661,6 +669,8 @@ class VideoEditorState {
     String? backgroundImagePath,
     bool clearBackgroundImagePath = false,
     ColorAdjustments? adjustments,
+    CaptionSettings? captionSettings,
+    bool clearCaptionSettings = false,
     String? selectedTransitionSegmentId,
     bool clearSelectedTransitionSegmentId = false,
   }) {
@@ -730,6 +740,9 @@ class VideoEditorState {
           ? null
           : backgroundImagePath ?? this.backgroundImagePath,
       adjustments: adjustments ?? this.adjustments,
+      captionSettings: clearCaptionSettings
+          ? null
+          : captionSettings ?? this.captionSettings,
       selectedTransitionSegmentId: clearSelectedTransitionSegmentId
           ? null
           : selectedTransitionSegmentId ?? this.selectedTransitionSegmentId,

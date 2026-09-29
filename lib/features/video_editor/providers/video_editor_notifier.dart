@@ -31,6 +31,7 @@ import '../models/video_segment.dart';
 import '../services/media_import_service.dart';
 import '../services/video_editor_service.dart';
 import '../services/video_thumbnail_service.dart';
+import '../logic/captions/caption_settings.dart';
 import '../logic/color/color_adjustments.dart';
 import '../logic/mask/clip_mask.dart';
 import '../../../core/services/draft_files.dart';
@@ -324,6 +325,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         backgroundImagePath: state.backgroundImagePath,
         adjustments: state.adjustments,
         isMuted: state.isMuted,
+        captionSettings: state.captionSettings?.toJson(),
       );
 
       print('DEBUG: Calling DraftService.saveDraft');
@@ -473,6 +475,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         : 'Some cached files for this project were missing and have been '
             'reset. Reversed clips are being re-rendered.';
 
+    final captionSettings = CaptionSettings.fromJson(draft.captionSettings);
+
     state = state.copyWith(
       draftId: draft.id,
       thumbnailPath: draft.thumbnailPath,
@@ -524,6 +528,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       backgroundImagePath: draft.backgroundImagePath,
       adjustments: draft.adjustments,
       isMuted: draft.isMuted,
+      captionSettings: captionSettings,
+      clearCaptionSettings: captionSettings == null,
       isPlaying: false,
       isExporting: false,
       currentMenuId: 'root',
