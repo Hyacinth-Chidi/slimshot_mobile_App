@@ -661,6 +661,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     TextOverlayModel? text,
     ImageOverlayModel? image,
     VideoOverlayModel? video,
+
+    /// The rest of a selected caption's set: what is done to one caption's
+    /// placement or opacity is done to them all, so ✕ puts them all back.
+    List<TextOverlayModel> captions,
   })? _toolEntry;
 
   /// Opens [toolId] remembering the selected clip or overlay as it is, so ✕
@@ -672,12 +676,20 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// hears it. Without a record, ✕ closed the panel and kept the change.
   void openRevertibleTool(String toolId) {
     setActiveTool(toolId);
+    final text = _selectedTextOverlay;
+    final setId = text?.captionSetId;
     _toolEntry = (
       undoDepth: _undoStack.length,
       segment: state.selectedSegment,
-      text: _selectedTextOverlay,
+      text: text,
       image: _selectedImageOverlay,
       video: _selectedVideoOverlay,
+      captions: setId == null
+          ? const []
+          : [
+              for (final o in state.textOverlays)
+                if (o.captionSetId == setId) o,
+            ],
     );
   }
 
@@ -711,7 +723,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
             ? null
             : [
                 for (final o in state.textOverlays)
-                  if (o.id == text.id) text else o,
+                  if (o.id == text.id)
+                    text
+                  else
+                    entry.captions.where((c) => c.id == o.id).firstOrNull ?? o,
               ],
         imageOverlays: image == null
             ? null
@@ -2876,8 +2891,18 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         for (final x in state.textOverlays)
           // A caption's words are timed from its start, so a moved start
           // moves them back: each stays on the instant it was spoken.
+          // **From the caption as the gesture found it**, not as the frame
+          // before left it: a word the edge has passed is held at the edge,
+          // and trimming that result again would leave it there when the
+          // edge came back.
           x.id == id
-              ? shiftCaptionStart(x, begin).copyWith(endTime: finish)
+              ? shiftCaptionStart(
+                  _gestureBase?.textOverlays
+                          .where((t) => t.id == id)
+                          .firstOrNull ??
+                      x,
+                  begin,
+                ).copyWith(endTime: finish, laneIndex: x.laneIndex)
               : x,
       ]);
     } else if (state.imageOverlays.any((x) => x.id == id)) {
@@ -3078,6 +3103,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         if (t.isCaption) t,
     ]..sort((a, b) => a.startTime.compareTo(b.startTime));
     if (captions.isEmpty) return;
+    // To the length it already has it would take an undo step, issue new ids
+    // and throw away every split and merge made by hand, to arrive where it
+    // started.
+    if ((state.captionSettings?.length ?? CaptionLength.phrase) == length) {
+      return;
+    }
     final drafts = recutCaptionDrafts(captions, length);
     if (drafts.isEmpty) return;
 
@@ -3280,6 +3311,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
                 overlay.endTime,
                 overlay.laneIndex,
               ),
+              // A copy of a caption is ordinary text. Left in the set it fed
+              // its words into a re-cut a second time and was laid on its
+              // original's lane, where the set is put as one.
+              clearCaption: true,
             );
     state = state.copyWith(
       textOverlays: [...state.textOverlays, duplicated],

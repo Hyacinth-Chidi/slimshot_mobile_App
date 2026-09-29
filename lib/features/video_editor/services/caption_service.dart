@@ -22,12 +22,19 @@ class CaptionService {
     this._api, {
     Future<void> Function(Duration)? delay,
     DateTime Function()? clock,
+    int maxUploadBytes = defaultMaxUploadBytes,
   })  : _delay = delay ?? Future<void>.delayed,
-        _clock = clock ?? DateTime.now;
+        _clock = clock ?? DateTime.now,
+        _maxUploadBytes = maxUploadBytes;
 
   final SlimshotApi _api;
   final Future<void> Function(Duration) _delay;
   final DateTime Function() _clock;
+  final int _maxUploadBytes;
+
+  /// The server's own limit. Uncompressed audio is about 2 MB a minute, so
+  /// this is some 26 minutes of timeline.
+  static const int defaultMaxUploadBytes = 50 * 1024 * 1024;
 
   /// Minutes of speech, uncompressed (about 2 MB a minute), on a slow
   /// connection.
@@ -53,15 +60,24 @@ class CaptionService {
     String? language,
     required String idempotencyKey,
   }) async {
-    final bytes = await File(audioPath).readAsBytes();
+    final file = File(audioPath);
+    final length = await file.length();
+    // What the server would refuse is not sent: the whole upload would be
+    // spent to be told no.
+    if (length > _maxUploadBytes) {
+      throw const SlimshotApiException('PAYLOAD_TOO_LARGE');
+    }
     final data = await _api.send(
       () {
         final request = http.MultipartRequest('POST', _api.uri('/captions'))
           ..headers['Idempotency-Key'] = idempotencyKey
           ..files.add(
-            http.MultipartFile.fromBytes(
+            // Streamed from the file, not held in memory; opened again
+            // for the one retry, since a stream is read once.
+            http.MultipartFile(
               'audio',
-              bytes,
+              file.openRead(),
+              length,
               filename: 'captions.wav',
               contentType: MediaType('audio', 'wav'),
             ),

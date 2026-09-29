@@ -74,10 +74,12 @@ List<CaptionToken> captionTokens(String text) {
 /// words are aligned by their longest common subsequence — case and
 /// punctuation set aside, so `hello` and `Hello,` are one word — and **a word
 /// that matched keeps its times exactly**. A run of words that did not match
-/// shares the room between its matched neighbours (or the caption's edges,
-/// [span] being its length), each in proportion to its length. With nothing
-/// matched at all — a rewrite, or a caption that carried no words — they
-/// share the whole caption.
+/// but replaces as many old ones — a word respelled — takes their times, one
+/// for one: it is the same moment of speech. Any other run shares the room
+/// between its matched neighbours (or the caption's edges, [span] being its
+/// length), each in proportion to its length, and never past the caption's
+/// end. With nothing matched at all — a rewrite, or a caption that carried no
+/// words — they share the whole caption.
 ///
 /// Times are relative to the caption's start, like [CaptionWord]'s.
 List<CaptionWord> retimeCaptionWords({
@@ -119,8 +121,18 @@ List<CaptionWord> retimeCaptionWords({
     while (j < tokens.length && starts[j] == null) {
       j++;
     }
+    final oldFrom = i == 0 ? 0 : matched[i - 1]! + 1;
+    final oldTo = j == tokens.length ? old.length : matched[j]!;
+    if (oldTo - oldFrom == j - i) {
+      for (var k = i; k < j; k++) {
+        starts[k] = old[oldFrom + k - i].start.inMilliseconds;
+        ends[k] = old[oldFrom + k - i].end.inMilliseconds;
+      }
+      i = j;
+      continue;
+    }
     // The room: from the matched word before the run to the one after it.
-    final from = i == 0 ? 0 : ends[i - 1]!;
+    final from = math.min(i == 0 ? 0 : ends[i - 1]!, spanMs);
     final to = math.max(from, j == tokens.length ? spanMs : starts[j]!);
     final lengths = [for (var k = i; k < j; k++) tokens[k].end - tokens[k].start];
     final total = lengths.fold<int>(0, (a, b) => a + b);

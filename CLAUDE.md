@@ -1975,9 +1975,38 @@ to do**: a split at either end of the text, a merge on the last caption. Split c
 boundary nearest the cursor, and the right half leads its first word like any caption. **The
 timeline Split tool stays off for text**; splitting a caption is a list action.
 
-Not yet decided, left as they are: a *duplicated* caption keeps its set, so it moves with it and
-goes at the next re-cut or regeneration; a template chosen on one caption restyles that caption
-only, until Stage 4's apply-to-all.
+**Found by the stage's review, each fixed with a test that failed first:**
+
+- **A copy of a caption is ordinary text** (`duplicateTextOverlay` clears the caption). Left in
+  the set, the copy fed its words into a re-cut a second time ("hello world hello world") and
+  was laid on its original's lane, since the set is placed as one.
+- **✕ on Opacity put back only the selected caption** while the drag had changed the whole set.
+  `openRevertibleTool` records the rest of a caption's set and `discardActiveTool` restores it.
+- **A trim dragged past a word and back left the word at the edge.** Each frame trimmed the
+  frame before it, and a word the edge has passed is held at the edge. The trim now works from
+  the caption **as the gesture found it** (`_gestureBase`).
+- **A word respelled keeps its times** — an unmatched run that replaces as many old words takes
+  theirs, one for one; it is the same moment of speech. Sharing the gap between the neighbours
+  started a respelled first word at 0, inside the lead. New words are never placed past the
+  caption's end.
+- **What the server would refuse is not sent** (`maxUploadBytes`, 50 MB — about 26 minutes of
+  uncompressed audio), and the file is streamed rather than read into memory.
+- **Re-cutting to the length it already has does nothing**: it would take an undo step, issue
+  new ids and throw away every split and merge made by hand, to arrive where it started.
+- **Split with the cursor at either end of the text cuts in the middle** — the end is where the
+  cursor sits after typing, and a button that did nothing there read as broken.
+
+**Known, and for Stage 3 to handle:** a caption can end a few tens of milliseconds before its
+last word does (the next caption's lead takes that room), so the highlight must clamp word times
+to the caption's span. A template chosen on one caption restyles that caption only, until
+Stage 4's apply-to-all. An Undo can bring back a caption that was emptied and then removed when
+the list closed; opening and closing the list removes it again.
+
+**The cause of the late captions is a theory, not a measurement.** AAC priming is the right
+direction and the right size, but the lead was added in the same change and would hide 50ms by
+itself, so a device run cannot say which of the two did it. The way to know is a click at a known
+instant sent as AAC and as WAV; if WAV is not measurably earlier, its larger upload buys nothing
+and the AAC path should come back.
 
 ### Apply to all — a copy, not a mode
 

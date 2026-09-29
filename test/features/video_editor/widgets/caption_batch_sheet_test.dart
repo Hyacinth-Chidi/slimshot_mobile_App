@@ -197,6 +197,22 @@ void main() {
     expect(find.byType(TextField), findsNWidgets(4));
   });
 
+  testWidgets('split with the cursor at the end cuts in the middle',
+      (tester) async {
+    // Where the cursor sits after typing. A button that did nothing there
+    // read as broken.
+    final n = editor();
+    await open(tester, n);
+    await tester.tap(find.byKey(const Key('caption_field_a')));
+    await tester.pump();
+    tester
+        .widget<TextField>(find.byKey(const Key('caption_field_a')))
+        .controller!
+        .selection = const TextSelection.collapsed(offset: 15);
+    await tapKey(tester, 'caption_split_a');
+    expect(captionTexts(n).take(2), ['the', 'quick brown']);
+  });
+
   testWidgets('merge takes the next caption in', (tester) async {
     final n = editor();
     await open(tester, n);

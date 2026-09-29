@@ -108,7 +108,41 @@ void main() {
     });
   });
 
+  group('copying a caption', () {
+    test('the copy is ordinary text, not a second member of the set', () {
+      // A copy that stayed in the set fed its words into a re-cut a second
+      // time ("hello world hello world") and was laid on its original's lane.
+      final n = editor(selected: 'a');
+      n.duplicateTextOverlay('a');
+      final copy = textOf(n, n.state.selectedTextId!);
+      expect(copy.text, 'the quick brown');
+      expect(copy.isCaption, isFalse);
+      expect(copy.captionWords, isNull);
+      expect(captionsOf(n), hasLength(3));
+
+      n.recutCaptions(CaptionLength.word);
+      expect(
+        captionsOf(n).map((c) => c.text),
+        ['the', 'quick', 'brown', 'fox', 'jumps', 'over', 'it'],
+      );
+    });
+  });
+
   group('trimming on the timeline', () {
+    test('a drag past a word and back leaves the word where it was', () {
+      // Each frame of the drag used to trim the frame before it, so a word
+      // the edge had passed was pinned to the edge and stayed there.
+      final n = editor();
+      final before = textOf(n, 'c').captionWords;
+      n.beginTimelineGesture();
+      n.trimLaneItem('c', start: 3.5, end: 4.0);
+      n.trimLaneItem('c', start: 3.2, end: 4.0);
+      n.trimLaneItem('c', start: 3.0, end: 4.0);
+      n.endTimelineGesture();
+      expect(textOf(n, 'c').startTime, const Duration(seconds: 3));
+      expect(textOf(n, 'c').captionWords, before);
+    });
+
     test('a later start keeps the words on their instants', () {
       final n = editor();
       final before = instants(textOf(n, 'c'));
@@ -168,6 +202,20 @@ void main() {
         expect(c.boxWidth, 210, reason: c.id);
       }
       expect(textOf(n, 'title').boxWidth, isNull);
+    });
+
+    test('✕ on a tool that changed the set puts the whole set back', () {
+      final n = editor(selected: 'a');
+      n.openRevertibleTool('opacity');
+      n.setOverlayOpacity(0.3);
+      for (final c in captionsOf(n)) {
+        expect(c.opacity, closeTo(0.3, 1e-9), reason: c.id);
+      }
+      n.discardActiveTool();
+      for (final c in captionsOf(n)) {
+        expect(c.opacity, 1.0, reason: c.id);
+      }
+      expect(n.state.canUndo, isFalse);
     });
 
     test('ordinary text still moves alone', () {
@@ -280,6 +328,22 @@ void main() {
         expect(c.captionSetId, 'set');
       }
       expect(captionsOf(n).map((c) => c.id).toSet(), hasLength(captionsOf(n).length));
+    });
+
+    test('to the length it already has changes nothing', () {
+      // It would take an undo step, issue new ids and throw away every
+      // split and merge made by hand, to arrive where it started.
+      final n = editor();
+      n.splitCaptionAt('a', 10);
+      n.undo();
+      n.splitCaptionAt('a', 10);
+      final before = n.state.textOverlays;
+      // The set was made at Phrase, the default.
+      n.recutCaptions(CaptionLength.phrase);
+      expect(identical(n.state.textOverlays, before), isTrue);
+      n.undo();
+      expect(captionsOf(n), hasLength(3), reason: 'the one step was the split');
+      expect(n.state.canUndo, isFalse);
     });
 
     test('is one undo step, and leaves no caption selected', () {

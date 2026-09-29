@@ -134,9 +134,13 @@ class _CaptionBatchSheetState extends ConsumerState<CaptionBatchSheet> {
   void _split(TextOverlayModel caption) {
     final cursor = _controllerFor(caption).selection.baseOffset;
     HapticFeedback.selectionClick();
+    // A cursor at either end of the text — where it sits after typing — has
+    // nothing on one side of it; the cut goes to the middle instead of a
+    // button that does nothing.
+    final atAnEnd = cursor <= 0 || cursor >= caption.text.length;
     ref.read(videoEditorProvider.notifier).splitCaptionAt(
           caption.id,
-          cursor < 0 ? caption.text.length ~/ 2 : cursor,
+          atAnEnd ? caption.text.length ~/ 2 : cursor,
         );
   }
 

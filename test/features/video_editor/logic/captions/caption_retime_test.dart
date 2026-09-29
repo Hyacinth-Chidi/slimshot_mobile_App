@@ -43,9 +43,44 @@ void main() {
     expect(words[0], oldWords[0]);
     expect(words[1], oldWords[1]);
     expect(words[3], oldWords[3]);
-    // The new word takes the room between its neighbours.
-    expect(words[2].start, const Duration(milliseconds: 550));
-    expect(words[2].end, const Duration(milliseconds: 900));
+    // One word for one word: it is the same moment of speech, respelled.
+    expect(words[2].start, oldWords[2].start);
+    expect(words[2].end, oldWords[2].end);
+  });
+
+  test('a respelled first word still starts where it was spoken', () {
+    final led = [
+      w(0, 3, 60, 250),
+      w(4, 9, 300, 550),
+    ];
+    final words = retimeCaptionWords(
+      oldText: 'teh quick',
+      oldWords: led,
+      newText: 'the quick',
+      span: span,
+    );
+    expect((words[0].start, words[0].end), (led[0].start, led[0].end));
+  });
+
+  test('two words respelled as two keep a time each', () {
+    const fixed = 'the quack brawn fox';
+    final words = retime(fixed);
+    expect((words[1].start, words[1].end), (oldWords[1].start, oldWords[1].end));
+    expect((words[2].start, words[2].end), (oldWords[2].start, oldWords[2].end));
+  });
+
+  test('a word added past a caption whose speech overran it stays inside',
+      () {
+    // The last word ends after the caption does; a new word after it has no
+    // room, and takes none — but it is not placed outside the caption.
+    final words = retimeCaptionWords(
+      oldText: 'the quick',
+      oldWords: [w(0, 3, 0, 250), w(4, 9, 300, 1700)],
+      newText: 'the quick fox',
+      span: span,
+    );
+    expect(words.last.start <= span, isTrue);
+    expect(words.last.end <= span, isTrue);
   });
 
   test('a longer replacement moves the offsets after it, not the times', () {

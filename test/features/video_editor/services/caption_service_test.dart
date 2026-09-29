@@ -100,6 +100,48 @@ void main() {
       expect(started.pollAfter, CaptionService.defaultPollAfter);
     });
 
+    test('a file the server would refuse is not sent at all', () async {
+      // Uncompressed audio is about 2 MB a minute; past the server's limit
+      // the whole upload would be spent to be told no.
+      var requests = 0;
+      final service = CaptionService(
+        SlimshotApi(
+          baseUrl: 'https://api.test',
+          client: MockClient((_) async {
+            requests++;
+            return envelope({'jobId': 'cap_1', 'status': 'queued'}, 202);
+          }),
+          tokens: MemoryTokens(),
+        ),
+        maxUploadBytes: 3,
+      );
+      await expectLater(
+        service.start(audioPath: audio.path, idempotencyKey: 'key-12345678'),
+        throwsA(
+          isA<SlimshotApiException>()
+              .having((e) => e.code, 'code', 'PAYLOAD_TOO_LARGE'),
+        ),
+      );
+      expect(requests, 0);
+    });
+
+    test('the whole file is what is sent', () async {
+      late http.Request upload;
+      final service = serviceWith(MockClient((request) async {
+        upload = request;
+        return envelope({'jobId': 'cap_1', 'status': 'queued'}, 202);
+      }));
+      await service.start(audioPath: audio.path, idempotencyKey: 'key-12345678');
+      final body = upload.bodyBytes;
+      var found = false;
+      for (var i = 0; i + 4 <= body.length; i++) {
+        if (body[i] == 1 && body[i + 1] == 2 && body[i + 2] == 3 && body[i + 3] == 4) {
+          found = true;
+        }
+      }
+      expect(found, isTrue);
+    });
+
     test('Auto detect sends no language', () async {
       late http.Request upload;
       final service = serviceWith(MockClient((request) async {
