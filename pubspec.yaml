@@ -81,6 +81,11 @@ flutter:
         - asset: assets/fonts/PlusJakartaSans-Regular.ttf
         - asset: assets/fonts/PlusJakartaSans-Bold.ttf
           weight: 700
+    # The caption default. Bundled so captions look the same offline and on
+    # every phone; a weight is a family of its own here.
+    - family: Montserrat Bold
+      fonts:
+        - asset: assets/fonts/Montserrat-Bold.ttf
     - family: Ariana Violeta
       fonts:
         - asset: assets/fonts/ArianaVioleta-dz2K.ttf

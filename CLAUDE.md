@@ -1866,11 +1866,25 @@ that itself outlasts the limit is kept whole. **Captions never overlap, whatever
 order the provider's times arrive in** — each starts no earlier than the previous one ends — so
 a set always fits one lane.
 
-**Placement** (`placeCaptions`): the Subtitle template's look **without its fades** (a
-half-second fade is most of a one-second caption's life), on the first lane free across the
-whole set, one undo step. `boxWidth` stays unset: every caption shares one reference canvas, so
-they already wrap alike, and a fixed width would stretch a boxed style's background across the
-canvas. **A new set replaces the old** — removed *before* the lane is chosen, so the new set
+**The default look** (`captionDefaultTemplate`, `caption_placement.dart`, **awaiting device
+verification**): **Montserrat Bold**, white, a black outline and a soft shadow, no fades (a
+half-second fade is most of a one-second caption's life). Device-reported: the first version
+wore the Subtitle template — Inter at regular weight, scale 0.9 — and read as thin and small.
+The font is **bundled** (`assets/fonts/Montserrat-Bold.ttf`, its own family in
+`customBundledFonts`, since the model has no weight field): a caption has to look the same
+offline and on a phone whose system face is not what a download would have been. **The size is
+a fraction of the canvas width** (`kCaptionFontFraction`, 0.10), not a fixed scale — a text's
+size is stored in the pixels of the canvas it was made on, which is whatever the phone left
+room for, so one scale was large on one phone and small on the next. **The wrap width is
+divided by the scale** (`kCaptionWidthFraction`, 0.86 of the canvas): a text's box is laid out
+first and scaled after, so a canvas-wide box scaled up runs off both edges. That reverses the
+plan's "`boxWidth` unset" ruling; a boxed caption style will need its background sized to the
+words rather than the box when Stage 4 adds one. The centre sits at `kCaptionPlacement` — a
+little over three quarters down, clear of the bottom fifth where the apps that play short-form
+video put their own caption and buttons. New plain text still starts in Roboto.
+
+**Placement** (`placeCaptions`): on the first lane free across the whole set, one undo step.
+**A new set replaces the old** — removed *before* the lane is chosen, so the new set
 takes the lane it freed — after "Replace captions?"; plain text is untouched. The gutter marks a
 caption lane with `subtitles` (`laneGutterIcons`). The progress sheet is **modal on purpose**:
 the audio is a snapshot of the timeline, and a clip moved while the server listens would

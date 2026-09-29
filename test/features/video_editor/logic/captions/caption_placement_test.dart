@@ -5,6 +5,8 @@ import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping
 import 'package:slimshotai/features/video_editor/logic/captions/caption_placement.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_settings.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_word.dart';
+import 'package:slimshotai/features/video_editor/logic/text_overlay_geometry.dart';
+import 'package:slimshotai/features/video_editor/utils/font_utils.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/providers/video_editor_notifier.dart';
@@ -56,7 +58,7 @@ void main() {
   List<TextOverlayModel> captionsOf(VideoEditorNotifier n) =>
       n.state.textOverlays.where((t) => t.isCaption).toList();
 
-  test('each caption is a text in the default look, on the given lane', () {
+  test('each caption is a text carrying its words, on the given lane', () {
     final list = buildCaptionOverlays(
       drafts: drafts,
       setId: 'captions_1',
@@ -75,26 +77,85 @@ void main() {
     expect(first.captionWords, hello);
     expect(first.laneIndex, 2);
     expect(first.referenceCanvasSize, const Size(360, 640));
-    expect(
-      first.boxWidth,
-      isNull,
-      reason: 'a shared reference canvas already wraps them alike',
-    );
-    // The Subtitle look, less its fades: a half-second fade is most of a
-    // one-second caption's life.
-    expect(
-      [first.inAnimation, first.outAnimation, first.loopAnimation],
-      ['none', 'none', 'none'],
-    );
-    expect(
-      captionDefaultTemplate.isAppliedTo(
-        first.copyWith(
-          inAnimation: captionDefaultTemplate.inAnimation,
-          outAnimation: captionDefaultTemplate.outAnimation,
-        ),
-      ),
-      isTrue,
-    );
+  });
+
+  group('the default look', () {
+    TextOverlayModel captionOn(Size canvas) => buildCaptionOverlays(
+          drafts: drafts,
+          setId: 's',
+          lane: 0,
+          canvasSize: canvas,
+        ).first;
+
+    test('bold white type with a black outline, from a font in the app', () {
+      final c = captionOn(const Size(360, 640));
+      expect(c.fontFamily, 'Montserrat Bold');
+      // Bundled, not fetched: a caption must look the same offline, and on a
+      // phone whose system face is not the one the download would have been.
+      expect(isCustomFont(c.fontFamily), isTrue);
+      expect(allFonts, contains(c.fontFamily));
+      expect(c.color, const Color(0xFFFFFFFF));
+      expect(c.strokeColor, const Color(0xFF000000));
+      expect(c.strokeWidth, greaterThan(0));
+      expect(c.backgroundColor.a, 0);
+      // No fades: a half-second fade is most of a one-second caption's life.
+      expect(
+        [c.inAnimation, c.outAnimation, c.loopAnimation],
+        ['none', 'none', 'none'],
+      );
+    });
+
+    test('the same size on every canvas: a fraction of its width', () {
+      for (final canvas in const [Size(240, 426), Size(360, 640), Size(720, 1280)]) {
+        final c = captionOn(canvas);
+        expect(
+          c.scale * kTextOverlayFontSize / canvas.width,
+          closeTo(kCaptionFontFraction, 1e-9),
+          reason: '$canvas',
+        );
+      }
+    });
+
+    test('sits in the lower part of the frame, clear of the very bottom', () {
+      // The bottom fifth of a short-form video is where the apps that play it
+      // put their own caption and buttons.
+      final c = captionOn(const Size(360, 640));
+      expect(c.position.dx, 0);
+      expect(c.position.dy, 640 * kCaptionPlacement.dy);
+      final centre = 0.5 + kCaptionPlacement.dy;
+      expect(centre, inInclusiveRange(0.70, 0.80));
+    });
+
+    test('wraps inside the canvas at any size', () {
+      for (final canvas in const [Size(240, 426), Size(360, 640), Size(720, 1280)]) {
+        final long = buildCaptionOverlays(
+          drafts: const [
+            CaptionDraft(
+              text: 'extraordinary people are wonderful together',
+              start: Duration.zero,
+              end: Duration(seconds: 2),
+              words: [],
+            ),
+          ],
+          setId: 's',
+          lane: 0,
+          canvasSize: canvas,
+        ).single;
+        final box = TextOverlayLayout.measure(long, canvas).boxSize;
+        expect(
+          box.width * long.scale,
+          lessThanOrEqualTo(canvas.width * kCaptionWidthFraction + 0.5),
+          reason: '$canvas',
+        );
+      }
+    });
+
+    test('with no canvas known yet it still has a look', () {
+      final c = buildCaptionOverlays(drafts: drafts, setId: 's', lane: 0).first;
+      expect(c.fontFamily, 'Montserrat Bold');
+      expect(c.scale, inInclusiveRange(kMinTextScale, kMaxTextScale));
+      expect(c.boxWidth, isNull);
+    });
   });
 
   test('places the set on the first lane free across it, as one undo step', () {

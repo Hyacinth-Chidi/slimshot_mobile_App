@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 /// Custom fonts bundled in assets/fonts/ and registered in pubspec.yaml.
 /// These use TextStyle(fontFamily: ...) directly, NOT GoogleFonts.getFont().
 const List<String> customBundledFonts = [
+  'Montserrat Bold',
   'Ariana Violeta',
   'Believe It',
   'Chrusty Rock',
