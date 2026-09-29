@@ -31,8 +31,10 @@ import '../models/video_segment.dart';
 import '../services/media_import_service.dart';
 import '../services/video_editor_service.dart';
 import '../services/video_thumbnail_service.dart';
+import '../logic/captions/caption_edits.dart';
 import '../logic/captions/caption_grouping.dart';
 import '../logic/captions/caption_placement.dart';
+import '../logic/captions/caption_retime.dart';
 import '../logic/captions/caption_settings.dart';
 import '../logic/color/color_adjustments.dart';
 import '../logic/mask/clip_mask.dart';
@@ -2872,7 +2874,11 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     if (state.textOverlays.any((x) => x.id == id)) {
       state = state.copyWith(textOverlays: [
         for (final x in state.textOverlays)
-          x.id == id ? x.copyWith(startTime: begin, endTime: finish) : x,
+          // A caption's words are timed from its start, so a moved start
+          // moves them back: each stays on the instant it was spoken.
+          x.id == id
+              ? shiftCaptionStart(x, begin).copyWith(endTime: finish)
+              : x,
       ]);
     } else if (state.imageOverlays.any((x) => x.id == id)) {
       state = state.copyWith(imageOverlays: [
@@ -3011,6 +3017,158 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     _compactLanes();
   }
 
+  /// Cuts the caption [id] in two at the word boundary nearest [cursor], a
+  /// UTF-16 offset into its text. Nothing — and no undo step — where there is
+  /// nothing to cut, or for a text that is not a caption.
+  void splitCaptionAt(String id, int cursor) {
+    final caption = state.textOverlays.where((t) => t.id == id).firstOrNull;
+    if (caption == null || !caption.isCaption) return;
+    final cut = splitCaption(
+      caption,
+      cursor,
+      rightId: '${id}_${DateTime.now().microsecondsSinceEpoch}',
+    );
+    if (cut == null) return;
+    saveStateForUndo();
+    state = state.copyWith(textOverlays: [
+      for (final t in state.textOverlays)
+        if (t.id == id) ...[cut.left, cut.right] else t,
+    ]);
+  }
+
+  /// Joins the caption [id] with the one that follows it in its set. Nothing
+  /// — and no undo step — for the last caption.
+  void mergeCaptionWithNext(String id) {
+    final caption = state.textOverlays.where((t) => t.id == id).firstOrNull;
+    final setId = caption?.captionSetId;
+    if (caption == null || setId == null) return;
+    TextOverlayModel? next;
+    for (final t in state.textOverlays) {
+      if (t.captionSetId != setId || t.startTime <= caption.startTime) continue;
+      if (next == null || t.startTime < next.startTime) next = t;
+    }
+    if (next == null) return;
+    final taken = next;
+    saveStateForUndo();
+    state = state.copyWith(
+      textOverlays: [
+        for (final t in state.textOverlays)
+          if (t.id == id)
+            mergeCaptions(caption, taken)
+          else if (t.id != taken.id)
+            t,
+      ],
+      selectedTextId: state.selectedTextId == taken.id ? id : null,
+    );
+  }
+
+  /// Removes every caption, and what the project remembered about them.
+  /// Plain text is untouched. One undo step; none with no captions.
+  void deleteAllCaptions() {
+    if (!state.hasCaptions) return;
+    saveStateForUndo();
+    _replaceCaptions(const [], clearSettings: true);
+  }
+
+  /// Cuts the caption set again to [length] — every word, hand fixes
+  /// included — keeping the look and place of its first caption.
+  void recutCaptions(CaptionLength length) {
+    final captions = [
+      for (final t in state.textOverlays)
+        if (t.isCaption) t,
+    ]..sort((a, b) => a.startTime.compareTo(b.startTime));
+    if (captions.isEmpty) return;
+    final drafts = recutCaptionDrafts(captions, length);
+    if (drafts.isEmpty) return;
+
+    final first = captions.first;
+    final setId = first.captionSetId!;
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    saveStateForUndo();
+    _replaceCaptions(
+      [
+        for (var i = 0; i < drafts.length; i++)
+          first.copyWith(
+            id: '${setId}_${stamp}_$i',
+            text: drafts[i].text,
+            startTime: drafts[i].start,
+            endTime: drafts[i].end,
+            captionWords: drafts[i].words,
+          ),
+      ],
+      fromLane: first.laneIndex,
+    );
+    final settings = state.captionSettings;
+    state = state.copyWith(
+      captionSettings: CaptionSettings(
+        setId: setId,
+        source: settings?.source ?? CaptionSource.video,
+        language: settings?.language,
+        length: length,
+      ),
+    );
+  }
+
+  /// Removes captions left with no words — the rule the text editor has for
+  /// a text left empty. No undo step of its own: the edit that emptied them
+  /// took one.
+  void removeEmptyCaptions() {
+    final kept = [
+      for (final t in state.textOverlays)
+        if (t.isCaption && t.text.trim().isNotEmpty) t,
+    ];
+    final all = state.textOverlays.where((t) => t.isCaption).length;
+    if (kept.length == all) return;
+    _replaceCaptions(
+      kept,
+      fromLane: kept.isEmpty ? 0 : kept.first.laneIndex,
+      clearSettings: kept.isEmpty,
+    );
+  }
+
+  /// Puts [captions] in place of every caption on the timeline, on one lane
+  /// free across them all, and leaves the text menu if the selected text was
+  /// a caption that is gone. No undo snapshot: the caller's.
+  void _replaceCaptions(
+    List<TextOverlayModel> captions, {
+    int fromLane = 0,
+    bool clearSettings = false,
+  }) {
+    final plain = [
+      for (final t in state.textOverlays)
+        if (!t.isCaption) t,
+    ];
+    var placed = captions;
+    if (captions.isNotEmpty) {
+      double seconds(Duration d) => d.inMicroseconds / 1e6;
+      final ordered = [...captions]
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      final lane = firstFreeLane(
+        laneSpansOf(
+          texts: plain,
+          images: state.imageOverlays,
+          videos: state.videoOverlays,
+          audios: state.audioTracks,
+        ),
+        seconds(ordered.first.startTime),
+        seconds(ordered.last.endTime),
+        fromLane: fromLane,
+      );
+      placed = [for (final c in captions) c.copyWith(laneIndex: lane)];
+    }
+    final selected = state.selectedTextId;
+    final selectionGone = selected != null &&
+        !plain.any((t) => t.id == selected) &&
+        !placed.any((t) => t.id == selected);
+    state = state.copyWith(
+      textOverlays: [...plain, ...placed],
+      clearCaptionSettings: clearSettings,
+      clearSelectedTextId: selectionGone,
+      currentMenuId: selectionGone ? 'root' : null,
+    );
+    _compactLanes();
+  }
+
   /// Selects a text, and opens **its** menu — or returns to root on null.
   ///
   /// It used to send the editor to the root menu either way, so a selected
@@ -3036,9 +3194,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     final index = state.textOverlays.indexWhere((text) => text.id == id);
     if (index == -1) return;
     saveStateForUndo();
-    final updated = [...state.textOverlays];
-    updated[index] = update(updated[index]);
-    state = state.copyWith(textOverlays: updated);
+    _setText(index, update(state.textOverlays[index]));
   }
 
   /// A gesture frame's worth of text transform, with **no undo snapshot**.
@@ -3054,9 +3210,43 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   ) {
     final index = state.textOverlays.indexWhere((text) => text.id == id);
     if (index == -1) return;
-    final updated = [...state.textOverlays];
-    updated[index] = update(updated[index]);
-    state = state.copyWith(textOverlays: updated);
+    _setText(index, update(state.textOverlays[index]));
+  }
+
+  /// Writes [edited] over the text at [index] — the one place a text is
+  /// replaced, so a caption is kept a caption whoever edited it.
+  ///
+  /// **A caption whose text changed is retimed** ([retimeCaptionWords]): the
+  /// batch list, the text editor and anything added later all fix words this
+  /// way, so a word that did not change never moves. **A caption's box width
+  /// is its set's**: it is what makes captions wrap alike.
+  void _setText(int index, TextOverlayModel edited) {
+    final before = state.textOverlays[index];
+    var after = edited;
+    if (after.isCaption && after.text != before.text) {
+      after = after.copyWith(
+        captionWords: retimeCaptionWords(
+          oldText: before.text,
+          oldWords: before.captionWords ?? const [],
+          newText: after.text,
+          span: after.endTime - after.startTime,
+        ),
+      );
+    }
+    final setId = after.captionSetId;
+    final width = after.boxWidth;
+    final widthToSet =
+        setId != null && width != null && width != before.boxWidth;
+    final texts = state.textOverlays;
+    state = state.copyWith(textOverlays: [
+      for (var i = 0; i < texts.length; i++)
+        if (i == index)
+          after
+        else if (widthToSet && texts[i].captionSetId == setId)
+          texts[i].copyWith(boxWidth: width)
+        else
+          texts[i],
+    ]);
   }
 
   /// Deletes a text, and leaves the text menu if it was the selected one.
@@ -3454,7 +3644,38 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     write(OverlayProperty.rotation, rotation);
     write(OverlayProperty.opacity, opacity?.clamp(0.0, 1.0).toDouble());
     if (identical(params, before)) return;
-    _replaceOverlayMotion(ref, OverlayMotion.fromParams(params));
+    final moved = OverlayMotion.fromParams(params);
+    _replaceOverlayMotion(ref, moved);
+    if (ref.kind == OverlayKind.text) {
+      _moveCaptionSet(ref.id, from: ref.motion, to: moved, progress: progress);
+    }
+  }
+
+  /// Gives every other caption of [id]'s set the change that took it [from]
+  /// one placement [to] another. Nothing, for a text that is not a caption.
+  ///
+  /// A caption set moves as one — a caption that sits somewhere else each
+  /// second reads as a fault. No undo snapshot: the gesture took its one.
+  void _moveCaptionSet(
+    String id, {
+    required OverlayMotion from,
+    required OverlayMotion to,
+    required double? progress,
+  }) {
+    final setId =
+        state.textOverlays.where((t) => t.id == id).firstOrNull?.captionSetId;
+    if (setId == null) return;
+    final at = progress ?? 0;
+    final before = from.at(at);
+    final after = to.at(at);
+    state = state.copyWith(textOverlays: [
+      for (final t in state.textOverlays)
+        t.id != id && t.captionSetId == setId
+            ? t.withMotion(
+                followCaptionMotion(t.motion, before: before, after: after),
+              )
+            : t,
+    ]);
   }
 
   /// Writes [motion] into the overlay [ref] names, with no undo snapshot.
