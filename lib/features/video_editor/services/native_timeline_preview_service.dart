@@ -5,13 +5,16 @@ import 'dart:ui';
 
 import 'package:characters/characters.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import '../logic/captions/caption_settings.dart';
 import '../logic/text_animation_catalog.dart';
 import '../logic/text_overlay_geometry.dart';
 import '../logic/timeline/video_editor_timeline_composer.dart';
 import '../models/editor_timeline.dart';
 import '../models/text_overlay_model.dart';
 import '../models/video_editor_state.dart';
+import 'caption_audio_result.dart';
 import 'text_atlas_overlay.dart';
 import 'text_overlay_rasterizer.dart';
 
@@ -24,14 +27,23 @@ class NativeTimelinePreviewService {
     EventChannel? playbackEventChannel,
     VideoEditorTimelineComposer timelineComposer =
         const VideoEditorTimelineComposer(),
+    Future<void> Function()? fontsReady,
   })  : _methodChannel = methodChannel ??
             const MethodChannel('slimshot_ai/native_timeline_preview'),
         _playbackEventChannel = playbackEventChannel ?? _defaultEventChannel,
-        _timelineComposer = timelineComposer;
+        _timelineComposer = timelineComposer,
+        _fontsReady = fontsReady ?? _pendingFonts;
 
   final MethodChannel _methodChannel;
   final EventChannel _playbackEventChannel;
   final VideoEditorTimelineComposer _timelineComposer;
+
+  /// Completes once every font a text may use has finished loading.
+  final Future<void> Function() _fontsReady;
+
+  static Future<void> _pendingFonts() async {
+    await GoogleFonts.pendingFonts();
+  }
 
   Stream<NativeTimelinePreviewEvent>? _events;
 
@@ -277,6 +289,11 @@ class NativeTimelinePreviewService {
     int targetShortSidePx = 1080,
     void Function(String message)? onWarning,
   }) async {
+    // A font still downloading when export starts would be rasterised in the
+    // fallback face while the preview shows the real one — the file would
+    // differ from the canvas with nothing saying why.
+    await _fontsReady();
+
     // Text is rasterised by Flutter's own text engine and handed to the
     // native overlay pass as images — reimplementing text layout in Android
     // Canvas would drift (font metrics, stroke, shadow), and PVE cannot
@@ -588,6 +605,51 @@ class NativeTimelinePreviewService {
 
   Future<void> cancelExport() {
     return _methodChannel.invokeMethod<void>('cancelExport');
+  }
+
+  /// Renders the sound auto captions listen to — [source] through the
+  /// export's own mixer, mono 16 kHz AAC from timeline 0 — into [outputPath].
+  ///
+  /// Throws [CaptionAudioCancelled] when [cancelCaptionAudio] stopped it.
+  Future<CaptionAudioResult> renderCaptionAudio(
+    VideoEditorState state, {
+    required String outputPath,
+    required CaptionSource source,
+    void Function(double progress)? onProgress,
+  }) async {
+    final timeline = _timelineComposer.compose(state);
+    final progress = onProgress == null
+        ? null
+        : events
+            .where(
+              (e) => e.type == 'captionAudioProgress' && e.progress != null,
+            )
+            .listen((e) => onProgress(e.progress!));
+    try {
+      final result = await _methodChannel.invokeMapMethod<String, dynamic>(
+        'renderCaptionAudio',
+        {
+          'timeline': timeline.toJson(),
+          'outputPath': outputPath,
+          'include': source.include,
+        },
+      );
+      if (result == null) {
+        throw StateError('Caption audio returned no result.');
+      }
+      return CaptionAudioResult.fromMap(result);
+    } on PlatformException catch (e) {
+      if (e.code == 'caption_audio_cancelled') {
+        throw const CaptionAudioCancelled();
+      }
+      rethrow;
+    } finally {
+      await progress?.cancel();
+    }
+  }
+
+  Future<void> cancelCaptionAudio() {
+    return _methodChannel.invokeMethod<void>('cancelCaptionAudio');
   }
 
   /// Asks the device what its codecs will actually do for an export.
