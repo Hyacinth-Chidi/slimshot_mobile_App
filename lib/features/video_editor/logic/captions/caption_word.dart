@@ -64,7 +64,9 @@ class CaptionWord {
         .toList();
   }
 
-  static int? _int(Object? value) => value is num ? value.toInt() : null;
+  // Finite only: `1e400` decodes to infinity, and `toInt()` on it throws.
+  static int? _int(Object? value) =>
+      value is num && value.isFinite ? value.toInt() : null;
 
   @override
   bool operator ==(Object other) =>

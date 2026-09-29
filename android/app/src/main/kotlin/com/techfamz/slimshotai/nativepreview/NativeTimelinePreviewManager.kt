@@ -272,7 +272,10 @@ class NativeTimelinePreviewManager(
                         )
                     }
                 }
-            } catch (error: Exception) {
+            } catch (error: Throwable) {
+                // Throwable, not Exception: an OutOfMemoryError left unanswered
+                // would strand the progress sheet and refuse every later run
+                // as busy.
                 Log.e("SlimshotExport", "Caption audio failed", error)
                 mainHandler.post {
                     captionAudio = null
@@ -608,6 +611,8 @@ class NativeTimelinePreviewManager(
     }
 
     private fun releasePreview() {
+        // A caption render in flight has nobody left to answer.
+        captionAudio?.cancel()
         pendingTimeline = null
         engine?.release()
         engine = null

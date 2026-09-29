@@ -1047,7 +1047,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final pipeline = CaptionPipeline(
       audioPath: () async {
         final dir = await getTemporaryDirectory();
-        return '${dir.path}/captions_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        return '${dir.path}/${captionAudioFileName(DateTime.now())}';
       },
       renderAudio: (path, source, onProgress) =>
           _nativePreviewService.renderCaptionAudio(

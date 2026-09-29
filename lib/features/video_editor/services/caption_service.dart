@@ -135,7 +135,7 @@ class CaptionService {
 
   static Duration _pollAfter(Map<String, dynamic> data) {
     final ms = data['pollAfterMs'];
-    return ms is num && ms > 0
+    return ms is num && ms.isFinite && ms > 0
         ? Duration(milliseconds: ms.toInt())
         : defaultPollAfter;
   }

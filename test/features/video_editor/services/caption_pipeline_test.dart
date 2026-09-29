@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/services/slimshot_api.dart';
+import 'package:slimshotai/core/utils/file_utils.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_settings.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_transcript.dart';
 import 'package:slimshotai/features/video_editor/services/caption_audio_result.dart';
@@ -71,6 +72,14 @@ void main() {
     expect(progress, contains(0.5));
     expect(drafts.single.text, 'Hello world');
     expect(deleted, ['/tmp/captions.m4a']);
+  });
+
+  test('the audio file is one the startup sweep will find', () {
+    // A run killed part-way never reaches its own cleanup; the sweep only
+    // takes files that carry its prefix.
+    final name = captionAudioFileName(DateTime.fromMillisecondsSinceEpoch(42));
+    expect(name, startsWith(FileUtils.filePrefix));
+    expect(name, endsWith('_42.m4a'));
   });
 
   test('no caption outlasts the sound it was heard in', () async {

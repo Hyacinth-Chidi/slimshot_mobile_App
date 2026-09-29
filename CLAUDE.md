@@ -1884,8 +1884,11 @@ misplace every later word; any way it closes before the words land cancels the r
   one reader of a timeline's tracks, and it reads imported tracks only.
 - **Still textures were never freed during an export** — `imageTextures` emptied only on full
   release, so a hundred captions meant a hundred text atlases on the GPU at once.
-  `ExpiredStills` frees a still once every overlay using its path has ended; export only, since
-  a preview playhead scrubs back.
+  `ExpiredStills` frees a still once every overlay using its path has ended. Only the export's
+  builder does it, since a preview playhead scrubs back — but **the cache itself is shared with
+  the preview**, so what it frees may be a texture the preview uploaded. That costs nothing new:
+  `endExport` has always dropped every overlay texture (`overlays.releaseAll()`) and re-adopted
+  the preview's list, which reloads what it needs.
 - **Export did not wait for fonts.** A font still downloading was rasterised in the fallback
   face while the preview showed the real one. `exportVideo` now waits for
   `GoogleFonts.pendingFonts()` — **through `awaitExportFonts`, never bare**

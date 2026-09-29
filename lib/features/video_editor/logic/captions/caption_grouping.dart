@@ -33,7 +33,8 @@ class CaptionDraft {
   final List<CaptionWord> words;
 }
 
-final RegExp _sentenceEnd = RegExp(r'[.!?…。！？]$');
+// A sentence may end inside a quote or a bracket: `done."`, `done.)`.
+final RegExp _sentenceEnd = RegExp(r'''[.!?…。！？]["'”’)\]»」』]*$''');
 final RegExp _letterOrDigit = RegExp(r'[\p{L}\p{N}]', unicode: true);
 
 /// Groups [words] into captions of [length] and times them.

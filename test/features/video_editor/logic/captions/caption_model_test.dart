@@ -64,6 +64,24 @@ void main() {
         isNull,
       );
       expect(CaptionWord.fromJson('junk', 5), isNull);
+      // `1e400` in a damaged draft decodes to infinity, and `toInt()` on it
+      // throws — which would fail the whole draft, not one word.
+      for (final bad in [double.infinity, double.nan]) {
+        expect(
+          CaptionWord.fromJson(
+            {'from': bad, 'to': 2, 'startMs': 0, 'endMs': 1},
+            5,
+          ),
+          isNull,
+        );
+        expect(
+          CaptionWord.fromJson(
+            {'from': 0, 'to': 2, 'startMs': 0, 'endMs': bad},
+            5,
+          ),
+          isNull,
+        );
+      }
       expect(
         CaptionWord.listFromJson([words.first.toJson(), 'junk', null], 11),
         [words.first],

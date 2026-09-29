@@ -86,6 +86,19 @@ void main() {
       expect(body, contains('name="language"'));
     });
 
+    test('a pace that is not a number falls back to the default', () async {
+      final service = serviceWith(MockClient((_) async => http.Response(
+            '{"success":true,"data":'
+            '{"jobId":"cap_1","status":"queued","pollAfterMs":1e400}}',
+            202,
+          )));
+      final started = await service.start(
+        audioPath: audio.path,
+        idempotencyKey: 'key-12345678',
+      );
+      expect(started.pollAfter, CaptionService.defaultPollAfter);
+    });
+
     test('Auto detect sends no language', () async {
       late http.Request upload;
       final service = serviceWith(MockClient((request) async {

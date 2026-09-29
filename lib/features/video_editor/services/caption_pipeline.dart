@@ -3,12 +3,18 @@ import 'dart:io';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/services/slimshot_api.dart';
+import '../../../core/utils/file_utils.dart';
 import '../logic/captions/caption_grouping.dart';
 import '../logic/captions/caption_settings.dart';
 import '../logic/captions/caption_transcript.dart';
 import 'caption_audio_result.dart';
 import 'caption_errors.dart';
 import 'caption_service.dart';
+
+/// The name of a run's audio file. It carries the temp prefix so the startup
+/// sweep finds it: a run killed part-way never reaches its own cleanup.
+String captionAudioFileName(DateTime now) =>
+    '${FileUtils.filePrefix}captions_${now.millisecondsSinceEpoch}.m4a';
 
 /// Where a run is, for the progress sheet.
 enum CaptionStage { preparing, uploading, listening, placing }

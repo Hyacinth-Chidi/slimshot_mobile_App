@@ -51,7 +51,13 @@ internal class CaptionAudioRenderer(
             return silent
         }
 
-        val muxer = ExportMuxer(outputPath, expectedTracks = 1)
+        val muxer = try {
+            ExportMuxer(outputPath, expectedTracks = 1)
+        } catch (error: Exception) {
+            // The sources are already open, and only `encodeTo` would close them.
+            mixer.release()
+            throw error
+        }
         try {
             mixer.encodeTo(muxer, isCancelled = { cancelled }, onProgress = onProgress)
         } finally {

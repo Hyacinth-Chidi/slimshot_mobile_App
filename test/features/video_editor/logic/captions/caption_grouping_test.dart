@@ -73,6 +73,19 @@ void main() {
       );
     });
 
+    test('a sentence that ends inside a quote or a bracket still ends', () {
+      for (final last in ['done."', 'done.”', "done.'", 'done.)', 'done?」']) {
+        expect(
+          texts(groupCaptionWords(
+            steady(['He', last, 'Then', 'more']),
+            CaptionLength.line,
+          )),
+          ['He $last', 'Then more'],
+          reason: last,
+        );
+      }
+    });
+
     test('a pause of 0.6s ends a caption; a shorter one does not', () {
       expect(
         texts(groupCaptionWords([
