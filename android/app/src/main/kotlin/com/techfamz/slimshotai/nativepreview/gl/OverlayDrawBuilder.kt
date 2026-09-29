@@ -120,6 +120,9 @@ internal class OverlayDrawBuilder(
     /** Realtime only: one decode thread per live video overlay. */
     private val realtimeDecoders = mutableMapOf<String, RealtimeOverlayDecoder>()
 
+    /** Stills this export has already freed, so each is released once. */
+    private val releasedStills = mutableSetOf<String>()
+
     private var overlays: List<NativeTimelineOverlay> = overlays
 
     /**
@@ -180,6 +183,18 @@ internal class OverlayDrawBuilder(
             }
             if (overlay.isVideo && gone && realtimeDecoders.containsKey(overlay.id)) {
                 releaseRealtimeDecoder(overlay.id)
+            }
+        }
+        // The export only walks forward, so a still every overlay has finished
+        // with is never drawn again. The preview keeps its stills: its playhead
+        // scrubs back, and a freed still would be decoded again on the next
+        // frame that shows it.
+        if (!realtime) {
+            val spans = overlays
+                .filter { !it.isVideo }
+                .map { ExpiredStills.Span(it.path, it.endSeconds) }
+            for (path in ExpiredStills.releasable(spans, t)) {
+                if (releasedStills.add(path)) renderer.overlays.releaseImageTexture(path)
             }
         }
     }

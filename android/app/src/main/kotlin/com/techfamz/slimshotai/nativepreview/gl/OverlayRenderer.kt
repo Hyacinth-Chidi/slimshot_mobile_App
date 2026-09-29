@@ -228,6 +228,12 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
         return entry
     }
 
+    /** Frees [path]'s uploaded texture, if there is one. Call on the GL thread. */
+    fun releaseImageTexture(path: String) {
+        val entry = imageTextures.remove(path) ?: return
+        GlUtil.deleteTexture(entry.first)
+    }
+
     /**
      * The decode target for video overlay [id], created on first use.
      *
