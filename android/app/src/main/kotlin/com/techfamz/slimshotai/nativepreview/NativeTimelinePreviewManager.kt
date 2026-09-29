@@ -6,6 +6,8 @@ import android.os.Looper
 import android.util.Log
 import androidx.media3.common.util.UnstableApi
 import com.techfamz.slimshotai.export.TimelineAudioTracks
+import com.techfamz.slimshotai.export.CaptionAudioRenderer
+import com.techfamz.slimshotai.export.CaptionAudioSources
 import com.techfamz.slimshotai.export.ExportCapabilities
 import com.techfamz.slimshotai.export.VideoExportEngine
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
@@ -53,6 +55,9 @@ class NativeTimelinePreviewManager(
     private var canvasHeight = 0
 
     private var exportEngine: VideoExportEngine? = null
+
+    /** The caption audio pass in flight, so Cancel can reach it. */
+    private var captionAudio: CaptionAudioRenderer? = null
 
     /**
      * Renders the timeline to a file.
@@ -217,6 +222,68 @@ class NativeTimelinePreviewManager(
                 }
             }
         }, "slimshot-export").start()
+    }
+
+    /**
+     * Renders the sound auto captions listen to, off the main thread.
+     *
+     * Audio only: the lane surfaces stay attached and the preview is not
+     * touched — the caller pauses playback, because the render is a snapshot
+     * of the timeline.
+     */
+    private fun startCaptionAudio(
+        timeline: Map<String, Any?>,
+        outputPath: String,
+        include: CaptionAudioSources.Include,
+        result: MethodChannel.Result,
+    ) {
+        if (captionAudio != null) {
+            result.error("caption_audio_busy", "Caption audio is already rendering.", null)
+            return
+        }
+        val selection = CaptionAudioSources.select(
+            include,
+            NativeTimelineClips.fromTimeline(timeline),
+            NativeTimelineOverlays.fromTimeline(timeline),
+            TimelineAudioTracks.fromTimeline(timeline),
+        )
+        val renderer = CaptionAudioRenderer(
+            selection,
+            NativeTimelineTransitionIntents.fromTimeline(timeline),
+        )
+        captionAudio = renderer
+
+        Thread({
+            try {
+                val rendered = renderer.render(outputPath) { progress ->
+                    sendEvent(mapOf("type" to "captionAudioProgress", "progress" to progress))
+                }
+                mainHandler.post {
+                    captionAudio = null
+                    if (rendered.cancelled) {
+                        result.error("caption_audio_cancelled", "Cancelled.", null)
+                    } else {
+                        result.success(
+                            mapOf(
+                                "outputPath" to rendered.outputPath,
+                                "durationSeconds" to rendered.durationSeconds,
+                                "hasSound" to rendered.hasSound,
+                            ),
+                        )
+                    }
+                }
+            } catch (error: Exception) {
+                Log.e("SlimshotExport", "Caption audio failed", error)
+                mainHandler.post {
+                    captionAudio = null
+                    result.error(
+                        "caption_audio_failed",
+                        error.message ?: error.javaClass.simpleName,
+                        null,
+                    )
+                }
+            }
+        }, "slimshot-caption-audio").start()
     }
 
     fun sendEvent(event: Map<String, Any?>) {
@@ -416,6 +483,30 @@ class NativeTimelinePreviewManager(
                     return
                 }
                 engine?.setVolume(volume)
+                result.success(null)
+            }
+
+            "renderCaptionAudio" -> {
+                val timeline = call.argument<Map<String, Any?>>("timeline")
+                val outputPath = call.argument<String>("outputPath")
+                if (timeline == null || outputPath.isNullOrBlank()) {
+                    result.error(
+                        "invalid_caption_audio",
+                        "Caption audio needs a timeline and an output path.",
+                        null,
+                    )
+                    return
+                }
+                startCaptionAudio(
+                    timeline,
+                    outputPath,
+                    CaptionAudioSources.Include.fromWire(call.argument<List<String>>("include")),
+                    result,
+                )
+            }
+
+            "cancelCaptionAudio" -> {
+                captionAudio?.cancel()
                 result.success(null)
             }
 
