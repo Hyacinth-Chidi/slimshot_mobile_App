@@ -1,3 +1,5 @@
+import 'caption_highlight.dart';
+
 /// Which sound auto captions listen to.
 enum CaptionSource {
   /// The clips and the video overlays — the speech in the footage. The
@@ -67,6 +69,7 @@ class CaptionSettings {
     this.source = CaptionSource.video,
     this.language,
     this.length = CaptionLength.phrase,
+    this.highlight = CaptionHighlight.none,
   });
 
   /// The `captionSetId` every caption of the set carries.
@@ -79,11 +82,28 @@ class CaptionSettings {
 
   final CaptionLength length;
 
+  /// How the set marks the word being spoken.
+  final CaptionHighlight highlight;
+
+  CaptionSettings copyWith({
+    CaptionSource? source,
+    CaptionLength? length,
+    CaptionHighlight? highlight,
+  }) =>
+      CaptionSettings(
+        setId: setId,
+        source: source ?? this.source,
+        language: language,
+        length: length ?? this.length,
+        highlight: highlight ?? this.highlight,
+      );
+
   Map<String, dynamic> toJson() => {
         'setId': setId,
         'source': source.name,
         if (language != null) 'language': language,
         'length': length.name,
+        if (!highlight.isNone) 'highlight': highlight.toJson(),
       };
 
   /// Null for anything without a set id; unknown names read as the defaults,
@@ -101,6 +121,7 @@ class CaptionSettings {
       language: isCaptionLanguage(language) ? language as String : null,
       length: CaptionLength.values.asNameMap()[json['length']] ??
           CaptionLength.phrase,
+      highlight: CaptionHighlight.fromJson(json['highlight']),
     );
   }
 
@@ -110,8 +131,9 @@ class CaptionSettings {
       other.setId == setId &&
       other.source == source &&
       other.language == language &&
-      other.length == length;
+      other.length == length &&
+      other.highlight == highlight;
 
   @override
-  int get hashCode => Object.hash(setId, source, language, length);
+  int get hashCode => Object.hash(setId, source, language, length, highlight);
 }

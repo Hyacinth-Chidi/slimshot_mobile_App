@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../logic/animation/overlay_keyframes.dart';
+import '../logic/captions/caption_highlight.dart';
 import '../logic/captions/caption_word.dart';
 
 /// A speed of 1 runs an animation at the catalog's own natural duration.
@@ -147,6 +148,10 @@ class TextOverlayModel {
 
   bool get isCaption => captionSetId != null;
 
+  /// How the word being spoken is marked; [CaptionHighlight.none] on every
+  /// text that is not a caption, and on a caption nobody has styled.
+  CaptionHighlight highlight;
+
   TextOverlayModel({
     required this.id,
     required this.text,
@@ -183,6 +188,7 @@ class TextOverlayModel {
     this.keyframes = OverlayKeyframes.none,
     this.captionSetId,
     this.captionWords,
+    this.highlight = CaptionHighlight.none,
   });
 
   TextOverlayModel copyWith({
@@ -220,6 +226,7 @@ class TextOverlayModel {
     String? captionSetId,
     List<CaptionWord>? captionWords,
     bool clearCaption = false,
+    CaptionHighlight? highlight,
   }) {
     return TextOverlayModel(
       id: id ?? this.id,
@@ -255,6 +262,7 @@ class TextOverlayModel {
       keyframes: keyframes ?? this.keyframes,
       captionSetId: clearCaption ? null : captionSetId ?? this.captionSetId,
       captionWords: clearCaption ? null : captionWords ?? this.captionWords,
+      highlight: highlight ?? this.highlight,
     );
   }
 
@@ -339,6 +347,7 @@ class TextOverlayModel {
       if (captionSetId != null) 'captionSetId': captionSetId,
       if (captionWords != null)
         'captionWords': [for (final w in captionWords!) w.toJson()],
+      if (!highlight.isNone) 'highlight': highlight.toJson(),
     };
   }
 
@@ -454,6 +463,7 @@ class TextOverlayModel {
       captionSetId:
           json['captionSetId'] is String ? json['captionSetId'] as String : null,
       captionWords: CaptionWord.listFromJson(json['captionWords'], text.length),
+      highlight: CaptionHighlight.fromJson(json['highlight']),
     );
   }
 }
