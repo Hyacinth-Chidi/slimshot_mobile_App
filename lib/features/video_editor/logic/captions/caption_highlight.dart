@@ -70,14 +70,18 @@ class CaptionHighlight {
   String toString() => 'CaptionHighlight(${style.name}, $color)';
 }
 
-/// The box behind a word, from the word's ink and its glyph height: room on
-/// every side, more at the ends.
-Rect captionPillRect(Rect wordInk, {required double glyphHeight}) =>
+/// The box behind a word, from the word's line box and its height: room at
+/// the ends, a little above and below — the line box already holds the
+/// ascent and descent.
+///
+/// **One definition for the canvas and the file**: the painter draws this
+/// rect and the rasteriser stores a cell of exactly this shape.
+Rect captionPillRect(Rect wordBox, {required double glyphHeight}) =>
     Rect.fromLTRB(
-      wordInk.left - glyphHeight * 0.3,
-      wordInk.top - glyphHeight * 0.14,
-      wordInk.right + glyphHeight * 0.3,
-      wordInk.bottom + glyphHeight * 0.14,
+      wordBox.left - glyphHeight * 0.2,
+      wordBox.top - glyphHeight * 0.02,
+      wordBox.right + glyphHeight * 0.2,
+      wordBox.bottom + glyphHeight * 0.02,
     );
 
-double captionPillRadius(double glyphHeight) => glyphHeight * 0.3;
+double captionPillRadius(double glyphHeight) => glyphHeight * 0.25;

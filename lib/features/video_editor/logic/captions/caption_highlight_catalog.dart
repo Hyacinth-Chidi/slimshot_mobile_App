@@ -209,3 +209,21 @@ WordHighlightState wordHighlightStateAt({
       return WordHighlightState(opacity: active ? 1 : kHighlightFocusDim);
   }
 }
+
+/// Whether [word] is written right to left — its first strong character is
+/// Hebrew or Arabic script. A karaoke sweep crosses such a word from its
+/// right edge.
+bool isRightToLeftWord(String word) {
+  for (final rune in word.runes) {
+    if ((rune >= 0x0590 && rune <= 0x08FF) ||
+        (rune >= 0xFB1D && rune <= 0xFDFF) ||
+        (rune >= 0xFE70 && rune <= 0xFEFF)) {
+      return true;
+    }
+    final isLatinLetter = (rune >= 0x41 && rune <= 0x5A) ||
+        (rune >= 0x61 && rune <= 0x7A) ||
+        (rune >= 0xC0 && rune <= 0x24F);
+    if (isLatinLetter) return false;
+  }
+  return false;
+}

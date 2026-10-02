@@ -1,5 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+import '../../logic/captions/caption_highlight_catalog.dart';
+import '../../logic/captions/caption_highlight_layout.dart';
 import '../../logic/text_animation_catalog.dart';
 import '../../logic/text_glyph_layout.dart';
 import '../../logic/text_overlay_geometry.dart';
@@ -50,6 +54,25 @@ class TextOverlayPainter extends CustomPainter {
   List<TextGlyphBox> get _glyphBoxes =>
       _glyphs ??= glyphBoxesFor(overlay, canvasSize);
 
+  CaptionHighlightLayout? _highlight;
+  bool _highlightResolved = false;
+
+  /// The caption's word highlight, or null — measured lazily, like the
+  /// glyphs, and only for a caption that has one.
+  CaptionHighlightLayout? get _highlightLayout {
+    if (!_highlightResolved) {
+      _highlightResolved = true;
+      _highlight = _hasHighlight
+          ? CaptionHighlightLayout.of(overlay, _glyphBoxes)
+          : null;
+    }
+    return _highlight;
+  }
+
+  /// Cheap: no measuring. A caption with a style and words to mark.
+  bool get _hasHighlight =>
+      !overlay.highlight.isNone && (overlay.captionWords?.isNotEmpty ?? false);
+
   /// The animation windows, or null when the text has no inked glyph to
   /// stagger across.
   TextAnimationTiming? get _animationTiming {
@@ -73,10 +96,8 @@ class TextOverlayPainter extends CustomPainter {
 
     // The background is one rect behind every glyph and it **does not move
     // with the letters**: a box sliced per character would come apart the
-    // moment a glyph is displaced, and a background that travels with the text
-    // is a different design from the one the tool offers. It is also why a
-    // text with a background still exports through the flat raster — the
-    // native glyph pass draws letters only.
+    // moment a glyph is displaced. The export draws it as one quad of its own
+    // for the same reason.
     if (layout.hasBackground) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
@@ -94,16 +115,18 @@ class TextOverlayPainter extends CustomPainter {
     final strokePainter =
         TextOverlayLayout.strokePainterFor(overlay, renderScale)
           ?..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
+    TextPainter? litPainter;
     try {
-
       final timing = _animationTiming;
+      final animating = timing != null && timing.isActive;
+      final highlight = _highlightLayout;
 
-      // No live window means the text is drawn exactly as static text: the run
-      // painted once, unclipped, with no per-glyph pass at all. That is the
-      // regression bar for per-character animation — an unanimated overlay must
-      // render as it did before — and it is also the cheaper path, which is
-      // what most overlays take.
-      if (timing == null || !timing.isActive) {
+      // No live window and no highlight means the text is drawn exactly as
+      // static text: the run painted once, unclipped, with no per-glyph pass
+      // at all. That is the regression bar — an unanimated overlay must render
+      // as it did before — and it is also the cheaper path, which is what
+      // most overlays take.
+      if (!animating && highlight == null) {
         paintTextOverlayInk(
           canvas,
           overlay: overlay,
@@ -115,98 +138,149 @@ class TextOverlayPainter extends CustomPainter {
         return;
       }
 
+      // Pills sit behind every glyph and, like the background, do not travel
+      // with a letter's own animation.
+      if (highlight != null) _paintPills(canvas, highlight);
+
+      TextPainter lit() => litPainter ??= TextOverlayLayout.textPainterFor(
+            overlay.copyWith(color: highlight!.highlight.color),
+            renderScale,
+          )..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
+
       final glyphs = _glyphBoxes;
       final glyphCount = glyphs.length;
       for (var i = 0; i < glyphCount; i++) {
         final glyph = glyphs[i];
-        final state = timing.stateAt(positionSeconds, i, glyphCount);
+        final state = animating
+            ? timing.stateAt(positionSeconds, i, glyphCount)
+            : const TextGlyphState();
+        final word = highlight?.glyphWord[i] ?? -1;
+        final marked = word < 0
+            ? WordHighlightState.resting
+            : highlight!.wordState(word, positionSeconds);
+        final opacity = state.opacity * marked.opacity;
+        final scale = state.scale * marked.scale;
         // A glyph animated to nothing is skipped rather than drawn at zero —
         // the same rule `textDraws` applies, and a negative scale would turn
         // the letter inside out.
-        if (state.opacity <= 0 || state.scale <= 0) continue;
+        if (opacity <= 0 || scale <= 0) continue;
 
         // **The padded rect, not the ink rect, is what gets clipped** — it is
         // the atlas cell, and the cell carries the shadow and stroke bleed that
-        // would otherwise be cut off at the letter's edge. Neighbouring padded
-        // cells overlap, so a little bleed re-composites; that is the same
-        // accepted residual the atlas has, measured and documented there, and
-        // matching it is the point.
+        // would otherwise be cut off at the letter's edge.
         final cell = glyph.paddedRect;
         final centre = cell.center;
 
-        // The catalog measures displacement in **glyph heights on both axes** —
-        // that is what keeps a diagonal slide diagonal and makes the travel
-        // scale with the type size rather than with the box. The metric is the
-        // glyph's own *ink* height, which is what `textDraws` converts through
-        // (`boxBottom - boxTop`). Using the glyph's width for x would make an
-        // "i" slide a fraction of a "W"'s distance and the word would come
-        // apart mid-animation.
+        // The catalog measures displacement in **glyph heights on both axes**,
+        // the glyph's own ink height, which is what `textDraws` converts
+        // through (`boxBottom - boxTop`).
         final metric = glyph.inkRect.height;
 
+        // **A popped word swells about its own centre**, not each letter about
+        // its own: every glyph is scaled in place and moved away from the
+        // word's centre by as much, so the word grows as one piece.
+        var pop = Offset.zero;
+        if (marked.scale != 1) {
+          final box = highlight!.wordBoxes[word];
+          if (box != null) pop = (centre - box.center) * (marked.scale - 1);
+        }
+
         canvas.save();
-        // **The transform comes first and the clip travels with it.** In GL the
-        // clip is not a separate thing: the cell *is* the quad, so moving the
-        // quad moves what is drawn. Here they are two calls, and clipping in
-        // the resting position while the letter moves through the clip is a
-        // real, severe bug rather than a subtlety — a slide travels 1.5 glyph
-        // heights against a few pixels of bleed padding, so the letter leaves
-        // its own clip entirely and nothing is drawn at all. Ordering the calls
-        // this way means the clip is expressed in the *glyph's* space, which is
-        // the space the run is painted in, so the two move together.
-        //
-        // Scale and rotation are about the **cell's own centre**, so a bouncing
-        // letter hops where it sits instead of swinging around the caption.
-        // The displacement is applied after, moving that centre — scaling the
-        // offset as well would push the letter away from the block rather than
-        // swelling it in place. `writeCorners` composes the same three terms in
-        // the same order.
+        // **The transform comes first and the clip travels with it** — in GL
+        // the cell *is* the quad, so moving the quad moves what is drawn.
+        // Clipping in the resting position while the letter moves through the
+        // clip draws nothing at all once a slide carries it out. Scale and
+        // rotation are about the cell's own centre; the displacement moves
+        // that centre. `writeCorners` composes the same terms in the same
+        // order.
         canvas.translate(
-          centre.dx + state.offsetX * metric,
-          centre.dy + state.offsetY * metric,
+          centre.dx + state.offsetX * metric + pop.dx,
+          centre.dy + state.offsetY * metric + pop.dy,
         );
         if (state.rotation != 0) canvas.rotate(state.rotation);
-        if (state.scale != 1) canvas.scale(state.scale);
+        if (scale != 1) canvas.scale(scale);
         canvas.translate(-centre.dx, -centre.dy);
         canvas.clipRect(cell);
 
         // Opacity multiplies the whole glyph — stroke, fill and shadow — so a
-        // fading letter fades as one thing. A layer is what makes that true:
-        // painting stroke and fill each at the same alpha would show the
-        // stroke through the half-transparent fill.
-        //
-        // Its bounds are `cell` for the same reason the clip is: both are read
-        // in the current (already transformed) space, so a layer bounded in
-        // resting coordinates would re-clip precisely what the clip above no
-        // longer does.
-        final fading = state.opacity < 1;
+        // fading letter fades as one thing. Bounded by `cell`, read in the
+        // already-transformed space, like the clip.
+        final fading = opacity < 1;
         if (fading) {
           canvas.saveLayer(
             cell,
-            Paint()
-              ..color = Color.fromRGBO(0, 0, 0, state.opacity.clamp(0.0, 1.0)),
+            Paint()..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0)),
           );
         }
+
         // The whole run is painted and clipped to one glyph, never the
-        // character on its own: kerning and ligatures mean the width of "AV" is
-        // not the width of "A" plus "V", so a character painted alone is not
-        // the pixels that character has in context. The atlas rasteriser draws
-        // its cells the same way, for the same reason.
-        // Only this letter's shadow is cast, so it travels with the letter.
-        paintTextOverlayInk(
-          canvas,
-          overlay: overlay,
-          renderScale: renderScale,
-          fill: fillPainter,
-          stroke: strokePainter,
-          textOrigin: layout.textOrigin,
-          shadowFrom: glyph.inkRect,
-        );
+        // character on its own: kerning and ligatures mean the width of "AV"
+        // is not the width of "A" plus "V". Only this letter's shadow is cast,
+        // so it travels with the letter.
+        void ink(TextPainter fill) => paintTextOverlayInk(
+              canvas,
+              overlay: overlay,
+              renderScale: renderScale,
+              fill: fill,
+              stroke: strokePainter,
+              textOrigin: layout.textOrigin,
+              shadowFrom: glyph.inkRect,
+            );
+
+        if (marked.fill > 0 && marked.fill < 1) {
+          // **Karaoke cuts the glyph at the sweep**: lit behind the line,
+          // plain ahead of it, through two complementary clips — so the
+          // glyph's shadow is still cast once. The export splits the quad at
+          // the same line.
+          final box = highlight!.wordBoxes[word]!;
+          final rtl = highlight.wordRtl[word];
+          final sweep = rtl
+              ? box.right - box.width * marked.fill
+              : box.left + box.width * marked.fill;
+          final behind = rtl
+              ? Rect.fromLTRB(math.min(sweep, cell.right), cell.top, cell.right, cell.bottom)
+              : Rect.fromLTRB(cell.left, cell.top, math.max(sweep, cell.left), cell.bottom);
+          final ahead = rtl
+              ? Rect.fromLTRB(cell.left, cell.top, math.max(sweep, cell.left), cell.bottom)
+              : Rect.fromLTRB(math.min(sweep, cell.right), cell.top, cell.right, cell.bottom);
+          if (!behind.isEmpty) {
+            canvas.save();
+            canvas.clipRect(behind);
+            ink(lit());
+            canvas.restore();
+          }
+          if (!ahead.isEmpty) {
+            canvas.save();
+            canvas.clipRect(ahead);
+            ink(fillPainter);
+            canvas.restore();
+          }
+        } else {
+          ink(marked.highlighted ? lit() : fillPainter);
+        }
+
         if (fading) canvas.restore();
         canvas.restore();
       }
     } finally {
       fillPainter.dispose();
       strokePainter?.dispose();
+      litPainter?.dispose();
+    }
+  }
+
+  /// The box behind each word whose pill is showing, in the highlight colour.
+  void _paintPills(Canvas canvas, CaptionHighlightLayout highlight) {
+    final colour = highlight.highlight.color;
+    for (var w = 0; w < highlight.wordBoxes.length; w++) {
+      final pill = highlight.wordState(w, positionSeconds).pill;
+      if (pill <= 0) continue;
+      final rect = highlight.pillRect(w);
+      if (rect == null) continue;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, Radius.circular(highlight.pillRadius(w))),
+        Paint()..color = colour.withValues(alpha: colour.a * pill),
+      );
     }
   }
 
@@ -285,6 +359,8 @@ class TextOverlayPainter extends CustomPainter {
         old.animationInDuration != overlay.animationInDuration ||
         old.animationOutDuration != overlay.animationOutDuration ||
         old.loopSpeed != overlay.loopSpeed ||
+        old.highlight != overlay.highlight ||
+        !identical(old.captionWords, overlay.captionWords) ||
         oldDelegate.canvasSize != canvasSize ||
         oldDelegate.layout.renderScale != layout.renderScale ||
         oldDelegate.layout.boxSize != layout.boxSize) {
@@ -302,6 +378,8 @@ class TextOverlayPainter extends CustomPainter {
     // a picture that cannot have changed. `_animationTiming` short-circuits on
     // the animation fields before it measures anything, so the common case
     // costs three string comparisons rather than a layout.
+    // A highlighted caption changes with every word, so it repaints too.
+    if (_hasHighlight) return true;
     final timing = _animationTiming;
     return timing != null && timing.isActive;
   }
