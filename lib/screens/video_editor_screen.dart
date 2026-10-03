@@ -65,6 +65,7 @@ import '../features/video_editor/widgets/panels/editor_sheet.dart';
 import '../core/services/slimshot_api.dart';
 import '../features/video_editor/logic/captions/caption_grouping.dart';
 import '../features/video_editor/logic/captions/caption_settings.dart';
+import '../features/video_editor/logic/new_text.dart';
 import '../features/video_editor/logic/text_look.dart';
 import '../features/video_editor/services/caption_access.dart';
 import '../features/video_editor/services/caption_pipeline.dart';
@@ -1004,19 +1005,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final canvasSize = ref.read(videoCanvasSizeProvider);
     final id = DateTime.now().millisecondsSinceEpoch.toString();
 
-    final overlay = template?.apply(
-          id: id,
-          startTime: start,
-          endTime: end,
-          canvasSize: canvasSize,
-        ) ??
-        TextOverlayModel(
-          id: id,
-          text: '',
-          startTime: start,
-          endTime: end,
-          referenceCanvasSize: canvasSize,
-        );
+    final overlay = newText(
+      id: id,
+      start: start,
+      end: end,
+      canvasSize: canvasSize,
+      template: template,
+    );
     // Selects it and opens its menu, which the editor closing leaves showing.
     ref.read(videoEditorProvider.notifier).addTextOverlay(overlay);
     unawaited(showTextEditor(context: context, overlay: overlay, ref: ref));
