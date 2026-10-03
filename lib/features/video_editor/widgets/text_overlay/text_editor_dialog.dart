@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/captions/caption_preset_catalog.dart';
 import '../../logic/text_animation_catalog.dart';
+import '../../logic/text_overlay_geometry.dart';
 import '../../logic/text_template_catalog.dart';
 import '../../models/text_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
@@ -12,6 +14,7 @@ import 'text_animation_panel.dart';
 import 'text_template_grid.dart';
 import '../panels/apply_to_all_toggle.dart';
 import '../panels/editor_sheet.dart';
+import '../panels/value_ruler.dart';
 
 /// Opens the text editor sheet for [overlay].
 ///
@@ -53,7 +56,7 @@ Future<void> showTextEditor({
   }
 }
 
-enum TextEditorTool { keyboard, templates, style, font, animation }
+enum TextEditorTool { keyboard, templates, style, font, size, animation }
 
 /// The selected-text menu's entries that open this sheet, and the tab each
 /// opens on.
@@ -68,6 +71,7 @@ const Map<String, TextEditorTool> kTextMenuSheetTools = {
   'text_templates': TextEditorTool.templates,
   'text_style': TextEditorTool.style,
   'text_font': TextEditorTool.font,
+  'text_size': TextEditorTool.size,
   'text_animation': TextEditorTool.animation,
 };
 
@@ -197,6 +201,11 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
   late double _outAnimationSpeed;
   late double _loopSpeed;
 
+  /// The letters' Size, or null for a text made before sizes existed —
+  /// written with every edit like the look, so a keystroke never undoes it.
+  /// Not part of the look ([_loadLook]): a template restyles without resizing.
+  late double? _fontSize = widget.overlay.fontSize;
+
   /// Which preset was last applied, cleared the moment any individual style
   /// property is changed by hand — a tweaked preset is no longer that preset.
   int? _activePresetIndex;
@@ -314,6 +323,7 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
         animationInDuration: _inAnimationSpeed,
         animationOutDuration: _outAnimationSpeed,
         loopSpeed: _loopSpeed,
+        fontSize: _fontSize,
       );
 
   void _updateOverlay() {
@@ -438,6 +448,11 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
                               TextEditorTool.font,
                             ),
                             _buildTab(
+                              LucideIcons.ruler,
+                              'Size',
+                              TextEditorTool.size,
+                            ),
+                            _buildTab(
                               LucideIcons.playCircle,
                               'Animation',
                               TextEditorTool.animation,
@@ -505,6 +520,7 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
                     TextEditorTool.templates => _buildTemplatesPanel(),
                     TextEditorTool.style => _buildStylePanel(),
                     TextEditorTool.font => _buildFontPanel(),
+                    TextEditorTool.size => _buildSizePanel(),
                     TextEditorTool.animation => _buildAnimationPanel(),
                   },
                 ),
@@ -831,6 +847,47 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
           ),
         );
       },
+    );
+  }
+
+  // ----------------------------------------------------------------- size
+
+  /// The Size tab: a ruler for the letters' size.
+  ///
+  /// **The letters, not the text as an object** — that is the pinch, the
+  /// scale. A bigger Size re-wraps inside the text's width and its outline,
+  /// shadow and box grow with it ([TextOverlayModel.fontSize]). A drag is one
+  /// undo step; the number, tapped, puts the default back — a caption's for a
+  /// caption, a text's for a text.
+  Widget _buildSizePanel() {
+    final canvas = widget.ref.read(videoCanvasSizeProvider) ??
+        widget.overlay.referenceCanvasSize ??
+        Size.zero;
+    final shown = _fontSize ?? textSizeOf(_currentOverlay(), canvas);
+    final fallback =
+        widget.overlay.isCaption ? kCaptionTextSize : kDefaultTextSize;
+    return Center(
+      child: ValueRuler(
+        key: const Key('text_size_ruler'),
+        value: shown.clamp(kMinTextSize, kMaxTextSize).toDouble(),
+        min: kMinTextSize,
+        max: kMaxTextSize,
+        // Half a step a pixel: the whole range is a few swipes, and one
+        // step a short nudge.
+        unitsPerPixel: 0.5,
+        snapPoints: [fallback],
+        format: (v) => '${v.round()}',
+        onChangeStart: () =>
+            widget.ref.read(videoEditorProvider.notifier).saveStateForUndo(),
+        onChanged: (v) {
+          setState(() => _fontSize = v.roundToDouble());
+          _updateOverlayLive();
+        },
+        onReset: () {
+          setState(() => _fontSize = fallback);
+          _updateOverlay();
+        },
+      ),
     );
   }
 

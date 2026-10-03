@@ -350,6 +350,9 @@ const EditorMenu _textOverlayMenu = EditorMenu(
       label: 'Font',
       icon: LucideIcons.caseSensitive,
     ),
+    // The letters' size, for everyone who would rather not pinch — a door
+    // into the text sheet's Size tab, like Font beside it.
+    EditorTool(id: 'text_size', label: 'Size', icon: LucideIcons.ruler),
     EditorTool(
       id: 'text_animation',
       label: 'Animation',

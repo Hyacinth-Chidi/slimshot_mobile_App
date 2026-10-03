@@ -187,6 +187,7 @@ void main() {
       'text_templates',
       'text_style',
       'text_font',
+      'text_size',
       'text_animation',
     ];
     for (final id in order) {
