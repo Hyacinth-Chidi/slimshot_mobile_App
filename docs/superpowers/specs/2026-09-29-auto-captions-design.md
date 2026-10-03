@@ -42,6 +42,10 @@ Highlight comes before presets because presets are mostly highlight looks.
 
    With a set already present, the Highlight and Style rows apply to it directly — no
    regeneration; only Source and Language need a new transcription.
+   **Revised after the Stage 4 device look:** the sheet keeps only Source, Language and
+   Length. A project's first set is generated in the Bubble style; the look is changed on the
+   captions — a selected caption's menu gains **Caption style**, a sheet with the styles and the
+   Highlight row, applying to the whole set. A regeneration keeps the set's style.
 3. **Progress** — a modal sheet: Preparing audio → Uploading → Listening → Placing, with Cancel.
 4. **Captions appear** on their own lane as ordinary text bars, lower third on the canvas, one
    undo step. Generating again asks **"Replace captions?"** and swaps the whole set.

@@ -78,3 +78,18 @@ decisions here; the code is in the commits.
    only that caption changes.
 4. Regenerate after hand-tuning a look: the new set keeps it.
 5. A new plain text starts in Montserrat Bold; an old draft's text keeps its font.
+
+## Revision after the first device look (2026-10-03)
+
+Decided with the user on the device, superseding the sheet decisions above:
+
+- **The Auto captions sheet asks only what generating needs** — Source, Language, Length,
+  Generate. No Highlight row, no Style grid.
+- **A project's first set comes out in Bubble** (`kDefaultCaptionPreset`, a purple pill behind
+  the spoken word), now the grid's first tile. Classic keeps the first device-approved look.
+- **A regeneration keeps the set's style**, read from its earliest caption
+  (`captionStyleForNewSet`) before the old set is replaced.
+- **Styling lives on the caption.** A selected caption's menu reads Edit · Caption style ·
+  Captions · Templates · Style · Font · Animation; Caption style and Captions show only for a
+  caption. **Caption style** is a sheet: the styles grid on top, the Highlight row and colours
+  under it; every tap restyles the whole set, one undo step each.

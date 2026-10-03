@@ -1878,8 +1878,9 @@ that itself outlasts the limit is kept whole. **Captions never overlap, whatever
 order the provider's times arrive in** — each starts no earlier than the previous one ends — so
 a set always fits one lane.
 
-**The default look** (`captionDefaultTemplate`, `caption_placement.dart`, **awaiting device
-verification**): **Montserrat Bold**, white, a black outline and a soft shadow, no fades (a
+**The first default look** — now the **Classic** style (`kCaptionClassicLook`); since the
+device look at Stage 4 a project's first set wears **Bubble** (the caption styles section):
+**Montserrat Bold**, white, a black outline and a soft shadow, no fades (a
 half-second fade is most of a one-second caption's life). Device-reported: the first version
 wore the Subtitle template — Inter at regular weight, scale 0.9 — and read as thin and small.
 The font is **bundled** (`assets/fonts/Montserrat-Bold.ttf`, its own family in
@@ -2077,12 +2078,12 @@ whole-block state — exactly how the preview already drew it, one rect that doe
 letters. So boxed text takes the atlas path: it animates per character and highlights, the
 boxed-text fallback and its warning are gone, and so is the template rule they forced.
 
-**Choosing one** (`AutoCaptionSheet`'s Highlight row, colours shown only for a style that lights
-in one — `captionHighlightUsesColor`): a new set is generated wearing it (`CaptionRequest.highlight`
-→ `CaptionSettings.highlight` → `buildCaptionOverlays`); **with a set on the timeline each choice
-reaches it at once** — the spec's "no regeneration for a look" — through
+**Choosing one** (the Highlight row of **Caption style**, on a selected caption's menu — see
+the caption styles section; colours shown only for a style that lights in one,
+`captionHighlightUsesColor`): **each choice reaches the whole set at once** through
 `setCaptionHighlight`, every caption and the settings together, one undo step per choice and none
-when nothing changes. Re-cutting keeps it; **a copy of a caption sheds it**, since
+when nothing changes. A new set is generated in the style `captionStyleForNewSet` decides
+(`CaptionSettings.highlight` → `buildCaptionOverlays`). Re-cutting keeps it; **a copy of a caption sheds it**, since
 `copyWith(clearCaption: true)` makes ordinary text, and a highlight marks a caption's words.
 
 **Known, from the stage review, deferred:** Focus dims every word and Reveal shows a bare box
@@ -2099,7 +2100,16 @@ the settings, not the captions, differ.
 
 **Awaiting device verification.** Plan: `docs/superpowers/plans/2026-10-03-auto-captions-stage4.md`.
 A set's whole look — face, colours, outline or box, shadow, motion and word highlight — is one
-tap in the Auto captions sheet's **Style** grid, and a look edit on one caption reaches the set.
+tap in **Caption style**, on a selected caption's menu, and a look edit on one caption reaches
+the set.
+
+**The look is chosen on the captions, not in the sheet that makes them** (from the first device
+look). The Auto captions sheet asks only what generating needs — Source, Language, Length — and
+a set is styled afterwards, where it can be judged against the footage. A selected caption's
+menu reads **Edit · Caption style · Captions · Templates · Style · Font · Animation** (then
+Opacity, Copy, Delete); Caption style and Captions show only for a caption
+(`isToolbarToolVisible`), so plain text's menu is what it always was. `editor_menu_test.dart`
+pins the order and the handler.
 
 **A text's look has one definition: `TextLook`** (`logic/text_look.dart`): face, fill, outline,
 box colour/radius/padding, the five shadow fields, alignment, the three animations and their
@@ -2113,24 +2123,37 @@ a look field must then be carried by `TextLook`, or a template or preset would l
 **A preset is a look plus a highlight — no place and no size** (`kCaptionPresets`,
 `logic/captions/caption_preset_catalog.dart`). A style that moved the set would undo the user's
 own placement every time they tried one, and a caption's size is the canvas rule
-(`kCaptionFontFraction`). Nine: Classic — **the device-approved default, `kCaptionDefaultLook`**,
-so a set made without touching the grid is what it was — Karaoke, Pop, Bubble, Boxed, Impact,
-Neon, Reveal, Focus. No in or out animations: the highlight is a caption's motion. The catalog
+(`kCaptionFontFraction`). Nine: **Bubble — the default, `kDefaultCaptionPreset`**, white
+type over a soft shadow with a purple pill behind the spoken word, chosen on the device because it
+shows the highlight off from the first moment, and the grid's first tile so "the first one" and
+"what I got" agree — then Classic (`kCaptionClassicLook`, the look the first device run approved),
+Karaoke, Pop, Boxed, Impact, Neon, Reveal, Focus. No in or out animations: the highlight is a caption's motion. The catalog
 test pins fonts in `allFonts`, animations selectable, shadows inside the Style tab's ranges,
 **a highlight never the text's own colour** (a word lit the colour it already wears does not
 light, and a pill the colour of its letters swallows them), and no two presets alike.
+
+**Caption style** (`CaptionStyleSheet`, `widgets/panels/caption_style_sheet.dart`) is the
+styles grid on top — a style is a whole look, highlight included, so it is picked first — and
+the Highlight row with its colours under it, to tune it. No title, by the echo rule. It opens on
+the selected caption's look and highlight, and **every tap restyles the whole set at once**
+(`restyleCaptions` for a style, `setCaptionHighlight` for a highlight): every caption's look and
+highlight and the settings' highlight, words, timing, place, size and motion untouched, one undo
+step per tap and none when nothing changes. A single caption is still the text editor's, with
+"Apply to all captions" off. The sheet takes `presets` as a parameter because a test cannot load
+the downloaded faces; `CaptionSheetFrame` and `SheetSectionLabel` keep it and the Auto captions
+sheet one family.
 
 **The grid is the canvas painter** (`CaptionPresetTile` over `TextPreviewTile`, in
 `kTextPreviewGrid`): a caption wearing the preset, its sample words timed across the loop
 (`kCaptionPresetWordSeconds`) so the highlight plays. The sheet owns one clock for every tile and
 holds it while it scrolls; the grid is not a scrollable of its own. **The current style is found,
-not remembered** — the preset whose look and highlight the set wears — so a hand edit marks none.
-A new set starts on the first style; **a regeneration starts on the set's own look**
-(`initialLook`, its first caption's), so hand tuning survives it. Choosing a style sets the look
-and the Highlight row, which then tunes it. With a set on the timeline it restyles the set at once
-(`restyleCaptions`): every caption's look and highlight and the settings' highlight, words,
-timing, place, size and motion untouched, one undo step and none when nothing changes. The sheet
-takes `presets` as a parameter because a test cannot load the downloaded faces.
+not remembered** — the preset whose look and highlight the caption wears — so a hand edit marks
+none.
+
+**What a new set wears** (`captionStyleForNewSet`): a project's first set, the default style;
+**a regeneration, the current set's style**, read from its **earliest** caption before the old set
+is replaced — regenerating for a better transcript must not undo the styling, hand tuning
+included, and splits and merges reorder the list while time does not move.
 
 **Apply to all captions** (`VideoEditorState.captionLookToAll`, on by default, not persisted).
 `_setText` — the one place a text is written — passes a caption's `TextLook` to every caption of
@@ -2158,10 +2181,9 @@ and a draft that names no face stay Roboto, so every saved project opens as it w
 `textAlignFor` does not, so a hand-edited draft with either centres its words in a box hugging
 one edge — the editor offers neither value. The sheet marks a style current by `sameLookAs`
 (speeds ignored) while `restyleCaptions` returns early only on full equality, so a current tile
-could still take an undo step if a preset ever carried an animation (none does). `initialLook`
-is the first caption in list order, not in time; with apply-to-all off and mixed looks, the
-sheet opens on, and a regeneration inherits, whichever sits first. **Bubble and Reveal carry no
-outline** — white type over a soft shadow alone; a device call on bright footage.
+could still take an undo step if a preset ever carried an animation (none does). **Reveal carries
+no outline** — white type over a soft shadow alone; a device call on bright footage. (Bubble has
+none either, and was judged readable on the device.)
 
 ### Apply to all — a copy, not a mode
 
