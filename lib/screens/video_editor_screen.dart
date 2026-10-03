@@ -64,6 +64,7 @@ import '../features/video_editor/widgets/panels/background_sheet.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
 import '../core/services/slimshot_api.dart';
 import '../features/video_editor/logic/captions/caption_grouping.dart';
+import '../features/video_editor/logic/captions/caption_preset_catalog.dart';
 import '../features/video_editor/logic/captions/caption_settings.dart';
 import '../features/video_editor/logic/new_text.dart';
 import '../features/video_editor/logic/text_look.dart';
@@ -71,6 +72,7 @@ import '../features/video_editor/services/caption_access.dart';
 import '../features/video_editor/services/caption_pipeline.dart';
 import '../features/video_editor/services/caption_service.dart';
 import '../features/video_editor/widgets/panels/auto_caption_sheet.dart';
+import '../features/video_editor/widgets/panels/caption_style_sheet.dart';
 import '../features/video_editor/widgets/panels/caption_batch_sheet.dart';
 import '../features/video_editor/widgets/panels/caption_progress_sheet.dart';
 import '../features/video_editor/widgets/panels/replace_captions_dialog.dart';
@@ -321,13 +323,22 @@ const EditorMenu _textMenu = EditorMenu(
 /// change it as often as you like. Their ids carry a `text_` prefix because `animation`
 /// already means the photo and video overlays' drawer. Copy and Delete are the
 /// handlers every overlay menu shares.
+///
+/// **A caption gets two more, right after Edit** — shown only for a caption
+/// (`isToolbarToolVisible`): Caption style, the set's look and highlight, and
+/// Captions, the list of its whole set. A caption's look is changed on the
+/// caption, where it can be judged against the footage, not in the sheet that
+/// generates captions.
 const EditorMenu _textOverlayMenu = EditorMenu(
   id: 'text_overlay',
   tools: [
-    // A caption's own: the list of its whole set. Shown only for a caption
-    // (`isToolbarToolVisible`).
-    EditorTool(id: 'captions', label: 'Captions', icon: LucideIcons.subtitles),
     EditorTool(id: 'text_edit', label: 'Edit', icon: LucideIcons.pencil),
+    EditorTool(
+      id: 'caption_style',
+      label: 'Caption style',
+      icon: LucideIcons.highlighter,
+    ),
+    EditorTool(id: 'captions', label: 'Captions', icon: LucideIcons.subtitles),
     EditorTool(
       id: 'text_templates',
       label: 'Templates',
@@ -1017,6 +1028,29 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     unawaited(showTextEditor(context: context, overlay: overlay, ref: ref));
   }
 
+  /// The selected caption's Caption style: the set's styles and highlight.
+  /// Every tap reaches the whole set at once, one undo step each.
+  void _showCaptionStyle() {
+    final editor = ref.read(videoEditorProvider);
+    final caption = editor.textOverlays
+        .where((t) => t.id == editor.selectedTextId && t.isCaption)
+        .firstOrNull;
+    if (caption == null) return;
+    final notifier = ref.read(videoEditorProvider.notifier);
+    unawaited(
+      showEditorSheet<void>(
+        context,
+        builder: (_) => CaptionStyleSheet(
+          look: TextLook.of(caption),
+          highlight: caption.highlight,
+          onPresetChosen: (preset) =>
+              notifier.restyleCaptions(preset.look, preset.highlight),
+          onHighlightChanged: notifier.setCaptionHighlight,
+        ),
+      ),
+    );
+  }
+
   /// The selected caption's list: every caption of its set, to read down and
   /// fix. A caption left with no words is removed when the list closes — the
   /// rule the text editor has for a text left empty.
@@ -1051,19 +1085,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final notifier = ref.read(videoEditorProvider.notifier);
     final request = await showEditorSheet<CaptionRequest>(
       context,
-      builder: (_) {
-        final editor = ref.read(videoEditorProvider);
-        final first = editor.textOverlays.where((t) => t.isCaption).firstOrNull;
-        return AutoCaptionSheet(
-          initial: editor.captionSettings,
-          initialLook: first == null ? null : TextLook.of(first),
-          onHighlightChanged: first == null ? null : notifier.setCaptionHighlight,
-          onPresetChosen: first == null
-              ? null
-              : (preset) =>
-                  notifier.restyleCaptions(preset.look, preset.highlight),
-        );
-      },
+      builder: (_) => AutoCaptionSheet(
+        initial: ref.read(videoEditorProvider).captionSettings,
+      ),
     );
     if (request == null || !mounted) return;
     if (!await CaptionAccess.ensureAllowed(context) || !mounted) return;
@@ -1110,6 +1134,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     api.close();
     if (drafts == null || !mounted) return;
 
+    // Read before the old set is replaced: a regeneration keeps the set's
+    // style, and a project's first set wears the default one.
+    final style = captionStyleForNewSet(
+      ref.read(videoEditorProvider).textOverlays,
+    );
     notifier.placeCaptions(
       drafts,
       CaptionSettings(
@@ -1117,10 +1146,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         source: request.source,
         language: request.language,
         length: request.length,
-        highlight: request.highlight,
+        highlight: style.highlight,
       ),
       canvasSize: ref.read(videoCanvasSizeProvider),
-      look: request.look,
+      look: style.look,
     );
   }
 
@@ -2216,6 +2245,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     );
                   } else if (tool.id == 'captions') {
                     unawaited(_showCaptionList());
+                  } else if (tool.id == 'caption_style') {
+                    _showCaptionStyle();
                   } else if (tool.id == 'auto_captions') {
                     unawaited(_startAutoCaptions());
                   } else if (tool.id == 'overlay') {

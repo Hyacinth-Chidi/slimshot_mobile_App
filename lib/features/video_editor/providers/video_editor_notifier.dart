@@ -3015,7 +3015,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     List<CaptionDraft> drafts,
     CaptionSettings settings, {
     Size? canvasSize,
-    TextLook look = kCaptionDefaultLook,
+    TextLook look = kDefaultCaptionLook,
   }) {
     if (drafts.isEmpty) return;
     saveStateForUndo();

@@ -35,10 +35,10 @@ class CaptionPreset {
       look.sameLookAs(TextLook.of(caption)) && caption.highlight == highlight;
 }
 
-/// The look a caption set wears until another is chosen: bold white type with
-/// a black outline and a soft shadow — readable over any footage. Bundled
-/// Montserrat Bold, so a caption looks the same offline and on any phone.
-const TextLook kCaptionDefaultLook = TextLook(
+/// The look of the Classic style: bold white type with a black outline and a
+/// soft shadow — the look the first device run approved. Bundled Montserrat
+/// Bold, so a caption looks the same offline and on any phone.
+const TextLook kCaptionClassicLook = TextLook(
   fontFamily: 'Montserrat Bold',
   strokeColor: Color(0xFF000000),
   strokeWidth: 4,
@@ -56,16 +56,61 @@ const Color _blue = Color(0xFF0A84FF);
 const Color _black = Color(0xFF000000);
 const Color _white = Color(0xFFFFFFFF);
 
+/// The look of the default style, Bubble: bold white type over a soft shadow.
+const TextLook kDefaultCaptionLook = TextLook(
+  fontFamily: 'Montserrat Bold',
+  shadowColor: _black,
+  shadowOpacity: 0.5,
+  shadowBlur: 8,
+  shadowDistance: 2,
+  shadowAngle: 90,
+);
+
+/// The default style's highlight: a purple pill behind the word being spoken.
+const CaptionHighlight kDefaultCaptionHighlight =
+    CaptionHighlight(style: CaptionHighlightStyle.pill, color: _purple);
+
+/// The style a project's first caption set is generated in — Bubble, chosen
+/// on the device because it shows the highlight off from the first moment.
+/// It is the grid's first tile, so "the first one" and "what I got" agree.
+const CaptionPreset kDefaultCaptionPreset = CaptionPreset(
+  id: 'bubble',
+  name: 'Bubble',
+  look: kDefaultCaptionLook,
+  highlight: kDefaultCaptionHighlight,
+);
+
+/// The style a new set is generated in.
+///
+/// **The current set's, when there is one**: regenerating for a better
+/// transcript must not undo the user's styling, hand tuning included. Read
+/// from the **earliest** caption — splits and merges reorder the list, time
+/// does not move. With no set, the default style.
+({TextLook look, CaptionHighlight highlight}) captionStyleForNewSet(
+  Iterable<TextOverlayModel> texts,
+) {
+  TextOverlayModel? earliest;
+  for (final t in texts) {
+    if (!t.isCaption) continue;
+    if (earliest == null || t.startTime < earliest.startTime) earliest = t;
+  }
+  if (earliest == null) {
+    return (look: kDefaultCaptionLook, highlight: kDefaultCaptionHighlight);
+  }
+  return (look: TextLook.of(earliest), highlight: earliest.highlight);
+}
+
 /// The presets, in the order the grid shows them. The first is the default.
 ///
 /// Captions carry no in or out animation: a half-second fade is most of a
 /// one-second caption's life. The highlight is their motion.
 const List<CaptionPreset> kCaptionPresets = [
-  CaptionPreset(id: 'classic', name: 'Classic', look: kCaptionDefaultLook),
+  kDefaultCaptionPreset,
+  CaptionPreset(id: 'classic', name: 'Classic', look: kCaptionClassicLook),
   CaptionPreset(
     id: 'karaoke',
     name: 'Karaoke',
-    look: kCaptionDefaultLook,
+    look: kCaptionClassicLook,
     highlight: CaptionHighlight(
       style: CaptionHighlightStyle.karaoke,
       color: _yellow,
@@ -85,19 +130,6 @@ const List<CaptionPreset> kCaptionPresets = [
       shadowAngle: 90,
     ),
     highlight: CaptionHighlight(style: CaptionHighlightStyle.pop, color: _green),
-  ),
-  CaptionPreset(
-    id: 'bubble',
-    name: 'Bubble',
-    look: TextLook(
-      fontFamily: 'Montserrat Bold',
-      shadowColor: _black,
-      shadowOpacity: 0.5,
-      shadowBlur: 8,
-      shadowDistance: 2,
-      shadowAngle: 90,
-    ),
-    highlight: CaptionHighlight(style: CaptionHighlightStyle.pill, color: _purple),
   ),
   CaptionPreset(
     id: 'boxed',
@@ -156,7 +188,7 @@ const List<CaptionPreset> kCaptionPresets = [
   CaptionPreset(
     id: 'focus',
     name: 'Focus',
-    look: kCaptionDefaultLook,
+    look: kCaptionClassicLook,
     highlight: CaptionHighlight(style: CaptionHighlightStyle.focus),
   ),
 ];

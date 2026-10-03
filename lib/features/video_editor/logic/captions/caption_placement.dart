@@ -34,7 +34,8 @@ double captionScaleFor(Size? canvasSize) {
 }
 
 /// [drafts] as text overlays of caption set [setId] on [lane], wearing [look]
-/// and lighting their words with [highlight].
+/// and lighting their words with [highlight] — the default style unless told
+/// otherwise ([captionStyleForNewSet] decides it for a real set).
 ///
 /// **The size and place are the caption rule's, whatever the look**: the type
 /// is [kCaptionFontFraction] of the canvas width and the centre sits at
@@ -49,8 +50,8 @@ List<TextOverlayModel> buildCaptionOverlays({
   required String setId,
   required int lane,
   Size? canvasSize,
-  CaptionHighlight highlight = CaptionHighlight.none,
-  TextLook look = kCaptionDefaultLook,
+  CaptionHighlight highlight = kDefaultCaptionHighlight,
+  TextLook look = kDefaultCaptionLook,
 }) {
   final scale = captionScaleFor(canvasSize);
   final known = canvasSize != null && canvasSize.width > 0;

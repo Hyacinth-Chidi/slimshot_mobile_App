@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping.dart';
+import 'package:slimshotai/features/video_editor/logic/captions/caption_highlight.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_placement.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_settings.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_word.dart';
@@ -88,7 +89,7 @@ void main() {
           canvasSize: canvas,
         ).first;
 
-    test('bold white type with a black outline, from a font in the app', () {
+    test('bold white type with a soft shadow, from a font in the app', () {
       final c = captionOn(const Size(360, 640));
       expect(c.fontFamily, 'Montserrat Bold');
       // Bundled, not fetched: a caption must look the same offline, and on a
@@ -96,9 +97,10 @@ void main() {
       expect(isCustomFont(c.fontFamily), isTrue);
       expect(allFonts, contains(c.fontFamily));
       expect(c.color, const Color(0xFFFFFFFF));
-      expect(c.strokeColor, const Color(0xFF000000));
-      expect(c.strokeWidth, greaterThan(0));
+      expect(c.shadowColor, const Color(0xFF000000));
       expect(c.backgroundColor.a, 0);
+      // The word being spoken sits on a purple pill.
+      expect(c.highlight.style, CaptionHighlightStyle.pill);
       // No fades: a half-second fade is most of a one-second caption's life.
       expect(
         [c.inAnimation, c.outAnimation, c.loopAnimation],

@@ -19,11 +19,15 @@ void main() {
     expect(ids.toSet(), hasLength(ids.length));
   });
 
-  test('the first preset is the default look, with no highlight', () {
-    // A set generated without touching the grid looks exactly as it did
-    // before presets existed — the look the device run approved.
+  test('the first preset is the default style: Bubble, a purple pill', () {
+    // What a project's first set is generated in, and the first tile of the
+    // grid, so "the first one" and "what I got" are the same thing.
     final first = kCaptionPresets.first;
-    expect(first.highlight, CaptionHighlight.none);
+    expect(first, same(kDefaultCaptionPreset));
+    expect(first.id, 'bubble');
+    expect(first.highlight.style, CaptionHighlightStyle.pill);
+    expect(first.highlight.color, const Color(0xFFBF5AF2));
+    // A set built with nothing said wears it.
     final made = buildCaptionOverlays(
       drafts: const [
         CaptionDraft(text: 'Hello', start: Duration.zero, end: Duration(seconds: 1), words: []),
@@ -32,7 +36,56 @@ void main() {
       lane: 0,
       canvasSize: const Size(400, 700),
     ).single;
-    expect(first.look.sameLookAs(TextLook.of(made)), isTrue);
+    expect(first.isAppliedTo(made), isTrue);
+  });
+
+  test('Classic is still offered: the look the first device run approved', () {
+    final classic = kCaptionPresets.firstWhere((p) => p.id == 'classic');
+    expect(classic.look, kCaptionClassicLook);
+    expect(classic.highlight, CaptionHighlight.none);
+    expect(classic.look.strokeWidth, greaterThan(0));
+  });
+
+  group('the style a new set is generated in', () {
+    TextOverlayModel caption(String id, int startMs, TextLook look, CaptionHighlight highlight) =>
+        look.applyTo(TextOverlayModel(
+          id: id,
+          text: id,
+          startTime: Duration(milliseconds: startMs),
+          endTime: Duration(milliseconds: startMs + 500),
+          captionSetId: 's',
+          highlight: highlight,
+        ));
+    const karaoke = CaptionHighlight(style: CaptionHighlightStyle.karaoke);
+    const tuned = TextLook(fontFamily: 'Poppins', color: Color(0xFF30D158));
+
+    test("a project's first set wears the default style", () {
+      final style = captionStyleForNewSet([
+        TextOverlayModel(id: 'title', text: 'Title'),
+      ]);
+      expect(style.look, kDefaultCaptionLook);
+      expect(style.highlight, kDefaultCaptionHighlight);
+    });
+
+    test("a regeneration keeps the set's style, hand tuning and all", () {
+      // Regenerating for a better transcript must not undo the styling.
+      final style = captionStyleForNewSet([
+        TextOverlayModel(id: 'title', text: 'Title'),
+        caption('a', 0, tuned, karaoke),
+      ]);
+      expect(style.look, tuned);
+      expect(style.highlight, karaoke);
+    });
+
+    test('read from the earliest caption, not the first in the list', () {
+      // Splits and merges reorder the list; time does not move.
+      final style = captionStyleForNewSet([
+        caption('later', 2000, kCaptionClassicLook, CaptionHighlight.none),
+        caption('earliest', 0, tuned, karaoke),
+      ]);
+      expect(style.look, tuned);
+      expect(style.highlight, karaoke);
+    });
   });
 
   test('every font is one the app can load', () {

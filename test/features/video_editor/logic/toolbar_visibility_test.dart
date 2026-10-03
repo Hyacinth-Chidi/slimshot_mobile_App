@@ -127,6 +127,13 @@ void main() {
     expect(declaredTools('_textOverlayMenu'), contains('captions'));
   });
 
+  test('Caption style is offered for a caption, not for ordinary text', () {
+    // A title has no set to restyle and no words to light.
+    expect(visible('caption_style', text: true, caption: true), isTrue);
+    expect(visible('caption_style', text: true), isFalse);
+    expect(declaredTools('_textOverlayMenu'), contains('caption_style'));
+  });
+
   test('Auto captions is offered only in a build that has a server', () {
     // "Not offered before it works": without SLIMSHOT_API_URL there is
     // nothing to send the audio to.

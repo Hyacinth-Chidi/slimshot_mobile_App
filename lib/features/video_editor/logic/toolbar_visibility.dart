@@ -38,6 +38,9 @@ bool isToolbarToolVisible(
     case 'captions':
       // The list edits a caption set; a title has none to list.
       return hasCaptionSelected;
+    case 'caption_style':
+      // A title has no set to restyle and no words to light.
+      return hasCaptionSelected;
     case 'auto_captions':
       // Not offered before it works: a build without a server address has
       // nowhere to send the audio.

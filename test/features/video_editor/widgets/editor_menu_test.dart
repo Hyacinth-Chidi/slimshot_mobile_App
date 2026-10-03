@@ -173,6 +173,36 @@ void main() {
     );
   });
 
+  test('a selected caption offers Caption style right after Edit, handled',
+      () {
+    // A caption's look is changed on the caption, where it can be judged
+    // against the footage — not in the sheet that generates captions. It
+    // sits right after Edit: restyling is the first thing done to a set.
+    final menu = menuSource('_textOverlayMenu');
+    int at(String id) => menu.indexOf("id: '$id'");
+    const order = [
+      'text_edit',
+      'caption_style',
+      'captions',
+      'text_templates',
+      'text_style',
+      'text_font',
+      'text_animation',
+    ];
+    for (final id in order) {
+      expect(at(id), isNot(-1), reason: '$id is declared');
+    }
+    for (var i = 1; i < order.length; i++) {
+      expect(at(order[i - 1]), lessThan(at(order[i])),
+          reason: '${order[i - 1]} comes before ${order[i]}');
+    }
+    expect(
+      screen.readAsStringSync(),
+      contains("tool.id == 'caption_style'"),
+      reason: 'a declared tool with no handler is a dead signpost',
+    );
+  });
+
   test('the Text tool offers Auto captions, and the screen handles it', () {
     expect(menuSource('_textMenu'), contains("id: 'auto_captions'"));
     expect(

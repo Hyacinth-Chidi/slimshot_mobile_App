@@ -21,6 +21,64 @@ class SheetGrabHandle extends StatelessWidget {
   }
 }
 
+/// The frame the caption sheets share: the sheet's surface and corners, the
+/// grab handle, and a height cap — the Auto captions sheet and Caption style
+/// look like one family because they are drawn by one widget.
+class CaptionSheetFrame extends StatelessWidget {
+  const CaptionSheetFrame({
+    super.key,
+    required this.maxHeight,
+    required this.children,
+  });
+
+  final double maxHeight;
+
+  /// Under the grab handle; a scrolling body goes in a `Flexible`.
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [const SheetGrabHandle(), ...children],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A section's small heading inside a caption sheet.
+class SheetSectionLabel extends StatelessWidget {
+  const SheetSectionLabel(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: AppColors.textSecondary,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
 /// A full-height sheet button: purple when it is the action, quiet otherwise.
 class SheetActionButton extends StatelessWidget {
   const SheetActionButton({
