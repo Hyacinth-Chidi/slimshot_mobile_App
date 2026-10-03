@@ -31,7 +31,12 @@ class ApplyToAllToggle extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.enabled = true,
+    this.label = 'Apply to all',
   });
+
+  /// "Apply to all" — or what "all" is, where clips are not what it means:
+  /// the text editor on a caption says "Apply to all captions".
+  final String label;
 
   final bool value;
   final ValueChanged<bool> onChanged;
@@ -59,10 +64,10 @@ class ApplyToAllToggle extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Apply to all',
-                  style: TextStyle(
+                  label,
+                  style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,

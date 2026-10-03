@@ -10,6 +10,7 @@ import '../../providers/video_editor_notifier.dart';
 import '../../utils/font_utils.dart';
 import 'text_animation_panel.dart';
 import 'text_template_grid.dart';
+import '../panels/apply_to_all_toggle.dart';
 import '../panels/editor_sheet.dart';
 
 /// Opens the text editor sheet for [overlay].
@@ -268,12 +269,21 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
   /// Type, then choose: puts [template] on this text — its words, timing and
   /// place kept, every part of the look replaced — as one undo step, and
   /// takes the new look into the sheet's copies ([_loadLook]).
+  ///
+  /// **A caption keeps its size**: a caption's size is its set's (a fraction
+  /// of the canvas), and a template's would make it larger or smaller than
+  /// its neighbours. Its look reaches the set like any look edit.
   void _applyTemplate(TextTemplate template) {
     widget.ref.read(videoEditorProvider.notifier).updateTextOverlay(
-          widget.overlay.id,
-          (current) =>
-              template.restyle(current.copyWith(text: _textController.text)),
-        );
+      widget.overlay.id,
+      (current) {
+        final restyled =
+            template.restyle(current.copyWith(text: _textController.text));
+        return current.isCaption
+            ? restyled.copyWith(scale: current.scale)
+            : restyled;
+      },
+    );
     setState(() {
       _activePresetIndex = null;
       _loadLook(_currentOverlay());
@@ -463,6 +473,22 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
                 ),
               ),
               const SizedBox(height: 12),
+
+              // On a caption a look edit is the set's — unless the user turns
+              // that off here. Not on the keyboard tab: the words are each
+              // caption's own.
+              if (widget.overlay.isCaption &&
+                  _activeTool != TextEditorTool.keyboard)
+                ApplyToAllToggle(
+                  label: 'Apply to all captions',
+                  value: widget.ref.read(videoEditorProvider).captionLookToAll,
+                  onChanged: (value) {
+                    widget.ref
+                        .read(videoEditorProvider.notifier)
+                        .setCaptionLookToAll(value);
+                    setState(() {});
+                  },
+                ),
 
               // The three styling tabs share one fixed height so switching
               // between them never resizes the sheet. The keyboard tab is

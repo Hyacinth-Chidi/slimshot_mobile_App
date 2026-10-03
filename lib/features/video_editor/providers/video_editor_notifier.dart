@@ -3075,6 +3075,42 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     );
   }
 
+  /// Puts [look] and [highlight] on every caption of the set — a caption
+  /// style — and keeps the highlight as the set's for the next one generated.
+  /// Only the look: words, timing, place, size and motion are each caption's.
+  ///
+  /// One undo step, and none where there are no captions or the set already
+  /// wears it.
+  void restyleCaptions(TextLook look, CaptionHighlight highlight) {
+    final captions = [
+      for (final t in state.textOverlays)
+        if (t.isCaption) t,
+    ];
+    if (captions.isEmpty) return;
+    final settings = state.captionSettings ??
+        CaptionSettings(setId: captions.first.captionSetId!);
+    if (settings.highlight == highlight &&
+        captions.every(
+          (t) => t.highlight == highlight && TextLook.of(t) == look,
+        )) {
+      return;
+    }
+    saveStateForUndo();
+    state = state.copyWith(
+      textOverlays: [
+        for (final t in state.textOverlays)
+          t.isCaption ? look.applyTo(t).copyWith(highlight: highlight) : t,
+      ],
+      captionSettings: settings.copyWith(highlight: highlight),
+    );
+  }
+
+  /// Whether a look edit on one caption reaches its whole set.
+  void setCaptionLookToAll(bool value) {
+    if (state.captionLookToAll == value) return;
+    state = state.copyWith(captionLookToAll: value);
+  }
+
   /// Cuts the caption [id] in two at the word boundary nearest [cursor], a
   /// UTF-16 offset into its text. Nothing — and no undo step — where there is
   /// nothing to cut, or for a text that is not a caption.
@@ -3284,7 +3320,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// **A caption whose text changed is retimed** ([retimeCaptionWords]): the
   /// batch list, the text editor and anything added later all fix words this
   /// way, so a word that did not change never moves. **A caption's box width
-  /// is its set's**: it is what makes captions wrap alike.
+  /// is its set's**: it is what makes captions wrap alike. **So is its look**,
+  /// while [VideoEditorState.captionLookToAll] is on: a colour, a font or an
+  /// animation changed on one caption reaches every caption of its set, in
+  /// the same undo step as the edit itself.
   void _setText(int index, TextOverlayModel edited) {
     final before = state.textOverlays[index];
     var after = edited;
@@ -3302,13 +3341,24 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     final width = after.boxWidth;
     final widthToSet =
         setId != null && width != null && width != before.boxWidth;
+    final look = TextLook.of(after);
+    final lookToSet = setId != null &&
+        state.captionLookToAll &&
+        look != TextLook.of(before);
+    TextOverlayModel follow(TextOverlayModel t) {
+      var out = t;
+      if (widthToSet) out = out.copyWith(boxWidth: width);
+      if (lookToSet) out = look.applyTo(out);
+      return out;
+    }
+
     final texts = state.textOverlays;
     state = state.copyWith(textOverlays: [
       for (var i = 0; i < texts.length; i++)
         if (i == index)
           after
-        else if (widthToSet && texts[i].captionSetId == setId)
-          texts[i].copyWith(boxWidth: width)
+        else if ((widthToSet || lookToSet) && texts[i].captionSetId == setId)
+          follow(texts[i])
         else
           texts[i],
     ]);

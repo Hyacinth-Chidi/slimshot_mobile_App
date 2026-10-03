@@ -134,6 +134,7 @@ class VideoEditorState {
     this.selectedFilter,
     this.filterIntensity = 1.0,
     this.filterAppliesToAll = true,
+    this.captionLookToAll = true,
     this.transitionAppliesToAll = false,
     this.isClipTransformActive = false,
     this.activeFilterCategory = 'Trending',
@@ -193,6 +194,12 @@ class VideoEditorState {
   /// the filter belongs to the selected clip and is applied before a transition
   /// blends it. The two are kept mutually exclusive so nothing is graded twice.
   final bool filterAppliesToAll;
+
+  /// Whether a look edit on one caption reaches every caption of its set.
+  ///
+  /// On by default: a caption that looks different from its neighbours reads
+  /// as a fault. Not persisted — a session's choice, like the editor's tools.
+  final bool captionLookToAll;
 
   /// Whether choosing a transition applies it to every cut or only the
   /// selected one.
@@ -645,6 +652,7 @@ class VideoEditorState {
     bool clearSelectedFilter = false,
     double? filterIntensity,
     bool? filterAppliesToAll,
+    bool? captionLookToAll,
     bool? transitionAppliesToAll,
     bool? isClipTransformActive,
     String? activeFilterCategory,
@@ -711,6 +719,7 @@ class VideoEditorState {
           : selectedFilter ?? this.selectedFilter,
       filterIntensity: filterIntensity ?? this.filterIntensity,
       filterAppliesToAll: filterAppliesToAll ?? this.filterAppliesToAll,
+      captionLookToAll: captionLookToAll ?? this.captionLookToAll,
       transitionAppliesToAll:
           transitionAppliesToAll ?? this.transitionAppliesToAll,
       isClipTransformActive:
