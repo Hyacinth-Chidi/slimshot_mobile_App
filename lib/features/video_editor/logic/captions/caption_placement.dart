@@ -4,6 +4,7 @@ import '../../models/text_overlay_model.dart';
 import '../text_overlay_geometry.dart';
 import '../text_template_catalog.dart';
 import 'caption_grouping.dart';
+import 'caption_highlight.dart';
 
 /// A caption's type size, as a fraction of the canvas **width**.
 ///
@@ -53,7 +54,8 @@ double captionScaleFor(Size? canvasSize) {
       .toDouble();
 }
 
-/// [drafts] as text overlays of caption set [setId] on [lane].
+/// [drafts] as text overlays of caption set [setId] on [lane], each lighting
+/// its words with [highlight].
 ///
 /// **The wrap width is divided by the scale.** A text's box is laid out first
 /// and scaled after, so a box as wide as the canvas, scaled up, runs off both
@@ -64,6 +66,7 @@ List<TextOverlayModel> buildCaptionOverlays({
   required String setId,
   required int lane,
   Size? canvasSize,
+  CaptionHighlight highlight = CaptionHighlight.none,
 }) {
   final scale = captionScaleFor(canvasSize);
   final boxWidth = canvasSize == null || canvasSize.width <= 0
@@ -85,6 +88,7 @@ List<TextOverlayModel> buildCaptionOverlays({
             laneIndex: lane,
             captionSetId: setId,
             captionWords: drafts[i].words,
+            highlight: highlight,
           ),
   ];
 }

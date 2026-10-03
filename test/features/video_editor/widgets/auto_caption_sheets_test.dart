@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping.dart';
+import 'package:slimshotai/features/video_editor/logic/captions/caption_highlight.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_settings.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_transcript.dart';
 import 'package:slimshotai/features/video_editor/services/caption_access.dart';
@@ -99,6 +100,84 @@ void main() {
         (request.source, request.language, request.length),
         (CaptionSource.tracks, 'yo', CaptionLength.word),
       );
+    });
+  });
+
+  group('the highlight', () {
+    testWidgets('starts on None, and a choice travels with the request',
+        (tester) async {
+      final popped = await open(tester, (_) => const AutoCaptionSheet());
+      expect(find.byKey(const Key('caption_highlight_none')), findsOneWidget);
+      await tapKey(tester, 'caption_highlight_karaoke');
+      await tapKey(tester, 'caption_highlight_color_2');
+      await tapKey(tester, 'caption_generate');
+      expect(
+        (popped.single as CaptionRequest).highlight,
+        CaptionHighlight(
+          style: CaptionHighlightStyle.karaoke,
+          color: kCaptionHighlightColors[2],
+        ),
+      );
+    });
+
+    testWidgets('offers every style', (tester) async {
+      await open(tester, (_) => const AutoCaptionSheet());
+      // The row scrolls sideways, like the Language row: the last chips are
+      // built past the sheet's edge.
+      for (final style in CaptionHighlightStyle.values) {
+        expect(
+          find.byKey(Key('caption_highlight_${style.name}'), skipOffstage: false),
+          findsOneWidget,
+          reason: style.name,
+        );
+      }
+    });
+
+    testWidgets('shows colours only for a style that lights in one',
+        (tester) async {
+      await open(tester, (_) => const AutoCaptionSheet());
+      const swatch = Key('caption_highlight_color_0');
+      expect(find.byKey(swatch), findsNothing);
+      await tapKey(tester, 'caption_highlight_pill');
+      expect(find.byKey(swatch), findsOneWidget);
+      await tapKey(tester, 'caption_highlight_focus');
+      expect(find.byKey(swatch), findsNothing);
+    });
+
+    testWidgets("reopens on the set's highlight", (tester) async {
+      const pill = CaptionHighlight(
+        style: CaptionHighlightStyle.pill,
+        color: Color(0xFF0A84FF),
+      );
+      final popped = await open(
+        tester,
+        (_) => const AutoCaptionSheet(
+          initial: CaptionSettings(setId: 's', highlight: pill),
+        ),
+      );
+      await tapKey(tester, 'caption_generate');
+      expect((popped.single as CaptionRequest).highlight, pill);
+    });
+
+    testWidgets('with a set present, each change reaches it at once',
+        (tester) async {
+      final applied = <CaptionHighlight>[];
+      await open(
+        tester,
+        (_) => AutoCaptionSheet(
+          initial: const CaptionSettings(setId: 's'),
+          onHighlightChanged: applied.add,
+        ),
+      );
+      await tapKey(tester, 'caption_highlight_pop');
+      await tapKey(tester, 'caption_highlight_color_4');
+      expect(applied, [
+        const CaptionHighlight(style: CaptionHighlightStyle.pop),
+        CaptionHighlight(
+          style: CaptionHighlightStyle.pop,
+          color: kCaptionHighlightColors[4],
+        ),
+      ]);
     });
   });
 

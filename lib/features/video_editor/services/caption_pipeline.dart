@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/services/slimshot_api.dart';
 import '../../../core/utils/file_utils.dart';
 import '../logic/captions/caption_grouping.dart';
+import '../logic/captions/caption_highlight.dart';
 import '../logic/captions/caption_settings.dart';
 import '../logic/captions/caption_transcript.dart';
 import 'caption_audio_result.dart';
@@ -25,6 +26,7 @@ class CaptionRequest {
     this.source = CaptionSource.video,
     this.language,
     this.length = CaptionLength.phrase,
+    this.highlight = CaptionHighlight.none,
   });
 
   final CaptionSource source;
@@ -32,6 +34,9 @@ class CaptionRequest {
   /// ISO 639-1, or null for Auto detect.
   final String? language;
   final CaptionLength length;
+
+  /// How the new set marks the word being spoken.
+  final CaptionHighlight highlight;
 }
 
 /// Timeline sound → server → caption drafts, one step at a time and

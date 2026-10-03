@@ -1,20 +1,29 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/captions/caption_highlight.dart';
 import '../../logic/captions/caption_settings.dart';
 import '../../services/caption_pipeline.dart';
 import 'caption_sheet_parts.dart';
 import 'editor_sheet.dart';
 
-/// Text → Auto captions: which sound, which language, how long a caption.
+/// Text → Auto captions: which sound, which language, how long a caption,
+/// and how the word being spoken lights up.
 ///
 /// No title — the user tapped Auto captions to get here. Pops a
 /// [CaptionRequest] on Generate, nothing on dismissal.
+///
+/// **The highlight needs no new transcription**, so with a set already on the
+/// timeline each choice reaches it at once through [onHighlightChanged] —
+/// kept, like any sheet's live edit, when the sheet is dismissed.
 class AutoCaptionSheet extends StatefulWidget {
-  const AutoCaptionSheet({super.key, this.initial});
+  const AutoCaptionSheet({super.key, this.initial, this.onHighlightChanged});
 
   /// The project's last choices, so a second run starts where the first did.
   final CaptionSettings? initial;
+
+  /// Applies a highlight to the set on the timeline; null when there is none.
+  final ValueChanged<CaptionHighlight>? onHighlightChanged;
 
   @override
   State<AutoCaptionSheet> createState() => _AutoCaptionSheetState();
@@ -26,6 +35,14 @@ class _AutoCaptionSheetState extends State<AutoCaptionSheet> {
       ? widget.initial!.language
       : null;
   late CaptionLength _length = widget.initial?.length ?? CaptionLength.phrase;
+  late CaptionHighlight _highlight =
+      widget.initial?.highlight ?? CaptionHighlight.none;
+
+  void _setHighlight(CaptionHighlight highlight) {
+    if (highlight == _highlight) return;
+    setState(() => _highlight = highlight);
+    widget.onHighlightChanged?.call(highlight);
+  }
 
   static String _sourceLabel(CaptionSource s) => switch (s) {
         CaptionSource.video => 'Video sound',
@@ -105,6 +122,26 @@ class _AutoCaptionSheetState extends State<AutoCaptionSheet> {
                         keyFor: (l) => Key('caption_length_${l.name}'),
                         onSelected: (l) => setState(() => _length = l),
                       ),
+                      _section('Highlight'),
+                      CaptionPillRow<CaptionHighlightStyle>(
+                        values: CaptionHighlightStyle.values,
+                        selected: _highlight.style,
+                        label: captionHighlightLabel,
+                        keyFor: (s) => Key('caption_highlight_${s.name}'),
+                        onSelected: (s) =>
+                            _setHighlight(_highlight.copyWith(style: s)),
+                      ),
+                      if (captionHighlightUsesColor(_highlight.style)) ...[
+                        const SizedBox(height: 12),
+                        CaptionColorRow(
+                          colors: kCaptionHighlightColors,
+                          selected: _highlight.color,
+                          keyFor: (i) => Key('caption_highlight_color_$i'),
+                          onSelected: (c) =>
+                              _setHighlight(_highlight.copyWith(color: c)),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
                     ],
                   ),
                 ),
@@ -122,6 +159,7 @@ class _AutoCaptionSheetState extends State<AutoCaptionSheet> {
                         source: _source,
                         language: _language,
                         length: _length,
+                        highlight: _highlight,
                       ),
                     ),
                   ),

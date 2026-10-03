@@ -61,6 +61,61 @@ class SheetActionButton extends StatelessWidget {
   }
 }
 
+/// A horizontal row of colour swatches; the current one is ringed in the
+/// accent, the rest in the border colour — which is also what keeps a black
+/// swatch visible on the sheet.
+class CaptionColorRow extends StatelessWidget {
+  const CaptionColorRow({
+    super.key,
+    required this.colors,
+    required this.selected,
+    required this.keyFor,
+    required this.onSelected,
+  });
+
+  final List<Color> colors;
+  final Color selected;
+  final Key Function(int index) keyFor;
+  final ValueChanged<Color> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          for (var i = 0; i < colors.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: GestureDetector(
+                key: keyFor(i),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  onSelected(colors[i]);
+                },
+                child: Container(
+                  width: 36,
+                  decoration: BoxDecoration(
+                    color: colors[i],
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: colors[i] == selected
+                          ? AppColors.primaryStart
+                          : AppColors.border,
+                      width: colors[i] == selected ? 3 : 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A horizontal row of choice pills: the filled capsule is the current one.
 class CaptionPillRow<T> extends StatelessWidget {
   const CaptionPillRow({

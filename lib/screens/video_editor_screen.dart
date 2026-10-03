@@ -1057,6 +1057,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       context,
       builder: (_) => AutoCaptionSheet(
         initial: ref.read(videoEditorProvider).captionSettings,
+        onHighlightChanged: ref.read(videoEditorProvider).hasCaptions
+            ? notifier.setCaptionHighlight
+            : null,
       ),
     );
     if (request == null || !mounted) return;
@@ -1111,6 +1114,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         source: request.source,
         language: request.language,
         length: request.length,
+        highlight: request.highlight,
       ),
       canvasSize: ref.read(videoCanvasSizeProvider),
     );

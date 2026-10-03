@@ -262,7 +262,11 @@ class TextOverlayModel {
       keyframes: keyframes ?? this.keyframes,
       captionSetId: clearCaption ? null : captionSetId ?? this.captionSetId,
       captionWords: clearCaption ? null : captionWords ?? this.captionWords,
-      highlight: highlight ?? this.highlight,
+      // A highlight marks a caption's words, so a text that stops being a
+      // caption stops carrying one.
+      highlight: clearCaption
+          ? CaptionHighlight.none
+          : highlight ?? this.highlight,
     );
   }
 

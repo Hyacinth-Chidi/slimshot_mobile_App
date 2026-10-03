@@ -20,6 +20,20 @@ const List<Color> kCaptionHighlightColors = [
   Color(0xFF000000),
 ];
 
+/// Whether [style] lights its word in a colour — the ones the colour row
+/// serves. Reveal and Focus work by opacity alone.
+bool captionHighlightUsesColor(CaptionHighlightStyle style) => switch (style) {
+      CaptionHighlightStyle.colour ||
+      CaptionHighlightStyle.pop ||
+      CaptionHighlightStyle.pill ||
+      CaptionHighlightStyle.karaoke =>
+        true,
+      CaptionHighlightStyle.none ||
+      CaptionHighlightStyle.reveal ||
+      CaptionHighlightStyle.focus =>
+        false,
+    };
+
 /// A caption's word highlight: which style, in which colour.
 ///
 /// **One colour.** It is what lights the word — the fill for Colour, Pop and

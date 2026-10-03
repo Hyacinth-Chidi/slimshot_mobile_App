@@ -33,6 +33,7 @@ import '../services/video_editor_service.dart';
 import '../services/video_thumbnail_service.dart';
 import '../logic/captions/caption_edits.dart';
 import '../logic/captions/caption_grouping.dart';
+import '../logic/captions/caption_highlight.dart';
 import '../logic/captions/caption_placement.dart';
 import '../logic/captions/caption_retime.dart';
 import '../logic/captions/caption_settings.dart';
@@ -3033,6 +3034,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
           setId: settings.setId,
           lane: lane,
           canvasSize: canvasSize,
+          highlight: settings.highlight,
         ),
       ],
       captionSettings: settings,
@@ -3040,6 +3042,33 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       currentMenuId: 'root',
     );
     _compactLanes();
+  }
+
+  /// Lights the word being spoken with [highlight] in every caption of the
+  /// set, and keeps it as the set's, so a set generated next wears it too.
+  ///
+  /// One undo step — none where there are no captions, or the set already
+  /// wears it: an undo entry that undoes nothing is a lie.
+  void setCaptionHighlight(CaptionHighlight highlight) {
+    final captions = [
+      for (final t in state.textOverlays)
+        if (t.isCaption) t,
+    ];
+    if (captions.isEmpty) return;
+    final settings = state.captionSettings ??
+        CaptionSettings(setId: captions.first.captionSetId!);
+    if (settings.highlight == highlight &&
+        captions.every((t) => t.highlight == highlight)) {
+      return;
+    }
+    saveStateForUndo();
+    state = state.copyWith(
+      textOverlays: [
+        for (final t in state.textOverlays)
+          t.isCaption ? t.copyWith(highlight: highlight) : t,
+      ],
+      captionSettings: settings.copyWith(highlight: highlight),
+    );
   }
 
   /// Cuts the caption [id] in two at the word boundary nearest [cursor], a
@@ -3136,6 +3165,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         source: settings?.source ?? CaptionSource.video,
         language: settings?.language,
         length: length,
+        highlight: settings?.highlight ?? CaptionHighlight.none,
       ),
     );
   }
