@@ -65,6 +65,7 @@ import '../features/video_editor/widgets/panels/editor_sheet.dart';
 import '../core/services/slimshot_api.dart';
 import '../features/video_editor/logic/captions/caption_grouping.dart';
 import '../features/video_editor/logic/captions/caption_settings.dart';
+import '../features/video_editor/logic/text_look.dart';
 import '../features/video_editor/services/caption_access.dart';
 import '../features/video_editor/services/caption_pipeline.dart';
 import '../features/video_editor/services/caption_service.dart';
@@ -1055,12 +1056,19 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final notifier = ref.read(videoEditorProvider.notifier);
     final request = await showEditorSheet<CaptionRequest>(
       context,
-      builder: (_) => AutoCaptionSheet(
-        initial: ref.read(videoEditorProvider).captionSettings,
-        onHighlightChanged: ref.read(videoEditorProvider).hasCaptions
-            ? notifier.setCaptionHighlight
-            : null,
-      ),
+      builder: (_) {
+        final editor = ref.read(videoEditorProvider);
+        final first = editor.textOverlays.where((t) => t.isCaption).firstOrNull;
+        return AutoCaptionSheet(
+          initial: editor.captionSettings,
+          initialLook: first == null ? null : TextLook.of(first),
+          onHighlightChanged: first == null ? null : notifier.setCaptionHighlight,
+          onPresetChosen: first == null
+              ? null
+              : (preset) =>
+                  notifier.restyleCaptions(preset.look, preset.highlight),
+        );
+      },
     );
     if (request == null || !mounted) return;
     if (!await CaptionAccess.ensureAllowed(context) || !mounted) return;
