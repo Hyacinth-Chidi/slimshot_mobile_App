@@ -2231,6 +2231,16 @@ migrated; it simply reads its Size.
 **The ruler**: half a step a pixel, snapping at the text's default (a caption's for a caption,
 a text's for a text), the number tapped puts that default back, one undo step per drag.
 
+**Known, from the review, deferred:** tapping the number at the default, or touching the ruler
+without moving, takes an undo step that undoes nothing — the editor's sliders share the pattern.
+Insets grow with the Size while the box's minimum width (`kMinTextBoxWidth`) does not, so at a
+large Size with a background the width handle can ask for a box narrower than the insets; the
+box stops shrinking and the far edge drifts toward the finger (preview and file still agree). A
+legacy caption whose scale is keyframed is not migrated, so a Size broadcast from a converted
+sibling leaves it larger at rest — dividing its scale keyframes by the old scale would convert it
+exactly. A new emoji is still made without a Size (it draws as it always has). `copyWith` has no
+`clearFontSize`; nothing clears a Size, and `_applyEdits` relies on null meaning "keep".
+
 ### Apply to all — a copy, not a mode
 
 Transform, the clip crop and Effects each carry an `ApplyToAllButton`: one tap copies the selected

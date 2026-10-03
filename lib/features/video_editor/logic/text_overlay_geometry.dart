@@ -18,7 +18,9 @@ import '../utils/font_utils.dart';
 ///
 /// Units: the overlay stores its geometry in **reference-canvas pixels** (the
 /// preview canvas it was created on) and the layout converts to whatever
-/// canvas is being drawn through [renderScale]. `position` is the box centre's
+/// canvas is being drawn — through [TextOverlayLayout.canvasScale] for where
+/// the box sits and how wide it wraps, and [TextOverlayLayout.inkScale] for
+/// what the text draws, which also carries its Size. `position` is the box centre's
 /// offset from the canvas centre; `boxWidth` is the *outer* box width the user
 /// dragged the edge handles to, or null for "as wide as the text".
 const double kTextOverlayFontSize = 32.0;

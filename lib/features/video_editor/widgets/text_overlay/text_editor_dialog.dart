@@ -279,9 +279,9 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
   /// place kept, every part of the look replaced — as one undo step, and
   /// takes the new look into the sheet's copies ([_loadLook]).
   ///
-  /// **A caption keeps its size**: a caption's size is its set's (a fraction
-  /// of the canvas), and a template's would make it larger or smaller than
-  /// its neighbours. Its look reaches the set like any look edit.
+  /// **A caption keeps its scale**: its size is its Size, at scale 1 like
+  /// every caption of its set, and a template's scale would make it larger or
+  /// smaller than its neighbours. Its look reaches the set like any look edit.
   void _applyTemplate(TextTemplate template) {
     widget.ref.read(videoEditorProvider.notifier).updateTextOverlay(
       widget.overlay.id,
