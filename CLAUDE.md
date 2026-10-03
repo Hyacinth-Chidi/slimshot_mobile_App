@@ -495,7 +495,9 @@ migration. Unknown names (e.g. `circleOpen` from old drafts) degrade to a hard c
   checkbox does not need prose to say whether it is ticked and the sheet read
   "Apply to all clips · One look over the whole video", one fact twice. The
   **whole row** is the tap target rather than a 20px box at its end. `ApplyToAllButton` is left alone: it is a
-  copy *action*, already compact, and correctly reads as a button.
+  copy *action*, already compact, and correctly reads as a button. Its one
+  variant is the `label`: on a caption the text editor says **"Apply to all
+  captions"**, because there "all" is not the clips.
 - **The Transform sheet's mirrors live in its header**, not under the Rotate
   ruler. Each tab is one continuous value set by dragging; a mirror is an
   instant on/off that applies to the whole placement. Under a tab they were
@@ -1795,7 +1797,7 @@ using it. The screen takes the first pick from the same picker Add uses and re-s
 **Device-verified by the user**: a set generates, the default look is right, and after the WAV
 and lead fixes the words land on time. Spec: `docs/superpowers/specs/2026-09-29-auto-captions-design.md`,
 Stage 1 plan beside it in `plans/`. Stage 2 (editing) and Stage 3 (word highlight) are the next
-sections; Stage 4 (caption styles) is specified and not built. Sign-in and credits come later and have exactly one hook:
+sections, then Stage 4 (caption styles). Sign-in and credits come later and have exactly one hook:
 `CaptionAccess.ensureAllowed`, called once before any audio is rendered, which always opens today.
 
 **A caption is an ordinary text overlay**, for the emoji reason: a dedicated caption kind would
@@ -1888,10 +1890,10 @@ size is stored in the pixels of the canvas it was made on, which is whatever the
 room for, so one scale was large on one phone and small on the next. **The wrap width is
 divided by the scale** (`kCaptionWidthFraction`, 0.86 of the canvas): a text's box is laid out
 first and scaled after, so a canvas-wide box scaled up runs off both edges. That reverses the
-plan's "`boxWidth` unset" ruling; a boxed caption style will need its background sized to the
-words rather than the box when Stage 4 adds one. The centre sits at `kCaptionPlacement` — a
-little over three quarters down, clear of the bottom fifth where the apps that play short-form
-video put their own caption and buttons. New plain text still starts in Roboto.
+plan's "`boxWidth` unset" ruling, and is why a boxed caption's background hugs its words rather
+than the box (Stage 4). The centre sits at `kCaptionPlacement` — a little over three quarters
+down, clear of the bottom fifth where the apps that play short-form video put their own caption
+and buttons. Since Stage 4 new plain text starts in Montserrat Bold too (`newText`).
 
 **Placement** (`placeCaptions`): on the first lane free across the whole set, one undo step.
 **A new set replaces the old** — removed *before* the lane is chosen, so the new set
@@ -1995,8 +1997,7 @@ timeline Split tool stays off for text**; splitting a caption is a list action.
 
 **Known:** a caption can end a few tens of milliseconds before its last word does (the next
 caption's lead takes that room) — Stage 3's highlight clamps word times to the caption's span,
-so this costs nothing there. A template chosen on one caption restyles that caption only, until
-Stage 4's apply-to-all. An Undo can bring back a caption that was emptied and then removed when
+so this costs nothing there. An Undo can bring back a caption that was emptied and then removed when
 the list closed; opening and closing the list removes it again.
 
 **The cause of the late captions is a theory, not a measurement.** AAC priming is the right
@@ -2059,6 +2060,14 @@ cannot be pre-applied to an axis-aligned rect, so the halves turn about their ow
 seam that opens only while a rotating per-glyph animation and a sweep cross the same letter.
 `OverlayDrawBuilder.textDraws` maps the quads onto `Draw`s and nothing more.
 
+**A highlighted caption repaints only when a word changes look** (`_wordStatesDiffer`, from the
+stage review). Every repaint casts a blurred shadow per letter, and `shouldRepaint` used to say
+yes at every position event for as long as the caption was on screen — a large share of each
+frame on a low-end phone for a picture that had not changed. It now compares each word's
+`WordHighlightState` at the two instants, from the word times alone with no layout: Colour,
+Pill, Reveal and Focus repaint at word boundaries and through their ramps, Karaoke and Pop while
+they move.
+
 **Atlas cells keep a 2px gutter** (`kAtlasCellGapPx`). The GPU samples a cell's edge between two
 texels; flush cells were harmless while every cell was a glyph with a transparent margin, but a
 pill or box is solid to its edge and would draw a faint line of its colour along its neighbour.
@@ -2075,6 +2084,71 @@ reaches it at once** — the spec's "no regeneration for a look" — through
 `setCaptionHighlight`, every caption and the settings together, one undo step per choice and none
 when nothing changes. Re-cutting keeps it; **a copy of a caption sheds it**, since
 `copyWith(clearCaption: true)` makes ordinary text, and a highlight marks a caption's words.
+
+**Known, from the stage review, deferred:** Focus dims every word and Reveal shows a bare box
+for the 60ms lead before a caption's first word (both sides agree; "before the first word
+nothing is active"). A boxed text too large for the atlas falls back to the flat raster
+silently, where a whole-block fade fades the box with the letters while the preview leaves the
+box at rest — a narrower form of a divergence that predates the stage. `CaptionHighlightLayout.of`
+guards a word's end against the text but not a reversed or negative range (unreachable from a
+draft, whose reader clamps). A pill cell is clipped to its cell in the rasteriser, cutting the
+antialiased half pixel the canvas keeps. `setCaptionHighlight` takes an undo step when only
+the settings, not the captions, differ.
+
+### Auto captions — caption styles (Stage 4)
+
+**Awaiting device verification.** Plan: `docs/superpowers/plans/2026-10-03-auto-captions-stage4.md`.
+A set's whole look — face, colours, outline or box, shadow, motion and word highlight — is one
+tap in the Auto captions sheet's **Style** grid, and a look edit on one caption reaches the set.
+
+**A text's look has one definition: `TextLook`** (`logic/text_look.dart`): face, fill, outline,
+box colour/radius/padding, the five shadow fields, alignment, the three animations and their
+speeds. `TextLook.of`, `applyTo`, and `sameLookAs` — equality at any pace, which is what "is this
+text wearing that look" has always meant. Templates restyle and recognise themselves through it
+(`TextTemplate.look`; their tests passed unchanged through the refactor), and so do caption
+presets and apply-to-all. **`text_look_test.dart` holds every serialised field of a text to one
+side or the other**: a field added to the model and its JSON fails until it is classified, and
+a look field must then be carried by `TextLook`, or a template or preset would leave it behind.
+
+**A preset is a look plus a highlight — no place and no size** (`kCaptionPresets`,
+`logic/captions/caption_preset_catalog.dart`). A style that moved the set would undo the user's
+own placement every time they tried one, and a caption's size is the canvas rule
+(`kCaptionFontFraction`). Nine: Classic — **the device-approved default, `kCaptionDefaultLook`**,
+so a set made without touching the grid is what it was — Karaoke, Pop, Bubble, Boxed, Impact,
+Neon, Reveal, Focus. No in or out animations: the highlight is a caption's motion. The catalog
+test pins fonts in `allFonts`, animations selectable, shadows inside the Style tab's ranges,
+**a highlight never the text's own colour** (a word lit the colour it already wears does not
+light, and a pill the colour of its letters swallows them), and no two presets alike.
+
+**The grid is the canvas painter** (`CaptionPresetTile` over `TextPreviewTile`, in
+`kTextPreviewGrid`): a caption wearing the preset, its sample words timed across the loop
+(`kCaptionPresetWordSeconds`) so the highlight plays. The sheet owns one clock for every tile and
+holds it while it scrolls; the grid is not a scrollable of its own. **The current style is found,
+not remembered** — the preset whose look and highlight the set wears — so a hand edit marks none.
+A new set starts on the first style; **a regeneration starts on the set's own look**
+(`initialLook`, its first caption's), so hand tuning survives it. Choosing a style sets the look
+and the Highlight row, which then tunes it. With a set on the timeline it restyles the set at once
+(`restyleCaptions`): every caption's look and highlight and the settings' highlight, words,
+timing, place, size and motion untouched, one undo step and none when nothing changes. The sheet
+takes `presets` as a parameter because a test cannot load the downloaded faces.
+
+**Apply to all captions** (`VideoEditorState.captionLookToAll`, on by default, not persisted).
+`_setText` — the one place a text is written — passes a caption's `TextLook` to every caption of
+its set when the look changed, beside the box width the set already shared, inside the edit's own
+undo step. Words and moves are never broadcast by it (a set already moves as one through
+`_moveCaptionSet`). The text editor shows the switch on a caption only, and not on the Keyboard
+tab, where the words are each caption's own. **A template chosen on a caption keeps the
+caption's size**: a template's size would make it larger or smaller than its neighbours.
+
+**A boxed caption's background hugs its words** (`TextOverlayLayout.backgroundRect`). A caption
+carries its set's wrap width, one the user never chose, so the Boxed style drew a band most of the
+canvas wide behind one word. It wraps the longest line, placed by the lines' alignment; the box
+the user grabs keeps the set's width, so the width handles behave as before. One layout feeds the
+painter and both export rasters. Plain text with a width of its own keeps its banner.
+
+**New plain text starts in Montserrat Bold** (`newText`, `kNewTextFontFamily`), the spec's
+bundled default. Only new text: a template keeps its own face, and the model's default and a draft
+that names no face stay Roboto, so every saved project opens as it was.
 
 ### Apply to all — a copy, not a mode
 
