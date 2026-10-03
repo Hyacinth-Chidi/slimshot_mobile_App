@@ -3,6 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AdService {
+  /// **The one switch for every ad in the app. Off for now** — set it to
+  /// `true` to bring ads back; nothing else needs to change.
+  ///
+  /// Off, nothing waits on an ad and nothing an ad unlocked stays locked: an
+  /// interstitial's save goes ahead at once, a rewarded ad's unlock is
+  /// granted without one, the "Watch ad to unlock" labels hide, and the ads
+  /// SDK is never started (`main.dart`). Without an ad there is no other way
+  /// to reach a Pro preset or 4K export, so withholding them would lock those
+  /// features away entirely.
+  static const bool enabled = false;
+
   // --- INTERSTITIAL ADS ---
   static InterstitialAd? _interstitialAd;
   static bool _isAdReady = false;
@@ -37,6 +48,7 @@ class AdService {
 
   /// Preloads an interstitial ad in the background. Call this when entering the result screen.
   static void loadInterstitialAd() {
+    if (!enabled) return;
     if (_isAdReady || _isLoading) return;
     _isLoading = true;
 
@@ -85,7 +97,11 @@ class AdService {
   /// Always executes [onAdDismissed] exactly once to guarantee the save flow.
   static Future<void> showInterstitialAd(
       BuildContext context, {required VoidCallback onAdDismissed}) async {
-    
+    if (!enabled) {
+      onAdDismissed();
+      return;
+    }
+
     // Helper to setup callbacks and show ad
     void showAdNow() {
       _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
@@ -181,6 +197,7 @@ class AdService {
 
   /// Preloads a rewarded ad in the background.
   static void loadRewardedAd() {
+    if (!enabled) return;
     if (_isRewardedAdReady || _isRewardedAdLoading) return;
     _isRewardedAdLoading = true;
 
@@ -231,7 +248,11 @@ class AdService {
       required VoidCallback onRewardEarned,
       required VoidCallback onFailed,
   }) async {
-    
+    if (!enabled) {
+      onRewardEarned();
+      return;
+    }
+
     if (!_isRewardedAdReady || _rewardedAd == null) {
       debugPrint('Rewarded Ad is not ready.');
       onFailed();

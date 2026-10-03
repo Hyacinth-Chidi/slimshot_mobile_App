@@ -369,7 +369,8 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
                                                   ),
                                                   const SizedBox(height: 6),
                                                   Visibility(
-                                                    visible: preset.isPro,
+                                                    // No ad to watch while ads are off.
+                                                    visible: preset.isPro && AdService.enabled,
                                                     maintainSize: true,
                                                     maintainAnimation: true,
                                                     maintainState: true,

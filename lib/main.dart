@@ -35,9 +35,12 @@ Future<void> main() async {
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   // Use the system gallery sheet for picking rather than the Files app.
   MediaPickerService.enableAndroidPhotoPicker();
-  MobileAds.instance.initialize();
-  AdService.loadInterstitialAd(); // Start background preload immediately
-  AdService.loadRewardedAd(); // Start background preload for Rewarded Ads
+  // Ads are switched off for now — see `AdService.enabled`.
+  if (AdService.enabled) {
+    MobileAds.instance.initialize();
+    AdService.loadInterstitialAd(); // Start background preload immediately
+    AdService.loadRewardedAd(); // Start background preload for Rewarded Ads
+  }
   GoogleFonts.config.allowRuntimeFetching = true;
 
   final prefs = await SharedPreferences.getInstance();
