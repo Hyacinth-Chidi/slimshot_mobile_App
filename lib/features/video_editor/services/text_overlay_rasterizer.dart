@@ -70,8 +70,16 @@ class RasterizedGlyph {
     required this.boxRect,
     required this.srcRect,
     this.litAtlasRect,
+    this.shadowAtlasRect,
     this.word = -1,
   });
+
+  /// This glyph's shadow alone, in **atlas pixels** — a cell the size of
+  /// [atlasRect], so [srcRect] serves it too. Null for a text without a
+  /// shadow. Kept apart from the letter so every shadow can be drawn before
+  /// any letter: baked into the letter's own cell, line 2's shadows landed on
+  /// line 1's letters when the cells were put back in order.
+  final Rect? shadowAtlasRect;
 
   /// The same glyph drawn in the highlight colour, in **atlas pixels** — a
   /// cell exactly the size of [atlasRect], so [srcRect] serves both. Null
@@ -350,6 +358,11 @@ class TextOverlayRasterizer {
       final sizes = <Size>[for (final g in glyphBoxes) g.paddedRect.size];
       final litFrom = sizes.length;
       if (needsLit) sizes.addAll([for (final g in glyphBoxes) g.paddedRect.size]);
+      // Each letter's shadow in a cell of its own, so the native pass can draw
+      // every shadow before any letter, as the canvas does.
+      final shadowed = TextOverlayLayout.hasShadow(overlay);
+      final shadowFrom = sizes.length;
+      if (shadowed) sizes.addAll([for (final g in glyphBoxes) g.paddedRect.size]);
       final pillCell = <int, int>{};
       for (var w = 0; w < pillRects.length; w++) {
         final rect = pillRects[w];
@@ -442,8 +455,34 @@ class TextOverlayRasterizer {
             textOrigin: layout.textOrigin,
             shadowFrom: glyph.inkRect,
             inkWithin: regions[i],
+            shadow: !shadowed,
           );
           canvas.restore();
+        }
+
+        // The shadow cells: each letter's shadow, cast from its own tile,
+        // and nothing else.
+        if (shadowed) {
+          for (var i = 0; i < glyphBoxes.length; i++) {
+            final glyph = glyphBoxes[i];
+            final cell = cells[shadowFrom + i];
+            canvas.save();
+            canvas.clipRect(cell);
+            canvas.translate(cell.left, cell.top);
+            canvas.scale(density);
+            canvas.translate(-glyph.paddedRect.left, -glyph.paddedRect.top);
+            paintTextOverlayInk(
+              canvas,
+              overlay: overlay,
+              inkScale: inkScale,
+              fill: fillPainter,
+              stroke: strokePainter,
+              textOrigin: layout.textOrigin,
+              shadowFrom: glyph.inkRect,
+              ink: false,
+            );
+            canvas.restore();
+          }
         }
 
         // The lit cells: the same glyph, the same outline and shadow, the
@@ -467,6 +506,7 @@ class TextOverlayRasterizer {
               textOrigin: layout.textOrigin,
               shadowFrom: glyph.inkRect,
               inkWithin: regions[i],
+              shadow: !shadowed,
             );
             canvas.restore();
           }
@@ -521,6 +561,7 @@ class TextOverlayRasterizer {
                 glyphBoxes[i],
                 cells[i],
                 lit: needsLit ? cells[litFrom + i] : null,
+                shadow: shadowed ? cells[shadowFrom + i] : null,
                 word: highlight?.glyphWord[i] ?? -1,
               ),
           ],
@@ -561,6 +602,7 @@ class TextOverlayRasterizer {
     TextGlyphBox glyph,
     Rect cell, {
     Rect? lit,
+    Rect? shadow,
     int word = -1,
   }) {
     final padded = glyph.paddedRect;
@@ -578,6 +620,7 @@ class TextOverlayRasterizer {
       boxRect: ink,
       srcRect: srcRect,
       litAtlasRect: lit,
+      shadowAtlasRect: shadow,
       word: word,
     );
   }

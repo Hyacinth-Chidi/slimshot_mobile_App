@@ -407,8 +407,14 @@ Future<_AlphaBuffer> _reassemble(
   final canvas = Canvas(recorder);
   canvas.translate(origin.dx, origin.dy);
   final paint = Paint();
-  for (final glyph in atlas.glyphs) {
-    final atlasRect = glyph.atlasRect;
+  // **Every shadow cell, then every letter cell** — the native pass's order,
+  // so a shadow lies under every letter as it does in the flat raster.
+  final quads = [
+    for (final glyph in atlas.glyphs)
+      if (glyph.shadowAtlasRect != null) (glyph, glyph.shadowAtlasRect!),
+    for (final glyph in atlas.glyphs) (glyph, glyph.atlasRect),
+  ];
+  for (final (glyph, atlasRect) in quads) {
     final src = glyph.srcRect;
     // Pixel size of the src crop within the cell.
     final srcPxWidth = src.width * atlasRect.width;

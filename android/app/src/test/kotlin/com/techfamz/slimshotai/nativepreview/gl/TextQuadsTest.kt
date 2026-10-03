@@ -23,7 +23,7 @@ class TextQuadsTest {
 
     private val eps = 1e-9
 
-    private fun glyph(i: Int, word: Int, lit: Boolean): Map<String, Any> {
+    private fun glyph(i: Int, word: Int, lit: Boolean, shadow: Boolean = false): Map<String, Any> {
         val left = 0.1 + 0.2 * i
         return buildMap {
             put("atlasLeft", 0.1 * i)
@@ -43,6 +43,12 @@ class TextQuadsTest {
                 put("litAtlasTop", 0.5)
                 put("litAtlasRight", 0.1 * i + 0.08)
                 put("litAtlasBottom", 1.0)
+            }
+            if (shadow) {
+                put("shadowAtlasLeft", 0.1 * i)
+                put("shadowAtlasTop", 0.0)
+                put("shadowAtlasRight", 0.1 * i + 0.08)
+                put("shadowAtlasBottom", 0.5)
             }
             if (word >= 0) put("word", word)
         }
@@ -73,6 +79,7 @@ class TextQuadsTest {
         style: String? = null,
         rtl: Boolean = false,
         background: Boolean = false,
+        shadow: Boolean = false,
     ): NativeTimelineOverlay {
         val lit = style == "colour" || style == "pop" || style == "karaoke"
         val pills = style == "pill"
@@ -85,10 +92,10 @@ class TextQuadsTest {
             put(
                 "glyphs",
                 listOf(
-                    glyph(0, if (style != null) 0 else -1, lit),
-                    glyph(1, if (style != null) 0 else -1, lit),
-                    glyph(2, if (style != null) 1 else -1, lit),
-                    glyph(3, if (style != null) 1 else -1, lit),
+                    glyph(0, if (style != null) 0 else -1, lit, shadow),
+                    glyph(1, if (style != null) 0 else -1, lit, shadow),
+                    glyph(2, if (style != null) 1 else -1, lit, shadow),
+                    glyph(3, if (style != null) 1 else -1, lit, shadow),
                 ),
             )
             if (style != null) {
@@ -315,6 +322,52 @@ class TextQuadsTest {
 
         assertTrue(TextQuads.pills(overlay(style = "colour"), 10.2).isEmpty())
         assertTrue(TextQuads.pills(overlay(), 10.2).isEmpty())
+    }
+
+    @Test
+    fun `a shadow cell is parsed, and a text without one has none`() {
+        near("shadow", FracRect(0.1, 0.0, 0.18, 0.5), overlay(shadow = true).glyphs[1].shadow!!)
+        assertNull(overlay().glyphs[1].shadow)
+        assertTrue(TextQuads.shadows(overlay(), 10.5) { TextGlyphState() }.isEmpty())
+    }
+
+    @Test
+    fun `each shadow moves exactly as its letter moves`() {
+        // Drawn before every letter, so it must sit where its own letter is —
+        // through a glyph animation and a pop alike.
+        val motion = TextGlyphState(opacity = 0.4, offsetX = 1.0, offsetY = -0.5, scale = 1.3, rotation = 0.2)
+        val o = overlay(style = "pop", shadow = true)
+        val t = 10.0 + CaptionHighlightCurves.POP_SECONDS / 2
+        val shadows = TextQuads.shadows(o, t) { motion }
+        val letters = TextQuads.glyphs(o, t) { motion }
+        assertEquals(4, shadows.size)
+        for (i in 0 until 4) {
+            near("box $i", letters[i].box, shadows[i].box)
+            assertEquals(letters[i].opacity, shadows[i].opacity, eps)
+            assertEquals(letters[i].glyphScale, shadows[i].glyphScale, eps)
+            assertEquals(letters[i].glyphRotation, shadows[i].glyphRotation, eps)
+            assertEquals(letters[i].glyphOffsetX, shadows[i].glyphOffsetX, eps)
+            assertEquals(letters[i].glyphOffsetY, shadows[i].glyphOffsetY, eps)
+            near("src $i", FracRect(0.1 * i, 0.0, 0.1 * i + 0.08, 0.5), shadows[i].src)
+        }
+    }
+
+    @Test
+    fun `a swept letter casts one shadow, not one per half`() {
+        val o = overlay(style = "karaoke", shadow = true)
+        val shadows = TextQuads.shadows(o, 10.35) { TextGlyphState(scale = 2.0) }
+        // Four letters, four shadows — the crossed letter's shadow is its
+        // whole cell, scaled as the letter is.
+        assertEquals(4, shadows.size)
+        near("crossed", cellOf(1), shadows[1].box)
+        assertEquals(2.0, shadows[1].glyphScale, eps)
+    }
+
+    @Test
+    fun `a letter animated to nothing casts no shadow`() {
+        val o = overlay(style = "reveal", shadow = true)
+        // The second word is not yet spoken: its letters are not drawn.
+        assertEquals(2, TextQuads.shadows(o, 10.2) { TextGlyphState() }.size)
     }
 
     @Test

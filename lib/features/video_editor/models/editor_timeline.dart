@@ -527,8 +527,19 @@ class EditorTimelineGlyph {
     this.litAtlasTop,
     this.litAtlasRight,
     this.litAtlasBottom,
+    this.shadowAtlasLeft,
+    this.shadowAtlasTop,
+    this.shadowAtlasRight,
+    this.shadowAtlasBottom,
     this.word,
   });
+
+  /// The glyph's shadow alone, in atlas fractions — only on a text with a
+  /// shadow. Drawn before every letter, so a shadow lies under all of them.
+  final double? shadowAtlasLeft;
+  final double? shadowAtlasTop;
+  final double? shadowAtlasRight;
+  final double? shadowAtlasBottom;
 
   /// The glyph's highlight-coloured cell, in atlas fractions — only on a
   /// caption whose highlight recolours words.
@@ -575,6 +586,10 @@ class EditorTimelineGlyph {
       if (litAtlasTop != null) 'litAtlasTop': litAtlasTop,
       if (litAtlasRight != null) 'litAtlasRight': litAtlasRight,
       if (litAtlasBottom != null) 'litAtlasBottom': litAtlasBottom,
+      if (shadowAtlasLeft != null) 'shadowAtlasLeft': shadowAtlasLeft,
+      if (shadowAtlasTop != null) 'shadowAtlasTop': shadowAtlasTop,
+      if (shadowAtlasRight != null) 'shadowAtlasRight': shadowAtlasRight,
+      if (shadowAtlasBottom != null) 'shadowAtlasBottom': shadowAtlasBottom,
       if (word != null) 'word': word,
     };
   }

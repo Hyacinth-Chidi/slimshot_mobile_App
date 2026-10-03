@@ -68,6 +68,10 @@ List<EditorTimelineGlyph> glyphsForAtlas(RasterizedTextAtlas atlas) {
         litAtlasTop: glyph.litAtlasRect == null ? null : glyph.litAtlasRect!.top / ah,
         litAtlasRight: glyph.litAtlasRect == null ? null : glyph.litAtlasRect!.right / aw,
         litAtlasBottom: glyph.litAtlasRect == null ? null : glyph.litAtlasRect!.bottom / ah,
+        shadowAtlasLeft: glyph.shadowAtlasRect == null ? null : glyph.shadowAtlasRect!.left / aw,
+        shadowAtlasTop: glyph.shadowAtlasRect == null ? null : glyph.shadowAtlasRect!.top / ah,
+        shadowAtlasRight: glyph.shadowAtlasRect == null ? null : glyph.shadowAtlasRect!.right / aw,
+        shadowAtlasBottom: glyph.shadowAtlasRect == null ? null : glyph.shadowAtlasRect!.bottom / ah,
         word: glyph.word >= 0 ? glyph.word : null,
       ),
   ];

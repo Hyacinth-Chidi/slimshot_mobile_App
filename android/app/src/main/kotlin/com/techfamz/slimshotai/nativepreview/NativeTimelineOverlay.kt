@@ -131,6 +131,12 @@ internal data class NativeTimelineGlyph(
     val srcBottom: Double,
     val lit: FracRect? = null,
     val word: Int = -1,
+    /**
+     * The glyph's shadow alone, a cell the size of its letter's, or null for
+     * a text without a shadow. Drawn before every letter (`TextQuads.shadows`)
+     * so a shadow lies under all of them, as the canvas draws it.
+     */
+    val shadow: FracRect? = null,
 )
 
 /**
@@ -441,6 +447,7 @@ internal data class NativeTimelineOverlay(
                     // Only on a highlighted caption; absent, the glyph has
                     // one look and no word.
                     lit = FracRect.read(glyph, "litAtlas"),
+                    shadow = FracRect.read(glyph, "shadowAtlas"),
                     word = (glyph["word"] as? Number)?.toInt() ?: -1,
                 )
             } ?: emptyList()

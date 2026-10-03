@@ -997,6 +997,31 @@ cell's *rasterised pixels* to its own glyph still cannot work (nothing attribute
 glyph) and a max/coverage blend would break alpha for every overlay; the per-glyph shadow works
 because it is built from geometry, not attributed afterwards.
 
+**A letter drawn on its own draws only itself, and every shadow goes under every letter**
+(`caption_cross_line_test.dart`, `text_shadow_order_test.dart`, **awaiting device
+verification**). Device-reported on a two-line caption: a sweep left white holes in words already
+spoken, and Pop dragged a scaled ghost of line 1 across it. A cell draws the whole run clipped to
+itself, and its padding — sized for the outline and shadow — reaches the other line at caption
+size, so a line-2 cell repainted line-1 letters in line 2's colour and motion. Invisible while
+every letter looked alike; wrong the moment a highlight made them differ. Two rules now:
+
+- **Ink within its region** (`glyphInkRegions`): a letter's outline and fill are bounded halfway
+  to its neighbour on the line and halfway to the next line, plus a pixel of overlap so touching
+  letters cannot seam; the padding is kept only at the text's outer edges. Halfway into a space
+  means two words never share pixels. The canvas painter and the atlas both draw within it.
+- **Shadows first.** Drawn letter by letter with each shadow beside its own ink, line 2's shadow
+  landed on line 1's letters — up to 60/255 of grey on white, on every highlighted caption and
+  every exported multi-line text with a shadow (the alpha-only reassembly tests could not see it:
+  a shadow over an opaque letter changes its colour, not its alpha). The canvas paints in two
+  passes (`paintTextOverlayInk`'s `shadow` / `ink`); the atlas gives each shadowed letter a
+  **shadow cell** of its own (`RasterizedGlyph.shadowAtlasRect`, `shadowAtlas*` on the wire,
+  omitted for a text without a shadow) and `TextQuads.shadows` draws them all before
+  `TextQuads.glyphs` — placed by the same `forEachPlaced`, so a shadow can only sit under its own
+  letter, one per letter however a sweep splits it.
+
+With nothing lit, letter by letter now draws the letters identical to the whole text; what remains
+is the halo residual below.
+
 **A text's shadow has one painter: `paintTextOverlayInk`** (`text_overlay_geometry.dart`,
 `text_shadow_test.dart`, **awaiting device verification**). Device-reported as "the shadow is
 only on the left". Rendered and measured in tests, three faults, each fixed:

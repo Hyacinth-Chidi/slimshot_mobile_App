@@ -2,6 +2,8 @@ package com.techfamz.slimshotai.nativepreview.gl
 
 import com.techfamz.slimshotai.nativepreview.CaptionHighlightCurves
 import com.techfamz.slimshotai.nativepreview.FracRect
+import com.techfamz.slimshotai.nativepreview.NativeTextHighlight
+import com.techfamz.slimshotai.nativepreview.NativeTimelineGlyph
 import com.techfamz.slimshotai.nativepreview.NativeTimelineOverlay
 import com.techfamz.slimshotai.nativepreview.TextGlyphState
 
@@ -86,10 +88,122 @@ internal object TextQuads {
         t: Double,
         motion: (Int) -> TextGlyphState,
     ): List<Quad> {
+        val quads = ArrayList<Quad>(overlay.glyphs.size)
+        forEachPlaced(overlay, t, motion) { glyph, p ->
+            val base = FracRect(glyph.atlasLeft, glyph.atlasTop, glyph.atlasRight, glyph.atlasBottom)
+            val lit = glyph.lit
+            val marked = p.marked
+            val cell = p.cell
+
+            if (marked.fill > 0.0 && marked.fill < 1.0 && lit != null) {
+                // **Karaoke cuts the glyph at the sweep**: lit behind the line,
+                // plain ahead of it — two quads over the one cell, each
+                // sampling the matching slice of its own cell.
+                val word = p.marking!!.words[glyph.word]
+                val wordBox = word.box
+                val rtl = word.rtl
+                val sweep = (
+                    if (rtl) wordBox.right - wordBox.width * marked.fill
+                    else wordBox.left + wordBox.width * marked.fill
+                    ).coerceIn(cell.left, cell.right)
+                val leftPart = FracRect(cell.left, cell.top, sweep, cell.bottom)
+                val rightPart = FracRect(sweep, cell.top, cell.right, cell.bottom)
+                val (behind, ahead) = if (rtl) rightPart to leftPart else leftPart to rightPart
+
+                for ((part, atlas) in listOf(behind to lit, ahead to base)) {
+                    if (part.width <= 0.0) continue
+                    // The halves scale about the **whole cell's** centre,
+                    // pre-applied here: `Draw` would scale each about its own
+                    // and pull the two apart. A rotation cannot be pre-applied
+                    // to an axis-aligned rect, so each half turns about its own
+                    // centre — a seam that opens only while a rotating
+                    // per-glyph animation and a karaoke sweep cross the same
+                    // letter at once.
+                    quads.add(
+                        Quad(
+                            src = slice(atlas, cell, part),
+                            box = scaledAbout(part, cell.centerX, cell.centerY, p.scale),
+                            opacity = p.opacity,
+                            glyphScale = 1.0,
+                            glyphRotation = p.rotation,
+                            glyphOffsetX = p.offsetX,
+                            glyphOffsetY = p.offsetY,
+                        ),
+                    )
+                }
+            } else {
+                quads.add(
+                    Quad(
+                        src = if (marked.highlighted && lit != null) lit else base,
+                        box = cell,
+                        opacity = p.opacity,
+                        glyphScale = p.scale,
+                        glyphRotation = p.rotation,
+                        glyphOffsetX = p.offsetX,
+                        glyphOffsetY = p.offsetY,
+                    ),
+                )
+            }
+        }
+        return quads
+    }
+
+    /**
+     * Each glyph's shadow, placed exactly as its letter is — drawn before
+     * every letter ([glyphs]), so a shadow lies under all of them as it does
+     * on the canvas. Baked into the letter's own cell, line 2's shadows were
+     * drawn over line 1's letters. One quad per letter: the lit and plain
+     * halves of a swept letter share one silhouette.
+     */
+    fun shadows(
+        overlay: NativeTimelineOverlay,
+        t: Double,
+        motion: (Int) -> TextGlyphState,
+    ): List<Quad> {
+        val quads = ArrayList<Quad>(overlay.glyphs.size)
+        forEachPlaced(overlay, t, motion) { glyph, p ->
+            val shadow = glyph.shadow ?: return@forEachPlaced
+            quads.add(
+                Quad(
+                    src = shadow,
+                    box = p.cell,
+                    opacity = p.opacity,
+                    glyphScale = p.scale,
+                    glyphRotation = p.rotation,
+                    glyphOffsetX = p.offsetX,
+                    glyphOffsetY = p.offsetY,
+                ),
+            )
+        }
+        return quads
+    }
+
+    /** Where a glyph is drawn at an instant — its letter and its shadow alike. */
+    private class Placement(
+        val cell: FracRect,
+        val opacity: Double,
+        val scale: Double,
+        val rotation: Double,
+        val offsetX: Double,
+        val offsetY: Double,
+        val marked: CaptionHighlightCurves.State,
+        val marking: NativeTextHighlight?,
+    )
+
+    /**
+     * Every glyph that is drawn at [t], with its placement — the one
+     * definition [glyphs] and [shadows] both read, so a shadow can never sit
+     * anywhere but under its own letter.
+     */
+    private inline fun forEachPlaced(
+        overlay: NativeTimelineOverlay,
+        t: Double,
+        motion: (Int) -> TextGlyphState,
+        draw: (NativeTimelineGlyph, Placement) -> Unit,
+    ) {
         val highlight = overlay.highlight
         val local = t - overlay.startSeconds
         val span = overlay.endSeconds - overlay.startSeconds
-        val quads = ArrayList<Quad>(overlay.glyphs.size)
 
         overlay.glyphs.forEachIndexed { index, glyph ->
             val srcW = glyph.srcRight - glyph.srcLeft
@@ -134,62 +248,20 @@ internal object TextQuads {
             // glyph's own height as a fraction of the box, applied to x and y
             // alike.
             val glyphHeightInBox = glyph.boxBottom - glyph.boxTop
-            val offsetX = anim.offsetX * glyphHeightInBox
-            val offsetY = anim.offsetY * glyphHeightInBox
-
-            val base = FracRect(glyph.atlasLeft, glyph.atlasTop, glyph.atlasRight, glyph.atlasBottom)
-            val lit = glyph.lit
-
-            if (marked.fill > 0.0 && marked.fill < 1.0 && lit != null) {
-                // **Karaoke cuts the glyph at the sweep**: lit behind the line,
-                // plain ahead of it — two quads over the one cell, each
-                // sampling the matching slice of its own cell.
-                val wordBox = marking!!.words[word].box
-                val rtl = marking.words[word].rtl
-                val sweep = (
-                    if (rtl) wordBox.right - wordBox.width * marked.fill
-                    else wordBox.left + wordBox.width * marked.fill
-                    ).coerceIn(cell.left, cell.right)
-                val leftPart = FracRect(cell.left, cell.top, sweep, cell.bottom)
-                val rightPart = FracRect(sweep, cell.top, cell.right, cell.bottom)
-                val (behind, ahead) = if (rtl) rightPart to leftPart else leftPart to rightPart
-
-                for ((part, atlas) in listOf(behind to lit, ahead to base)) {
-                    if (part.width <= 0.0) continue
-                    // The halves scale about the **whole cell's** centre,
-                    // pre-applied here: `Draw` would scale each about its own
-                    // and pull the two apart. A rotation cannot be pre-applied
-                    // to an axis-aligned rect, so each half turns about its own
-                    // centre — a seam that opens only while a rotating
-                    // per-glyph animation and a karaoke sweep cross the same
-                    // letter at once.
-                    quads.add(
-                        Quad(
-                            src = slice(atlas, cell, part),
-                            box = scaledAbout(part, cell.centerX, cell.centerY, scale),
-                            opacity = opacity,
-                            glyphScale = 1.0,
-                            glyphRotation = anim.rotation,
-                            glyphOffsetX = offsetX,
-                            glyphOffsetY = offsetY,
-                        ),
-                    )
-                }
-            } else {
-                quads.add(
-                    Quad(
-                        src = if (marked.highlighted && lit != null) lit else base,
-                        box = cell,
-                        opacity = opacity,
-                        glyphScale = scale,
-                        glyphRotation = anim.rotation,
-                        glyphOffsetX = offsetX,
-                        glyphOffsetY = offsetY,
-                    ),
-                )
-            }
+            draw(
+                glyph,
+                Placement(
+                    cell = cell,
+                    opacity = opacity,
+                    scale = scale,
+                    rotation = anim.rotation,
+                    offsetX = anim.offsetX * glyphHeightInBox,
+                    offsetY = anim.offsetY * glyphHeightInBox,
+                    marked = marked,
+                    marking = marking,
+                ),
+            )
         }
-        return quads
     }
 
     /** The slice of atlas cell [atlas] that lands on [part] of [cell]. */

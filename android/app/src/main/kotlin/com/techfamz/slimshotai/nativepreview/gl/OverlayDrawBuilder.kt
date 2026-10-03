@@ -336,10 +336,14 @@ internal class OverlayDrawBuilder(
             texMatrix = null,
         )
 
+        // Box, pills, **every shadow, then every letter** — so a shadow lies
+        // under every letter, as the canvas draws it.
+        val motion = { index: Int -> timing.stateAt(t, index, glyphCount) }
         val quads = buildList {
             TextQuads.background(overlay)?.let(::add)
             addAll(TextQuads.pills(overlay, t))
-            addAll(TextQuads.glyphs(overlay, t) { index -> timing.stateAt(t, index, glyphCount) })
+            addAll(TextQuads.shadows(overlay, t, motion))
+            addAll(TextQuads.glyphs(overlay, t, motion))
         }
         // `fillProgress` is deliberately dropped: the renderer has no
         // colour-fill pass yet, and inventing one here would make
