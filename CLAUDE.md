@@ -1046,12 +1046,12 @@ opaque — is exactly the defaults (`kTextShadowDefault*`, distance 4√2 at 45�
 - Anything that copies a text's style field by field must copy all five — the animation tile
   did, and `shouldRepaint` compares them.
 
-**Two cases deliberately keep the flat raster**: text whose atlas exceeds the 4096px texture
-limit even at floor density, and text with a **background box** (the glyph pass draws letters
-only, so a background would vanish — it becomes its own quad in a later stage). Both are silent
-*by design here* because the output is identical either way. **The moment animation lands, a
-fallback means "no per-character animation" and must warn.** A rejected atlas still wrote its
-PNG, so it is registered for deletion or an unusable atlas leaks a file per export.
+**One case keeps the flat raster**: text whose atlas exceeds the 4096px texture limit even at
+floor density. Text with a **background box** used to be the second — the glyph pass drew
+letters only, so the box would have vanished — until the box became a cell of its own (the
+word-highlight section). A fallback means "no per-character animation, no word highlight" and
+**warns** when it costs one of them. A rejected atlas still wrote its PNG, so it is registered
+for deletion or an unusable atlas leaks a file per export.
 
 `TEXT_ATLAS_MAX_PX` (4096) is separate from `OVERLAY_IMAGE_MAX_PX` (1024) on purpose: the 1024
 cap is generous for a photo in a small overlay box, but decoding an atlas at 1024 would
@@ -1186,17 +1186,13 @@ now.
 `saveStateForUndo()` fires on drag start and `updateTextOverlayLive` per change, so a drag is one
 undo step.
 
-**Only a per-glyph animation triggers the fallback warning.** Reported from a device: text with a
-background box warned that its animation could not export character by character, while the
-export was identical to the preview. It was identical — the animation was a fade, which is
-`isPerGlyph: false`, so the flat path animates the whole quad and draws the same picture. The
-gate requires `isSelectable` **and** `isPerGlyph`: only typing, wave, bounce and the like
-genuinely collapse into a whole-block effect.
-
-**Both flat-raster fallbacks now warn.** In Stage 1 they were silent because output was
-identical either way; that stopped being true the moment animation landed, since a fallback now
-means "this text does not animate per character". Text over the 4096px atlas limit and text with
-a background box each raise an `exportWarning` naming the overlay.
+**Only what the flat raster genuinely loses triggers the fallback warning**
+(`textFallbackWarning`). Reported from a device: a boxed text warned that its animation could not
+export character by character, while the export was identical to the preview — the animation
+was a fade, `isPerGlyph: false`, which the flat path animates as a whole quad. The gate requires
+`isSelectable` **and** `isPerGlyph`, or a caption's word highlight; anything else draws the same
+picture either way and stays silent. Since boxed text takes the atlas, the one fallback left is
+text over the 4096px limit.
 
 If the layout, the layer's drawing or the animation curves change, the rasteriser must change
 with them. `needsLegacyExport` is deleted and **every project routes to
@@ -1796,9 +1792,10 @@ using it. The screen takes the first pick from the same picker Add uses and re-s
 
 ### Auto captions — generating a set (Stage 1)
 
-**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-09-29-auto-captions-design.md`,
-Stage 1 plan beside it in `plans/`. Stage 2 (editing) is the next section; Stages 3–4 (word
-highlight, caption styles) are specified and not built. Sign-in and credits come later and have exactly one hook:
+**Device-verified by the user**: a set generates, the default look is right, and after the WAV
+and lead fixes the words land on time. Spec: `docs/superpowers/specs/2026-09-29-auto-captions-design.md`,
+Stage 1 plan beside it in `plans/`. Stage 2 (editing) and Stage 3 (word highlight) are the next
+sections; Stage 4 (caption styles) is specified and not built. Sign-in and credits come later and have exactly one hook:
 `CaptionAccess.ensureAllowed`, called once before any audio is rendered, which always opens today.
 
 **A caption is an ordinary text overlay**, for the emoji reason: a dedicated caption kind would
@@ -1996,9 +1993,9 @@ timeline Split tool stays off for text**; splitting a caption is a list action.
 - **Split with the cursor at either end of the text cuts in the middle** — the end is where the
   cursor sits after typing, and a button that did nothing there read as broken.
 
-**Known, and for Stage 3 to handle:** a caption can end a few tens of milliseconds before its
-last word does (the next caption's lead takes that room), so the highlight must clamp word times
-to the caption's span. A template chosen on one caption restyles that caption only, until
+**Known:** a caption can end a few tens of milliseconds before its last word does (the next
+caption's lead takes that room) — Stage 3's highlight clamps word times to the caption's span,
+so this costs nothing there. A template chosen on one caption restyles that caption only, until
 Stage 4's apply-to-all. An Undo can bring back a caption that was emptied and then removed when
 the list closed; opening and closing the list removes it again.
 
@@ -2007,6 +2004,77 @@ direction and the right size, but the lead was added in the same change and woul
 itself, so a device run cannot say which of the two did it. The way to know is a click at a known
 instant sent as AAC and as WAV; if WAV is not measurably earlier, its larger upload buys nothing
 and the AAC path should come back.
+
+### Auto captions — the word being spoken lights up (Stage 3)
+
+**Awaiting device verification.** Plan: `docs/superpowers/plans/2026-10-02-auto-captions-stage3.md`.
+A caption set lights its words six ways — **Colour**, **Pop**, **Pill**, **Karaoke**,
+**Reveal**, **Focus** — chosen in the Auto captions sheet's Highlight row with one colour from
+`kCaptionHighlightColors`, the fill for Colour, Pop and Karaoke and the box for Pill.
+
+**One catalog, three consumers.** `logic/captions/caption_highlight_catalog.dart` is a pure
+function, `wordHighlightStateAt(style, t, words, index, span)` → `WordHighlightState`
+(`highlighted`, `fill`, `scale`, `opacity`, `pill`), in plain Dart with no `dart:ui` so the
+fixture tool can run it. The canvas painter, the Kotlin port `CaptionHighlightCurves.kt` and
+Stage 4's preset tiles read it; nothing else may describe a highlight.
+`test/fixtures/caption_highlight_fixture.json` pins the port (`dart run
+tool/generate_caption_highlight_fixture.dart`, copy under `android/app/src/test/resources/`) —
+with the usual caveat: divergence tomorrow, never a wrong curve today.
+
+The rules it holds, each a decision:
+
+- **A word is active from its start until the next word starts**, the last until the caption
+  ends, so nothing drops out in the gap between two words. Word times are clamped to the
+  caption's span — a caption can end a little before its last word (the next caption's lead).
+- **Colour switches at the boundary, never blended.** A glyph half in each look would cast its
+  shadow twice. Only scale, pill and opacity ramp (`kHighlightRampSeconds`, 0.08s).
+- **Pop swells the word, not each letter**: every glyph scales in place and moves away from the
+  word's centre by as much, so the word grows as one piece (115%, settling over 0.25s).
+- **The highlight composes with the text's own animations**: opacities and scales multiply.
+
+**Where a glyph's word comes from: `CaptionHighlightLayout`** (`caption_highlight_layout.dart`).
+Built from the glyph boxes `layoutTextGlyphs` already measures, it maps each glyph to its word by
+`charIndex` against the words' UTF-16 ranges (a glyph between words is -1 and draws in the base
+look), unions each word's ink box, and knows which words are right-to-left. The painter and the
+rasteriser both build it, so a word's box, its pill and the line a karaoke sweep crosses are one
+rect in the preview and in the file.
+
+**On the canvas** `TextOverlayPainter` takes its per-glyph path for any highlighted caption, and
+repaints on every playhead move while it has one. Pills paint first and do not travel with a
+letter's animation, like the box; a lit glyph is the overlay painted with the highlight colour as
+its fill, outline and shadow unchanged. **Karaoke is two complementary clips** across the glyph
+at the sweep — lit behind, plain ahead — so the glyph's shadow is still cast once; a
+right-to-left word sweeps from the right.
+
+**In the export the atlas holds what the highlight needs**: each glyph a second time in the
+highlight colour (a cell the same size, so `srcRect` serves both), a pill cell per word (pill
+style only), and the background box as a cell of its own. `EditorTimelineGlyph` gains
+`litAtlas*` and `word`, the overlay `highlight` and `backgroundAtlas*` — **written only when
+present**, so ordinary text sends byte-identical JSON. `gl/TextQuads.kt` is the export's half, pure
+Kotlin and JVM-tested (`TextQuadsTest`) against the painter's own cases: background, then pills,
+then glyphs, each glyph sampling its lit or base cell, a popped word moved about its centre, and
+**karaoke cut into two quads at the sweep**, each sampling the matching slice of its own cell. A
+cut glyph's scale is pre-applied about the whole cell so the halves stay together; a *rotation*
+cannot be pre-applied to an axis-aligned rect, so the halves turn about their own centres — a
+seam that opens only while a rotating per-glyph animation and a sweep cross the same letter.
+`OverlayDrawBuilder.textDraws` maps the quads onto `Draw`s and nothing more.
+
+**Atlas cells keep a 2px gutter** (`kAtlasCellGapPx`). The GPU samples a cell's edge between two
+texels; flush cells were harmless while every cell was a glyph with a transparent margin, but a
+pill or box is solid to its edge and would draw a faint line of its colour along its neighbour.
+
+**The background box is a quad of its own**, drawn behind the glyphs with the overlay's
+whole-block state — exactly how the preview already drew it, one rect that does not move with the
+letters. So boxed text takes the atlas path: it animates per character and highlights, the
+boxed-text fallback and its warning are gone, and so is the template rule they forced.
+
+**Choosing one** (`AutoCaptionSheet`'s Highlight row, colours shown only for a style that lights
+in one — `captionHighlightUsesColor`): a new set is generated wearing it (`CaptionRequest.highlight`
+→ `CaptionSettings.highlight` → `buildCaptionOverlays`); **with a set on the timeline each choice
+reaches it at once** — the spec's "no regeneration for a look" — through
+`setCaptionHighlight`, every caption and the settings together, one undo step per choice and none
+when nothing changes. Re-cutting keeps it; **a copy of a caption sheds it**, since
+`copyWith(clearCaption: true)` makes ordinary text, and a highlight marks a caption's words.
 
 ### Apply to all — a copy, not a mode
 
@@ -2421,11 +2489,11 @@ the ghost that rule exists to prevent. `placement` is a fraction of the canvas f
 converted at insert through the canvas size, so a template lands in the same place on any
 device. The catalog test pins what a template could otherwise break silently: every font is in
 `allFonts` (anything else throws in `GoogleFonts.getFont`); every animation resolves in its own
-slot and is selectable; **a boxed template uses only whole-block animations**, because
-per-character animation cannot run over a background box and export would flatten it and warn on
-every use; placement stays on the canvas and scale inside the pinch range; and a template's
-shadow is inside the Style tab's own ranges and survives a draft unchanged. Mutation-checked:
-a boxed template with a per-glyph animation, and an unknown font, each fail their test.
+slot and is selectable; placement stays on the canvas and scale inside the pinch range; and a
+template's shadow is inside the Style tab's own ranges and survives a draft unchanged.
+Mutation-checked: an unknown font fails its test. (A rule that a boxed template use only
+whole-block animations was retired with the boxed-text fallback — a box is a quad of its own
+now and animates beside its letters.)
 
 **Twelve templates, built from everything text can do** (**awaiting device verification** — the
 real faces are Google Fonts, which tests cannot load). A **glow** is a shadow at distance 0 with a
