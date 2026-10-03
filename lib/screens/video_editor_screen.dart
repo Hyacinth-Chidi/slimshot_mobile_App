@@ -1117,6 +1117,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         highlight: request.highlight,
       ),
       canvasSize: ref.read(videoCanvasSizeProvider),
+      look: request.look,
     );
   }
 

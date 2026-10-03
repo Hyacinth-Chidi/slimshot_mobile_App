@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/text_overlay_model.dart';
 import '../text_overlay_geometry.dart';
-import '../text_template_catalog.dart';
+import '../text_look.dart';
 import 'caption_grouping.dart';
 import 'caption_highlight.dart';
+import 'caption_preset_catalog.dart';
 
 /// A caption's type size, as a fraction of the canvas **width**.
 ///
@@ -23,28 +24,6 @@ const double kCaptionWidthFraction = 0.86;
 /// play short-form video put their own caption and buttons.
 const Offset kCaptionPlacement = Offset(0, 0.27);
 
-/// The look captions wear until the styles stage: bold white type with a
-/// black outline and a soft shadow — readable over any footage.
-///
-/// The font is **bundled**, not fetched: a caption has to look the same
-/// offline, and on a phone whose system face is not the one a download would
-/// have been. Not part of `kTextTemplates` — its size and wrap width come from
-/// the canvas, which a template cannot express.
-const TextTemplate captionDefaultTemplate = TextTemplate(
-  id: 'caption_default',
-  name: 'Caption',
-  sampleText: 'Caption',
-  fontFamily: 'Montserrat Bold',
-  strokeColor: Color(0xFF000000),
-  strokeWidth: 4,
-  shadowColor: Color(0xFF000000),
-  shadowOpacity: 0.6,
-  shadowBlur: 6,
-  shadowDistance: 2,
-  shadowAngle: 90,
-  placement: kCaptionPlacement,
-);
-
 /// The scale that makes a caption's type [kCaptionFontFraction] of
 /// [canvasSize]'s width; a plain 1 while no canvas is known.
 double captionScaleFor(Size? canvasSize) {
@@ -54,8 +33,12 @@ double captionScaleFor(Size? canvasSize) {
       .toDouble();
 }
 
-/// [drafts] as text overlays of caption set [setId] on [lane], each lighting
-/// its words with [highlight].
+/// [drafts] as text overlays of caption set [setId] on [lane], wearing [look]
+/// and lighting their words with [highlight].
+///
+/// **The size and place are the caption rule's, whatever the look**: the type
+/// is [kCaptionFontFraction] of the canvas width and the centre sits at
+/// [kCaptionPlacement], so choosing a style never moves or resizes a set.
 ///
 /// **The wrap width is divided by the scale.** A text's box is laid out first
 /// and scaled after, so a box as wide as the canvas, scaled up, runs off both
@@ -67,28 +50,34 @@ List<TextOverlayModel> buildCaptionOverlays({
   required int lane,
   Size? canvasSize,
   CaptionHighlight highlight = CaptionHighlight.none,
+  TextLook look = kCaptionDefaultLook,
 }) {
   final scale = captionScaleFor(canvasSize);
-  final boxWidth = canvasSize == null || canvasSize.width <= 0
-      ? null
-      : canvasSize.width * kCaptionWidthFraction / scale;
+  final known = canvasSize != null && canvasSize.width > 0;
+  final boxWidth = known ? canvasSize.width * kCaptionWidthFraction / scale : null;
+  final position = known
+      ? Offset(
+          kCaptionPlacement.dx * canvasSize.width,
+          kCaptionPlacement.dy * canvasSize.height,
+        )
+      : Offset.zero;
   return [
     for (var i = 0; i < drafts.length; i++)
-      captionDefaultTemplate
-          .apply(
-            id: '${setId}_$i',
-            startTime: drafts[i].start,
-            endTime: drafts[i].end,
-            canvasSize: canvasSize,
-          )
-          .copyWith(
-            text: drafts[i].text,
-            scale: scale,
-            boxWidth: boxWidth,
-            laneIndex: lane,
-            captionSetId: setId,
-            captionWords: drafts[i].words,
-            highlight: highlight,
-          ),
+      look.applyTo(
+        TextOverlayModel(
+          id: '${setId}_$i',
+          text: drafts[i].text,
+          position: position,
+          scale: scale,
+          boxWidth: boxWidth,
+          startTime: drafts[i].start,
+          endTime: drafts[i].end,
+          laneIndex: lane,
+          referenceCanvasSize: canvasSize,
+          captionSetId: setId,
+          captionWords: drafts[i].words,
+          highlight: highlight,
+        ),
+      ),
   ];
 }

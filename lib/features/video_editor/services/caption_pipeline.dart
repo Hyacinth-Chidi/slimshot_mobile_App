@@ -6,6 +6,8 @@ import '../../../core/services/slimshot_api.dart';
 import '../../../core/utils/file_utils.dart';
 import '../logic/captions/caption_grouping.dart';
 import '../logic/captions/caption_highlight.dart';
+import '../logic/captions/caption_preset_catalog.dart';
+import '../logic/text_look.dart';
 import '../logic/captions/caption_settings.dart';
 import '../logic/captions/caption_transcript.dart';
 import 'caption_audio_result.dart';
@@ -27,6 +29,7 @@ class CaptionRequest {
     this.language,
     this.length = CaptionLength.phrase,
     this.highlight = CaptionHighlight.none,
+    this.look = kCaptionDefaultLook,
   });
 
   final CaptionSource source;
@@ -37,6 +40,9 @@ class CaptionRequest {
 
   /// How the new set marks the word being spoken.
   final CaptionHighlight highlight;
+
+  /// What the new set looks like.
+  final TextLook look;
 }
 
 /// Timeline sound → server → caption drafts, one step at a time and

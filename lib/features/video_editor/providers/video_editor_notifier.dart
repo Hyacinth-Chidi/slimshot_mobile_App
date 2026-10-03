@@ -35,6 +35,8 @@ import '../logic/captions/caption_edits.dart';
 import '../logic/captions/caption_grouping.dart';
 import '../logic/captions/caption_highlight.dart';
 import '../logic/captions/caption_placement.dart';
+import '../logic/captions/caption_preset_catalog.dart';
+import '../logic/text_look.dart';
 import '../logic/captions/caption_retime.dart';
 import '../logic/captions/caption_settings.dart';
 import '../logic/color/color_adjustments.dart';
@@ -3008,6 +3010,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     List<CaptionDraft> drafts,
     CaptionSettings settings, {
     Size? canvasSize,
+    TextLook look = kCaptionDefaultLook,
   }) {
     if (drafts.isEmpty) return;
     saveStateForUndo();
@@ -3035,6 +3038,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
           lane: lane,
           canvasSize: canvasSize,
           highlight: settings.highlight,
+          look: look,
         ),
       ],
       captionSettings: settings,

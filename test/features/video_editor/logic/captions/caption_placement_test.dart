@@ -5,6 +5,7 @@ import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping
 import 'package:slimshotai/features/video_editor/logic/captions/caption_placement.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_settings.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_word.dart';
+import 'package:slimshotai/features/video_editor/logic/text_look.dart';
 import 'package:slimshotai/features/video_editor/logic/text_overlay_geometry.dart';
 import 'package:slimshotai/features/video_editor/utils/font_utils.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
@@ -148,6 +149,33 @@ void main() {
           reason: '$canvas',
         );
       }
+    });
+
+    test('a set built in another look keeps the caption size and place', () {
+      const look = TextLook(
+        fontFamily: 'Bebas Neue',
+        color: Color(0xFFFFD60A),
+        backgroundColor: Color(0xBF000000),
+      );
+      const canvas = Size(360, 640);
+      final styled = buildCaptionOverlays(
+        drafts: drafts,
+        setId: 's',
+        lane: 0,
+        canvasSize: canvas,
+        look: look,
+      ).first;
+      final plain = captionOn(canvas);
+      expect(TextLook.of(styled), look);
+      expect(styled.scale, plain.scale);
+      expect(styled.position, plain.position);
+      expect(styled.boxWidth, plain.boxWidth);
+    });
+
+    test('a new set is placed in the look it was generated with', () {
+      const look = TextLook(fontFamily: 'Poppins', color: Color(0xFF30D158));
+      final n = withTexts(const [])..placeCaptions(drafts, settings, look: look);
+      expect(captionsOf(n).map(TextLook.of), everyElement(look));
     });
 
     test('with no canvas known yet it still has a look', () {
