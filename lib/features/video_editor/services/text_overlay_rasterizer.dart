@@ -5,6 +5,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../logic/captions/caption_highlight.dart';
+import '../logic/captions/caption_highlight_layout.dart';
 import '../logic/text_glyph_layout.dart';
 import '../logic/text_overlay_geometry.dart';
 import '../models/text_overlay_model.dart';
@@ -67,7 +69,18 @@ class RasterizedGlyph {
     required this.atlasRect,
     required this.boxRect,
     required this.srcRect,
+    this.litAtlasRect,
+    this.word = -1,
   });
+
+  /// The same glyph drawn in the highlight colour, in **atlas pixels** — a
+  /// cell exactly the size of [atlasRect], so [srcRect] serves both. Null
+  /// unless the caption's highlight recolours a word (colour, pop, karaoke).
+  final Rect? litAtlasRect;
+
+  /// The caption word this glyph belongs to, or -1 — ordinary text, or a mark
+  /// between words.
+  final int word;
 
   /// The cell's rect in **atlas pixels**, padding included.
   final Rect atlasRect;
@@ -82,6 +95,18 @@ class RasterizedGlyph {
   final Rect srcRect;
 }
 
+/// A cell that is not a glyph — a word's pill, the text's background box —
+/// and where it is placed. Both rects are exact: these cells carry no bleed.
+class RasterizedCell {
+  const RasterizedCell({required this.atlasRect, required this.boxRect});
+
+  /// In atlas pixels.
+  final Rect atlasRect;
+
+  /// In box-local canvas pixels.
+  final Rect boxRect;
+}
+
 /// A text overlay rasterised as a sprite sheet of glyphs.
 ///
 /// The constructor is `const` so tests can build a fixture atlas without
@@ -94,6 +119,9 @@ class RasterizedTextAtlas {
     required this.glyphs,
     required this.backgroundRect,
     required this.borderRadius,
+    this.pills = const [],
+    this.background,
+    this.highlight,
   });
 
   final String pngPath;
@@ -109,7 +137,27 @@ class RasterizedTextAtlas {
 
   /// Background corner radius in canvas pixels.
   final double borderRadius;
+
+  /// Per caption word, its pill cell — only for the pill highlight, and null
+  /// for a word with no glyph.
+  final List<RasterizedCell?> pills;
+
+  /// The background box as a cell of its own, drawn behind every glyph as one
+  /// quad — so a boxed text keeps the glyph path, and animates per character.
+  final RasterizedCell? background;
+
+  /// The caption's word highlight, or null for ordinary text.
+  final CaptionHighlightLayout? highlight;
 }
+
+/// Empty atlas pixels between neighbouring cells.
+///
+/// The GPU samples a cell's edge between two texels, so a cell packed flush
+/// against another reads a little of it. That was harmless while every cell
+/// was a glyph with a transparent margin; a pill or a background box is solid
+/// to its edge, and flush against a glyph it would draw a faint line of its
+/// colour along that letter.
+const double kAtlasCellGapPx = 2.0;
 
 /// Rasterises a text overlay with Flutter's own text engine.
 ///
@@ -289,6 +337,29 @@ class TextOverlayRasterizer {
         canvasPxSize: boxSize,
       );
 
+      // Beyond one cell per glyph: the glyphs again in the highlight colour,
+      // a pill per word, and the background box — packed into the one sheet.
+      final highlight = CaptionHighlightLayout.of(overlay, glyphBoxes);
+      final style = highlight?.highlight.style;
+      final needsLit = style == CaptionHighlightStyle.colour ||
+          style == CaptionHighlightStyle.pop ||
+          style == CaptionHighlightStyle.karaoke;
+      final pillRects = style == CaptionHighlightStyle.pill
+          ? [for (var w = 0; w < highlight!.wordBoxes.length; w++) highlight.pillRect(w)]
+          : const <Rect?>[];
+      final sizes = <Size>[for (final g in glyphBoxes) g.paddedRect.size];
+      final litFrom = sizes.length;
+      if (needsLit) sizes.addAll([for (final g in glyphBoxes) g.paddedRect.size]);
+      final pillCell = <int, int>{};
+      for (var w = 0; w < pillRects.length; w++) {
+        final rect = pillRects[w];
+        if (rect == null) continue;
+        pillCell[w] = sizes.length;
+        sizes.add(rect.size);
+      }
+      final backgroundCell = layout.hasBackground ? sizes.length : -1;
+      if (layout.hasBackground) sizes.add(layout.backgroundRect.size);
+
       // The 4096 cap must bind the *atlas* (the packed cells), not the box —
       // packed into rows, the atlas can be far larger than the box the
       // flat raster measures against. Pack at the wanted density; if it
@@ -296,7 +367,7 @@ class TextOverlayRasterizer {
       // Shrinking can itself change where rows wrap, so this is iterated
       // (converges in a couple of steps in practice) rather than assumed to
       // land in one shot, and bounded so a pathological case cannot loop.
-      _Packing packing = _packGlyphs(glyphBoxes, density);
+      _Packing packing = _packCells(sizes, density);
       var attempts = 0;
       while ((packing.atlasWidth > kMaxRasterSidePx ||
               packing.atlasHeight > kMaxRasterSidePx) &&
@@ -310,7 +381,7 @@ class TextOverlayRasterizer {
         if (density < 1.0) {
           density = 1.0;
         }
-        packing = _packGlyphs(glyphBoxes, density);
+        packing = _packCells(sizes, density);
         attempts++;
       }
 
@@ -336,6 +407,12 @@ class TextOverlayRasterizer {
       final strokePainter =
           TextOverlayLayout.strokePainterFor(overlay, renderScale)
             ?..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
+      final litPainter = needsLit
+          ? (TextOverlayLayout.textPainterFor(
+              overlay.copyWith(color: highlight!.highlight.color),
+              renderScale,
+            )..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth))
+          : null;
       ui.Image? image;
       try {
         // Each cell draws the *whole* text translated so that this glyph's
@@ -363,6 +440,57 @@ class TextOverlayRasterizer {
           canvas.restore();
         }
 
+        // The lit cells: the same glyph, the same outline and shadow, the
+        // fill in the highlight colour — what the preview paints with its
+        // lit painter.
+        if (litPainter != null) {
+          for (var i = 0; i < glyphBoxes.length; i++) {
+            final glyph = glyphBoxes[i];
+            final cell = cells[litFrom + i];
+            canvas.save();
+            canvas.clipRect(cell);
+            canvas.translate(cell.left, cell.top);
+            canvas.scale(density);
+            canvas.translate(-glyph.paddedRect.left, -glyph.paddedRect.top);
+            paintTextOverlayInk(
+              canvas,
+              overlay: overlay,
+              renderScale: renderScale,
+              fill: litPainter,
+              stroke: strokePainter,
+              textOrigin: layout.textOrigin,
+              shadowFrom: glyph.inkRect,
+            );
+            canvas.restore();
+          }
+        }
+
+        // A rounded box drawn whole into its cell.
+        void box(Rect cell, Rect rect, double radius, Color colour) {
+          canvas.save();
+          canvas.clipRect(cell);
+          canvas.translate(cell.left, cell.top);
+          canvas.scale(density);
+          canvas.translate(-rect.left, -rect.top);
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(rect, Radius.circular(radius)),
+            Paint()..color = colour,
+          );
+          canvas.restore();
+        }
+
+        pillCell.forEach((w, index) {
+          box(cells[index], pillRects[w]!, highlight!.pillRadius(w), highlight.highlight.color);
+        });
+        if (backgroundCell >= 0) {
+          box(
+            cells[backgroundCell],
+            layout.backgroundRect,
+            overlay.borderRadius * renderScale,
+            overlay.backgroundColor,
+          );
+        }
+
         image = await recorder.endRecording().toImage(
               atlasWidth.ceil().clamp(1, kMaxRasterSidePx),
               atlasHeight.ceil().clamp(1, kMaxRasterSidePx),
@@ -382,14 +510,33 @@ class TextOverlayRasterizer {
           atlasPxSize: Size(atlasWidth, atlasHeight),
           glyphs: [
             for (var i = 0; i < glyphBoxes.length; i++)
-              _glyphFor(glyphBoxes[i], cells[i]),
+              _glyphFor(
+                glyphBoxes[i],
+                cells[i],
+                lit: needsLit ? cells[litFrom + i] : null,
+                word: highlight?.glyphWord[i] ?? -1,
+              ),
           ],
           backgroundRect: layout.hasBackground ? layout.backgroundRect : null,
           borderRadius: overlay.borderRadius * renderScale,
+          pills: [
+            for (var w = 0; w < pillRects.length; w++)
+              pillCell[w] == null
+                  ? null
+                  : RasterizedCell(atlasRect: cells[pillCell[w]!], boxRect: pillRects[w]!),
+          ],
+          background: backgroundCell >= 0
+              ? RasterizedCell(
+                  atlasRect: cells[backgroundCell],
+                  boxRect: layout.backgroundRect,
+                )
+              : null,
+          highlight: highlight,
         );
       } finally {
         fillPainter.dispose();
         strokePainter?.dispose();
+        litPainter?.dispose();
         image?.dispose();
       }
     } catch (error) {
@@ -403,7 +550,12 @@ class TextOverlayRasterizer {
   /// — derived from where [TextGlyphBox.inkRect] sits inside its
   /// [TextGlyphBox.paddedRect], so it stays correct even if padding is not
   /// symmetric on every side.
-  static RasterizedGlyph _glyphFor(TextGlyphBox glyph, Rect cell) {
+  static RasterizedGlyph _glyphFor(
+    TextGlyphBox glyph,
+    Rect cell, {
+    Rect? lit,
+    int word = -1,
+  }) {
     final padded = glyph.paddedRect;
     final ink = glyph.inkRect;
     final srcRect = padded.width > 0 && padded.height > 0
@@ -418,31 +570,33 @@ class TextOverlayRasterizer {
       atlasRect: cell,
       boxRect: ink,
       srcRect: srcRect,
+      litAtlasRect: lit,
+      word: word,
     );
   }
 
-  /// Packs [glyphBoxes]' padded rects, scaled by [density], into rows no
-  /// wider than [kMaxRasterSidePx] — a pure function of density so
+  /// Packs cells of [sizes] (canvas pixels), scaled by [density], into rows
+  /// no wider than [kMaxRasterSidePx] — a pure function of density so
   /// [rasterizeAtlas] can call it repeatedly while narrowing down to a
   /// density whose atlas actually fits.
-  static _Packing _packGlyphs(List<TextGlyphBox> glyphBoxes, double density) {
+  static _Packing _packCells(List<Size> sizes, double density) {
     final cells = <Rect>[];
     var penX = 0.0;
     var penY = 0.0;
     var rowHeight = 0.0;
     var atlasWidth = 0.0;
-    for (final glyph in glyphBoxes) {
-      final w = glyph.paddedRect.width * density;
-      final h = glyph.paddedRect.height * density;
+    for (final size in sizes) {
+      final w = size.width * density;
+      final h = size.height * density;
       if (penX > 0 && penX + w > kMaxRasterSidePx) {
         penX = 0;
-        penY += rowHeight;
+        penY += rowHeight + kAtlasCellGapPx;
         rowHeight = 0;
       }
       cells.add(Rect.fromLTWH(penX, penY, w, h));
-      penX += w;
+      atlasWidth = math.max(atlasWidth, penX + w);
+      penX += w + kAtlasCellGapPx;
       rowHeight = math.max(rowHeight, h);
-      atlasWidth = math.max(atlasWidth, penX);
     }
     return _Packing(cells: cells, atlasWidth: atlasWidth, atlasHeight: penY + rowHeight);
   }

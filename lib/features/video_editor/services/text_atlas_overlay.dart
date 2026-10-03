@@ -64,6 +64,63 @@ List<EditorTimelineGlyph> glyphsForAtlas(RasterizedTextAtlas atlas) {
         srcTop: glyph.srcRect.top,
         srcRight: glyph.srcRect.right,
         srcBottom: glyph.srcRect.bottom,
+        litAtlasLeft: glyph.litAtlasRect == null ? null : glyph.litAtlasRect!.left / aw,
+        litAtlasTop: glyph.litAtlasRect == null ? null : glyph.litAtlasRect!.top / ah,
+        litAtlasRight: glyph.litAtlasRect == null ? null : glyph.litAtlasRect!.right / aw,
+        litAtlasBottom: glyph.litAtlasRect == null ? null : glyph.litAtlasRect!.bottom / ah,
+        word: glyph.word >= 0 ? glyph.word : null,
       ),
+  ];
+}
+
+/// The caption's highlight as the timeline sends it — words in text-box
+/// fractions, times in seconds from the caption's start, pills in atlas and
+/// box fractions. Null for ordinary text, or a degenerate atlas.
+EditorTimelineTextHighlight? highlightForAtlas(RasterizedTextAtlas atlas) {
+  final highlight = atlas.highlight;
+  final aw = atlas.atlasPxSize.width;
+  final ah = atlas.atlasPxSize.height;
+  final bw = atlas.canvasPxSize.width;
+  final bh = atlas.canvasPxSize.height;
+  if (highlight == null || aw <= 0 || ah <= 0 || bw <= 0 || bh <= 0) {
+    return null;
+  }
+  List<double> atlasFractions(Rect r) => [r.left / aw, r.top / ah, r.right / aw, r.bottom / ah];
+  List<double> boxFractions(Rect r) => [r.left / bw, r.top / bh, r.right / bw, r.bottom / bh];
+
+  return EditorTimelineTextHighlight(
+    style: highlight.highlight.style.name,
+    words: [
+      for (var w = 0; w < highlight.spans.length; w++)
+        () {
+          final box = highlight.wordBoxes[w] ?? Rect.zero;
+          final pill = w < atlas.pills.length ? atlas.pills[w] : null;
+          return EditorTimelineHighlightWord(
+            start: highlight.spans[w].start,
+            end: highlight.spans[w].end,
+            left: box.left / bw,
+            top: box.top / bh,
+            right: box.right / bw,
+            bottom: box.bottom / bh,
+            rtl: highlight.wordRtl[w],
+            pillAtlas: pill == null ? null : atlasFractions(pill.atlasRect),
+            pillBox: pill == null ? null : boxFractions(pill.boxRect),
+          );
+        }(),
+    ],
+  );
+}
+
+/// The background box's cell in atlas fractions, or null with no box.
+List<double>? backgroundAtlasFor(RasterizedTextAtlas atlas) {
+  final cell = atlas.background;
+  final aw = atlas.atlasPxSize.width;
+  final ah = atlas.atlasPxSize.height;
+  if (cell == null || aw <= 0 || ah <= 0) return null;
+  return [
+    cell.atlasRect.left / aw,
+    cell.atlasRect.top / ah,
+    cell.atlasRect.right / aw,
+    cell.atlasRect.bottom / ah,
   ];
 }

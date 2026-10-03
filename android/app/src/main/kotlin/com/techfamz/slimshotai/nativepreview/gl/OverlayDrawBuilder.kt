@@ -294,20 +294,14 @@ internal class OverlayDrawBuilder(
     }
 
     /**
-     * One draw per glyph, all reading the overlay's atlas.
+     * The text's quads — background box, word pills, glyphs, in that order —
+     * all reading the overlay's one atlas.
      *
-     * The texture is uploaded once and every glyph samples its own cell, so
-     * a 40-character text costs one upload and 40 quads — nothing for a GPU,
-     * and what lets a later stage animate each character independently.
-     *
-     * **The quad is the whole padded cell, positioned so that the cell's
-     * `src` sub-rect lands exactly on the glyph's box rect.** The cell is
-     * bigger than the placement because its padding carries stroke and
-     * shadow bleed; drawing only the placement would clip a shadow at the
-     * letter's edge, while *placing* by the padded cell would composite the
-     * bleed twice wherever neighbouring cells overlap. Drawing the cell
-     * whole, anchored through `src`, gives the shadow its spill and each
-     * texel exactly one contribution.
+     * The texture is uploaded once and every quad samples its own cell, so a
+     * 40-character text costs one upload and 40-odd quads — nothing for a GPU,
+     * and what lets each character animate, and each caption word light up,
+     * on its own. What the quads *are* is [TextQuads], kept free of GL so it
+     * is tested against the canvas painter's rules on the JVM.
      */
     private fun textDraws(
         overlay: NativeTimelineOverlay,
@@ -342,62 +336,24 @@ internal class OverlayDrawBuilder(
             texMatrix = null,
         )
 
-        return overlay.glyphs.mapIndexedNotNull { index, glyph ->
-            val srcW = glyph.srcRight - glyph.srcLeft
-            val srcH = glyph.srcBottom - glyph.srcTop
-            // A degenerate sub-rect has no scale to solve for; skipping the
-            // glyph loses one letter, dividing by it would place every quad
-            // at infinity and lose the whole text.
-            if (srcW <= 0.0 || srcH <= 0.0) return@mapIndexedNotNull null
-
-            // The cell's `src` sub-rect must cover the box rect, so the full
-            // cell is that much larger, and its origin sits back by the
-            // bleed that precedes `src`.
-            val cellWidth = (glyph.boxRight - glyph.boxLeft) / srcW
-            val cellHeight = (glyph.boxBottom - glyph.boxTop) / srcH
-            val cellLeft = glyph.boxLeft - glyph.srcLeft * cellWidth
-            val cellTop = glyph.boxTop - glyph.srcTop * cellHeight
-
-            val glyphState = timing.stateAt(t, index, glyphCount)
-            // A glyph animated to nothing is dropped rather than drawn at
-            // zero: a zero-area quad is wasted state changes, and a negative
-            // scale would turn the letter inside out.
-            if (glyphState.opacity <= 0.0 || glyphState.scale <= 0.0) {
-                return@mapIndexedNotNull null
-            }
-
-            // The catalog measures displacement in **glyph heights**, on
-            // both axes — that is what keeps a diagonal slide diagonal and
-            // makes the travel scale with the type size rather than with the
-            // box. `Draw` wants box-height fractions, so the conversion is
-            // the glyph's own height as a fraction of the box, applied to x
-            // and y alike. Using the glyph's *width* for x would make a
-            // narrow letter like "i" slide a fraction of the distance a "W"
-            // does, and the word would come apart mid-animation.
-            val glyphHeightInBox = glyph.boxBottom - glyph.boxTop
-
+        val quads = buildList {
+            TextQuads.background(overlay)?.let(::add)
+            addAll(TextQuads.pills(overlay, t))
+            addAll(TextQuads.glyphs(overlay, t) { index -> timing.stateAt(t, index, glyphCount) })
+        }
+        // `fillProgress` is deliberately dropped: the renderer has no
+        // colour-fill pass yet, and inventing one here would make
+        // `colour_fill` export as something the preview does not play.
+        return quads.map { quad ->
             base.copy(
-                opacity = base.opacity * glyphState.opacity,
-                srcRect = floatArrayOf(
-                    glyph.atlasLeft.toFloat(),
-                    glyph.atlasTop.toFloat(),
-                    glyph.atlasRight.toFloat(),
-                    glyph.atlasBottom.toFloat(),
-                ),
-                boxRect = floatArrayOf(
-                    cellLeft.toFloat(),
-                    cellTop.toFloat(),
-                    (cellLeft + cellWidth).toFloat(),
-                    (cellTop + cellHeight).toFloat(),
-                ),
-                glyphScale = glyphState.scale,
-                glyphRotation = glyphState.rotation,
-                glyphOffsetX = glyphState.offsetX * glyphHeightInBox,
-                glyphOffsetY = glyphState.offsetY * glyphHeightInBox,
+                opacity = base.opacity * quad.opacity,
+                srcRect = quad.src.toFloatArray(),
+                boxRect = quad.box.toFloatArray(),
+                glyphScale = quad.glyphScale,
+                glyphRotation = quad.glyphRotation,
+                glyphOffsetX = quad.glyphOffsetX,
+                glyphOffsetY = quad.glyphOffsetY,
             )
-            // `fillProgress` is deliberately dropped: the renderer has no
-            // colour-fill pass yet, and inventing one here would make
-            // `colour_fill` export as something the preview does not play.
         }
     }
 

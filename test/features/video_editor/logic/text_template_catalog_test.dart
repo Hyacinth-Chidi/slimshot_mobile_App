@@ -52,28 +52,6 @@ void main() {
     }
   });
 
-  test('a boxed template animates as a whole block, never per character', () {
-    // Per-character animation cannot run over a background box: the glyph
-    // pass draws letters only, so export falls back to the flat raster and
-    // warns. A boxed template with a per-glyph animation would raise that
-    // warning on every export it was used in.
-    for (final t in kTextTemplates) {
-      if (t.backgroundColor == Colors.transparent) continue;
-      for (final (id, slot) in [
-        (t.inAnimation, TextAnimationCategory.inAnim),
-        (t.outAnimation, TextAnimationCategory.outAnim),
-        (t.loopAnimation, TextAnimationCategory.loop),
-      ]) {
-        final anim = resolveTextAnimation(id, slot);
-        expect(
-          anim?.isPerGlyph ?? false,
-          isFalse,
-          reason: '${t.id} is boxed, so $id must not be per-glyph',
-        );
-      }
-    }
-  });
-
   test('every template sits on the canvas, at a size the pinch allows', () {
     for (final t in kTextTemplates) {
       expect(t.placement.dx.abs(), lessThanOrEqualTo(0.5), reason: t.id);

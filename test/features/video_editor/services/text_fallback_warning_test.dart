@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/logic/captions/caption_highlight.dart';
+import 'package:slimshotai/features/video_editor/logic/captions/caption_word.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/services/native_timeline_preview_service.dart';
 
@@ -23,34 +25,32 @@ void main() {
   }
 
   test('a static text on the flat path is not degraded and stays silent', () {
-    expect(textFallbackWarning(textWith(), hasBackground: false), isNull);
-    expect(textFallbackWarning(textWith(), hasBackground: true), isNull);
+    expect(textFallbackWarning(textWith()), isNull);
   });
 
-  test('an animated text warns on either fallback cause', () {
-    expect(
-      textFallbackWarning(textWith(inAnimation: 'typing'), hasBackground: false),
-      isNotNull,
-    );
-    expect(
-      textFallbackWarning(textWith(inAnimation: 'typing'), hasBackground: true),
-      isNotNull,
-    );
+  test('an animated text warns', () {
+    expect(textFallbackWarning(textWith(inAnimation: 'typing')), isNotNull);
   });
 
-  test('the two causes say different things', () {
-    final overflow = textFallbackWarning(
-      textWith(inAnimation: 'typing'),
-      hasBackground: false,
+  test('a highlighted caption warns, and says it is the highlight that is lost', () {
+    final caption = textWith().copyWith(
+      captionSetId: 's',
+      captionWords: const [
+        CaptionWord(textStart: 0, textEnd: 5, start: Duration.zero, end: Duration(milliseconds: 300)),
+      ],
+      highlight: const CaptionHighlight(style: CaptionHighlightStyle.colour),
     );
-    final background = textFallbackWarning(
-      textWith(inAnimation: 'typing'),
-      hasBackground: true,
+    expect(textFallbackWarning(caption), contains('highlight'));
+  });
+
+  test('a caption with no highlight loses nothing', () {
+    final caption = textWith().copyWith(
+      captionSetId: 's',
+      captionWords: const [
+        CaptionWord(textStart: 0, textEnd: 5, start: Duration.zero, end: Duration(milliseconds: 300)),
+      ],
     );
-    expect(overflow, isNot(background));
-    // A user can remove a background box; they cannot make an atlas smaller,
-    // so the message has to name which one they are looking at.
-    expect(background, contains('background'));
+    expect(textFallbackWarning(caption), isNull);
   });
 
   test('an out-only and a loop-only animation each warn', () {
@@ -58,16 +58,12 @@ void main() {
     // flat path, so it would correctly stay silent and prove nothing here.
     expect(
       textFallbackWarning(
-        textWith(outAnimation: 'untyping'),
-        hasBackground: true,
-      ),
+        textWith(outAnimation: 'untyping')),
       isNotNull,
     );
     expect(
       textFallbackWarning(
-        textWith(loopAnimation: 'wave_loop'),
-        hasBackground: true,
-      ),
+        textWith(loopAnimation: 'wave_loop')),
       isNotNull,
     );
   });
@@ -78,9 +74,7 @@ void main() {
   test('a bare in-only id in the out slot is not an animation', () {
     expect(
       textFallbackWarning(
-        textWith(outAnimation: 'slide_up'),
-        hasBackground: true,
-      ),
+        textWith(outAnimation: 'slide_up')),
       isNull,
     );
   });
@@ -92,16 +86,12 @@ void main() {
   test('an animation nothing draws is not a degradation', () {
     expect(
       textFallbackWarning(
-        textWith(inAnimation: 'colour_fill'),
-        hasBackground: true,
-      ),
+        textWith(inAnimation: 'colour_fill')),
       isNull,
     );
     expect(
       textFallbackWarning(
-        textWith(loopAnimation: 'colour_cycle_loop'),
-        hasBackground: true,
-      ),
+        textWith(loopAnimation: 'colour_cycle_loop')),
       isNull,
     );
   });
@@ -114,16 +104,14 @@ void main() {
   test('a whole-box animation loses nothing on the flat path', () {
     for (final id in ['fade_in', 'zoom_in', 'slide_up']) {
       expect(
-        textFallbackWarning(textWith(inAnimation: id), hasBackground: true),
+        textFallbackWarning(textWith(inAnimation: id)),
         isNull,
         reason: '$id is a whole-box animation and the flat path draws it',
       );
     }
     expect(
       textFallbackWarning(
-        textWith(outAnimation: 'fade_out'),
-        hasBackground: true,
-      ),
+        textWith(outAnimation: 'fade_out')),
       isNull,
     );
   });
@@ -131,7 +119,7 @@ void main() {
   test('a per-glyph animation is what actually degrades', () {
     for (final id in ['typing', 'wave_in', 'bounce_in']) {
       expect(
-        textFallbackWarning(textWith(inAnimation: id), hasBackground: true),
+        textFallbackWarning(textWith(inAnimation: id)),
         isNotNull,
         reason: '$id animates character by character and the flat path cannot',
       );
@@ -141,9 +129,7 @@ void main() {
   test('a per-glyph loop beside a whole-box in-animation still warns', () {
     expect(
       textFallbackWarning(
-        textWith(inAnimation: 'fade_in', loopAnimation: 'wave_loop'),
-        hasBackground: true,
-      ),
+        textWith(inAnimation: 'fade_in', loopAnimation: 'wave_loop')),
       isNotNull,
     );
   });
@@ -153,9 +139,7 @@ void main() {
     // degradation is enough, whatever it is paired with.
     expect(
       textFallbackWarning(
-        textWith(inAnimation: 'colour_fill', outAnimation: 'untyping'),
-        hasBackground: true,
-      ),
+        textWith(inAnimation: 'colour_fill', outAnimation: 'untyping')),
       isNotNull,
     );
   });
@@ -163,18 +147,14 @@ void main() {
   test('an unknown id from an old draft does not warn', () {
     expect(
       textFallbackWarning(
-        textWith(inAnimation: 'circleOpen'),
-        hasBackground: true,
-      ),
+        textWith(inAnimation: 'circleOpen')),
       isNull,
     );
   });
 
   test('the message names the text so the user can find it', () {
     final warning = textFallbackWarning(
-      textWith(text: 'Chapter One', inAnimation: 'typing'),
-      hasBackground: true,
-    );
+      textWith(text: 'Chapter One', inAnimation: 'typing'));
     expect(warning, contains('Chapter One'));
   });
 
@@ -183,9 +163,7 @@ void main() {
       textWith(
         text: 'A very long caption that would run clean off the screen edge',
         inAnimation: 'typing',
-      ),
-      hasBackground: true,
-    )!;
+      ))!;
     expect(warning, contains('…'));
     expect(warning, isNot(contains('off the screen edge')));
   });

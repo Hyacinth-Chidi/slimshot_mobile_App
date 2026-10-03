@@ -523,7 +523,22 @@ class EditorTimelineGlyph {
     required this.srcTop,
     required this.srcRight,
     required this.srcBottom,
+    this.litAtlasLeft,
+    this.litAtlasTop,
+    this.litAtlasRight,
+    this.litAtlasBottom,
+    this.word,
   });
+
+  /// The glyph's highlight-coloured cell, in atlas fractions — only on a
+  /// caption whose highlight recolours words.
+  final double? litAtlasLeft;
+  final double? litAtlasTop;
+  final double? litAtlasRight;
+  final double? litAtlasBottom;
+
+  /// The caption word this glyph belongs to; absent on ordinary text.
+  final int? word;
 
   final double atlasLeft;
   final double atlasTop;
@@ -554,8 +569,83 @@ class EditorTimelineGlyph {
       'srcTop': srcTop,
       'srcRight': srcRight,
       'srcBottom': srcBottom,
+      // Only on a highlighted caption, so ordinary text sends the payload it
+      // always did.
+      if (litAtlasLeft != null) 'litAtlasLeft': litAtlasLeft,
+      if (litAtlasTop != null) 'litAtlasTop': litAtlasTop,
+      if (litAtlasRight != null) 'litAtlasRight': litAtlasRight,
+      if (litAtlasBottom != null) 'litAtlasBottom': litAtlasBottom,
+      if (word != null) 'word': word,
     };
   }
+}
+
+/// One caption word, as the export's highlight reads it.
+class EditorTimelineHighlightWord {
+  const EditorTimelineHighlightWord({
+    required this.start,
+    required this.end,
+    required this.left,
+    required this.top,
+    required this.right,
+    required this.bottom,
+    required this.rtl,
+    this.pillAtlas,
+    this.pillBox,
+  });
+
+  /// Seconds from the caption's start.
+  final double start;
+  final double end;
+
+  /// The word's box, in text-box fractions — what a pop swells about and a
+  /// karaoke sweep crosses.
+  final double left;
+  final double top;
+  final double right;
+  final double bottom;
+  final bool rtl;
+
+  /// The word's pill: its cell in atlas fractions and its placement in
+  /// text-box fractions, each (left, top, right, bottom). Pill style only.
+  final List<double>? pillAtlas;
+  final List<double>? pillBox;
+
+  Map<String, dynamic> toJson() => {
+        'start': start,
+        'end': end,
+        'left': left,
+        'top': top,
+        'right': right,
+        'bottom': bottom,
+        'rtl': rtl,
+        if (pillAtlas != null) ...{
+          'pillAtlasLeft': pillAtlas![0],
+          'pillAtlasTop': pillAtlas![1],
+          'pillAtlasRight': pillAtlas![2],
+          'pillAtlasBottom': pillAtlas![3],
+        },
+        if (pillBox != null) ...{
+          'pillLeft': pillBox![0],
+          'pillTop': pillBox![1],
+          'pillRight': pillBox![2],
+          'pillBottom': pillBox![3],
+        },
+      };
+}
+
+/// A caption's word highlight on the wire.
+class EditorTimelineTextHighlight {
+  const EditorTimelineTextHighlight({required this.style, required this.words});
+
+  /// A `CaptionHighlightStyle` name.
+  final String style;
+  final List<EditorTimelineHighlightWord> words;
+
+  Map<String, dynamic> toJson() => {
+        'style': style,
+        'words': [for (final w in words) w.toJson()],
+      };
 }
 
 /// A photo, video, or text block laid over the timeline.
@@ -607,7 +697,16 @@ class EditorTimelineOverlay {
     this.backgroundRight = 0,
     this.backgroundBottom = 0,
     this.backgroundRadius = 0,
+    this.backgroundAtlas,
+    this.highlight,
   });
+
+  /// The background box's cell in the atlas (left, top, right, bottom
+  /// fractions), drawn as one quad behind the glyphs. Null with no box.
+  final List<double>? backgroundAtlas;
+
+  /// The caption's word highlight; null for ordinary text.
+  final EditorTimelineTextHighlight? highlight;
 
   final String id;
 
@@ -752,6 +851,13 @@ class EditorTimelineOverlay {
       'backgroundRight': backgroundRight,
       'backgroundBottom': backgroundBottom,
       'backgroundRadius': backgroundRadius,
+      if (backgroundAtlas != null) ...{
+        'backgroundAtlasLeft': backgroundAtlas![0],
+        'backgroundAtlasTop': backgroundAtlas![1],
+        'backgroundAtlasRight': backgroundAtlas![2],
+        'backgroundAtlasBottom': backgroundAtlas![3],
+      },
+      if (highlight != null) 'highlight': highlight!.toJson(),
     };
   }
 }

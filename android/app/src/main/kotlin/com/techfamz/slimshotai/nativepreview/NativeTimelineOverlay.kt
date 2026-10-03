@@ -1,5 +1,96 @@
 package com.techfamz.slimshotai.nativepreview
 
+/** A rectangle as `0..1` fractions of whatever it is measured in. */
+internal data class FracRect(
+    val left: Double,
+    val top: Double,
+    val right: Double,
+    val bottom: Double,
+) {
+    val width: Double get() = right - left
+    val height: Double get() = bottom - top
+    val centerX: Double get() = (left + right) / 2.0
+    val centerY: Double get() = (top + bottom) / 2.0
+
+    fun toFloatArray(): FloatArray =
+        floatArrayOf(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat())
+
+    companion object {
+        /** Four keys `<prefix>Left/Top/Right/Bottom`; null unless all four are numbers. */
+        fun read(map: Map<*, *>, prefix: String): FracRect? {
+            fun n(side: String) = (map[prefix + side] as? Number)?.toDouble()
+            return FracRect(
+                n("Left") ?: return null,
+                n("Top") ?: return null,
+                n("Right") ?: return null,
+                n("Bottom") ?: return null,
+            )
+        }
+    }
+}
+
+/**
+ * A caption's word highlight, as `highlightForAtlas` sends it.
+ *
+ * What a highlight *does* is [CaptionHighlightCurves]; this is only which
+ * words there are, when they are spoken (seconds from the caption's start)
+ * and where they sit (text-box fractions).
+ */
+internal data class NativeTextHighlight(
+    val style: String,
+    val words: List<Word>,
+) {
+    data class Word(
+        val start: Double,
+        val end: Double,
+        val box: FracRect,
+        val rtl: Boolean,
+        /** The word's pill cell in the atlas; pill style only. */
+        val pillAtlas: FracRect?,
+        /** Where the pill is placed, in text-box fractions. */
+        val pillBox: FracRect?,
+    )
+
+    private val spans = words.map { CaptionHighlightCurves.WordSpan(it.start, it.end) }
+
+    /** Word [word]'s state [t] seconds into a caption [spanSeconds] long. */
+    fun stateAt(word: Int, t: Double, spanSeconds: Double): CaptionHighlightCurves.State =
+        CaptionHighlightCurves.stateAt(style, t, spans, word, spanSeconds)
+
+    companion object {
+        /**
+         * Null for anything that does not read whole. A word dropped from the
+         * middle would shift every later index, and each glyph names its word
+         * by index — so a half-read table would light the wrong words.
+         */
+        fun fromWire(raw: Any?): NativeTextHighlight? {
+            val map = raw as? Map<*, *> ?: return null
+            val style = map["style"] as? String ?: return null
+            if (style == "none") return null
+            val list = map["words"] as? List<*> ?: return null
+            val words = list.map { entry ->
+                val w = entry as? Map<*, *> ?: return null
+                fun n(key: String) = (w[key] as? Number)?.toDouble()
+                Word(
+                    start = n("start") ?: return null,
+                    end = n("end") ?: return null,
+                    box = FracRect(
+                        n("left") ?: return null,
+                        n("top") ?: return null,
+                        n("right") ?: return null,
+                        n("bottom") ?: return null,
+                    ),
+                    rtl = w["rtl"] as? Boolean ?: false,
+                    pillAtlas = FracRect.read(w, "pillAtlas"),
+                    pillBox = FracRect.read(w, "pill"),
+                )
+            }
+            if (words.isEmpty()) return null
+            return NativeTextHighlight(style, words)
+        }
+    }
+}
+
 /**
  * One glyph of a text overlay.
  *
@@ -19,6 +110,11 @@ package com.techfamz.slimshotai.nativepreview
  *
  * All twelve values are `0..1` fractions — the Dart side converts at the
  * boundary so this side never sees a device pixel.
+ *
+ * A highlighted caption's glyph also carries [lit] — the same glyph drawn in
+ * the highlight colour, a cell the same size, so `src*` serves both — and
+ * [word], the caption word it belongs to (-1 between words, or on ordinary
+ * text).
  */
 internal data class NativeTimelineGlyph(
     val atlasLeft: Double,
@@ -33,6 +129,8 @@ internal data class NativeTimelineGlyph(
     val srcTop: Double,
     val srcRight: Double,
     val srcBottom: Double,
+    val lit: FracRect? = null,
+    val word: Int = -1,
 )
 
 /**
@@ -152,6 +250,13 @@ internal data class NativeTimelineOverlay(
     val backgroundBottom: Double,
     /** Corner radius as a fraction of the box width. */
     val backgroundRadius: Double,
+    /**
+     * Text overlays only: the background box's own cell in the atlas, drawn
+     * as one quad behind the glyphs. Null for a text without a box.
+     */
+    val backgroundAtlas: FracRect? = null,
+    /** A caption's word highlight; null for ordinary text. */
+    val highlight: NativeTextHighlight? = null,
 ) {
 
     val isVideo: Boolean get() = kind == "video"
@@ -333,6 +438,10 @@ internal data class NativeTimelineOverlay(
                     srcTop = glyph.number("srcTop") ?: return@mapNotNull null,
                     srcRight = glyph.number("srcRight") ?: return@mapNotNull null,
                     srcBottom = glyph.number("srcBottom") ?: return@mapNotNull null,
+                    // Only on a highlighted caption; absent, the glyph has
+                    // one look and no word.
+                    lit = FracRect.read(glyph, "litAtlas"),
+                    word = (glyph["word"] as? Number)?.toInt() ?: -1,
                 )
             } ?: emptyList()
 
@@ -384,6 +493,8 @@ internal data class NativeTimelineOverlay(
                 backgroundRight = map.number("backgroundRight") ?: 0.0,
                 backgroundBottom = map.number("backgroundBottom") ?: 0.0,
                 backgroundRadius = map.number("backgroundRadius") ?: 0.0,
+                backgroundAtlas = FracRect.read(map, "backgroundAtlas"),
+                highlight = NativeTextHighlight.fromWire(map["highlight"]),
             )
         }
 

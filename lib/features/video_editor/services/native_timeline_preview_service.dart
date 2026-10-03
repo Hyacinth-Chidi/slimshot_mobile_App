@@ -399,31 +399,16 @@ class NativeTimelinePreviewService {
       );
 
       // The atlas is the animation-capable path, and it is preferred wherever
-      // it can draw the overlay faithfully. Two cases fall back to the flat
-      // raster instead:
-      //
-      // 1. No atlas, or an empty one — text too large to pack inside the
-      //    4096px texture limit even at floor density.
-      // 2. Text with a background box. The native glyph pass draws letters
-      //    only, so a background would simply vanish; backgrounds keep the
-      //    flat raster until the background quad lands.
-      //
-      // Both used to be silent, because the flat path produced the same file
-      // the atlas did. **That is no longer true**: the preview now animates
-      // per character from the catalog, and the flat raster can only carry the
-      // image overlay's whole-box animation. So a fallback is a real
-      // divergence between the canvas and the file, and the degrade-loudly
-      // rule applies — see [textFallbackWarning].
-      final RasterizedTextAtlas? usableAtlas = atlas != null &&
-              atlas.glyphs.isNotEmpty &&
-              atlas.backgroundRect == null
-          ? atlas
-          : null;
+      // it can draw the overlay. A background box no longer keeps a text off
+      // it — the box is a cell of its own, drawn behind the glyphs as one
+      // quad. The one case left for the flat raster is text too large to pack
+      // inside the 4096px texture limit even at floor density, and since the
+      // flat raster can neither animate per character nor highlight words,
+      // that fallback is said, not hidden — see [textFallbackWarning].
+      final RasterizedTextAtlas? usableAtlas =
+          atlas != null && atlas.glyphs.isNotEmpty ? atlas : null;
       if (usableAtlas == null) {
-        final warning = textFallbackWarning(
-          text,
-          hasBackground: atlas?.backgroundRect != null,
-        );
+        final warning = textFallbackWarning(text);
         if (warning != null) warnings.add(warning);
       }
 
@@ -484,6 +469,9 @@ class NativeTimelinePreviewService {
           backgroundBottom:
               (usableAtlas?.backgroundRect?.bottom ?? 0) / boxDivH,
           backgroundRadius: (usableAtlas?.borderRadius ?? 0) / boxDivW,
+          backgroundAtlas:
+              usableAtlas == null ? null : backgroundAtlasFor(usableAtlas),
+          highlight: usableAtlas == null ? null : highlightForAtlas(usableAtlas),
           centerX: placement.centerX,
           centerY: placement.centerY,
           boxWidth: fitBox.width / canvas.width,
@@ -688,44 +676,14 @@ class NativeTimelinePreviewService {
 
 }
 
-/// What to tell the user when [overlay] could not take the glyph-atlas path,
-/// or null when there is nothing to tell them.
+/// The warning owed when [overlay] falls back to the flat raster — text too
+/// large to pack into an atlas — or null when nothing was lost.
 ///
-/// **The warning is about the animation, not about the fallback.** The flat
-/// raster draws the same letters in the same place; what it cannot do is move
-/// them one at a time, because it is a single image and the native pass only
-/// knows how to animate a whole quad. So a text with no animation set is not
-/// degraded at all and must stay silent — warning there would train the user to
-/// dismiss a message that usually means nothing.
-///
-/// "Has an animation" is decided by **slot resolution**, not by the strings
-/// being non-`'none'`. A legacy in-only id sitting in `outAnimation` resolves to
-/// nothing at all (the old widget layer played no out-animation for one), so
-/// such an overlay animates in neither path and has lost nothing. Reading the
-/// raw fields would warn about it every export.
-///
-/// An animation that **nothing draws** does not count either. The two
-/// `fillProgress` entries resolve and time correctly but have no rendering pass
-/// on either side, so the glyph path and the flat path show the same picture
-/// for them — nothing is lost, and warning would apologise for an effect the
-/// user never saw. [TextAnimation.isSelectable] is the one flag that says so,
-/// which is also what keeps them out of the animation tab.
-///
-/// Neither does a **whole-box** animation, and this is the one that actually
-/// fired in testing. A fade or a slide is `isPerGlyph: false`: the flat path
-/// animates the whole quad and produces the *same picture* the glyph path
-/// would. The user saw the warning, compared canvas to file, found them
-/// identical, and correctly concluded the message was wrong. Only a per-glyph
-/// animation — typing, wave, bounce — genuinely degrades into a whole-block
-/// effect on the flat path, so only that is worth interrupting someone over.
-///
-/// [hasBackground] separates the two fallback causes so the message names the
-/// one the user can actually act on — removing a background box is a choice they
-/// can make; an atlas overflowing the texture limit is not.
-String? textFallbackWarning(
-  TextOverlayModel overlay, {
-  required bool hasBackground,
-}) {
+/// Something is lost only where the glyph path would have drawn something the
+/// flat raster cannot: a per-glyph animation, or a caption's word highlight.
+/// A whole-box animation draws the same either way, and an animation nothing
+/// renders loses nothing.
+String? textFallbackWarning(TextOverlayModel overlay) {
   bool draws(String? id, TextAnimationCategory slot) {
     final anim = resolveTextAnimation(id, slot);
     return anim != null && anim.isSelectable && anim.isPerGlyph;
@@ -734,15 +692,17 @@ String? textFallbackWarning(
   final animates = draws(overlay.inAnimation, TextAnimationCategory.inAnim) ||
       draws(overlay.outAnimation, TextAnimationCategory.outAnim) ||
       draws(overlay.loopAnimation, TextAnimationCategory.loop);
-  if (!animates) return null;
+  final highlights = !overlay.highlight.isNone &&
+      (overlay.captionWords?.isNotEmpty ?? false);
+  if (!animates && !highlights) return null;
 
   // A short label rather than the whole string: a caption can be a paragraph,
   // and a toast that runs off the screen tells the user less than one that
   // fits.
   final label = _textOverlayLabel(overlay);
-  return hasBackground
-      ? 'Text "$label" has a background box, so its animation exports as a '
-          'whole-block effect rather than character by character.'
+  return highlights
+      ? 'Text "$label" is too large to highlight word by word; it exports '
+          'without the highlight.'
       : 'Text "$label" is too large to animate character by character; it '
           'exports as a whole-block effect.';
 }

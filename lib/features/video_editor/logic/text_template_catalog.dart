@@ -186,10 +186,8 @@ class TextTemplate {
 /// hard shadow — blur 0 — pushed well clear of the letters, and a caption box
 /// carries the words over busy footage.
 ///
-/// **A boxed template only uses whole-block animations** (fade, zoom, slide,
-/// pulse). Per-character animation cannot run over a background box — the
-/// glyph pass draws letters only — so export would flatten it and warn on
-/// every use. The rest are free to animate letter by letter.
+/// A boxed template may animate letter by letter like any other: the export
+/// draws the box as a quad of its own behind the glyphs.
 ///
 /// Room to grow: when text gains a feature, a template that shows it off is
 /// one more entry here. Every rule an entry could break is pinned by
