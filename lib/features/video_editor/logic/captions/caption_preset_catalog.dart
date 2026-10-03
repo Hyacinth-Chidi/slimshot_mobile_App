@@ -184,7 +184,14 @@ const List<CaptionPreset> kCaptionPresets = [
       shadowDistance: 0,
       shadowAngle: 90,
     ),
-    highlight: CaptionHighlight(style: CaptionHighlightStyle.colour, color: _blue),
+    // A bright cyan, deliberately **not** the glow's blue: lit in the glow
+    // colour the word's edges melted into its own halo, and at 0.45
+    // luminance the "lit" word was the darkest thing on the line — it read
+    // as going out, not lighting up. The catalog test pins both rules.
+    highlight: CaptionHighlight(
+      style: CaptionHighlightStyle.colour,
+      color: Color(0xFF64D2FF),
+    ),
   ),
   CaptionPreset(
     id: 'reveal',

@@ -130,6 +130,38 @@ void main() {
     }
   });
 
+  test('a lit word is never the colour of its own glow', () {
+    // Neon shipped lighting its word in exactly the glow colour: the fill's
+    // edges melted into the halo around it and the letterforms vanished.
+    for (final p in kCaptionPresets) {
+      if (!captionHighlightUsesColor(p.highlight.style)) continue;
+      final glows = p.look.shadowColor.a > 0 &&
+          p.look.shadowDistance == 0 &&
+          p.look.shadowBlur > 0;
+      if (!glows) continue;
+      expect(p.highlight.color, isNot(p.look.shadowColor), reason: p.id);
+    }
+  });
+
+  test('a word lit in a colour is lit, not dimmed', () {
+    // The lit word sits beside white neighbours; a dark fill reads as the
+    // word going out. Karaoke's yellow is 0.84, white 1.0 — Neon's old blue
+    // was 0.45, the darkest thing on its line. Only the styles that recolour
+    // the **fill**: a pill's colour is a box behind white text, and a box
+    // may be dark — Bubble's purple is.
+    const fillStyles = {
+      CaptionHighlightStyle.colour,
+      CaptionHighlightStyle.pop,
+      CaptionHighlightStyle.karaoke,
+    };
+    for (final p in kCaptionPresets) {
+      if (!fillStyles.contains(p.highlight.style)) continue;
+      final c = p.highlight.color;
+      final luminance = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+      expect(luminance, greaterThan(0.55), reason: '${p.id}: $c');
+    }
+  });
+
   test('no two presets are the same look under different names', () {
     for (var i = 0; i < kCaptionPresets.length; i++) {
       for (var j = i + 1; j < kCaptionPresets.length; j++) {

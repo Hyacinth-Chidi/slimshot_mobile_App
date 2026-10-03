@@ -62,8 +62,13 @@ String captionHighlightLabel(CaptionHighlightStyle style) => switch (style) {
 /// a glyph drawn half in each look would cast its shadow twice.
 const double kHighlightRampSeconds = 0.08;
 
-/// Pop: how far the word swells, and how long the swell takes to settle.
-const double kHighlightPopScale = 1.15;
+/// Pop: the word swells past [kHighlightPopScale], settles onto
+/// [kHighlightPopHold] over [kHighlightPopSeconds], and **stays there while
+/// it is the word being spoken**. It used to settle fully back to 1.0 — a
+/// seven-frame twitch at the preview's ~30Hz position rate, after which Pop
+/// was indistinguishable from plain Colour for the rest of the word.
+const double kHighlightPopScale = 1.2;
+const double kHighlightPopHold = 1.1;
 const double kHighlightPopSeconds = 0.25;
 
 /// Focus: how present a word not being spoken is.
@@ -192,9 +197,13 @@ WordHighlightState wordHighlightStateAt({
     case CaptionHighlightStyle.pop:
       if (!active) return WordHighlightState.resting;
       final p = (elapsed / kHighlightPopSeconds).clamp(0.0, 1.0);
+      // One sine over two floors: up from 1 to the peak, down onto the hold —
+      // continuous at the midpoint (sin is 1 on both sides) and flat at both
+      // ends (its slope is 0 there), so nothing steps mid-word.
+      final floor = p < 0.5 ? 1.0 : kHighlightPopHold;
       return WordHighlightState(
         highlighted: true,
-        scale: 1 + (kHighlightPopScale - 1) * math.sin(math.pi * p),
+        scale: floor + (kHighlightPopScale - floor) * math.sin(math.pi * p),
       );
     case CaptionHighlightStyle.pill:
       return WordHighlightState(pill: active ? _ramp(elapsed) : 0);

@@ -2032,7 +2032,14 @@ The rules it holds, each a decision:
 - **Colour switches at the boundary, never blended.** A glyph half in each look would cast its
   shadow twice. Only scale, pill and opacity ramp (`kHighlightRampSeconds`, 0.08s).
 - **Pop swells the word, not each letter**: every glyph scales in place and moves away from the
-  word's centre by as much, so the word grows as one piece (115%, settling over 0.25s).
+  word's centre by as much, so the word grows as one piece. **It settles onto a hold, never back
+  to rest** (peak 120%, hold 110% over 0.25s, one sine over two floors): settling fully to 1.0
+  was a seven-frame twitch at the preview's ~30Hz, after which Pop was plain Colour — the first
+  device look called it out. **And a lit fill must read as lit**: Neon shipped lighting its word
+  in exactly its glow's blue — edges melted into the halo, and at 0.45 luminance the "lit" word
+  was the darkest thing on the line; it lights in a brighter cyan now, and the catalog test pins
+  both rules (never the glow's own colour; fill-lighting colours above 0.55 luminance — pills are
+  exempt, a box behind white text may be dark).
 - **The highlight composes with the text's own animations**: opacities and scales multiply.
 
 **Where a glyph's word comes from: `CaptionHighlightLayout`** (`caption_highlight_layout.dart`).

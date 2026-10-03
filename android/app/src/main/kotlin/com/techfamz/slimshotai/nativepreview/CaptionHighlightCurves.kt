@@ -29,7 +29,8 @@ internal object CaptionHighlightCurves {
     val RESTING = State(highlighted = false, fill = 0.0, scale = 1.0, opacity = 1.0, pill = 0.0)
 
     const val RAMP_SECONDS = 0.08
-    const val POP_SCALE = 1.15
+    const val POP_SCALE = 1.2
+    const val POP_HOLD = 1.1
     const val POP_SECONDS = 0.25
     const val FOCUS_DIM = 0.5
 
@@ -64,7 +65,11 @@ internal object CaptionHighlightCurves {
             "pop" -> {
                 if (!active) return RESTING
                 val p = (elapsed / POP_SECONDS).coerceIn(0.0, 1.0)
-                RESTING.copy(highlighted = true, scale = 1.0 + (POP_SCALE - 1.0) * sin(PI * p))
+                // One sine over two floors: up from 1 to the peak, down onto
+                // the hold, where the word stays while it is being spoken —
+                // the Dart catalog's curve, pinned by the fixture.
+                val floor = if (p < 0.5) 1.0 else POP_HOLD
+                RESTING.copy(highlighted = true, scale = floor + (POP_SCALE - floor) * sin(PI * p))
             }
             "pill" -> RESTING.copy(pill = if (active) ramp(elapsed) else 0.0)
             "karaoke" -> {

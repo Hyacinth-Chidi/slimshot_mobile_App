@@ -105,15 +105,44 @@ void main() {
   });
 
   group('pop', () {
-    test('swells to 115% and settles back within 0.25s, about the word', () {
+    test('swells past the peak, then stays enlarged while the word is spoken', () {
+      // It used to settle fully back to 1.0 within 0.25s — a seven-frame
+      // twitch at the preview's ~30Hz, after which Pop was indistinguishable
+      // from plain Colour for the rest of the word. The word now holds above
+      // resting size for as long as it is the word being spoken.
       expect(at(CaptionHighlightStyle.pop, 0.1, 0).scale, closeTo(1.0, 1e-9));
       expect(
         at(CaptionHighlightStyle.pop, 0.1 + kHighlightPopSeconds / 2, 0).scale,
         closeTo(kHighlightPopScale, 1e-9),
       );
-      expect(at(CaptionHighlightStyle.pop, 0.4, 0).scale, closeTo(1.0, 1e-9));
+      // Settled: at the hold, not back at rest — and still there much later.
+      expect(
+        at(CaptionHighlightStyle.pop, 0.1 + kHighlightPopSeconds, 0).scale,
+        closeTo(kHighlightPopHold, 1e-9),
+      );
+      // Still held near the end of its active window (word 1 starts at 0.5)
+      // — and gone the moment the next word takes over.
+      expect(at(CaptionHighlightStyle.pop, 0.45, 0).scale, closeTo(kHighlightPopHold, 1e-9));
+      expect(at(CaptionHighlightStyle.pop, 0.6, 0).scale, 1.0);
       expect(at(CaptionHighlightStyle.pop, 0.2, 0).highlighted, isTrue);
       expect(at(CaptionHighlightStyle.pop, 0.2, 1).scale, 1.0);
+    });
+
+    test('the swell is continuous: up to the peak, down onto the hold', () {
+      // No step anywhere — a jump mid-word reads as a glitch, not a pop.
+      double prev = 1.0;
+      var climbed = false;
+      for (var i = 0; i <= 50; i++) {
+        final scale =
+            at(CaptionHighlightStyle.pop, 0.1 + kHighlightPopSeconds * i / 50, 0).scale;
+        expect((scale - prev).abs(), lessThan(0.03), reason: 'step $i');
+        if (scale > prev) climbed = true;
+        prev = scale;
+      }
+      expect(climbed, isTrue);
+      expect(prev, closeTo(kHighlightPopHold, 1e-9));
+      expect(kHighlightPopHold, greaterThan(1.0));
+      expect(kHighlightPopScale, greaterThan(kHighlightPopHold));
     });
   });
 
