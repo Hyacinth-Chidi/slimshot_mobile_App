@@ -1886,13 +1886,14 @@ wore the Subtitle template — Inter at regular weight, scale 0.9 — and read a
 The font is **bundled** (`assets/fonts/Montserrat-Bold.ttf`, its own family in
 `customBundledFonts`, since the model has no weight field): a caption has to look the same
 offline and on a phone whose system face is not what a download would have been. **The size is
-a fraction of the canvas width** (`kCaptionFontFraction`, 0.10), not a fixed scale — a text's
-size is stored in the pixels of the canvas it was made on, which is whatever the phone left
-room for, so one scale was large on one phone and small on the next. **The wrap width is
-divided by the scale** (`kCaptionWidthFraction`, 0.86 of the canvas): a text's box is laid out
-first and scaled after, so a canvas-wide box scaled up runs off both edges. That reverses the
-plan's "`boxWidth` unset" ruling, and is why a boxed caption's background hugs its words rather
-than the box (Stage 4). The centre sits at `kCaptionPlacement` — a little over three quarters
+a fraction of the frame**, not a fixed scale — a text's size used to be stored in the pixels of
+the canvas it was made on, which is whatever the phone left room for, so one scale was large on
+one phone and small on the next. It was first a scale computed from the canvas width; since the
+text Size work it is a **Size** (`kCaptionTextSize`, 100: letters a tenth of the frame) at scale
+1 — see "Text Size" below. **The wrap width is `kCaptionWidthFraction`** (0.86 of the canvas),
+the same for every caption so they all wrap alike, and a bigger Size re-wraps inside it. That
+reverses the plan's "`boxWidth` unset" ruling, and is why a boxed caption's background hugs its
+words rather than the box (Stage 4). The centre sits at `kCaptionPlacement` — a little over three quarters
 down, clear of the bottom fifth where the apps that play short-form video put their own caption
 and buttons. Since Stage 4 new plain text starts in Montserrat Bold too (`newText`).
 
@@ -2122,8 +2123,8 @@ a look field must then be carried by `TextLook`, or a template or preset would l
 
 **A preset is a look plus a highlight — no place and no size** (`kCaptionPresets`,
 `logic/captions/caption_preset_catalog.dart`). A style that moved the set would undo the user's
-own placement every time they tried one, and a caption's size is the canvas rule
-(`kCaptionFontFraction`). Nine: **Bubble — the default, `kDefaultCaptionPreset`**, white
+own placement every time they tried one, and a caption's size is its Size
+(`kCaptionTextSize` until the user changes it). Nine: **Bubble — the default, `kDefaultCaptionPreset`**, white
 type over a soft shadow with a purple pill behind the spoken word, chosen on the device because it
 shows the highlight off from the first moment, and the grid's first tile so "the first one" and
 "what I got" agree — then Classic (`kCaptionClassicLook`, the look the first device run approved),
@@ -2184,6 +2185,51 @@ one edge — the editor offers neither value. The sheet marks a style current by
 could still take an undo step if a preset ever carried an animation (none does). **Reveal carries
 no outline** — white type over a soft shadow alone; a device call on bright footage. (Bubble has
 none either, and was judged readable on the device.)
+
+### Text Size — the letters, not the scale
+
+**Awaiting device verification.** Plan: `docs/superpowers/plans/2026-10-03-text-size.md`. A text
+has a **Size**: a ruler in the text editor's Size tab (between Font and Animation), also on the
+text's menu as a door into it. Agreed with the user after looking at how CapCut does it: **two
+controls, never folded into one.** Size is the letters — a style; scale is the whole text as an
+object — the pinch, the corner handle, and what keyframes animate.
+
+**`TextOverlayModel.fontSize` is frame-relative**: the letters' em size in thousandths of the
+frame's **short side**, so Size 100 is letters a tenth of the frame, the same on any phone
+(short side, so a landscape project is not sized by its long one). **Null is the old meaning**
+— 32 reference pixels, how every text was sized — so every saved project opens byte-identical;
+`textSizeOf` gives such a text the Size its letters already have, and the ruler starts from
+there, so moving it changes nothing until the finger moves. Range `kMinTextSize`–`kMaxTextSize`
+(20–300), clamped on read. **Not part of `TextLook`** — a template or caption style restyles
+without resizing — and not keyframable.
+
+**The layout has two scales, and `renderScale` is gone from it so every caller had to choose.**
+`canvasScale` is geometry: where the box sits and how wide it may wrap. `inkScale`
+(`textInkScale`) is what the text draws — letters, outline, shadow, background padding and
+radius, the box's own padding — the canvas scale times the Size. **Their difference is the
+feature**: bigger letters in the same width re-wrap instead of running off the frame, and a
+look keeps its proportions at any Size. The painter, both rasters, the glyph layout and the
+preview tiles draw with `inkScale`; the canvas layer's moves and width handles keep
+`canvasScale`. A pixel test pins that the exported letters grow with the Size — the box alone
+comes from the layout and would agree even if the raster drew at the wrong scale. **Anything new
+that draws a text must take `inkScale`, and anything that places one `canvasScale`.** Flutter's
+blur sigma for a radius adds half a pixel, so a shadow's *radius* keeps proportion, not its
+sigma.
+
+**Defaults**: new plain text and template text start at `kDefaultTextSize` (120 — about what the
+old 32 px letters are on a phone's canvas, so a new text looks as it did there and now the same
+everywhere); a template's own `scale` sits on top. Captions are built at `kCaptionTextSize` (100)
+**at scale 1**, so the ruler shows their real size and pinch starts from 100%. On a caption a Size
+change reaches the set with "Apply to all captions" on (`_setText`, beside the look and the box
+width); a regeneration keeps the set's Size (`captionStyleForNewSet`). **A caption set saved
+before Sizes is converted on load** (`migrateLegacyCaptionSize`): the scale folded into the Size
+and the wrap width multiplied back — the same letters, insets and line breaks at scale 1 (line
+heights agree to within the text engine's per-line rounding) — and left alone where that cannot
+be exact: a keyframed zoom, no reference canvas, a Size outside the ruler. Plain text is never
+migrated; it simply reads its Size.
+
+**The ruler**: half a step a pixel, snapping at the text's default (a caption's for a caption,
+a text's for a text), the number tapped puts that default back, one undo step per drag.
 
 ### Apply to all — a copy, not a mode
 
