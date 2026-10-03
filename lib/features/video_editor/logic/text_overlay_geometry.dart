@@ -74,7 +74,9 @@ class TextOverlayLayout {
     required this.outerPadding,
     required this.backgroundPaddingH,
     required this.backgroundPaddingV,
-  });
+    double? backgroundTextWidth,
+    this.backgroundAlign = 0.5,
+  }) : backgroundTextWidth = backgroundTextWidth ?? textWidth;
 
   final double renderScale;
 
@@ -92,6 +94,14 @@ class TextOverlayLayout {
   final double backgroundPaddingH;
   final double backgroundPaddingV;
 
+  /// How much of [textWidth] the background wraps: all of it, except on a
+  /// caption, where it is the longest line — see [backgroundRect].
+  final double backgroundTextWidth;
+
+  /// Where a narrower background sits across the text: 0 left, 0.5 centred,
+  /// 1 right — the lines' own alignment.
+  final double backgroundAlign;
+
   /// Where the text's top-left sits inside the box.
   Offset get textOrigin => Offset(
         outerPadding + backgroundPaddingH,
@@ -99,10 +109,17 @@ class TextOverlayLayout {
       );
 
   /// The background's rectangle inside the box.
+  ///
+  /// **A caption's hugs its words.** A caption carries its set's wrap width,
+  /// one the user never chose, so a background spanning the box drew a band
+  /// most of the canvas wide behind a single word. It wraps the longest line
+  /// instead, placed by the lines' alignment; the box the user grabs keeps the
+  /// set's width. Plain text with a width of its own keeps a background as
+  /// wide as the box — a banner is what widening it made.
   Rect get backgroundRect => Rect.fromLTWH(
+        outerPadding + (textWidth - backgroundTextWidth) * backgroundAlign,
         outerPadding,
-        outerPadding,
-        boxSize.width - outerPadding * 2,
+        backgroundTextWidth + backgroundPaddingH * 2,
         boxSize.height - outerPadding * 2,
       );
 
@@ -133,6 +150,12 @@ class TextOverlayLayout {
       ..layout(minWidth: innerMinWidth, maxWidth: innerMaxWidth);
     final textWidth = painter.width;
     final textHeight = painter.height;
+    final hugsWords = hasBackground && overlay.isCaption;
+    final longestLine = hugsWords
+        ? painter
+            .computeLineMetrics()
+            .fold<double>(0, (widest, line) => math.max(widest, line.width))
+        : textWidth;
     painter.dispose();
 
     return TextOverlayLayout(
@@ -144,6 +167,12 @@ class TextOverlayLayout {
       outerPadding: outerPadding,
       backgroundPaddingH: backgroundPaddingH,
       backgroundPaddingV: backgroundPaddingV,
+      backgroundTextWidth: math.min(longestLine, textWidth),
+      backgroundAlign: switch (overlay.textAlign) {
+        'left' || 'start' || 'justify' => 0.0,
+        'right' || 'end' => 1.0,
+        _ => 0.5,
+      },
     );
   }
 
