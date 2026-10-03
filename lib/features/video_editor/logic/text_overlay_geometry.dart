@@ -52,7 +52,8 @@ const double kMaxTextScale = 5.0;
 /// emoji from a word. Inside [kMinTextScale]..[kMaxTextScale] by construction.
 const double kEmojiOverlayScale = 2.5;
 
-/// Reference → render pixel factor for [overlay] on [canvasSize].
+/// Reference → render pixel factor for [overlay] on [canvasSize] — the
+/// **geometry** scale: where a text sits and how wide its box is.
 double textOverlayRenderScale(TextOverlayModel overlay, Size canvasSize) {
   final refSize = overlay.referenceCanvasSize;
   final scaleX =
@@ -63,10 +64,47 @@ double textOverlayRenderScale(TextOverlayModel overlay, Size canvasSize) {
   return math.min(scaleX, scaleY);
 }
 
+/// The letters' em size in **reference** pixels: the text's Size against its
+/// frame's short side, or — for a text made before sizes existed — the 32
+/// pixels every text used to be.
+double textEmSize(TextOverlayModel overlay, Size canvasSize) {
+  final size = overlay.fontSize;
+  if (size == null) return kTextOverlayFontSize;
+  final side = (overlay.referenceCanvasSize ?? canvasSize).shortestSide;
+  return side > 0 ? size / 1000 * side : kTextOverlayFontSize;
+}
+
+/// The Size a text shows on the ruler: its own, or — for a text made before
+/// sizes existed — the one its letters have, so moving the ruler starts from
+/// where the letters already are.
+double textSizeOf(TextOverlayModel overlay, Size canvasSize) {
+  final size = overlay.fontSize;
+  if (size != null) return size;
+  final side = (overlay.referenceCanvasSize ?? canvasSize).shortestSide;
+  return side > 0 ? kTextOverlayFontSize / side * 1000 : kDefaultTextSize;
+}
+
+/// Reference → render factor for what a text **draws** — letters, outline,
+/// shadow, background padding and radius, the box's own padding: the canvas
+/// scale times the text's Size. See [TextOverlayLayout.inkScale].
+double textInkScale(TextOverlayModel overlay, Size canvasSize) =>
+    textOverlayRenderScale(overlay, canvasSize) *
+    textEmSize(overlay, canvasSize) /
+    kTextOverlayFontSize;
+
 /// A text overlay measured for one canvas, in **render pixels** of that canvas.
+///
+/// **Two scales, and every caller chooses which it means.** [canvasScale] is
+/// geometry — where the box sits, how wide it may wrap. [inkScale] is what
+/// the text draws — its letters and everything that keeps proportion with
+/// them. They differ by the text's Size, and that difference *is* the Size:
+/// bigger letters in the same width re-wrap, and a look keeps its proportions.
+/// There used to be one `renderScale`; it was removed rather than kept beside
+/// these, so no caller could go on using it without deciding.
 class TextOverlayLayout {
   const TextOverlayLayout({
-    required this.renderScale,
+    required this.canvasScale,
+    required this.inkScale,
     required this.boxSize,
     required this.textWidth,
     required this.textHeight,
@@ -78,7 +116,12 @@ class TextOverlayLayout {
     this.backgroundAlign = 0.5,
   }) : backgroundTextWidth = backgroundTextWidth ?? textWidth;
 
-  final double renderScale;
+  /// Reference → render pixels for geometry: positions and the wrap width.
+  final double canvasScale;
+
+  /// Reference → render pixels for what the text draws: the canvas scale
+  /// times its Size ([textInkScale]).
+  final double inkScale;
 
   /// The whole box: text, background insets and outer padding.
   final Size boxSize;
@@ -125,28 +168,33 @@ class TextOverlayLayout {
 
   /// Measures [overlay] on [canvasSize].
   static TextOverlayLayout measure(TextOverlayModel overlay, Size canvasSize) {
-    final renderScale = textOverlayRenderScale(overlay, canvasSize);
+    final canvasScale = textOverlayRenderScale(overlay, canvasSize);
+    final inkScale = textInkScale(overlay, canvasSize);
     final hasBackground = overlay.backgroundColor != Colors.transparent;
-    final outerPadding = kTextOverlayOuterPadding * renderScale;
+    // The box's own padding and the background's grow with the letters, so a
+    // look keeps its proportions at any Size.
+    final outerPadding = kTextOverlayOuterPadding * inkScale;
     final backgroundPaddingH =
-        hasBackground ? overlay.backgroundPadding * renderScale : 0.0;
+        hasBackground ? overlay.backgroundPadding * inkScale : 0.0;
     final backgroundPaddingV =
-        hasBackground ? (overlay.backgroundPadding / 2) * renderScale : 0.0;
+        hasBackground ? (overlay.backgroundPadding / 2) * inkScale : 0.0;
     final horizontalInsets = (outerPadding + backgroundPaddingH) * 2;
     final verticalInsets = (outerPadding + backgroundPaddingV) * 2;
 
     // Unset: wrap at the canvas the text was created on, minus a margin, so
     // a long line wraps rather than running off both edges. Set: the box is
-    // exactly that wide and the text aligns inside it.
+    // exactly that wide and the text aligns inside it. **Geometry, not ink**:
+    // the width does not grow with the Size, which is what makes bigger
+    // letters re-wrap rather than run off the frame.
     final refWidth = overlay.referenceCanvasSize?.width ?? canvasSize.width;
     final outerWidth = overlay.boxWidth == null
-        ? math.max(kMinTextBoxWidth, refWidth - kDefaultTextBoxMargin) * renderScale
+        ? math.max(kMinTextBoxWidth, refWidth - kDefaultTextBoxMargin) * canvasScale
         : overlay.boxWidth!.clamp(kMinTextBoxWidth, kMaxTextBoxWidth) *
-            renderScale;
+            canvasScale;
     final innerMaxWidth = math.max(0.0, outerWidth - horizontalInsets);
     final innerMinWidth = overlay.boxWidth == null ? 0.0 : innerMaxWidth;
 
-    final painter = textPainterFor(overlay, renderScale)
+    final painter = textPainterFor(overlay, inkScale)
       ..layout(minWidth: innerMinWidth, maxWidth: innerMaxWidth);
     final textWidth = painter.width;
     final textHeight = painter.height;
@@ -159,7 +207,8 @@ class TextOverlayLayout {
     painter.dispose();
 
     return TextOverlayLayout(
-      renderScale: renderScale,
+      canvasScale: canvasScale,
+      inkScale: inkScale,
       boxSize: Size(textWidth + horizontalInsets, textHeight + verticalInsets),
       textWidth: textWidth,
       textHeight: textHeight,
@@ -181,12 +230,12 @@ class TextOverlayLayout {
   /// carries the shadow: [paintTextOverlayInk] casts it.
   static TextPainter textPainterFor(
     TextOverlayModel overlay,
-    double renderScale,
+    double inkScale,
   ) {
     return TextPainter(
       text: TextSpan(
         text: overlay.text,
-        style: fillStyleFor(overlay, renderScale),
+        style: fillStyleFor(overlay, inkScale),
       ),
       textDirection: TextDirection.ltr,
       textAlign: textAlignFor(overlay),
@@ -223,16 +272,16 @@ class TextOverlayLayout {
 
   /// Where the shadow sits relative to the text, in render pixels: the
   /// distance along the angle, clockwise from pointing right.
-  static Offset shadowOffsetFor(TextOverlayModel overlay, double renderScale) {
+  static Offset shadowOffsetFor(TextOverlayModel overlay, double inkScale) {
     final radians = overlay.shadowAngle * math.pi / 180;
-    final distance = overlay.shadowDistance * renderScale;
+    final distance = overlay.shadowDistance * inkScale;
     return Offset(math.cos(radians) * distance, math.sin(radians) * distance);
   }
 
   /// The shadow's blur, as the Gaussian sigma a `Shadow` of that radius
   /// would use, in render pixels.
-  static double shadowSigmaFor(TextOverlayModel overlay, double renderScale) =>
-      Shadow.convertRadiusToSigma(overlay.shadowBlurRadius * renderScale);
+  static double shadowSigmaFor(TextOverlayModel overlay, double inkScale) =>
+      Shadow.convertRadiusToSigma(overlay.shadowBlurRadius * inkScale);
 
   /// How far the shadow reaches past the ink it is cast from, in render
   /// pixels, in its **farthest** direction: the offset plus three sigmas of
@@ -243,17 +292,17 @@ class TextOverlayLayout {
   /// a straight line. It used to be sized by 1.5 × the blur *radius*, which
   /// is short of this down and to the right, so the file kept the shadow's
   /// soft left and top and lost the rest: "the shadow is only on the left".
-  static double shadowReachFor(TextOverlayModel overlay, double renderScale) {
+  static double shadowReachFor(TextOverlayModel overlay, double inkScale) {
     if (!hasShadow(overlay)) return 0;
-    return shadowOffsetFor(overlay, renderScale).distance +
-        3 * shadowSigmaFor(overlay, renderScale);
+    return shadowOffsetFor(overlay, inkScale).distance +
+        3 * shadowSigmaFor(overlay, inkScale);
   }
 
   /// The fill's style. **No shadow**: see [paintTextOverlayInk].
-  static TextStyle fillStyleFor(TextOverlayModel overlay, double renderScale) {
+  static TextStyle fillStyleFor(TextOverlayModel overlay, double inkScale) {
     return getFontStyle(
       overlay.fontFamily,
-      fontSize: kTextOverlayFontSize * renderScale,
+      fontSize: kTextOverlayFontSize * inkScale,
       color: overlay.color,
       height: kTextOverlayLineHeight,
     );
@@ -264,13 +313,13 @@ class TextOverlayLayout {
   /// flat raster and the atlas stack the same layers.
   static TextPainter? strokePainterFor(
     TextOverlayModel overlay,
-    double renderScale,
+    double inkScale,
   ) {
     if (!hasStroke(overlay)) return null;
     return TextPainter(
       text: TextSpan(
         text: overlay.text,
-        style: strokeStyleFor(overlay, renderScale),
+        style: strokeStyleFor(overlay, inkScale),
       ),
       textDirection: TextDirection.ltr,
       textAlign: textAlignFor(overlay),
@@ -285,15 +334,15 @@ class TextOverlayLayout {
   /// The outline's style. **No shadow**: see [paintTextOverlayInk].
   static TextStyle strokeStyleFor(
     TextOverlayModel overlay,
-    double renderScale,
+    double inkScale,
   ) {
     return getFontStyle(
       overlay.fontFamily,
-      fontSize: kTextOverlayFontSize * renderScale,
+      fontSize: kTextOverlayFontSize * inkScale,
       height: kTextOverlayLineHeight,
       foreground: Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = overlay.strokeWidth * renderScale
+        ..strokeWidth = overlay.strokeWidth * inkScale
         ..color = overlay.strokeColor,
     );
   }
@@ -325,15 +374,15 @@ class TextOverlayLayout {
 void paintTextOverlayInk(
   Canvas canvas, {
   required TextOverlayModel overlay,
-  required double renderScale,
+  required double inkScale,
   required TextPainter fill,
   required TextPainter? stroke,
   required Offset textOrigin,
   Rect? shadowFrom,
 }) {
   if (TextOverlayLayout.hasShadow(overlay)) {
-    final sigma = TextOverlayLayout.shadowSigmaFor(overlay, renderScale);
-    final offset = TextOverlayLayout.shadowOffsetFor(overlay, renderScale);
+    final sigma = TextOverlayLayout.shadowSigmaFor(overlay, inkScale);
+    final offset = TextOverlayLayout.shadowOffsetFor(overlay, inkScale);
     canvas.save();
     canvas.translate(offset.dx, offset.dy);
     // The layer takes the silhouette in whatever colours the text has; the

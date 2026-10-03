@@ -106,7 +106,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
       // Where its keyframes put it now — the text itself when it has none.
       final shown = overlay.shownAt(editorState.currentPlaybackPosition);
       final layout = TextOverlayLayout.measure(shown, canvasSize);
-      final center = textOverlayCenter(shown, canvasSize, layout.renderScale);
+      final center = textOverlayCenter(shown, canvasSize, layout.canvasScale);
       final isSelected = overlay.id == editorState.selectedTextId;
 
       children.add(
@@ -195,7 +195,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
                   _bodyBaseRotation = _editValue(OverlayProperty.rotation);
                 },
                 onScaleUpdate: (details) {
-                  final renderScale = layout.renderScale;
+                  final renderScale = layout.canvasScale;
                   final moved = _bodyBasePosition +
                       (details.focalPoint - _bodyBaseFocal) / renderScale;
                   // Scale and rotation only when a second finger gives them:
@@ -378,12 +378,12 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
         behavior: HitTestBehavior.opaque,
         onPanStart: (details) {
           _notifier.beginOverlayEdit();
-          _widthBase = layout.boxSize.width / layout.renderScale;
+          _widthBase = layout.boxSize.width / layout.canvasScale;
           _widthBasePosition = _editPosition;
           _widthStartLocal = _toLocal(details.globalPosition);
         },
         onPanUpdate: (details) {
-          final renderScale = layout.renderScale;
+          final renderScale = layout.canvasScale;
           final axis = Offset(math.cos(overlay.rotation), math.sin(overlay.rotation));
           final travel = _toLocal(details.globalPosition) - _widthStartLocal;
           // Displacement along the box's x-axis, in render px on the canvas,

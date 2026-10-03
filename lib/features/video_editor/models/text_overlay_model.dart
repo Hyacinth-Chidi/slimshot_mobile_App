@@ -38,6 +38,19 @@ const double kTextShadowDefaultOpacity = 1.0;
 const double kTextShadowMaxBlur = 20.0;
 const double kTextShadowMaxDistance = 20.0;
 
+/// A text's **Size** — its letters, in thousandths of the frame's short side:
+/// Size 100 is letters a tenth of the frame. See [TextOverlayModel.fontSize].
+///
+/// What a new text starts at: about what the old fixed 32 px letters are on a
+/// phone's canvas, so a new text looks as it used to there — and now the same
+/// on every other screen.
+const double kDefaultTextSize = 120;
+
+/// The Size ruler's range. 20 is still legible in a 720p file; 300 is letters
+/// nearly a third of the frame, beyond which a word no longer fits a line.
+const double kMinTextSize = 20;
+const double kMaxTextSize = 300;
+
 /// The version of the animation fields in a persisted [TextOverlayModel].
 ///
 /// Schema 0 — the absent marker — means `animationInDuration` and
@@ -76,6 +89,17 @@ class TextOverlayModel {
   double backgroundPadding;
   String textAlign;
   
+  /// The letters' size, in thousandths of the frame's **short side**
+  /// ([kDefaultTextSize]), or null for a text made before sizes existed,
+  /// whose letters are the 32 reference pixels every text used to be.
+  ///
+  /// **Not scale.** Size is the letters — a style: the lines re-wrap inside
+  /// the text's width and the outline, shadow and box grow with them. [scale]
+  /// is the whole text as an object — the pinch, the corner handle, and what
+  /// keyframes animate. Frame-relative, so a Size looks the same on any phone;
+  /// short side, so a landscape project is not sized by its long one.
+  double? fontSize;
+
   // Matrix/Position
   Offset position;
   double scale;
@@ -170,6 +194,7 @@ class TextOverlayModel {
     this.borderRadius = 16.0,
     this.backgroundPadding = 16.0,
     this.textAlign = 'center',
+    this.fontSize,
     this.position = Offset.zero,
     this.scale = 1.0,
     this.rotation = 0.0,
@@ -207,6 +232,7 @@ class TextOverlayModel {
     double? borderRadius,
     double? backgroundPadding,
     String? textAlign,
+    double? fontSize,
     Offset? position,
     double? scale,
     double? rotation,
@@ -244,6 +270,7 @@ class TextOverlayModel {
       borderRadius: borderRadius ?? this.borderRadius,
       backgroundPadding: backgroundPadding ?? this.backgroundPadding,
       textAlign: textAlign ?? this.textAlign,
+      fontSize: fontSize ?? this.fontSize,
       position: position ?? this.position,
       scale: scale ?? this.scale,
       rotation: rotation ?? this.rotation,
@@ -352,6 +379,8 @@ class TextOverlayModel {
       if (captionWords != null)
         'captionWords': [for (final w in captionWords!) w.toJson()],
       if (!highlight.isNone) 'highlight': highlight.toJson(),
+      // Absent on a text made before sizes existed, which reads back as one.
+      if (fontSize != null) 'fontSize': fontSize,
     };
   }
 
@@ -440,6 +469,14 @@ class TextOverlayModel {
       borderRadius: (json['borderRadius'] as num?)?.toDouble() ?? 16.0,
       backgroundPadding: (json['backgroundPadding'] as num?)?.toDouble() ?? 16.0,
       textAlign: json['textAlign'] as String? ?? 'center',
+      // Held inside the ruler: a draft can hold anything, and a size of zero
+      // would draw nothing at all.
+      fontSize: (json['fontSize'] is num)
+          ? (json['fontSize'] as num)
+              .toDouble()
+              .clamp(kMinTextSize, kMaxTextSize)
+              .toDouble()
+          : null,
       position: Offset(
         (json['positionX'] as num?)?.toDouble() ?? 0.0,
         (json['positionY'] as num?)?.toDouble() ?? 0.0,

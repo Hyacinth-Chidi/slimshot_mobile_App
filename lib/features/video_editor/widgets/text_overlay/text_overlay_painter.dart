@@ -111,7 +111,7 @@ class TextOverlayPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (overlay.text.isEmpty) return;
 
-    final renderScale = layout.renderScale;
+    final inkScale = layout.inkScale;
 
     // The background is one rect behind every glyph and it **does not move
     // with the letters**: a box sliced per character would come apart the
@@ -121,18 +121,18 @@ class TextOverlayPainter extends CustomPainter {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           layout.backgroundRect,
-          Radius.circular(overlay.borderRadius * renderScale),
+          Radius.circular(overlay.borderRadius * inkScale),
         ),
         Paint()..color = overlay.backgroundColor,
       );
     }
 
-    final fillPainter = TextOverlayLayout.textPainterFor(overlay, renderScale)
+    final fillPainter = TextOverlayLayout.textPainterFor(overlay, inkScale)
       ..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
     // Shadow, outline, fill — one painter for all three, shared with the
     // export (`paintTextOverlayInk`).
     final strokePainter =
-        TextOverlayLayout.strokePainterFor(overlay, renderScale)
+        TextOverlayLayout.strokePainterFor(overlay, inkScale)
           ?..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
     TextPainter? litPainter;
     try {
@@ -149,7 +149,7 @@ class TextOverlayPainter extends CustomPainter {
         paintTextOverlayInk(
           canvas,
           overlay: overlay,
-          renderScale: renderScale,
+          inkScale: inkScale,
           fill: fillPainter,
           stroke: strokePainter,
           textOrigin: layout.textOrigin,
@@ -163,7 +163,7 @@ class TextOverlayPainter extends CustomPainter {
 
       TextPainter lit() => litPainter ??= TextOverlayLayout.textPainterFor(
             overlay.copyWith(color: highlight!.highlight.color),
-            renderScale,
+            inkScale,
           )..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
 
       final glyphs = _glyphBoxes;
@@ -239,7 +239,7 @@ class TextOverlayPainter extends CustomPainter {
         void ink(TextPainter fill) => paintTextOverlayInk(
               canvas,
               overlay: overlay,
-              renderScale: renderScale,
+              inkScale: inkScale,
               fill: fill,
               stroke: strokePainter,
               textOrigin: layout.textOrigin,
@@ -316,7 +316,7 @@ class TextOverlayPainter extends CustomPainter {
       // definition, so the preview clips exactly what the export samples.
       shadowPadding: textGlyphBleedPadding(
         overlay,
-        textOverlayRenderScale(overlay, canvasSize),
+        textInkScale(overlay, canvasSize),
       ),
     );
   }
@@ -381,7 +381,7 @@ class TextOverlayPainter extends CustomPainter {
         old.highlight != overlay.highlight ||
         !identical(old.captionWords, overlay.captionWords) ||
         oldDelegate.canvasSize != canvasSize ||
-        oldDelegate.layout.renderScale != layout.renderScale ||
+        oldDelegate.layout.inkScale != layout.inkScale ||
         oldDelegate.layout.boxSize != layout.boxSize) {
       return true;
     }

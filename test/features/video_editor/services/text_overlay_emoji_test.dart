@@ -121,7 +121,7 @@ void main() {
       expect(layout.boxSize.height, greaterThan(0));
 
       final recorder = ui.PictureRecorder();
-      final painter = TextOverlayLayout.textPainterFor(overlay, layout.renderScale)
+      final painter = TextOverlayLayout.textPainterFor(overlay, layout.inkScale)
         ..layout();
       painter.paint(Canvas(recorder), Offset.zero);
       final picture = recorder.endRecording();

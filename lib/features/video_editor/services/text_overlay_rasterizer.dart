@@ -209,7 +209,7 @@ class TextOverlayRasterizer {
       final layout = TextOverlayLayout.measure(overlay, canvasSize);
       final size = layout.boxSize;
       if (size.width <= 0 || size.height <= 0) return null;
-      final renderScale = layout.renderScale;
+      final inkScale = layout.inkScale;
 
       final density = effectiveRasterScale(
         rasterScale: rasterScale,
@@ -220,8 +220,8 @@ class TextOverlayRasterizer {
       // Whatever the box's own padding cannot hold of the shadow and outline.
       final margin = math.max(
         0.0,
-        textGlyphBleedPadding(overlay, renderScale) -
-            kTextOverlayOuterPadding * renderScale,
+        textGlyphBleedPadding(overlay, inkScale) -
+            kTextOverlayOuterPadding * inkScale,
       );
       final rasterSize =
           Size(size.width + margin * 2, size.height + margin * 2);
@@ -235,7 +235,7 @@ class TextOverlayRasterizer {
         canvas.drawRRect(
           RRect.fromRectAndRadius(
             layout.backgroundRect,
-            Radius.circular(overlay.borderRadius * renderScale),
+            Radius.circular(overlay.borderRadius * inkScale),
           ),
           Paint()..color = overlay.backgroundColor,
         );
@@ -248,14 +248,14 @@ class TextOverlayRasterizer {
 
       // Shadow, outline, fill — exactly as the canvas draws them.
       final strokePainter =
-          TextOverlayLayout.strokePainterFor(overlay, renderScale)
+          TextOverlayLayout.strokePainterFor(overlay, inkScale)
             ?..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
-      final fillPainter = TextOverlayLayout.textPainterFor(overlay, renderScale)
+      final fillPainter = TextOverlayLayout.textPainterFor(overlay, inkScale)
         ..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
       paintTextOverlayInk(
         canvas,
         overlay: overlay,
-        renderScale: renderScale,
+        inkScale: inkScale,
         fill: fillPainter,
         stroke: strokePainter,
         textOrigin: textOrigin,
@@ -319,11 +319,11 @@ class TextOverlayRasterizer {
       final layout = TextOverlayLayout.measure(overlay, canvasSize);
       final boxSize = layout.boxSize;
       if (boxSize.width <= 0 || boxSize.height <= 0) return null;
-      final renderScale = layout.renderScale;
+      final inkScale = layout.inkScale;
 
       // The same padding `TextOverlayPainter` clips its preview glyphs to —
       // one definition, so the canvas shows exactly what this atlas stores.
-      final shadowPadding = textGlyphBleedPadding(overlay, renderScale);
+      final shadowPadding = textGlyphBleedPadding(overlay, inkScale);
       final glyphBoxes = layoutTextGlyphs(
         overlay: overlay,
         canvasSize: canvasSize,
@@ -402,15 +402,15 @@ class TextOverlayRasterizer {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
 
-      final fillPainter = TextOverlayLayout.textPainterFor(overlay, renderScale)
+      final fillPainter = TextOverlayLayout.textPainterFor(overlay, inkScale)
         ..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
       final strokePainter =
-          TextOverlayLayout.strokePainterFor(overlay, renderScale)
+          TextOverlayLayout.strokePainterFor(overlay, inkScale)
             ?..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
       final litPainter = needsLit
           ? (TextOverlayLayout.textPainterFor(
               overlay.copyWith(color: highlight!.highlight.color),
-              renderScale,
+              inkScale,
             )..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth))
           : null;
       ui.Image? image;
@@ -431,7 +431,7 @@ class TextOverlayRasterizer {
           paintTextOverlayInk(
             canvas,
             overlay: overlay,
-            renderScale: renderScale,
+            inkScale: inkScale,
             fill: fillPainter,
             stroke: strokePainter,
             textOrigin: layout.textOrigin,
@@ -455,7 +455,7 @@ class TextOverlayRasterizer {
             paintTextOverlayInk(
               canvas,
               overlay: overlay,
-              renderScale: renderScale,
+              inkScale: inkScale,
               fill: litPainter,
               stroke: strokePainter,
               textOrigin: layout.textOrigin,
@@ -486,7 +486,7 @@ class TextOverlayRasterizer {
           box(
             cells[backgroundCell],
             layout.backgroundRect,
-            overlay.borderRadius * renderScale,
+            overlay.borderRadius * inkScale,
             overlay.backgroundColor,
           );
         }
@@ -518,7 +518,7 @@ class TextOverlayRasterizer {
               ),
           ],
           backgroundRect: layout.hasBackground ? layout.backgroundRect : null,
-          borderRadius: overlay.borderRadius * renderScale,
+          borderRadius: overlay.borderRadius * inkScale,
           pills: [
             for (var w = 0; w < pillRects.length; w++)
               pillCell[w] == null

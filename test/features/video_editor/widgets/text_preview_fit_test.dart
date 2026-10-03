@@ -88,7 +88,7 @@ void main() {
     final layout = TextOverlayLayout.measure(overlay, kTextPreviewCanvas);
     final scale = box.width / layout.boxSize.width;
     return box.inflate(
-      textGlyphBleedPadding(overlay, layout.renderScale) * scale,
+      textGlyphBleedPadding(overlay, layout.inkScale) * scale,
     );
   }
 

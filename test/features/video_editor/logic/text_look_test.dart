@@ -25,6 +25,7 @@ void main() {
     borderRadius: 7,
     backgroundPadding: 21,
     textAlign: 'left',
+    fontSize: 150,
     position: const Offset(10, 20),
     scale: 2,
     rotation: 0.3,
@@ -80,6 +81,9 @@ void main() {
     'positionX',
     'positionY',
     'scale',
+    // The letters' size: a style, but not a look — a template or a caption
+    // style restyles a text without resizing it.
+    'fontSize',
     'rotation',
     'boxWidth',
     'startTimeMs',

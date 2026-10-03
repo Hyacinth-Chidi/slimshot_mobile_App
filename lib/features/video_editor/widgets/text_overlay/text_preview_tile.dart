@@ -218,7 +218,7 @@ class _TextPreviewTileState extends State<TextPreviewTile> {
     // past the box — a glow by thirty-odd pixels — and fitting the box alone
     // cut them off at the tile's edge. The reach is the one the export pads
     // by, so the tile holds exactly what the file does.
-    final bleed = textGlyphBleedPadding(overlay, layout.renderScale);
+    final bleed = textGlyphBleedPadding(overlay, layout.inkScale);
     final extent = Size(
       layout.boxSize.width + bleed * 2,
       layout.boxSize.height + bleed * 2,

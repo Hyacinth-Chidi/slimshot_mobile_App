@@ -51,11 +51,11 @@ class TextGlyphBox {
 /// so the preview is showing exactly what the export samples. Two copies of
 /// this arithmetic (which is what there were) desync silently: the file and the
 /// canvas would clip a shadow differently with nothing failing anywhere.
-double textGlyphBleedPadding(TextOverlayModel overlay, double renderScale) {
+double textGlyphBleedPadding(TextOverlayModel overlay, double inkScale) {
   final stroke = TextOverlayLayout.hasStroke(overlay)
-      ? overlay.strokeWidth * renderScale / 2
+      ? overlay.strokeWidth * inkScale / 2
       : 0.0;
-  final shadow = TextOverlayLayout.shadowReachFor(overlay, renderScale);
+  final shadow = TextOverlayLayout.shadowReachFor(overlay, inkScale);
   // A pixel of slack, rounded up: the blur's tail is sampled on whole pixels.
   return shadow > 0 ? (stroke + shadow + 1).ceilToDouble() : stroke;
 }
@@ -74,7 +74,7 @@ List<TextGlyphBox> layoutTextGlyphs({
   if (overlay.text.isEmpty) return const [];
 
   final layout = TextOverlayLayout.measure(overlay, canvasSize);
-  final painter = TextOverlayLayout.textPainterFor(overlay, layout.renderScale)
+  final painter = TextOverlayLayout.textPainterFor(overlay, layout.inkScale)
     ..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
 
   final origin = layout.textOrigin;
