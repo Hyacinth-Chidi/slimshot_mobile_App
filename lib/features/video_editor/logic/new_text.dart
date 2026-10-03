@@ -32,6 +32,8 @@ TextOverlayModel newText({
       id: id,
       text: '',
       fontFamily: kNewTextFontFamily,
+      // The same Size on every phone — see [TextOverlayModel.fontSize].
+      fontSize: kDefaultTextSize,
       startTime: start,
       endTime: end,
       referenceCanvasSize: canvasSize,

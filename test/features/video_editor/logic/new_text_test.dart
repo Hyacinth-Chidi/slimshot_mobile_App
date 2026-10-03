@@ -21,6 +21,18 @@ void main() {
     expect(text.referenceCanvasSize, canvas);
   });
 
+  test('a new text starts at the default Size, the same on every phone', () {
+    expect(newText(id: 't', start: start, end: end, canvasSize: canvas).fontSize,
+        kDefaultTextSize);
+  });
+
+  test("a template's text too, with the template's own scale on top", () {
+    final template = kTextTemplates.firstWhere((t) => t.scale != 1);
+    final text = newText(id: 't', start: start, end: end, canvasSize: canvas, template: template);
+    expect(text.fontSize, kDefaultTextSize);
+    expect(text.scale, template.scale);
+  });
+
   test('a template keeps its own face', () {
     final template = kTextTemplates.firstWhere((t) => t.fontFamily != kNewTextFontFamily);
     final text = newText(id: 't', start: start, end: end, canvasSize: canvas, template: template);

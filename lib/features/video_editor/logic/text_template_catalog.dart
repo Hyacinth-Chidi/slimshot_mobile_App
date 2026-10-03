@@ -108,6 +108,9 @@ class TextTemplate {
         id: id,
         // Empty on purpose — see the class comment.
         text: '',
+        // The default Size, so a template's text is the same size on every
+        // phone; the template's own [scale] sits on top of it.
+        fontSize: kDefaultTextSize,
         position: canvasSize == null
             ? Offset.zero
             : Offset(
