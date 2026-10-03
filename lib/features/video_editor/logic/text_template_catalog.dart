@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/text_overlay_model.dart';
+import 'text_look.dart';
 
 /// A complete look for a text — typeface, colours, outline or box, shadow,
 /// alignment, size and animations, chosen together so they read as one.
@@ -21,8 +22,7 @@ import '../models/text_overlay_model.dart';
 /// export as a placeholder the user forgot to replace.
 ///
 /// Every rule a template could break silently — a font the app cannot load,
-/// an animation the user could not pick, a per-character animation over a
-/// box that export would have to flatten — is pinned across the whole catalog
+/// an animation the user could not pick — is pinned across the whole catalog
 /// by `text_template_catalog_test.dart`.
 class TextTemplate {
   const TextTemplate({
@@ -121,16 +121,9 @@ class TextTemplate {
     );
   }
 
-  /// [text] wearing this template: its words, timing, place, rotation, box
-  /// width and lane kept; **every** part of the look replaced.
-  ///
-  /// Every look field is written, including the ones this template leaves
-  /// empty — no outline, no box, no shadow — so changing from one template to
-  /// another leaves nothing of the first behind. Animations restart at their
-  /// natural pace: a speed the user tuned for the old motion means nothing to
-  /// the new one. The size is the template's, because a title and a caption
-  /// differ in size as much as in anything; the place is the user's.
-  TextOverlayModel restyle(TextOverlayModel text) => text.copyWith(
+  /// This template's look — everything but its size and place — with its
+  /// animations at their natural pace.
+  TextLook get look => TextLook(
         fontFamily: fontFamily,
         color: color,
         strokeColor: strokeColor,
@@ -140,18 +133,26 @@ class TextTemplate {
         backgroundPadding: backgroundPadding,
         shadowColor: shadowColor,
         shadowOpacity: shadowOpacity,
-        shadowBlurRadius: shadowBlur,
+        shadowBlur: shadowBlur,
         shadowDistance: shadowDistance,
         shadowAngle: shadowAngle,
         textAlign: textAlign,
-        scale: scale,
         inAnimation: inAnimation,
         outAnimation: outAnimation,
         loopAnimation: loopAnimation,
-        animationInDuration: kTextAnimationNaturalSpeed,
-        animationOutDuration: kTextAnimationNaturalSpeed,
-        loopSpeed: kTextAnimationNaturalSpeed,
       );
+
+  /// [text] wearing this template: its words, timing, place, rotation, box
+  /// width and lane kept; **every** part of the look replaced ([TextLook]).
+  ///
+  /// Every look field is written, including the ones this template leaves
+  /// empty — no outline, no box, no shadow — so changing from one template to
+  /// another leaves nothing of the first behind. Animations restart at their
+  /// natural pace: a speed the user tuned for the old motion means nothing to
+  /// the new one. The size is the template's, because a title and a caption
+  /// differ in size as much as in anything; the place is the user's.
+  TextOverlayModel restyle(TextOverlayModel text) =>
+      look.applyTo(text).copyWith(scale: scale);
 
   /// Whether [text] is wearing this template — what the Templates tab
   /// highlights.
@@ -161,22 +162,7 @@ class TextTemplate {
   /// left out for the same reason. Any hand edit to the look — a colour, the
   /// font, an animation — means it is no longer this template.
   bool isAppliedTo(TextOverlayModel text) =>
-      text.fontFamily == fontFamily &&
-      text.color == color &&
-      text.strokeColor == strokeColor &&
-      text.strokeWidth == strokeWidth &&
-      text.backgroundColor == backgroundColor &&
-      text.borderRadius == borderRadius &&
-      text.backgroundPadding == backgroundPadding &&
-      text.shadowColor == shadowColor &&
-      text.shadowOpacity == shadowOpacity &&
-      text.shadowBlurRadius == shadowBlur &&
-      text.shadowDistance == shadowDistance &&
-      text.shadowAngle == shadowAngle &&
-      text.textAlign == textAlign &&
-      text.inAnimation == inAnimation &&
-      text.outAnimation == outAnimation &&
-      text.loopAnimation == loopAnimation;
+      look.sameLookAs(TextLook.of(text));
 }
 
 /// The templates, in the order their grids show them.
