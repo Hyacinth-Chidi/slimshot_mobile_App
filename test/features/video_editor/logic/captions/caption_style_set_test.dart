@@ -127,6 +127,21 @@ void main() {
       expect(captionsOf(n).map((c) => c.color), [Colors.red, first.color]);
     });
 
+    test('undo and redo never flip the switch behind the user', () {
+      // It is a way of editing, not an edit: an Undo that turned it back on
+      // would let the next colour change restyle the whole set unasked.
+      final n = withSet();
+      final [a, b] = captionsOf(n);
+      n.updateTextOverlay(a.id, (c) => c.copyWith(color: Colors.red));
+      n.setCaptionLookToAll(false);
+      n.updateTextOverlay(b.id, (c) => c.copyWith(color: Colors.blue));
+      n.undo();
+      n.undo();
+      expect(n.state.captionLookToAll, isFalse);
+      n.redo();
+      expect(n.state.captionLookToAll, isFalse);
+    });
+
     test('a move is not a look, and is not broadcast by it', () {
       final n = withSet();
       final [first, second] = captionsOf(n);

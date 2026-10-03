@@ -1714,6 +1714,9 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     state = state.copyWith(segments: updatedSegments);
   }
 
+  /// **"Apply to all captions" is carried across, not restored**: it is a way
+  /// of editing, not an edit, and an Undo that turned it back on would let the
+  /// next colour change restyle a whole set the user had said to leave alone.
   void undo() {
     if (_undoStack.isEmpty) return;
     _redoStack.add(state);
@@ -1722,6 +1725,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       canUndo: _undoStack.isNotEmpty,
       canRedo: _redoStack.isNotEmpty,
       isPlaying: false,
+      captionLookToAll: state.captionLookToAll,
     );
   }
 
@@ -1733,6 +1737,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       canUndo: _undoStack.isNotEmpty,
       canRedo: _redoStack.isNotEmpty,
       isPlaying: false,
+      captionLookToAll: state.captionLookToAll,
     );
   }
 

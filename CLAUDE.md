@@ -2139,6 +2139,9 @@ undo step. Words and moves are never broadcast by it (a set already moves as one
 `_moveCaptionSet`). The text editor shows the switch on a caption only, and not on the Keyboard
 tab, where the words are each caption's own. **A template chosen on a caption keeps the
 caption's size**: a template's size would make it larger or smaller than its neighbours.
+**Undo and redo carry the switch across rather than restoring it** (from the stage review): it is
+a way of editing, not an edit, and an Undo that silently turned it back on let the next colour
+change restyle a set the user had said to leave alone.
 
 **A boxed caption's background hugs its words** (`TextOverlayLayout.backgroundRect`). A caption
 carries its set's wrap width, one the user never chose, so the Boxed style drew a band most of the
@@ -2147,8 +2150,18 @@ the user grabs keeps the set's width, so the width handles behave as before. One
 painter and both export rasters. Plain text with a width of its own keeps its banner.
 
 **New plain text starts in Montserrat Bold** (`newText`, `kNewTextFontFamily`), the spec's
-bundled default. Only new text: a template keeps its own face, and the model's default and a draft
-that names no face stay Roboto, so every saved project opens as it was.
+bundled default. Only text from the Text tool: a template keeps its own face, an emoji is still
+made in Roboto (harmless — the platform's emoji face draws it either way), and the model's default
+and a draft that names no face stay Roboto, so every saved project opens as it was.
+
+**Known, from the stage review, deferred:** `backgroundAlign` reads `'start'`/`'end'` while
+`textAlignFor` does not, so a hand-edited draft with either centres its words in a box hugging
+one edge — the editor offers neither value. The sheet marks a style current by `sameLookAs`
+(speeds ignored) while `restyleCaptions` returns early only on full equality, so a current tile
+could still take an undo step if a preset ever carried an animation (none does). `initialLook`
+is the first caption in list order, not in time; with apply-to-all off and mixed looks, the
+sheet opens on, and a regeneration inherits, whichever sits first. **Bubble and Reveal carry no
+outline** — white type over a soft shadow alone; a device call on bright footage.
 
 ### Apply to all — a copy, not a mode
 
