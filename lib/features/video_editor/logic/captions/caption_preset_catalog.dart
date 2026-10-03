@@ -8,7 +8,7 @@ import 'caption_highlight.dart';
 ///
 /// **No place and no size.** A preset that moved the set would undo the
 /// user's own placement every time they tried a style, and a caption's size is
-/// the canvas rule (`kCaptionFontFraction`), not a look.
+/// its Size ([kCaptionTextSize] until the user changes it), not a look.
 class CaptionPreset {
   const CaptionPreset({
     required this.id,
@@ -80,13 +80,19 @@ const CaptionPreset kDefaultCaptionPreset = CaptionPreset(
   highlight: kDefaultCaptionHighlight,
 );
 
-/// The style a new set is generated in.
+/// The Size a caption set is generated at: letters a tenth of the frame —
+/// a three-word phrase on one line, a full line wrapping to two. Device-
+/// approved, when it was still a scale.
+const double kCaptionTextSize = 100;
+
+/// The style a new set is generated in, and its Size.
 ///
 /// **The current set's, when there is one**: regenerating for a better
 /// transcript must not undo the user's styling, hand tuning included. Read
 /// from the **earliest** caption — splits and merges reorder the list, time
-/// does not move. With no set, the default style.
-({TextLook look, CaptionHighlight highlight}) captionStyleForNewSet(
+/// does not move. With no set, the default style at [kCaptionTextSize].
+({TextLook look, CaptionHighlight highlight, double fontSize})
+    captionStyleForNewSet(
   Iterable<TextOverlayModel> texts,
 ) {
   TextOverlayModel? earliest;
@@ -95,9 +101,17 @@ const CaptionPreset kDefaultCaptionPreset = CaptionPreset(
     if (earliest == null || t.startTime < earliest.startTime) earliest = t;
   }
   if (earliest == null) {
-    return (look: kDefaultCaptionLook, highlight: kDefaultCaptionHighlight);
+    return (
+      look: kDefaultCaptionLook,
+      highlight: kDefaultCaptionHighlight,
+      fontSize: kCaptionTextSize,
+    );
   }
-  return (look: TextLook.of(earliest), highlight: earliest.highlight);
+  return (
+    look: TextLook.of(earliest),
+    highlight: earliest.highlight,
+    fontSize: earliest.fontSize ?? kCaptionTextSize,
+  );
 }
 
 /// The presets, in the order the grid shows them. The first is the default.

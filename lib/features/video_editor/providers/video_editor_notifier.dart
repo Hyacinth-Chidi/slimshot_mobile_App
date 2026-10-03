@@ -494,8 +494,9 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         draft.durationSeconds,
       ), // Will be updated if segments exist
       segments: segments,
+      // A caption set saved before Sizes is converted, exactly, to read as one.
       textOverlays: draft.textOverlays
-          .map((e) => TextOverlayModel.fromJson(e))
+          .map((e) => migrateLegacyCaptionSize(TextOverlayModel.fromJson(e)))
           .toList(),
       imageOverlays: draft.imageOverlays
           .map((e) => ImageOverlayModel.fromJson(e))
@@ -3016,6 +3017,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     CaptionSettings settings, {
     Size? canvasSize,
     TextLook look = kDefaultCaptionLook,
+    double fontSize = kCaptionTextSize,
   }) {
     if (drafts.isEmpty) return;
     saveStateForUndo();
@@ -3044,6 +3046,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
           canvasSize: canvasSize,
           highlight: settings.highlight,
           look: look,
+          fontSize: fontSize,
         ),
       ],
       captionSettings: settings,
@@ -3325,10 +3328,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// **A caption whose text changed is retimed** ([retimeCaptionWords]): the
   /// batch list, the text editor and anything added later all fix words this
   /// way, so a word that did not change never moves. **A caption's box width
-  /// is its set's**: it is what makes captions wrap alike. **So is its look**,
-  /// while [VideoEditorState.captionLookToAll] is on: a colour, a font or an
-  /// animation changed on one caption reaches every caption of its set, in
-  /// the same undo step as the edit itself.
+  /// is its set's**: it is what makes captions wrap alike. **So are its look
+  /// and its Size**, while [VideoEditorState.captionLookToAll] is on: a
+  /// colour, a font, an animation or a Size changed on one caption reaches
+  /// every caption of its set, in the same undo step as the edit itself.
   void _setText(int index, TextOverlayModel edited) {
     final before = state.textOverlays[index];
     var after = edited;
@@ -3350,10 +3353,16 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     final lookToSet = setId != null &&
         state.captionLookToAll &&
         look != TextLook.of(before);
+    final size = after.fontSize;
+    final sizeToSet = setId != null &&
+        state.captionLookToAll &&
+        size != null &&
+        size != before.fontSize;
     TextOverlayModel follow(TextOverlayModel t) {
       var out = t;
       if (widthToSet) out = out.copyWith(boxWidth: width);
       if (lookToSet) out = look.applyTo(out);
+      if (sizeToSet) out = out.copyWith(fontSize: size);
       return out;
     }
 
@@ -3362,7 +3371,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       for (var i = 0; i < texts.length; i++)
         if (i == index)
           after
-        else if ((widthToSet || lookToSet) && texts[i].captionSetId == setId)
+        else if ((widthToSet || lookToSet || sizeToSet) &&
+            texts[i].captionSetId == setId)
           follow(texts[i])
         else
           texts[i],

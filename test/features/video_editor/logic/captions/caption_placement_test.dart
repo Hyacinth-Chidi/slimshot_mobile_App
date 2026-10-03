@@ -4,6 +4,7 @@ import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_highlight.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_placement.dart';
+import 'package:slimshotai/features/video_editor/logic/captions/caption_preset_catalog.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_settings.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_word.dart';
 import 'package:slimshotai/features/video_editor/logic/text_look.dart';
@@ -108,12 +109,14 @@ void main() {
       );
     });
 
-    test('the same size on every canvas: a fraction of its width', () {
+    test('the same size on every canvas: its Size, a tenth of the frame', () {
       for (final canvas in const [Size(240, 426), Size(360, 640), Size(720, 1280)]) {
         final c = captionOn(canvas);
+        expect(c.fontSize, kCaptionTextSize, reason: '$canvas');
+        expect(c.scale, 1, reason: '$canvas');
         expect(
-          c.scale * kTextOverlayFontSize / canvas.width,
-          closeTo(kCaptionFontFraction, 1e-9),
+          TextOverlayLayout.measure(c, canvas).inkScale * kTextOverlayFontSize,
+          closeTo(canvas.shortestSide / 10, 1e-9),
           reason: '$canvas',
         );
       }

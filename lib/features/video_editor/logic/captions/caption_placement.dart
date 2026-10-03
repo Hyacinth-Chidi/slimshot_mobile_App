@@ -1,20 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../models/text_overlay_model.dart';
+import '../animation/overlay_keyframes.dart';
 import '../text_overlay_geometry.dart';
 import '../text_look.dart';
 import 'caption_grouping.dart';
 import 'caption_highlight.dart';
 import 'caption_preset_catalog.dart';
-
-/// A caption's type size, as a fraction of the canvas **width**.
-///
-/// A fraction, not a scale: a text's size is stored in the pixels of the
-/// canvas it was made on, and that canvas is whatever the phone left room
-/// for — so one fixed scale gave a caption that was large on one phone and
-/// small on the next. At a tenth of the width a three-word phrase sits on one
-/// line and a full line wraps to two.
-const double kCaptionFontFraction = 0.10;
 
 /// How much of the canvas width a caption may take before it wraps.
 const double kCaptionWidthFraction = 0.86;
@@ -24,27 +16,19 @@ const double kCaptionWidthFraction = 0.86;
 /// play short-form video put their own caption and buttons.
 const Offset kCaptionPlacement = Offset(0, 0.27);
 
-/// The scale that makes a caption's type [kCaptionFontFraction] of
-/// [canvasSize]'s width; a plain 1 while no canvas is known.
-double captionScaleFor(Size? canvasSize) {
-  if (canvasSize == null || canvasSize.width <= 0) return 1;
-  return (canvasSize.width * kCaptionFontFraction / kTextOverlayFontSize)
-      .clamp(kMinTextScale, kMaxTextScale)
-      .toDouble();
-}
-
 /// [drafts] as text overlays of caption set [setId] on [lane], wearing [look]
-/// and lighting their words with [highlight] — the default style unless told
-/// otherwise ([captionStyleForNewSet] decides it for a real set).
+/// and lighting their words with [highlight] at Size [fontSize] — the default
+/// style unless told otherwise ([captionStyleForNewSet] decides it for a real
+/// set).
 ///
-/// **The size and place are the caption rule's, whatever the look**: the type
-/// is [kCaptionFontFraction] of the canvas width and the centre sits at
+/// **The size is a Size and the place the caption rule's, whatever the look**:
+/// scale 1, the letters [fontSize] thousandths of the frame, the centre at
 /// [kCaptionPlacement], so choosing a style never moves or resizes a set.
 ///
-/// **The wrap width is divided by the scale.** A text's box is laid out first
-/// and scaled after, so a box as wide as the canvas, scaled up, runs off both
-/// edges; every caption gets the one `boxWidth` that lands on
-/// [kCaptionWidthFraction] of the canvas once scaled, so they all wrap alike.
+/// **The wrap width is [kCaptionWidthFraction] of the canvas**, the same for
+/// every caption so they all wrap alike. A Size is the letters inside that
+/// width, so a bigger Size re-wraps rather than run off the frame — the
+/// reason a caption's size stopped being its scale.
 List<TextOverlayModel> buildCaptionOverlays({
   required List<CaptionDraft> drafts,
   required String setId,
@@ -52,10 +36,10 @@ List<TextOverlayModel> buildCaptionOverlays({
   Size? canvasSize,
   CaptionHighlight highlight = kDefaultCaptionHighlight,
   TextLook look = kDefaultCaptionLook,
+  double fontSize = kCaptionTextSize,
 }) {
-  final scale = captionScaleFor(canvasSize);
   final known = canvasSize != null && canvasSize.width > 0;
-  final boxWidth = known ? canvasSize.width * kCaptionWidthFraction / scale : null;
+  final boxWidth = known ? canvasSize.width * kCaptionWidthFraction : null;
   final position = known
       ? Offset(
           kCaptionPlacement.dx * canvasSize.width,
@@ -69,7 +53,7 @@ List<TextOverlayModel> buildCaptionOverlays({
           id: '${setId}_$i',
           text: drafts[i].text,
           position: position,
-          scale: scale,
+          fontSize: fontSize,
           boxWidth: boxWidth,
           startTime: drafts[i].start,
           endTime: drafts[i].end,
@@ -81,4 +65,31 @@ List<TextOverlayModel> buildCaptionOverlays({
         ),
       ),
   ];
+}
+
+/// A caption saved before Sizes existed, converted to one — **exactly**.
+///
+/// Its size was in its scale then (a tenth of the canvas width over the old
+/// 32 px letters) and its wrap width divided by that scale. Folding the scale
+/// into a Size and multiplying the width back gives the same letters, insets
+/// and line breaks at scale 1, so the set reads Size 100 like a new one and
+/// nothing on the canvas moves. Left alone where that cannot be exact: a text
+/// that is not a caption, one with a Size already, one with no reference
+/// canvas to measure the frame by, one whose scale is keyframed (a zoom cannot
+/// be one Size), or one whose Size would fall outside the ruler.
+TextOverlayModel migrateLegacyCaptionSize(TextOverlayModel caption) {
+  final frame = caption.referenceCanvasSize;
+  if (!caption.isCaption || caption.fontSize != null || frame == null) {
+    return caption;
+  }
+  if (caption.keyframes.of(OverlayProperty.scale).isNotEmpty) return caption;
+  final scale = caption.scale;
+  final size = textSizeOf(caption, frame) * scale;
+  if (size < kMinTextSize || size > kMaxTextSize) return caption;
+  final width = caption.boxWidth;
+  return caption.copyWith(
+    fontSize: size,
+    scale: 1,
+    boxWidth: width == null ? null : width * scale,
+  );
 }

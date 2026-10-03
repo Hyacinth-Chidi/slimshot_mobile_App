@@ -1150,6 +1150,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       ),
       canvasSize: ref.read(videoCanvasSizeProvider),
       look: style.look,
+      fontSize: style.fontSize,
     );
   }
 
