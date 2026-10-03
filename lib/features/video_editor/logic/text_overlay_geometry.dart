@@ -371,8 +371,17 @@ class TextOverlayLayout {
 /// text: a glyph's own tile, so each atlas cell and each animated letter
 /// carries its own letter's shadow and nothing else. Tiles never overlap, so
 /// every letter's shadow is drawn exactly once, and a letter that moves takes
-/// its shadow with it. The ink is never limited by it — a cell draws the
-/// whole run, for kerning's sake, and the caller's clip isolates the letter.
+/// its shadow with it.
+///
+/// [shadow] and [ink] draw one half each, for a caller drawing letter by
+/// letter in **two passes** — every letter's shadow, then every letter's ink —
+/// so a shadow lies under every letter as it does when the text is drawn
+/// whole. One pass per letter put line 2's shadow over line 1's letters.
+///
+/// [inkWithin], when given, bounds the outline and fill — a glyph's ink
+/// region (`glyphInkRegions`). A cell draws the whole run for kerning's sake,
+/// and without this bound a cell padded for its shadow drew its neighbours
+/// too, including letters on the next line, in its own colour and motion.
 void paintTextOverlayInk(
   Canvas canvas, {
   required TextOverlayModel overlay,
@@ -381,8 +390,11 @@ void paintTextOverlayInk(
   required TextPainter? stroke,
   required Offset textOrigin,
   Rect? shadowFrom,
+  Rect? inkWithin,
+  bool shadow = true,
+  bool ink = true,
 }) {
-  if (TextOverlayLayout.hasShadow(overlay)) {
+  if (shadow && TextOverlayLayout.hasShadow(overlay)) {
     final sigma = TextOverlayLayout.shadowSigmaFor(overlay, inkScale);
     final offset = TextOverlayLayout.shadowOffsetFor(overlay, inkScale);
     canvas.save();
@@ -415,8 +427,16 @@ void paintTextOverlayInk(
     canvas.restore();
     canvas.restore();
   }
+  if (!ink) return;
+  if (inkWithin != null) {
+    canvas.save();
+    // Not antialiased, for the shadow's reason: a boundary pixel split
+    // between two regions would be put back short of whole.
+    canvas.clipRect(inkWithin, doAntiAlias: false);
+  }
   stroke?.paint(canvas, textOrigin);
   fill.paint(canvas, textOrigin);
+  if (inkWithin != null) canvas.restore();
 }
 
 /// The box's centre on the canvas, in render pixels.

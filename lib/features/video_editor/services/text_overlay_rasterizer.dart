@@ -420,6 +420,11 @@ class TextOverlayRasterizer {
         // whole run keeps kerning, ligatures and alignment identical to the
         // flat raster; the clip is what isolates one character. The shadow
         // is this glyph's alone — see [paintTextOverlayInk].
+        // The same ink regions the canvas painter draws each glyph within, so
+        // a cell holds its own letter and never a neighbour's or the other
+        // line's — the export put cells back together that, at caption size,
+        // each carried bits of the line next to them.
+        final regions = glyphInkRegions(glyphBoxes);
         for (var i = 0; i < glyphBoxes.length; i++) {
           final glyph = glyphBoxes[i];
           final cell = cells[i];
@@ -436,6 +441,7 @@ class TextOverlayRasterizer {
             stroke: strokePainter,
             textOrigin: layout.textOrigin,
             shadowFrom: glyph.inkRect,
+            inkWithin: regions[i],
           );
           canvas.restore();
         }
@@ -460,6 +466,7 @@ class TextOverlayRasterizer {
               stroke: strokePainter,
               textOrigin: layout.textOrigin,
               shadowFrom: glyph.inkRect,
+              inkWithin: regions[i],
             );
             canvas.restore();
           }

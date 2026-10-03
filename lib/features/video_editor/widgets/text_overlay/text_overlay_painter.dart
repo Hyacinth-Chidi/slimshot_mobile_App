@@ -54,6 +54,12 @@ class TextOverlayPainter extends CustomPainter {
   List<TextGlyphBox> get _glyphBoxes =>
       _glyphs ??= glyphBoxesFor(overlay, canvasSize);
 
+  List<Rect>? _regions;
+
+  /// Where each glyph's own ink may be drawn — never its neighbours', and
+  /// never the other line's ([glyphInkRegions]).
+  List<Rect> get _inkRegions => _regions ??= glyphInkRegions(_glyphBoxes);
+
   CaptionHighlightLayout? _highlight;
   bool _highlightResolved = false;
 
@@ -80,12 +86,12 @@ class TextOverlayPainter extends CustomPainter {
     final start = overlay.startTime.inMicroseconds / 1e6;
     final span = (overlay.endTime - overlay.startTime).inMicroseconds / 1e6;
     WordHighlightState at(int word, double seconds) => wordHighlightStateAt(
-          style: overlay.highlight.style,
-          t: seconds - start,
-          words: spans,
-          index: word,
-          spanSeconds: span,
-        );
+      style: overlay.highlight.style,
+      t: seconds - start,
+      words: spans,
+      index: word,
+      spanSeconds: span,
+    );
     for (var w = 0; w < spans.length; w++) {
       if (at(w, then) != at(w, positionSeconds)) return true;
     }
@@ -131,9 +137,8 @@ class TextOverlayPainter extends CustomPainter {
       ..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
     // Shadow, outline, fill — one painter for all three, shared with the
     // export (`paintTextOverlayInk`).
-    final strokePainter =
-        TextOverlayLayout.strokePainterFor(overlay, inkScale)
-          ?..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
+    final strokePainter = TextOverlayLayout.strokePainterFor(overlay, inkScale)
+      ?..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
     TextPainter? litPainter;
     try {
       final timing = _animationTiming;
@@ -162,124 +167,158 @@ class TextOverlayPainter extends CustomPainter {
       if (highlight != null) _paintPills(canvas, highlight);
 
       TextPainter lit() => litPainter ??= TextOverlayLayout.textPainterFor(
-            overlay.copyWith(color: highlight!.highlight.color),
-            inkScale,
-          )..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
+        overlay.copyWith(color: highlight!.highlight.color),
+        inkScale,
+      )..layout(minWidth: layout.textWidth, maxWidth: layout.textWidth);
 
       final glyphs = _glyphBoxes;
+      final regions = _inkRegions;
       final glyphCount = glyphs.length;
-      for (var i = 0; i < glyphCount; i++) {
-        final glyph = glyphs[i];
-        final state = animating
-            ? timing.stateAt(positionSeconds, i, glyphCount)
-            : const TextGlyphState();
-        final word = highlight?.glyphWord[i] ?? -1;
-        final marked = word < 0
-            ? WordHighlightState.resting
-            : highlight!.wordState(word, positionSeconds);
-        final opacity = state.opacity * marked.opacity;
-        final scale = state.scale * marked.scale;
-        // A glyph animated to nothing is skipped rather than drawn at zero —
-        // the same rule `textDraws` applies, and a negative scale would turn
-        // the letter inside out.
-        if (opacity <= 0 || scale <= 0) continue;
+      // **Two passes: every letter's shadow, then every letter's ink**, so a
+      // shadow lies under every letter as it does when the text is drawn
+      // whole. One pass per letter painted line 2's shadow over line 1's
+      // letters — measured up to 60/255 of grey on white.
+      for (final shadowPass in const [true, false]) {
+        for (var i = 0; i < glyphCount; i++) {
+          final glyph = glyphs[i];
+          final state = animating
+              ? timing.stateAt(positionSeconds, i, glyphCount)
+              : const TextGlyphState();
+          final word = highlight?.glyphWord[i] ?? -1;
+          final marked = word < 0
+              ? WordHighlightState.resting
+              : highlight!.wordState(word, positionSeconds);
+          final opacity = state.opacity * marked.opacity;
+          final scale = state.scale * marked.scale;
+          // A glyph animated to nothing is skipped rather than drawn at zero —
+          // the same rule `textDraws` applies, and a negative scale would turn
+          // the letter inside out.
+          if (opacity <= 0 || scale <= 0) continue;
 
-        // **The padded rect, not the ink rect, is what gets clipped** — it is
-        // the atlas cell, and the cell carries the shadow and stroke bleed that
-        // would otherwise be cut off at the letter's edge.
-        final cell = glyph.paddedRect;
-        final centre = cell.center;
+          // **The padded rect, not the ink rect, is what gets clipped** — it is
+          // the atlas cell, and the cell carries the shadow and stroke bleed that
+          // would otherwise be cut off at the letter's edge.
+          final cell = glyph.paddedRect;
+          final centre = cell.center;
 
-        // The catalog measures displacement in **glyph heights on both axes**,
-        // the glyph's own ink height, which is what `textDraws` converts
-        // through (`boxBottom - boxTop`).
-        final metric = glyph.inkRect.height;
+          // The catalog measures displacement in **glyph heights on both axes**,
+          // the glyph's own ink height, which is what `textDraws` converts
+          // through (`boxBottom - boxTop`).
+          final metric = glyph.inkRect.height;
 
-        // **A popped word swells about its own centre**, not each letter about
-        // its own: every glyph is scaled in place and moved away from the
-        // word's centre by as much, so the word grows as one piece.
-        var pop = Offset.zero;
-        if (marked.scale != 1) {
-          final box = highlight!.wordBoxes[word];
-          if (box != null) pop = (centre - box.center) * (marked.scale - 1);
-        }
+          // **A popped word swells about its own centre**, not each letter about
+          // its own: every glyph is scaled in place and moved away from the
+          // word's centre by as much, so the word grows as one piece.
+          var pop = Offset.zero;
+          if (marked.scale != 1) {
+            final box = highlight!.wordBoxes[word];
+            if (box != null) pop = (centre - box.center) * (marked.scale - 1);
+          }
 
-        canvas.save();
-        // **The transform comes first and the clip travels with it** — in GL
-        // the cell *is* the quad, so moving the quad moves what is drawn.
-        // Clipping in the resting position while the letter moves through the
-        // clip draws nothing at all once a slide carries it out. Scale and
-        // rotation are about the cell's own centre; the displacement moves
-        // that centre. `writeCorners` composes the same terms in the same
-        // order.
-        canvas.translate(
-          centre.dx + state.offsetX * metric + pop.dx,
-          centre.dy + state.offsetY * metric + pop.dy,
-        );
-        if (state.rotation != 0) canvas.rotate(state.rotation);
-        if (scale != 1) canvas.scale(scale);
-        canvas.translate(-centre.dx, -centre.dy);
-        canvas.clipRect(cell);
-
-        // Opacity multiplies the whole glyph — stroke, fill and shadow — so a
-        // fading letter fades as one thing. Bounded by `cell`, read in the
-        // already-transformed space, like the clip.
-        final fading = opacity < 1;
-        if (fading) {
-          canvas.saveLayer(
-            cell,
-            Paint()..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0)),
+          canvas.save();
+          // **The transform comes first and the clip travels with it** — in GL
+          // the cell *is* the quad, so moving the quad moves what is drawn.
+          // Clipping in the resting position while the letter moves through the
+          // clip draws nothing at all once a slide carries it out. Scale and
+          // rotation are about the cell's own centre; the displacement moves
+          // that centre. `writeCorners` composes the same terms in the same
+          // order.
+          canvas.translate(
+            centre.dx + state.offsetX * metric + pop.dx,
+            centre.dy + state.offsetY * metric + pop.dy,
           );
-        }
+          if (state.rotation != 0) canvas.rotate(state.rotation);
+          if (scale != 1) canvas.scale(scale);
+          canvas.translate(-centre.dx, -centre.dy);
+          canvas.clipRect(cell);
 
-        // The whole run is painted and clipped to one glyph, never the
-        // character on its own: kerning and ligatures mean the width of "AV"
-        // is not the width of "A" plus "V". Only this letter's shadow is cast,
-        // so it travels with the letter.
-        void ink(TextPainter fill) => paintTextOverlayInk(
-              canvas,
-              overlay: overlay,
-              inkScale: inkScale,
-              fill: fill,
-              stroke: strokePainter,
-              textOrigin: layout.textOrigin,
-              shadowFrom: glyph.inkRect,
+          // Opacity multiplies the whole glyph — stroke, fill and shadow — so a
+          // fading letter fades as one thing. Bounded by `cell`, read in the
+          // already-transformed space, like the clip.
+          final fading = opacity < 1;
+          if (fading) {
+            canvas.saveLayer(
+              cell,
+              Paint()..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0)),
             );
-
-        if (marked.fill > 0 && marked.fill < 1) {
-          // **Karaoke cuts the glyph at the sweep**: lit behind the line,
-          // plain ahead of it, through two complementary clips — so the
-          // glyph's shadow is still cast once. The export splits the quad at
-          // the same line.
-          final box = highlight!.wordBoxes[word]!;
-          final rtl = highlight.wordRtl[word];
-          final sweep = rtl
-              ? box.right - box.width * marked.fill
-              : box.left + box.width * marked.fill;
-          final behind = rtl
-              ? Rect.fromLTRB(math.min(sweep, cell.right), cell.top, cell.right, cell.bottom)
-              : Rect.fromLTRB(cell.left, cell.top, math.max(sweep, cell.left), cell.bottom);
-          final ahead = rtl
-              ? Rect.fromLTRB(cell.left, cell.top, math.max(sweep, cell.left), cell.bottom)
-              : Rect.fromLTRB(math.min(sweep, cell.right), cell.top, cell.right, cell.bottom);
-          if (!behind.isEmpty) {
-            canvas.save();
-            canvas.clipRect(behind);
-            ink(lit());
-            canvas.restore();
           }
-          if (!ahead.isEmpty) {
-            canvas.save();
-            canvas.clipRect(ahead);
+
+          // The whole run is painted and clipped to one glyph, never the
+          // character on its own: kerning and ligatures mean the width of "AV"
+          // is not the width of "A" plus "V". Only this letter's shadow is cast,
+          // so it travels with the letter.
+          void ink(TextPainter fill) => paintTextOverlayInk(
+            canvas,
+            overlay: overlay,
+            inkScale: inkScale,
+            fill: fill,
+            stroke: strokePainter,
+            textOrigin: layout.textOrigin,
+            shadowFrom: glyph.inkRect,
+            inkWithin: regions[i],
+            shadow: shadowPass,
+            ink: !shadowPass,
+          );
+
+          if (shadowPass) {
+            // One shadow per letter whatever its look: the lit and plain
+            // halves of a swept letter share one silhouette.
             ink(fillPainter);
-            canvas.restore();
+          } else if (marked.fill > 0 && marked.fill < 1) {
+            // **Karaoke cuts the glyph at the sweep**: lit behind the line,
+            // plain ahead of it, through two complementary clips — so the
+            // glyph's shadow is still cast once. The export splits the quad at
+            // the same line.
+            final box = highlight!.wordBoxes[word]!;
+            final rtl = highlight.wordRtl[word];
+            final sweep = rtl
+                ? box.right - box.width * marked.fill
+                : box.left + box.width * marked.fill;
+            final behind = rtl
+                ? Rect.fromLTRB(
+                    math.min(sweep, cell.right),
+                    cell.top,
+                    cell.right,
+                    cell.bottom,
+                  )
+                : Rect.fromLTRB(
+                    cell.left,
+                    cell.top,
+                    math.max(sweep, cell.left),
+                    cell.bottom,
+                  );
+            final ahead = rtl
+                ? Rect.fromLTRB(
+                    cell.left,
+                    cell.top,
+                    math.max(sweep, cell.left),
+                    cell.bottom,
+                  )
+                : Rect.fromLTRB(
+                    math.min(sweep, cell.right),
+                    cell.top,
+                    cell.right,
+                    cell.bottom,
+                  );
+            if (!behind.isEmpty) {
+              canvas.save();
+              canvas.clipRect(behind);
+              ink(lit());
+              canvas.restore();
+            }
+            if (!ahead.isEmpty) {
+              canvas.save();
+              canvas.clipRect(ahead);
+              ink(fillPainter);
+              canvas.restore();
+            }
+          } else {
+            ink(marked.highlighted ? lit() : fillPainter);
           }
-        } else {
-          ink(marked.highlighted ? lit() : fillPainter);
-        }
 
-        if (fading) canvas.restore();
-        canvas.restore();
+          if (fading) canvas.restore();
+          canvas.restore();
+        }
       }
     } finally {
       fillPainter.dispose();
