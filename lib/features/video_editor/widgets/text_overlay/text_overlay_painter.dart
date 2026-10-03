@@ -73,6 +73,25 @@ class TextOverlayPainter extends CustomPainter {
   bool get _hasHighlight =>
       !overlay.highlight.isNone && (overlay.captionWords?.isNotEmpty ?? false);
 
+  /// Whether any word looks different at [then] than at [positionSeconds] —
+  /// read from the words' times alone, with no layout, so asking is cheap.
+  bool _wordStatesDiffer(double then) {
+    final spans = wordSpansOf(overlay.captionWords!);
+    final start = overlay.startTime.inMicroseconds / 1e6;
+    final span = (overlay.endTime - overlay.startTime).inMicroseconds / 1e6;
+    WordHighlightState at(int word, double seconds) => wordHighlightStateAt(
+          style: overlay.highlight.style,
+          t: seconds - start,
+          words: spans,
+          index: word,
+          spanSeconds: span,
+        );
+    for (var w = 0; w < spans.length; w++) {
+      if (at(w, then) != at(w, positionSeconds)) return true;
+    }
+    return false;
+  }
+
   /// The animation windows, or null when the text has no inked glyph to
   /// stagger across.
   TextAnimationTiming? get _animationTiming {
@@ -378,8 +397,14 @@ class TextOverlayPainter extends CustomPainter {
     // a picture that cannot have changed. `_animationTiming` short-circuits on
     // the animation fields before it measures anything, so the common case
     // costs three string comparisons rather than a layout.
-    // A highlighted caption changes with every word, so it repaints too.
-    if (_hasHighlight) return true;
+    // A highlighted caption repaints when some word's look changes — at a
+    // word boundary, through a ramp, along a sweep — and not in between: a
+    // repaint casts a blurred shadow per letter, and paying that at every
+    // position event for an unchanged picture cost a low-end phone a large
+    // share of each frame for as long as the caption was on screen.
+    if (_hasHighlight && _wordStatesDiffer(oldDelegate.positionSeconds)) {
+      return true;
+    }
     final timing = _animationTiming;
     return timing != null && timing.isActive;
   }

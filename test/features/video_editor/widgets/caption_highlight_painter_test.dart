@@ -229,9 +229,28 @@ void main() {
           positionSeconds: seconds,
         );
 
-    test('a highlighted caption repaints as the playhead moves', () {
+    test('a highlighted caption repaints when a word changes look', () {
       final overlay = caption(CaptionHighlightStyle.colour);
-      expect(painterAt(overlay, 0.3).shouldRepaint(painterAt(overlay, 0.2)), isTrue);
+      expect(painterAt(overlay, 0.7).shouldRepaint(painterAt(overlay, 0.2)), isTrue);
+    });
+
+    test('but not between two instants of the same word', () {
+      // Each repaint casts a blurred shadow per letter; a caption repainted at
+      // every position event for a picture that has not changed costs that
+      // for its whole life on screen.
+      final overlay = caption(CaptionHighlightStyle.colour);
+      expect(painterAt(overlay, 0.3).shouldRepaint(painterAt(overlay, 0.2)), isFalse);
+      final focus = caption(CaptionHighlightStyle.focus);
+      expect(painterAt(focus, 0.3).shouldRepaint(painterAt(focus, 0.2)), isFalse);
+    });
+
+    test('a sweep or a ramp repaints while it moves', () {
+      final karaoke = caption(CaptionHighlightStyle.karaoke);
+      expect(painterAt(karaoke, 0.3).shouldRepaint(painterAt(karaoke, 0.2)), isTrue);
+      final pill = caption(CaptionHighlightStyle.pill);
+      expect(painterAt(pill, 0.54).shouldRepaint(painterAt(pill, 0.52)), isTrue);
+      final pop = caption(CaptionHighlightStyle.pop);
+      expect(painterAt(pop, 0.6).shouldRepaint(painterAt(pop, 0.55)), isTrue);
     });
 
     test('a plain static text still does not', () {
