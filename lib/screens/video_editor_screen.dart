@@ -62,6 +62,7 @@ import '../features/video_editor/widgets/panels/animation_drawer.dart';
 import '../features/video_editor/widgets/panels/editor_panel_switcher.dart';
 import '../features/video_editor/widgets/panels/background_sheet.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
+import '../core/services/account_session.dart';
 import '../core/services/slimshot_api.dart';
 import '../features/video_editor/logic/captions/caption_grouping.dart';
 import '../features/video_editor/logic/captions/caption_preset_catalog.dart';
@@ -1104,7 +1105,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     _audioPlayerManager.pauseAll();
     unawaited(_nativePreviewService.pause());
 
-    final api = SlimshotApi(baseUrl: SlimshotApi.configuredBaseUrl);
+    final api = SlimshotApi(
+      baseUrl: SlimshotApi.configuredBaseUrl,
+      session: AccountSession(),
+    );
     final captions = CaptionService(api);
     final pipeline = CaptionPipeline(
       audioPath: () async {

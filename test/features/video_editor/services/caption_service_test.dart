@@ -9,22 +9,7 @@ import 'package:slimshotai/core/services/slimshot_api.dart';
 import 'package:slimshotai/features/video_editor/services/caption_errors.dart';
 import 'package:slimshotai/features/video_editor/services/caption_service.dart';
 
-class MemoryTokens implements DeviceTokenStore {
-  String? token = 'tok';
-
-  @override
-  Future<String?> read() async => token;
-
-  @override
-  Future<void> write(String value) async {
-    token = value;
-  }
-
-  @override
-  Future<void> clear() async {
-    token = null;
-  }
-}
+import '../../../support/account_fakes.dart';
 
 http.Response envelope(Object data, [int status = 200]) =>
     http.Response(jsonEncode({'success': true, 'data': data}), status);
@@ -50,7 +35,8 @@ void main() {
         SlimshotApi(
           baseUrl: 'https://api.test',
           client: client,
-          tokens: MemoryTokens(),
+          session: signedInSession(),
+          tokens: MemoryDeviceTokens(),
         ),
         delay: delay ?? (_) async {},
         clock: clock,
@@ -111,7 +97,8 @@ void main() {
             requests++;
             return envelope({'jobId': 'cap_1', 'status': 'queued'}, 202);
           }),
-          tokens: MemoryTokens(),
+          session: signedInSession(),
+          tokens: MemoryDeviceTokens(),
         ),
         maxUploadBytes: 3,
       );
