@@ -20,6 +20,7 @@ import '../core/services/draft_refresh_notifier.dart';
 import '../core/models/draft_project.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/permission_dialog.dart';
+import 'home_backdrop.dart';
 import 'home_header.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -175,24 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // Subtle purple radial gradient orb (matches settings screen)
-          Positioned(
-            top: -80,
-            right: -60,
-            child: Container(
-              width: 200,
-              height: 200,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.primaryStart.withValues(alpha: 0.15),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
+          const Positioned.fill(child: HomeBackdrop()),
 
           SafeArea(
             child: CustomScrollView(
