@@ -20,6 +20,7 @@ import '../core/services/draft_refresh_notifier.dart';
 import '../core/models/draft_project.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/permission_dialog.dart';
+import 'home_header.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -209,41 +210,39 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment
-                                .start, // Left align logo since settings icon is gone
-                            children: [
-                              SvgPicture.asset(
-                                'assets/logo.svg',
-                                width: 44,
-                                height: 44,
-                              ),
-                              const SizedBox(width: 8),
-                              ShaderMask(
-                                blendMode: BlendMode.srcIn,
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                      colors: [
-                                        AppColors.textPrimary,
-                                        AppColors.textSecondary,
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ).createShader(bounds),
-                                child: Text(
-                                  'SlimShot AI',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: -0.5,
+                          HomeHeader(
+                            brand: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SvgPicture.asset(
+                                  'assets/logo.svg',
+                                  width: 44,
+                                  height: 44,
+                                ),
+                                const SizedBox(width: 8),
+                                ShaderMask(
+                                  blendMode: BlendMode.srcIn,
+                                  shaderCallback: (bounds) =>
+                                      const LinearGradient(
+                                        colors: [
+                                          AppColors.textPrimary,
+                                          AppColors.textSecondary,
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ).createShader(bounds),
+                                  child: Text(
+                                    'SlimShot AI',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: -0.5,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ).animate().fadeIn().slideY(
-                            begin: -0.2,
-                            end: 0,
-                          ), // Settings header animation
+                              ],
+                            ),
+                          ).animate().fadeIn().slideY(begin: -0.2, end: 0),
 
                           const SizedBox(height: 24),
 
