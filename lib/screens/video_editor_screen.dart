@@ -62,7 +62,7 @@ import '../features/video_editor/widgets/panels/animation_drawer.dart';
 import '../features/video_editor/widgets/panels/editor_panel_switcher.dart';
 import '../features/video_editor/widgets/panels/background_sheet.dart';
 import '../features/video_editor/widgets/panels/editor_sheet.dart';
-import '../core/services/account_session.dart';
+import '../features/account/providers/account_providers.dart';
 import '../core/services/slimshot_api.dart';
 import '../features/video_editor/logic/captions/caption_grouping.dart';
 import '../features/video_editor/logic/captions/caption_preset_catalog.dart';
@@ -1080,13 +1080,15 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     notifier.removeEmptyCaptions();
   }
 
-  /// Text → Auto captions: choose, wait for the words, place them.
+  /// Text → Auto captions: sign in if needed, choose, wait for the words,
+  /// place them.
   ///
   /// The audio is a snapshot of the timeline, so playback stops and the
   /// progress sheet holds the editor until the words land. The captions are
   /// placed as one undo step, replacing an existing set only after asking.
   Future<void> _startAutoCaptions() async {
     final notifier = ref.read(videoEditorProvider.notifier);
+    if (!await CaptionAccess.ensureAllowed(context, ref) || !mounted) return;
     final request = await showEditorSheet<CaptionRequest>(
       context,
       builder: (_) => AutoCaptionSheet(
@@ -1094,7 +1096,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       ),
     );
     if (request == null || !mounted) return;
-    if (!await CaptionAccess.ensureAllowed(context) || !mounted) return;
     if (ref.read(videoEditorProvider).hasCaptions &&
         !await confirmReplaceCaptions(context)) {
       return;
@@ -1107,7 +1108,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
     final api = SlimshotApi(
       baseUrl: SlimshotApi.configuredBaseUrl,
-      session: AccountSession(),
+      session: ref.read(accountSessionProvider),
     );
     final captions = CaptionService(api);
     final pipeline = CaptionPipeline(
@@ -1139,6 +1140,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       builder: (_) => CaptionProgressSheet(pipeline: pipeline, request: request),
     );
     api.close();
+    // The run may have spent credits, or had them refunded: the balance on
+    // the home screen follows.
+    unawaited(ref.read(accountProvider.notifier).refresh());
     if (drafts == null || !mounted) return;
 
     // Read before the old set is replaced: a regeneration keeps the set's

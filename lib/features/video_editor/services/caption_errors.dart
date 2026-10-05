@@ -37,6 +37,9 @@ String captionErrorMessage(Object error) {
   return switch (code) {
     SlimshotApiException.network =>
       'No connection. Check your internet and try again.',
+    SlimshotApiException.signInRequired => 'Sign in again to use Auto captions.',
+    'INSUFFICIENT_CREDITS' => 'Not enough credits for these captions.',
+    'ACCOUNT_SUSPENDED' => 'This account is suspended.',
     'CAPTIONS_UNAVAILABLE' || 'UNAUTHENTICATED' =>
       'Auto captions are unavailable right now.',
     'PAYLOAD_TOO_LARGE' => 'This video is too long for auto captions.',
