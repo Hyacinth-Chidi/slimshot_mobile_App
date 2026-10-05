@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_settings.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_transcript.dart';
-import 'package:slimshotai/features/video_editor/services/caption_access.dart';
 import 'package:slimshotai/features/video_editor/services/caption_audio_result.dart';
 import 'package:slimshotai/features/video_editor/services/caption_pipeline.dart';
 import 'package:slimshotai/features/video_editor/services/caption_service.dart';
@@ -269,14 +268,5 @@ void main() {
     });
   });
 
-  testWidgets('every run is allowed until sign-in exists', (tester) async {
-    late BuildContext context;
-    await tester.pumpWidget(
-      Builder(builder: (c) {
-        context = c;
-        return const SizedBox();
-      }),
-    );
-    expect(await CaptionAccess.ensureAllowed(context), isTrue);
-  });
+  // Sign-in now exists: the gate is tested in caption_access_test.dart.
 }

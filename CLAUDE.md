@@ -1822,8 +1822,8 @@ using it. The screen takes the first pick from the same picker Add uses and re-s
 **Device-verified by the user**: a set generates, the default look is right, and after the WAV
 and lead fixes the words land on time. Spec: `docs/superpowers/specs/2026-09-29-auto-captions-design.md`,
 Stage 1 plan beside it in `plans/`. Stage 2 (editing) and Stage 3 (word highlight) are the next
-sections, then Stage 4 (caption styles). Sign-in and credits come later and have exactly one hook:
-`CaptionAccess.ensureAllowed`, called once before any audio is rendered, which always opens today.
+sections, then Stage 4 (caption styles). Sign-in and credits have exactly one hook:
+`CaptionAccess.ensureAllowed`, called before the options sheet opens — see "Accounts and credits".
 
 **A caption is an ordinary text overlay**, for the emoji reason: a dedicated caption kind would
 be a second implementation of the text pipeline. `TextOverlayModel` gains `captionSetId` (a
@@ -1867,10 +1867,8 @@ caption makes way for the next one's lead.
 **`SlimshotApi` (`core/services/`) is the app's one server client** — captions are the first
 server feature of several. The address comes only from `--dart-define=SLIMSHOT_API_URL=…`;
 **without it the tool is not shown** (`isToolbarToolVisible`'s `hasCaptionServer`), which is the
-"not offered before it works" rule as code. It registers the device once, keeps the token in
-`shared_preferences` (an anonymous token grants only caption jobs; secure storage arrives with
-sign-in), and on a 401 re-registers **once** — a second refusal is an answer, not a loop; a test
-with the `if` turned into a `while` hangs. **Debug builds allow cleartext** for the LAN test
+"not offered before it works" rule as code. Its requests come in three kinds — signed in,
+sign-in and public — described in "Accounts and credits". **Debug builds allow cleartext** for the LAN test
 server (`android/app/src/debug/AndroidManifest.xml`); release does not, so the deployed server
 must be HTTPS.
 
@@ -3394,6 +3392,68 @@ whole early-out, so an unkeyed clip costs the shader one compare.
 both halves. The sheet is a toggle, four screen colours and three rulers behind pills, with the
 tuning hidden until the key is on; **turning it off keeps the tuning**, so comparing keyed against
 unkeyed is not destructive.
+
+### Accounts and credits — stage 1: sign-in, claim, the pill, Settings
+
+**Awaiting device verification.** Spec:
+`docs/superpowers/specs/2026-10-05-app-accounts-credits-design.md`; plan
+`docs/superpowers/plans/2026-10-05-accounts-stage1.md`. Server contract:
+`slimshot_server/docs/app-credits-api.md`. Getting the Google keys: `docs/google-sign-in-setup.md`.
+Stages 2 (the price step) and 3 (rewarded ads, invites, the Credits screen) follow.
+
+**Signing in is optional; Auto captions is the first thing that needs it.** Google (the
+phone's account picker through `google_sign_in` 7, the Web client ID from
+`--dart-define=SLIMSHOT_GOOGLE_CLIENT_ID=…`, the button hidden without it) or an emailed
+6-digit code. The first sign-in makes the account; a new account then chooses a username and
+claims its free credits (`ClaimSheet`). **No number is promised before the claim** — the
+bonus is the admin's to set and not every email or phone is eligible — so the home pill says
+"Free credits" and only the claim names an amount. No Android ID anywhere: the server's
+per-device rule is per install.
+
+**Every secret is in the keystore** (`TokenVault`, `flutter_secure_storage`): the access and
+refresh tokens, the install token — moved there from `shared_preferences` the first time it is
+read — and the cached `/me`. A value that cannot be decrypted (a backup restored without its
+keystore key) reads as absent, which leaves the app signed out rather than crashing.
+
+**One session, shared** (`AccountSession`, `accountSessionProvider`). **Refreshes take
+turns**: the server lets a refresh token work once and treats a second use as theft, ending
+the session, so `refreshAfter` serialises them — a request refused with an access token that
+has since been replaced just retries with the new one. Only a **401** on the refresh ends a
+session; a 5xx or a proxy page is thrown and the session kept. Any request that ends the
+session — a caption upload included — fires `ended`, and `AccountNotifier` flips the whole
+app to signed out.
+
+**`SlimshotApi` has three kinds of request.** `send` is signed in: the access token as a
+bearer, one refresh on `UNAUTHENTICATED`, then `SIGN_IN_REQUIRED` — never a loop.
+`sendWithDevice` is a sign-in: no bearer, the install token in the body, a
+`DEVICE_NOT_REGISTERED` install registered again once. `sendPublic` carries neither.
+The install token is **not** an access token: the server refuses it as a bearer.
+
+**`requireAccount` is the one door** (`features/account/account_gate.dart`): a kept session
+whose profile has not loaded is refreshed rather than asked to sign in; signed out, the
+sign-in sheet; unclaimed, the claim sheet. `CaptionAccess.ensureAllowed` is it, called
+**before** the Auto captions options sheet, and the caption client is built on the shared
+session. After a run the profile is read again so the pill follows the charge — until stage 2
+there is no confirm before the server charges.
+
+**The signed-in state is app-wide** (`accountProvider`, not autoDispose): the cached profile
+at once, then `/me`; offline, the cached one stays. Three races, each found by a test that
+failed first:
+
+- **An older answer never overwrites a newer one.** Every request whose answer becomes the
+  profile takes a ticket when it *starts*, and an answer older than the last adopted is
+  dropped — the launch's `/me` landing after a claim used to put the account back to
+  "not claimed". The ticket and the state change together with no wait between, so an answer
+  dropped as older can rely on the newer one already being on screen.
+- **A profile never outlives its session.** One that lands after sign-out is not written
+  back, and one whose keystore write overlapped a sign-out is taken back (`_adopt` checks the
+  session again after writing).
+- **Signing out and deleting show it at once.** The session's `ended` event arrives a
+  microtask later, so `_forget` sets the signed-out state itself.
+
+Sign-out works offline — the server is told if it can be. Account sheets are capped at 480 px,
+open through `showEditorSheet`, and the code step's two links wrap rather than overflow at
+large text.
 
 ### Decisions already made â€” don't re-litigate
 
