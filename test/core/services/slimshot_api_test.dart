@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:slimshotai/core/services/slimshot_api.dart';
 
 class MemoryTokens implements DeviceTokenStore {
@@ -184,16 +183,6 @@ void main() {
       api.send(() => http.Request('GET', api.uri('/x'))),
       throwsCode(SlimshotApiException.badResponse),
     );
-  });
-
-  test('the token is kept in preferences', () async {
-    SharedPreferences.setMockInitialValues({});
-    const store = PrefsDeviceTokenStore();
-    expect(await store.read(), isNull);
-    await store.write('t');
-    expect(await store.read(), 't');
-    await store.clear();
-    expect(await store.read(), isNull);
   });
 
   test('a build without a server address has no server', () {

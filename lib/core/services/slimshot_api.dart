@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'token_vault.dart';
+
 /// A request the server refused, or one that never reached it.
 class SlimshotApiException implements Exception {
   const SlimshotApiException(this.code, [this.message = '']);
@@ -32,31 +34,40 @@ abstract class DeviceTokenStore {
   Future<void> clear();
 }
 
-/// The token in `shared_preferences`.
+/// The install token, in the [TokenVault].
 ///
-/// An anonymous device token grants only caption jobs. It moves to secure
-/// storage when sign-in makes a token worth protecting.
-class PrefsDeviceTokenStore implements DeviceTokenStore {
-  const PrefsDeviceTokenStore();
+/// It used to live in `shared_preferences`; once sign-in made the install a
+/// key to an account it was worth protecting. It moves the first time it is
+/// read — the old copy is removed only after the new one is written, so a
+/// move cut short loses nothing.
+class SecureDeviceTokenStore implements DeviceTokenStore {
+  const SecureDeviceTokenStore([this._vault = const SecureTokenVault()]);
 
-  static const String key = 'slimshot_device_token';
+  final TokenVault _vault;
+
+  static const String vaultKey = 'slimshot_device_token';
+  static const String legacyPrefsKey = 'slimshot_device_token';
 
   @override
   Future<String?> read() async {
+    final stored = await _vault.read(vaultKey);
+    if (stored != null) return stored;
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(key);
+    final legacy = prefs.getString(legacyPrefsKey);
+    if (legacy == null) return null;
+    await _vault.write(vaultKey, legacy);
+    await prefs.remove(legacyPrefsKey);
+    return legacy;
   }
 
   @override
-  Future<void> write(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(key, token);
-  }
+  Future<void> write(String token) => _vault.write(vaultKey, token);
 
   @override
   Future<void> clear() async {
+    await _vault.delete(vaultKey);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(key);
+    await prefs.remove(legacyPrefsKey);
   }
 }
 
@@ -69,7 +80,7 @@ class SlimshotApi {
   SlimshotApi({
     required String baseUrl,
     http.Client? client,
-    DeviceTokenStore tokens = const PrefsDeviceTokenStore(),
+    DeviceTokenStore tokens = const SecureDeviceTokenStore(),
   })  : _base = baseUrl.endsWith('/')
             ? baseUrl.substring(0, baseUrl.length - 1)
             : baseUrl,

@@ -46,6 +46,8 @@ dependencies:
 
   # Utils
   uuid: ^4.4.0
+  # Sign-in tokens and the install token, in the platform keystore.
+  flutter_secure_storage: ^10.3.4
 
   # Update System
   http: ^1.2.1
