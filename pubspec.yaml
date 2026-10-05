@@ -48,6 +48,8 @@ dependencies:
   uuid: ^4.4.0
   # Sign-in tokens and the install token, in the platform keystore.
   flutter_secure_storage: ^10.3.4
+  # Sign in with Google: the account picker (Credential Manager), no browser.
+  google_sign_in: ^7.2.0
 
   # Update System
   http: ^1.2.1
