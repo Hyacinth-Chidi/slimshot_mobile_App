@@ -98,32 +98,37 @@ class AccountNotifier extends StateNotifier<AccountState> {
   /// [AccountSession.ended] turns into signed out.
   Future<void> refresh() async {
     if (await _session.read() == null) return;
+    final ticket = _nextTicket();
     try {
-      await _adopt(await _service.me());
+      await _adopt(await _service.me(), ticket);
     } on SlimshotApiException catch (e) {
       debugPrint('AccountNotifier.refresh: ${e.code}');
     }
   }
 
   Future<void> completeSignIn(SignInResult result) async {
+    final ticket = _nextTicket();
     await _session.save(result.tokens);
-    await _adopt(result.user);
+    await _adopt(result.user, ticket);
   }
 
   Future<ClaimResult> claim({
     required String username,
     String? referralCode,
   }) async {
+    final ticket = _nextTicket();
     final result = await _service.claim(
       username: username,
       referralCode: referralCode,
     );
-    await _adopt(result.user);
+    await _adopt(result.user, ticket);
     return result;
   }
 
-  Future<void> changeUsername(String name) async =>
-      _adopt(await _service.changeUsername(name));
+  Future<void> changeUsername(String name) async {
+    final ticket = _nextTicket();
+    await _adopt(await _service.changeUsername(name), ticket);
+  }
 
   /// Ends the session here whether or not the server hears about it: a
   /// sign-out that waited for a connection would leave the account open on a
@@ -156,19 +161,31 @@ class AccountNotifier extends StateNotifier<AccountState> {
     if (mounted) state = const AccountState();
   }
 
-  /// Keeps [user] — unless the session ended while the answer was on its
-  /// way, in which case nothing personal is written back. A keystore write
-  /// is slow enough for a sign-out to land in the middle of it, so the
-  /// session is checked again once the profile is written, and a profile
-  /// that outlived its session is taken back.
-  Future<void> _adopt(AccountUser user) async {
-    if (await _session.read() == null) return;
-    await _session.saveProfile(jsonEncode(user.toJson()));
-    if (await _session.read() == null) {
-      await _session.end();
-      return;
-    }
+  /// Every request whose answer becomes the profile takes a ticket when it
+  /// **starts**. Answers can land in any order — the launch's `/me` after a
+  /// claim made since, say — and an answer older than the last one adopted
+  /// would put back a profile the user has already moved past.
+  int _issued = 0;
+  int _adopted = 0;
+
+  int _nextTicket() => ++_issued;
+
+  /// Shows and keeps [user], the answer to the request that took [ticket] —
+  /// unless a newer answer was adopted first, or the session ended while it
+  /// was on its way, in which case nothing personal is written back.
+  ///
+  /// The ticket and the state change together, with no wait between: an
+  /// answer dropped as older can then rely on the newer one already being on
+  /// screen. A keystore write is slow enough for a sign-out to land in the
+  /// middle of it, so the session is checked again once the profile is
+  /// written, and a profile that outlived its session is taken back.
+  Future<void> _adopt(AccountUser user, int ticket) async {
+    if (ticket < _adopted || await _session.read() == null) return;
+    if (ticket < _adopted) return; // a newer answer landed during the read
+    _adopted = ticket;
     if (mounted) state = AccountState(user: user);
+    await _session.saveProfile(jsonEncode(user.toJson()));
+    if (await _session.read() == null) await _session.end();
   }
 
   @override

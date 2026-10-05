@@ -209,6 +209,35 @@ void main() {
     expect(await session.read(), isNotNull);
   });
 
+  test('an older answer never overwrites a newer one', () async {
+    // The launch's /me is still on its way when the user claims; when it
+    // lands it must not put the account back to "not claimed".
+    final slowMe = Completer<http.Response>();
+    server
+      ..on('GET', '/me', (_) => slowMe.future)
+      ..on(
+        'POST',
+        '/me/claim',
+        (_) => envelope({
+          'user': userJson(balance: 100),
+          'bonus': {'granted': true, 'credits': 100},
+          'referral': null,
+        }),
+      );
+    final c = containerWith(
+      session: signedInSession(profile: userJson(needsClaim: true, balance: 0)),
+    );
+    c.read(accountProvider);
+    await pumpEventQueue();
+
+    await c.read(accountProvider.notifier).claim(username: 'ann_1');
+    slowMe.complete(envelope(userJson(needsClaim: true, balance: 0)));
+    await pumpEventQueue();
+
+    expect(c.read(accountProvider).needsClaim, isFalse);
+    expect(c.read(accountProvider).user!.creditBalance, 100);
+  });
+
   test('claiming adopts the claimed profile', () async {
     server
       ..on('GET', '/me', (_) => envelope(userJson(needsClaim: true, balance: 0)))
