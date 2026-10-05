@@ -44,3 +44,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 android/.kotlin/
+
+# Local run settings (server address, Google client ID): see docs/google-sign-in-setup.md
+dart_defines.json
