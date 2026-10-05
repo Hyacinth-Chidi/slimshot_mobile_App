@@ -3471,6 +3471,32 @@ shell's floating nav is painted above them, so a sheet opened on a tab's navigat
 *under* the nav. Any sheet reachable from a tab must do the same. The email step's
 **Continue stays off until the field holds an email address**.
 
+### Home and Settings — a colour field and glass; the editor stays dark
+
+**Awaiting device verification** for the latest pass (the first two were approved on the device).
+Home and Settings sit on **`ColourFieldBackdrop`** (`core/widgets/`): large soft blobs of
+purple, deep purple, lilac and a little white, Figma blurred-shapes style, drawn as radial
+gradients rather than through `ImageFiltered` so a scroll pays no full-screen blur. Their surfaces
+are **`FrostedGlass`**: a backdrop blur under a fill running white → purple → deep purple, a
+lilac glow pooled in the bottom-right corner, and an edge lit at the top left. `blurSigma: 0`
+drops the blur where content covers it anyway (draft thumbnails, the account sheets).
+`SettingsGroup` is the glass for a group of Settings rows; `GlassCard` is gone.
+
+- **The Edit Video card is solid** — deep purple behind the words, brighter behind the image —
+  so the one primary action outranks the glass tools under it.
+- **Accents that sit on purple use `AppColors.lilac`, never the brand purple**, which vanishes
+  there; "Video" is `lightAccentGradient` (white into lilac). Grey text on the field moves from
+  tertiary to secondary for the same reason. The coin is **`AppColors.credit`** (amber).
+- **The credits pill is pinned to the right edge** (`HomeHeader`'s brand is `Expanded`): a
+  `Flexible` brand let a short balance sit against it.
+- **The editor and its sheets stay plain dark — decided, not pending.** Colour is judged there
+  (filters, Adjust, chroma key, the background), and a purple field around the picture shifts how
+  the footage reads, so the export looks different from what was approved; a glass sheet would
+  also blur the very frame being judged, over a live texture, on low-end GPUs. Purple stays an
+  accent in the editor. **Account sheets** wear the glass over home and Settings and stay plain
+  when the editor opens them (Auto captions): `requireAccount(inEditor: true)` sets
+  `AccountSheetLook`. No light mode: dark is the editing standard, and the field is a dark look.
+
 ### Decisions already made â€” don't re-litigate
 
 | Question | Decision |

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../video_editor/widgets/panels/editor_sheet.dart';
 import 'providers/account_providers.dart';
+import 'widgets/account_sheet_frame.dart';
 import 'widgets/claim_sheet.dart';
 import 'widgets/sign_in_sheet.dart';
 
@@ -10,12 +11,17 @@ import 'widgets/sign_in_sheet.dart';
 /// signed out, then the claim sheet for an account that has not claimed.
 /// Answers whether the user came through signed in and claimed.
 ///
-/// [reason] is the sign-in sheet's heading — why it opened.
+/// [reason] is the sign-in sheet's heading — why it opened. [inEditor] keeps
+/// the sheets plain dark, as every editor sheet is (`AccountSheetLook`).
 Future<bool> requireAccount(
   BuildContext context,
   WidgetRef ref, {
   required String reason,
+  bool inEditor = false,
 }) async {
+  Widget dressed(Widget sheet) =>
+      AccountSheetLook(inEditor: inEditor, child: sheet);
+
   final notifier = ref.read(accountProvider.notifier);
   if (!ref.read(accountProvider).isSignedIn) {
     // A kept session whose profile has not loaded yet is still a session.
@@ -26,7 +32,7 @@ Future<bool> requireAccount(
     final signedIn = await showEditorSheet<bool>(
       context,
       useRootNavigator: true,
-      builder: (_) => SignInSheet(reason: reason),
+      builder: (_) => dressed(SignInSheet(reason: reason)),
     );
     if (signedIn != true || !context.mounted) return false;
   }
@@ -37,7 +43,7 @@ Future<bool> requireAccount(
     await showEditorSheet<bool>(
       context,
       useRootNavigator: true,
-      builder: (_) => const ClaimSheet(),
+      builder: (_) => dressed(const ClaimSheet()),
     );
   }
   final account = ref.read(accountProvider);

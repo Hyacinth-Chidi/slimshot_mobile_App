@@ -10,5 +10,10 @@ class CaptionAccess {
   const CaptionAccess._();
 
   static Future<bool> ensureAllowed(BuildContext context, WidgetRef ref) =>
-      requireAccount(context, ref, reason: 'Sign in to use Auto captions');
+      requireAccount(
+        context,
+        ref,
+        reason: 'Sign in to use Auto captions',
+        inEditor: true,
+      );
 }

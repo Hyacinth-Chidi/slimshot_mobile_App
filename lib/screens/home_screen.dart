@@ -543,7 +543,6 @@ class _HeroActionCard extends StatefulWidget {
 
 class _HeroActionCardState extends State<_HeroActionCard> {
   bool _isPressed = false;
-  final Color _primaryColor = AppColors.primaryStart;
 
   @override
   Widget build(BuildContext context) {
@@ -555,12 +554,28 @@ class _HeroActionCardState extends State<_HeroActionCard> {
         widget.onTap();
       },
       onTapCancel: () => setState(() => _isPressed = false),
-      child: FrostedGlass(
+      // Solid, unlike the glass tools under it: the one primary action on
+      // the screen. Deep purple behind the words, brighter behind the image,
+      // so the lilac of "Video" keeps its contrast.
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        tint: _isPressed ? _primaryColor.withValues(alpha: 0.16) : null,
         child:
-            SizedBox(
+            AnimatedContainer(
+                  duration: 120.ms,
                   height: 160,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: _isPressed
+                          ? const [AppColors.primaryEnd, AppColors.primaryEnd]
+                          : const [AppColors.primaryEnd, AppColors.primaryStart],
+                    ),
+                    border: Border.all(
+                      color: AppColors.textPrimary.withValues(alpha: 0.18),
+                    ),
+                  ),
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
@@ -575,7 +590,9 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                             width: 140,
                             height: 140,
                             decoration: BoxDecoration(
-                              color: _primaryColor.withValues(alpha: 0.08),
+                              color: AppColors.textPrimary.withValues(
+                                alpha: 0.10,
+                              ),
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -643,7 +660,9 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 12,
                                     height: 1.4,
-                                    color: AppColors.textSecondary,
+                                    color: AppColors.textPrimary.withValues(
+                                      alpha: 0.8,
+                                    ),
                                   ),
                                 ),
                               ],

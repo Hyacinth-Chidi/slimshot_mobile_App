@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/widgets/frosted_glass.dart';
+import 'package:slimshotai/features/account/widgets/sign_in_sheet.dart';
 import 'package:slimshotai/features/video_editor/services/caption_access.dart';
 
 import '../../../support/account_harness.dart';
@@ -17,6 +19,26 @@ void main() {
     await tester.tap(find.text('open'));
     await settle(tester);
     expect(find.text('Sign in to use Auto captions'), findsOneWidget);
+  });
+
+  testWidgets("the sign-in sheet stays plain dark, as the editor's sheets are",
+      (tester) async {
+    await pumpHost(
+      tester,
+      accountOverrides(FakeServer()),
+      (context, ref) => CaptionAccess.ensureAllowed(context, ref),
+    );
+    await tester.tap(find.text('open'));
+    await settle(tester);
+
+    expect(find.byType(SignInSheet), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(SignInSheet),
+        matching: find.byType(FrostedGlass),
+      ),
+      findsNothing,
+    );
   });
 
   test(
