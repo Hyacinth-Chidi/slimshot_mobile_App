@@ -8,7 +8,7 @@ import '../theme/app_colors.dart';
 /// runs from a white sheen through purple, with a lilac glow pooled in the
 /// far corner and an edge that catches the light at the top left.
 ///
-/// Made for surfaces over the home screen's colour field (`HomeBackdrop`).
+/// Made for surfaces over the colour field (`ColourFieldBackdrop`).
 /// The cards there used to be tinted Zinc grey, which over purple reads as
 /// mud rather than glass. A plain white sheen fixed that but left each card
 /// a window onto whatever was behind it; mixing white into purple gives the

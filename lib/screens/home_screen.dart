@@ -20,7 +20,7 @@ import '../core/models/draft_project.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/frosted_glass.dart';
 import '../core/widgets/permission_dialog.dart';
-import 'home_backdrop.dart';
+import '../core/widgets/colour_field_backdrop.dart';
 import 'home_header.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -176,7 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          const Positioned.fill(child: HomeBackdrop()),
+          const Positioned.fill(child: ColourFieldBackdrop()),
 
           SafeArea(
             child: CustomScrollView(

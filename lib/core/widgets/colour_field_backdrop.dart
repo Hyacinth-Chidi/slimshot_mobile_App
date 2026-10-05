@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../core/theme/app_colors.dart';
+import '../theme/app_colors.dart';
 
-/// The home screen's colour field: soft purple, lilac and white light behind
-/// the glass cards, in the manner of a Figma blurred-shapes background.
+/// The colour field behind the home and Settings screens: soft purple, lilac
+/// and white light behind the glass cards, in the manner of a Figma
+/// blurred-shapes background.
 ///
 /// The cards blur what is behind them, and over a flat near-black there was
 /// nothing for the blur to show. Varying colour gives it something to soften.
@@ -13,12 +14,15 @@ import '../core/theme/app_colors.dart';
 /// blur would be recomputed on every frame of a scroll, and this costs
 /// nothing beyond a gradient fill. Sizes and places are fractions of the
 /// screen, so a tablet gets the same composition as a phone.
-class HomeBackdrop extends StatelessWidget {
-  const HomeBackdrop({super.key});
+class ColourFieldBackdrop extends StatelessWidget {
+  const ColourFieldBackdrop({super.key});
 
   /// Purple and white mixed — the lilac between the two.
-  static final Color _lilac =
-      Color.lerp(AppColors.primaryStart, AppColors.textPrimary, 0.55)!;
+  static final Color _lilac = Color.lerp(
+    AppColors.primaryStart,
+    AppColors.textPrimary,
+    0.55,
+  )!;
 
   @override
   Widget build(BuildContext context) {

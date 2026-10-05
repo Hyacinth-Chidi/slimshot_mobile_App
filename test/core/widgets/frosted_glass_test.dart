@@ -44,8 +44,9 @@ void main() {
     expect(find.byType(BackdropFilter), findsNothing);
   });
 
-  testWidgets('a tint colours the pane; none leaves the designed fill',
-      (tester) async {
+  testWidgets('a tint colours the pane; none leaves the designed fill', (
+    tester,
+  ) async {
     await pump(
       tester,
       FrostedGlass(

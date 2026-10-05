@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/lucide_icons.dart';
 import '../../../core/utils/toast_utils.dart';
-import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/settings_rows.dart';
 import '../../video_editor/widgets/panels/editor_sheet.dart';
 import '../account_gate.dart';
@@ -25,11 +24,17 @@ class SettingsAccountSection extends ConsumerWidget {
     final user = ref.watch(accountProvider).user;
 
     void signIn() => unawaited(
-          requireAccount(context, ref, reason: 'Sign in to get free credits'),
-        );
+      requireAccount(context, ref, reason: 'Sign in to get free credits'),
+    );
 
     final rows = user == null
-        ? [SettingsItem(icon: LucideIcons.user, title: 'Sign in', onTap: signIn)]
+        ? [
+            SettingsItem(
+              icon: LucideIcons.user,
+              title: 'Sign in',
+              onTap: signIn,
+            ),
+          ]
         : [
             SettingsItem(
               icon: LucideIcons.atSign,
@@ -41,11 +46,13 @@ class SettingsAccountSection extends ConsumerWidget {
                   signIn(); // not claimed yet: the claim sets the name
                   return;
                 }
-                unawaited(showEditorSheet<void>(
-                  context,
-                  useRootNavigator: true,
-                  builder: (_) => UsernameSheet(current: current),
-                ));
+                unawaited(
+                  showEditorSheet<void>(
+                    context,
+                    useRootNavigator: true,
+                    builder: (_) => UsernameSheet(current: current),
+                  ),
+                );
               },
             ),
             const SettingsDivider(),
@@ -71,11 +78,13 @@ class SettingsAccountSection extends ConsumerWidget {
               icon: LucideIcons.trash2,
               title: 'Delete account',
               isDanger: true,
-              onTap: () => unawaited(showEditorSheet<void>(
-                context,
-                useRootNavigator: true,
-                builder: (_) => const DeleteAccountSheet(),
-              )),
+              onTap: () => unawaited(
+                showEditorSheet<void>(
+                  context,
+                  useRootNavigator: true,
+                  builder: (_) => const DeleteAccountSheet(),
+                ),
+              ),
             ),
           ];
 
@@ -84,7 +93,7 @@ class SettingsAccountSection extends ConsumerWidget {
       children: [
         const SettingsSectionHeader(title: 'ACCOUNT'),
         const SizedBox(height: 8),
-        GlassCard(padding: EdgeInsets.zero, child: Column(children: rows)),
+        SettingsGroup(children: rows),
         const SizedBox(height: 28),
       ],
     );

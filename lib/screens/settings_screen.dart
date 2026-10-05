@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../core/theme/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme/app_colors.dart';
-import '../core/widgets/glass_card.dart';
+import '../core/widgets/colour_field_backdrop.dart';
 import '../core/utils/file_utils.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/responsive_layout.dart';
@@ -18,26 +18,10 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       body: Stack(
         children: [
-
-          Positioned(
-            top: -80,
-            right: -60,
-            child: Container(
-              width: 200,
-              height: 200,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.primaryStart.withValues(alpha: 0.15),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
+          const Positioned.fill(child: ColourFieldBackdrop()),
 
           SafeArea(
             child: ResponsiveCenter(
@@ -76,19 +60,16 @@ class SettingsScreen extends StatelessWidget {
                           title: 'GENERAL',
                         ).animate().fadeIn(delay: 100.ms),
                         const SizedBox(height: 8),
-                        GlassCard(
-                          padding: EdgeInsets.zero,
-                          child: Column(
-                            children: [
-                              SettingsItem(
-                                icon: LucideIcons.info,
-                                title: 'App Version',
-                                subtitle: 'v2.0.0 (2)',
-                                showChevron: false,
-                                onTap: () {},
-                              ),
-                            ],
-                          ),
+                        SettingsGroup(
+                          children: [
+                            SettingsItem(
+                              icon: LucideIcons.info,
+                              title: 'App Version',
+                              subtitle: 'v2.0.0 (2)',
+                              showChevron: false,
+                              onTap: () {},
+                            ),
+                          ],
                         ).animate().fadeIn(delay: 150.ms).slideY(begin: 0.1),
 
                         const SizedBox(height: 28),
@@ -97,62 +78,59 @@ class SettingsScreen extends StatelessWidget {
                           title: 'DATA & STORAGE',
                         ).animate().fadeIn(delay: 250.ms),
                         const SizedBox(height: 8),
-                        GlassCard(
-                          padding: EdgeInsets.zero,
-                          child: Column(
-                            children: [
-                              SettingsItem(
-                                icon: LucideIcons.refreshCw,
+                        SettingsGroup(
+                          children: [
+                            SettingsItem(
+                              icon: LucideIcons.refreshCw,
+                              title: 'Reset Onboarding',
+                              subtitle: 'Show welcome screen again',
+                              onTap: () => _showConfirmDialog(
+                                context,
                                 title: 'Reset Onboarding',
-                                subtitle: 'Show welcome screen again',
-                                onTap: () => _showConfirmDialog(
-                                  context,
-                                  title: 'Reset Onboarding',
-                                  message:
-                                      'This will show the onboarding screen again on next app launch.',
-                                  confirmLabel: 'Reset',
-                                  onConfirm: () async {
-                                    final prefs =
-                                        await SharedPreferences.getInstance();
-                                    await prefs.setBool(
-                                      'hasSeenOnboarding',
-                                      false,
+                                message:
+                                    'This will show the onboarding screen again on next app launch.',
+                                confirmLabel: 'Reset',
+                                onConfirm: () async {
+                                  final prefs =
+                                      await SharedPreferences.getInstance();
+                                  await prefs.setBool(
+                                    'hasSeenOnboarding',
+                                    false,
+                                  );
+                                  if (context.mounted) {
+                                    ToastUtils.show(
+                                      context,
+                                      'Onboarding will show on next launch',
                                     );
-                                    if (context.mounted) {
-                                      ToastUtils.show(
-                                        context,
-                                        'Onboarding will show on next launch',
-                                      );
-                                    }
-                                  },
-                                ),
+                                  }
+                                },
                               ),
-                              const SettingsDivider(),
-                              SettingsItem(
-                                icon: LucideIcons.trash2,
+                            ),
+                            const SettingsDivider(),
+                            SettingsItem(
+                              icon: LucideIcons.trash2,
+                              title: 'Clear Cache',
+                              subtitle: 'Remove temporary files',
+                              isDanger: true,
+                              onTap: () => _showConfirmDialog(
+                                context,
                                 title: 'Clear Cache',
-                                subtitle: 'Remove temporary files',
+                                message:
+                                    'This will remove all cached compression data.',
+                                confirmLabel: 'Clear',
                                 isDanger: true,
-                                onTap: () => _showConfirmDialog(
-                                  context,
-                                  title: 'Clear Cache',
-                                  message:
-                                      'This will remove all cached compression data.',
-                                  confirmLabel: 'Clear',
-                                  isDanger: true,
-                                  onConfirm: () async {
-                                    final count = await FileUtils.clearCache();
-                                    if (context.mounted) {
-                                      ToastUtils.show(
-                                        context,
-                                        '$count cached files cleared',
-                                      );
-                                    }
-                                  },
-                                ),
+                                onConfirm: () async {
+                                  final count = await FileUtils.clearCache();
+                                  if (context.mounted) {
+                                    ToastUtils.show(
+                                      context,
+                                      '$count cached files cleared',
+                                    );
+                                  }
+                                },
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.1),
                         const SizedBox(height: 28),
 
@@ -160,29 +138,31 @@ class SettingsScreen extends StatelessWidget {
                           title: 'LEGAL',
                         ).animate().fadeIn(delay: 350.ms),
                         const SizedBox(height: 8),
-                        GlassCard(
-                          padding: EdgeInsets.zero,
-                          child: Column(
-                            children: [
-                              SettingsItem(
-                                icon: LucideIcons.shield,
-                                title: 'Privacy Policy',
-                                subtitle: 'Review our data practices',
-                                onTap: () async {
-                                  final url = Uri.parse('https://slimshotai.vercel.app/privacy');
-                                  if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-                                    if (context.mounted) {
-                                      ToastUtils.show(
-                                        context,
-                                        'Could not open privacy policy',
-                                        isError: true,
-                                      );
-                                    }
+                        SettingsGroup(
+                          children: [
+                            SettingsItem(
+                              icon: LucideIcons.shield,
+                              title: 'Privacy Policy',
+                              subtitle: 'Review our data practices',
+                              onTap: () async {
+                                final url = Uri.parse(
+                                  'https://slimshotai.vercel.app/privacy',
+                                );
+                                if (!await launchUrl(
+                                  url,
+                                  mode: LaunchMode.externalApplication,
+                                )) {
+                                  if (context.mounted) {
+                                    ToastUtils.show(
+                                      context,
+                                      'Could not open privacy policy',
+                                      isError: true,
+                                    );
                                   }
-                                },
-                              ),
-                            ],
-                          ),
+                                }
+                              },
+                            ),
+                          ],
                         ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.1),
 
                         const SizedBox(height: 48),
@@ -204,7 +184,7 @@ class SettingsScreen extends StatelessWidget {
                                       TextSpan(
                                         text: 'AI',
                                         style: TextStyle(
-                                          color: AppColors.primaryStart,
+                                          color: AppColors.lilac,
                                         ),
                                       ),
                                     ],
@@ -214,7 +194,7 @@ class SettingsScreen extends StatelessWidget {
                                 const Text(
                                   'Powered by TechFamz',
                                   style: TextStyle(
-                                    color: AppColors.textTertiary,
+                                    color: AppColors.textSecondary,
                                     fontSize: 13,
                                   ),
                                 ),
@@ -223,7 +203,9 @@ class SettingsScreen extends StatelessWidget {
                             .animate()
                             .fadeIn(delay: 600.ms)
                             .slideY(begin: 0.2, end: 0),
-                        const SizedBox(height: 100), // Padding for global nav bar
+                        const SizedBox(
+                          height: 100,
+                        ), // Padding for global nav bar
                       ],
                     ),
                   ),
@@ -286,5 +268,3 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 }
-
-

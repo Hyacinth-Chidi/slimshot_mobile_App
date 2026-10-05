@@ -2,6 +2,26 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/lucide_icons.dart';
+import 'frosted_glass.dart';
+
+/// One card of Settings rows: the home screen's frosted glass, so Settings
+/// sits on the same colour field in the same material.
+class SettingsGroup extends StatelessWidget {
+  const SettingsGroup({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return FrostedGlass(
+      borderRadius: BorderRadius.circular(24),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(children: children),
+      ),
+    );
+  }
+}
 
 class SettingsSectionHeader extends StatelessWidget {
   final String title;
@@ -14,7 +34,7 @@ class SettingsSectionHeader extends StatelessWidget {
       child: Text(
         title,
         style: const TextStyle(
-          color: AppColors.textTertiary,
+          color: AppColors.textSecondary,
           fontSize: 12,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.5,
@@ -45,7 +65,7 @@ class SettingsItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.transparent,
+      type: MaterialType.transparency,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
@@ -56,16 +76,22 @@ class SettingsItem extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
+                // The home tool cards' tile: a little white on the glass.
                 decoration: BoxDecoration(
                   color: isDanger
                       ? AppColors.error.withValues(alpha: 0.15)
-                      : AppColors.surfaceLight.withValues(alpha: 0.5),
+                      : AppColors.textPrimary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDanger
+                        ? AppColors.error.withValues(alpha: 0.30)
+                        : AppColors.textPrimary.withValues(alpha: 0.14),
+                  ),
                 ),
                 child: Icon(
                   icon,
                   size: 20,
-                  color: isDanger ? AppColors.error : AppColors.textSecondary,
+                  color: isDanger ? AppColors.error : AppColors.textPrimary,
                 ),
               ),
               const SizedBox(width: 16),
@@ -89,7 +115,7 @@ class SettingsItem extends StatelessWidget {
                         subtitle!,
                         style: const TextStyle(
                           fontSize: 13,
-                          color: AppColors.textTertiary,
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ],
@@ -99,7 +125,7 @@ class SettingsItem extends StatelessWidget {
               if (showChevron)
                 const Icon(
                   LucideIcons.chevronRight,
-                  color: AppColors.textTertiary,
+                  color: AppColors.textSecondary,
                   size: 18,
                 ),
             ],
@@ -117,7 +143,10 @@ class SettingsDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Divider(height: 1, color: AppColors.border.withValues(alpha: 0.4)),
+      child: Divider(
+        height: 1,
+        color: AppColors.textPrimary.withValues(alpha: 0.08),
+      ),
     );
   }
 }
