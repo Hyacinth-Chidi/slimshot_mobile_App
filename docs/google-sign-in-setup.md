@@ -136,40 +136,35 @@ GOOGLE_CLIENT_IDS=1234567890-abcdefg.apps.googleusercontent.com
 - Left empty, the server answers Google sign-in with `SIGN_IN_METHOD_UNAVAILABLE`. The app then
   says "Use your email instead".
 
-## Step 7 — Put the same ID in the app's command
+## Step 7 — Put the same ID in the app's env file
 
-The app reads it at build time, so it goes on the command line, beside the server address you
-already pass.
-
-**Testing on your phone:**
-
-```powershell
-flutter run `
-  --dart-define=SLIMSHOT_API_URL=http://192.168.1.158:2700 `
-  --dart-define=SLIMSHOT_GOOGLE_CLIENT_ID=1234567890-abcdefg.apps.googleusercontent.com
-```
-
-**Release for the Play Store** (once the VPS has HTTPS):
-
-```powershell
-flutter build appbundle `
-  --dart-define=SLIMSHOT_API_URL=https://api.your-domain.com `
-  --dart-define=SLIMSHOT_GOOGLE_CLIENT_ID=1234567890-abcdefg.apps.googleusercontent.com
-```
-
-Without `SLIMSHOT_GOOGLE_CLIENT_ID` the app simply shows no Google button, and email sign-in still
-works.
-
-**To save typing:** put both values in a file such as `dart_defines.json` in the app's folder:
+The app reads its settings at build time from **`env/env.json`**. The file stays on your machine
+and is not committed; `env/env.example.json` beside it shows the keys.
 
 ```json
 {
-  "SLIMSHOT_API_URL": "http://192.168.1.158:2700",
+  "SLIMSHOT_API_URL": "https://slimshot-server.techfamz.com",
   "SLIMSHOT_GOOGLE_CLIENT_ID": "1234567890-abcdefg.apps.googleusercontent.com"
 }
 ```
 
-Then run `flutter run --dart-define-from-file=dart_defines.json`.
+**Testing on your phone:**
+
+```powershell
+flutter run --dart-define-from-file=env/env.json
+```
+
+**Release for the Play Store:**
+
+```powershell
+flutter build appbundle --dart-define-from-file=env/env.json
+```
+
+To test against a server on your own computer instead, set `SLIMSHOT_API_URL` to
+`http://<your-ip>:2700`. Only debug builds allow plain `http`.
+
+Without `SLIMSHOT_GOOGLE_CLIENT_ID` (or with it empty) the app simply shows no Google button, and
+email sign-in still works.
 
 ## Step 8 — Check it
 
@@ -183,7 +178,7 @@ Then run `flutter run --dart-define-from-file=dart_defines.json`.
 
 | What you see | Usual cause |
 |---|---|
-| No Google button | The app was not run with `--dart-define=SLIMSHOT_GOOGLE_CLIENT_ID=…`. |
+| No Google button | `SLIMSHOT_GOOGLE_CLIENT_ID` is missing from `env/env.json`, or the app was run without `--dart-define-from-file=env/env.json`. |
 | The account list never appears, or closes at once | No Android client matches this build's SHA-1 and package name, or the clients are in a different project from the Web client. Check Step 3 for the key this build was signed with, and wait a few minutes after creating clients. On an emulator, use an image **with Google Play**. |
 | "Google sign-in didn't work. Try again." | The server answered `GOOGLE_TOKEN_INVALID`. The ID in the app and in `GOOGLE_CLIENT_IDS` differ, or the server's clock is wrong. |
 | "Use your email instead." | `GOOGLE_CLIENT_IDS` is empty or the server wasn't restarted, or that Google account has no verified email. |

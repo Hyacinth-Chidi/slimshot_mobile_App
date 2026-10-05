@@ -9,7 +9,7 @@ proxies; FFmpeg itself stays in the app for the compression feature.
 ## Commands
 
 ```powershell
-flutter run
+flutter run --dart-define-from-file=env/env.json
 flutter test
 flutter analyze --no-pub
 flutter build apk --debug
@@ -1865,7 +1865,10 @@ and have the lead added back, so Stage 3's highlight stays on the spoken word. T
 caption makes way for the next one's lead.
 
 **`SlimshotApi` (`core/services/`) is the app's one server client** — captions are the first
-server feature of several. The address comes only from `--dart-define=SLIMSHOT_API_URL=…`;
+server feature of several. The address comes only from the `SLIMSHOT_API_URL` define, kept with
+the Google client ID in **`env/env.json`** (not committed; `env/env.example.json` shows the keys;
+production is `https://slimshot-server.techfamz.com`) and passed with
+`--dart-define-from-file=env/env.json`;
 **without it the tool is not shown** (`isToolbarToolVisible`'s `hasCaptionServer`), which is the
 "not offered before it works" rule as code. Its requests come in three kinds — signed in,
 sign-in and public — described in "Accounts and credits". **Debug builds allow cleartext** for the LAN test

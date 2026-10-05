@@ -45,5 +45,5 @@ app.*.map.json
 /android/app/release
 android/.kotlin/
 
-# Local run settings (server address, Google client ID): see docs/google-sign-in-setup.md
-dart_defines.json
+# This machine's run settings (server address, Google client ID): `flutter run --dart-define-from-file=env/env.json`. env/env.example.json shows the keys.
+env/env.json
