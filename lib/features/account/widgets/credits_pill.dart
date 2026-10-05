@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/lucide_icons.dart';
+import '../../../core/widgets/frosted_glass.dart';
 import '../account_gate.dart';
 import '../providers/account_providers.dart';
 
@@ -69,30 +70,38 @@ class _Pill extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
 
+  static final Color _coin =
+      Color.lerp(AppColors.primaryStart, AppColors.textPrimary, 0.45)!;
+
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      shape: const StadiumBorder(side: BorderSide(color: AppColors.border)),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 16, color: AppColors.primaryStart),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+    // The home cards' glass, so the pill sits on the colour field as one of
+    // them. The coin takes the field's lilac: the brand purple is too dark
+    // to read on a purple-lit pane.
+    return FrostedGlass(
+      borderRadius: BorderRadius.circular(999),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: _coin),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

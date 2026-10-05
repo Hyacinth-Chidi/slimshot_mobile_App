@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -19,6 +18,7 @@ import '../core/services/draft_service.dart';
 import '../core/services/draft_refresh_notifier.dart';
 import '../core/models/draft_project.dart';
 import '../core/utils/toast_utils.dart';
+import '../core/widgets/frosted_glass.dart';
 import '../core/widgets/permission_dialog.dart';
 import 'home_backdrop.dart';
 import 'home_header.dart';
@@ -300,39 +300,30 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             )
                           else if (_recentDrafts.isEmpty)
-                            Container(
-                                  height: 120,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surfaceLight.withValues(
-                                      alpha: 0.3,
-                                    ),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: AppColors.border.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                      style: BorderStyle.solid,
-                                    ),
-                                  ),
-                                  child: Center(
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        const Icon(
-                                          LucideIcons.inbox,
-                                          color: AppColors.textTertiary,
-                                          size: 32,
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Your recent video drafts will appear here',
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 13,
-                                            color: AppColors.textSecondary,
+                            FrostedGlass(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: SizedBox(
+                                    height: 120,
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            LucideIcons.inbox,
+                                            color: AppColors.textTertiary,
+                                            size: 32,
                                           ),
-                                        ),
-                                      ],
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Your recent video drafts will appear here',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 13,
+                                              color: AppColors.textSecondary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 )
@@ -380,19 +371,9 @@ class _HomeScreenState extends State<HomeScreen> {
         await context.push('/edit/video', extra: draft);
         _loadDrafts();
       },
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surfaceLight.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        foregroundDecoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: AppColors.border.withValues(alpha: 0.5),
-            style: BorderStyle.solid,
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
+      child: FrostedGlass(
+        borderRadius: BorderRadius.circular(12),
+        blurSigma: 0, // the thumbnail covers what a blur would show
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -401,20 +382,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   draft.thumbnailPath != null &&
                       File(draft.thumbnailPath!).existsSync()
                   ? Image.file(File(draft.thumbnailPath!), fit: BoxFit.cover)
-                  : Container(
-                      color: AppColors.surface,
-                      child: const Center(
-                        child: Icon(
-                          LucideIcons.film,
-                          color: AppColors.textTertiary,
-                          size: 32,
-                        ),
+                  : const Center(
+                      child: Icon(
+                        LucideIcons.film,
+                        color: AppColors.textTertiary,
+                        size: 32,
                       ),
                     ),
             ),
-            Container(
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: AppColors.surface.withValues(alpha: 0.8),
               child: Text(
                 timeago.format(draft.updatedAt),
                 style: GoogleFonts.plusJakartaSans(
@@ -462,112 +439,91 @@ class _GridActionCardState extends State<_GridActionCard> {
         widget.onTap();
       },
       onTapCancel: () => setState(() => _isPressed = false),
-      child: ClipRRect(
+      child: FrostedGlass(
         borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: AnimatedContainer(
-            duration: 120.ms,
-            height: 120, // Square proportion
-            decoration: BoxDecoration(
-              color: _isPressed
-                  ? AppColors.primaryStart.withValues(alpha: 0.1)
-                  : AppColors.surfaceLight.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: _isPressed
-                    ? AppColors.primaryStart.withValues(alpha: 0.6)
-                    : AppColors.border.withValues(alpha: 0.5),
-                width: _isPressed ? 1.5 : 1,
-              ),
-              boxShadow: _isPressed
-                  ? [
-                      BoxShadow(
-                        color: AppColors.primaryStart.withValues(alpha: 0.15),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                      ),
-                    ]
-                  : [],
-            ),
-            child: Stack(
-              children: [
-                Positioned(
-                  right: -30,
-                  bottom: -30,
-                  child: AnimatedScale(
-                    scale: _isPressed ? 1.2 : 1.0,
-                    duration: 150.ms,
-                    child: OpenContainer(
-                      closedElevation: 0,
-                      openElevation: 0,
-                      closedColor: Colors.transparent,
-                      openColor: Colors.transparent,
-                      middleColor: Colors.transparent,
-                      transitionType: ContainerTransitionType.fadeThrough,
-                      openBuilder: (context, _) => const SizedBox(),
-                      closedBuilder: (context, openContainer) => Container(
-                        width: 100,
-                        height: 100,
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryStart.withValues(alpha: 0.05),
-                          shape: BoxShape.circle,
-                        ),
+        tint: _isPressed
+            ? AppColors.primaryStart.withValues(alpha: 0.16)
+            : null,
+        child: SizedBox(
+          height: 120, // Square proportion
+          child: Stack(
+            children: [
+              Positioned(
+                right: -30,
+                bottom: -30,
+                child: AnimatedScale(
+                  scale: _isPressed ? 1.2 : 1.0,
+                  duration: 150.ms,
+                  child: OpenContainer(
+                    closedElevation: 0,
+                    openElevation: 0,
+                    closedColor: Colors.transparent,
+                    openColor: Colors.transparent,
+                    middleColor: Colors.transparent,
+                    transitionType: ContainerTransitionType.fadeThrough,
+                    openBuilder: (context, _) => const SizedBox(),
+                    closedBuilder: (context, openContainer) => Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryStart.withValues(alpha: 0.05),
+                        shape: BoxShape.circle,
                       ),
                     ),
                   ),
                 ),
+              ),
 
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      mainAxisAlignment: MainAxisAlignment
-                          .center, // Center items to keep them together
-                      children: [
-                        AnimatedContainer(
-                          duration: 150.ms,
-                          transformAlignment: Alignment.center,
-                          transform: _isPressed
-                              ? Matrix4.diagonal3Values(0.9, 0.9, 1.0)
-                              : Matrix4.identity(),
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: AppColors.surface.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: AppColors.border.withValues(alpha: 0.5),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment
+                        .center, // Center items to keep them together
+                    children: [
+                      AnimatedContainer(
+                        duration: 150.ms,
+                        transformAlignment: Alignment.center,
+                        transform: _isPressed
+                            ? Matrix4.diagonal3Values(0.9, 0.9, 1.0)
+                            : Matrix4.identity(),
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.textPrimary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.textPrimary.withValues(
+                              alpha: 0.14,
                             ),
                           ),
-                          child: Icon(
-                            widget.icon,
-                            color: _isPressed
-                                ? AppColors.primaryStart
-                                : AppColors.textPrimary,
-                            size: 20,
-                          ),
                         ),
-                        const SizedBox(height: 8), // Added spacing
-                        Text(
-                          widget.title,
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            height:
-                                1.2, // Tighter line height for multiline text
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                          ),
+                        child: Icon(
+                          widget.icon,
+                          color: _isPressed
+                              ? AppColors.primaryStart
+                              : AppColors.textPrimary,
+                          size: 20,
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 8), // Added spacing
+                      Text(
+                        widget.title,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          height: 1.2, // Tighter line height for multiline text
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -599,137 +555,112 @@ class _HeroActionCardState extends State<_HeroActionCard> {
         widget.onTap();
       },
       onTapCancel: () => setState(() => _isPressed = false),
-      child: ClipRRect(
+      child: FrostedGlass(
         borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child:
-              AnimatedContainer(
-                    duration: 120.ms,
-                    height:
-                        160, // Taller rectangular proportion for the new design
-                    decoration: BoxDecoration(
-                      color: _isPressed
-                          ? _primaryColor.withValues(alpha: 0.1)
-                          : AppColors.surfaceLight.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _isPressed
-                            ? _primaryColor.withValues(alpha: 0.6)
-                            : AppColors.border.withValues(alpha: 0.4),
-                        width: _isPressed ? 1.5 : 1,
+        tint: _isPressed ? _primaryColor.withValues(alpha: 0.16) : null,
+        child:
+            SizedBox(
+                  height: 160,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Subtle background glow on the right
+                      Positioned(
+                        right: -20,
+                        bottom: -20,
+                        child: AnimatedScale(
+                          scale: _isPressed ? 1.1 : 1.0,
+                          duration: 150.ms,
+                          child: Container(
+                            width: 140,
+                            height: 140,
+                            decoration: BoxDecoration(
+                              color: _primaryColor.withValues(alpha: 0.08),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
                       ),
-                      boxShadow: _isPressed
-                          ? [
-                              BoxShadow(
-                                color: _primaryColor.withValues(alpha: 0.15),
-                                blurRadius: 20,
-                                spreadRadius: 2,
-                              ),
-                            ]
-                          : [],
-                    ),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        // Subtle background glow on the right
-                        Positioned(
-                          right: -20,
-                          bottom: -20,
-                          child: AnimatedScale(
-                            scale: _isPressed ? 1.1 : 1.0,
-                            duration: 150.ms,
-                            child: Container(
-                              width: 140,
-                              height: 140,
-                              decoration: BoxDecoration(
-                                color: _primaryColor.withValues(alpha: 0.08),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
+
+                      // The 3D Image on the right
+                      Positioned(
+                        right: -10,
+                        top: -10,
+                        bottom: -10,
+                        child: AnimatedScale(
+                          scale: _isPressed ? 0.95 : 1.0,
+                          duration: 150.ms,
+                          child: Image.asset(
+                            'assets/video.png',
+                            width:
+                                200, // Size it so it bleeds nicely out of bounds
+                            fit: BoxFit.contain,
                           ),
                         ),
+                      ),
 
-                        // The 3D Image on the right
-                        Positioned(
-                          right: -10,
-                          top: -10,
-                          bottom: -10,
-                          child: AnimatedScale(
-                            scale: _isPressed ? 0.95 : 1.0,
-                            duration: 150.ms,
-                            child: Image.asset(
-                              'assets/video.png',
-                              width:
-                                  200, // Size it so it bleeds nicely out of bounds
-                              fit: BoxFit.contain,
-                            ),
-                          ),
+                      // The Text on the left
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 24,
                         ),
-
-                        // The Text on the left
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 24,
-                          ),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: SizedBox(
-                              width:
-                                  150, // Constrain text width so it doesn't overlap image
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    'Edit New',
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: SizedBox(
+                            width:
+                                150, // Constrain text width so it doesn't overlap image
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Edit New',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 26,
+                                    height: 1.1,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                ShaderMask(
+                                  blendMode: BlendMode.srcIn,
+                                  shaderCallback: (bounds) => AppColors
+                                      .primaryGradient
+                                      .createShader(bounds),
+                                  child: Text(
+                                    'Video',
                                     style: GoogleFonts.plusJakartaSans(
                                       fontSize: 26,
                                       height: 1.1,
                                       fontWeight: FontWeight.bold,
-                                      color: AppColors.textPrimary,
                                     ),
                                   ),
-                                  ShaderMask(
-                                    blendMode: BlendMode.srcIn,
-                                    shaderCallback: (bounds) => AppColors
-                                        .primaryGradient
-                                        .createShader(bounds),
-                                    child: Text(
-                                      'Video',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        fontSize: 26,
-                                        height: 1.1,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Create, edit and share amazing videos',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 12,
+                                    height: 1.4,
+                                    color: AppColors.textSecondary,
                                   ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'Create, edit and share amazing videos',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 12,
-                                      height: 1.4,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  )
-                  .animate(onPlay: (controller) => controller.repeat())
-                  .shimmer(
-                    delay: 5.seconds,
-                    duration: 1500.ms,
-                    color: Colors.white.withValues(alpha: 0.25),
-                    angle: 1.2,
+                      ),
+                    ],
                   ),
-        ),
+                )
+                .animate(onPlay: (controller) => controller.repeat())
+                .shimmer(
+                  delay: 5.seconds,
+                  duration: 1500.ms,
+                  color: Colors.white.withValues(alpha: 0.25),
+                  angle: 1.2,
+                ),
       ),
     ).animate().fadeIn(delay: widget.delay.ms).slideY(begin: 0.1, end: 0);
   }
