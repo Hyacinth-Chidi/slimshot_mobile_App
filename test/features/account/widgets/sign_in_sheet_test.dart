@@ -50,6 +50,7 @@ void main() {
 
   Future<void> sendCode(WidgetTester tester) async {
     await tester.enterText(find.byKey(const Key('sign_in_email')), 'ann@example.com');
+    await tester.pump(); // the button enables on the next frame
     await tester.tap(find.text('Continue'));
     await settle(tester);
   }
@@ -68,12 +69,32 @@ void main() {
     expect(find.byKey(const Key('sign_in_email')), findsOneWidget);
   });
 
-  testWidgets('something that is not an email is not sent', (tester) async {
+  testWidgets('Continue waits for an email address', (tester) async {
+    VoidCallback? continueButton() => tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, 'Continue'))
+        .onPressed;
+
+    await open(tester);
+    expect(continueButton(), isNull, reason: 'nothing typed');
+
+    await tester.enterText(find.byKey(const Key('sign_in_email')), 'ann');
+    await tester.pump();
+    expect(continueButton(), isNull, reason: 'not an email address yet');
+
+    await tester.enterText(
+      find.byKey(const Key('sign_in_email')),
+      'ann@example.com',
+    );
+    await tester.pump();
+    expect(continueButton(), isNotNull);
+  });
+
+  testWidgets('the keyboard\'s done key sends nothing until it is an email',
+      (tester) async {
     await open(tester);
     await tester.enterText(find.byKey(const Key('sign_in_email')), 'ann');
-    await tester.tap(find.text('Continue'));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
     await settle(tester);
-    expect(find.text('Enter your email address.'), findsOneWidget);
     expect(server.requests, isEmpty);
   });
 

@@ -25,6 +25,7 @@ Future<bool> requireAccount(
   if (!ref.read(accountProvider).isSignedIn) {
     final signedIn = await showEditorSheet<bool>(
       context,
+      useRootNavigator: true,
       builder: (_) => SignInSheet(reason: reason),
     );
     if (signedIn != true || !context.mounted) return false;
@@ -35,6 +36,7 @@ Future<bool> requireAccount(
     // still been claimed.
     await showEditorSheet<bool>(
       context,
+      useRootNavigator: true,
       builder: (_) => const ClaimSheet(),
     );
   }

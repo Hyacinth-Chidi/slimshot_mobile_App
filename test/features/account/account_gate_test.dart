@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/account/account_gate.dart';
 import 'package:slimshotai/features/account/logic/username_rules.dart';
@@ -34,6 +35,43 @@ void main() {
     await settle(tester);
     return results;
   }
+
+  testWidgets('the sheet opens above the app shell, not inside a tab',
+      (tester) async {
+    // Home and Settings are tabs of a shell with their own navigators, and
+    // the shell's floating nav is painted above them; a sheet pushed on a
+    // tab's navigator sat under the nav.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: accountOverrides(server),
+        child: MaterialApp(
+          home: Scaffold(
+            body: Navigator(
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => Consumer(
+                  builder: (context, ref, _) => Center(
+                    child: ElevatedButton(
+                      onPressed: () =>
+                          requireAccount(context, ref, reason: reason),
+                      child: const Text('open'),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await settle(tester);
+
+    final sheet = tester.element(find.text(reason));
+    expect(
+      Navigator.of(sheet),
+      same(Navigator.of(sheet, rootNavigator: true)),
+    );
+  });
 
   testWidgets('signed in and claimed: straight through', (tester) async {
     server.on('GET', '/me', (_) => envelope(userJson()));
@@ -81,6 +119,7 @@ void main() {
     final results = await openGate(tester);
 
     await tester.enterText(find.byKey(const Key('sign_in_email')), 'ann@example.com');
+    await tester.pump(); // the button enables on the next frame
     await tester.tap(find.text('Continue'));
     await settle(tester);
     await tester.enterText(find.byKey(const Key('sign_in_code')), '123456');

@@ -43,6 +43,7 @@ class SettingsAccountSection extends ConsumerWidget {
                 }
                 unawaited(showEditorSheet<void>(
                   context,
+                  useRootNavigator: true,
                   builder: (_) => UsernameSheet(current: current),
                 ));
               },
@@ -72,6 +73,7 @@ class SettingsAccountSection extends ConsumerWidget {
               isDanger: true,
               onTap: () => unawaited(showEditorSheet<void>(
                 context,
+                useRootNavigator: true,
                 builder: (_) => const DeleteAccountSheet(),
               )),
             ),

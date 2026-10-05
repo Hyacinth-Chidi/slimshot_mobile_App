@@ -105,13 +105,24 @@ class _SignInSheetState extends ConsumerState<SignInSheet> {
         textInputAction: TextInputAction.done,
         style: kAccountInputStyle,
         decoration: accountInputDecoration('Email'),
-        onSubmitted: (_) => _sendCode(),
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (_) {
+          if (_looksLikeEmail) _sendCode();
+        },
       ),
       if (_error != null) AccountErrorLine(_error!),
       const SizedBox(height: 16),
-      AccountPrimaryButton(label: 'Continue', busy: _busy, onPressed: _sendCode),
+      // Off until the field holds an email address: a button that only says
+      // what is missing after it is pressed is a step the user did not need.
+      AccountPrimaryButton(
+        label: 'Continue',
+        busy: _busy,
+        onPressed: _looksLikeEmail ? _sendCode : null,
+      ),
     ];
   }
+
+  bool get _looksLikeEmail => _emailShape.hasMatch(_email.text.trim());
 
   List<Widget> _codeStep(String sentTo) => [
         Text(

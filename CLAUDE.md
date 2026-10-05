@@ -3465,7 +3465,11 @@ failed first:
 waited for: on Wi-Fi without internet the logout would otherwise hold the sign-out for its
 whole 20 s timeout, and closing the app meanwhile kept the account. Account sheets are capped at 480 px,
 open through `showEditorSheet`, and the code step's two links wrap rather than overflow at
-large text.
+large text. **They open on the root navigator** (`useRootNavigator: true`; device-reported):
+home and Settings are `StatefulShellRoute` branches with navigators of their own, and the
+shell's floating nav is painted above them, so a sheet opened on a tab's navigator slid up
+*under* the nav. Any sheet reachable from a tab must do the same. The email step's
+**Continue stays off until the field holds an email address**.
 
 ### Decisions already made â€” don't re-litigate
 

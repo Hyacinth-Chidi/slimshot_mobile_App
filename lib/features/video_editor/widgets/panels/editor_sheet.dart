@@ -31,12 +31,20 @@ import '../../../../core/theme/app_motion.dart';
 /// stickers) are not about the picture and keep their own, taller height.
 const double kEditorSheetPreviewFraction = 0.45;
 
+///
+/// [useRootNavigator] opens the sheet on the app's root navigator. The home
+/// and Settings tabs run on navigators of their own inside the app shell,
+/// and the shell's floating nav is painted above them, so a sheet opened from
+/// a tab on the tab's navigator sits *under* the nav. Sheets reachable from
+/// a tab — the account sheets — pass true.
 Future<T?> showEditorSheet<T>(
   BuildContext context, {
   required WidgetBuilder builder,
+  bool useRootNavigator = false,
 }) {
   return showModalBottomSheet<T>(
     context: context,
+    useRootNavigator: useRootNavigator,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.transparent,
