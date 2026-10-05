@@ -8,6 +8,8 @@ import '../core/widgets/glass_card.dart';
 import '../core/utils/file_utils.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/responsive_layout.dart';
+import '../core/widgets/settings_rows.dart';
+import '../features/account/widgets/settings_account_section.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -69,7 +71,8 @@ class SettingsScreen extends StatelessWidget {
                     child: ListView(
                       padding: const EdgeInsets.all(20),
                       children: [
-                        const _SectionHeader(
+                        const SettingsAccountSection(),
+                        const SettingsSectionHeader(
                           title: 'GENERAL',
                         ).animate().fadeIn(delay: 100.ms),
                         const SizedBox(height: 8),
@@ -77,7 +80,7 @@ class SettingsScreen extends StatelessWidget {
                           padding: EdgeInsets.zero,
                           child: Column(
                             children: [
-                              _SettingsItem(
+                              SettingsItem(
                                 icon: LucideIcons.info,
                                 title: 'App Version',
                                 subtitle: 'v2.0.0 (2)',
@@ -90,7 +93,7 @@ class SettingsScreen extends StatelessWidget {
 
                         const SizedBox(height: 28),
 
-                        const _SectionHeader(
+                        const SettingsSectionHeader(
                           title: 'DATA & STORAGE',
                         ).animate().fadeIn(delay: 250.ms),
                         const SizedBox(height: 8),
@@ -98,7 +101,7 @@ class SettingsScreen extends StatelessWidget {
                           padding: EdgeInsets.zero,
                           child: Column(
                             children: [
-                              _SettingsItem(
+                              SettingsItem(
                                 icon: LucideIcons.refreshCw,
                                 title: 'Reset Onboarding',
                                 subtitle: 'Show welcome screen again',
@@ -124,8 +127,8 @@ class SettingsScreen extends StatelessWidget {
                                   },
                                 ),
                               ),
-                              const _Divider(),
-                              _SettingsItem(
+                              const SettingsDivider(),
+                              SettingsItem(
                                 icon: LucideIcons.trash2,
                                 title: 'Clear Cache',
                                 subtitle: 'Remove temporary files',
@@ -153,7 +156,7 @@ class SettingsScreen extends StatelessWidget {
                         ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.1),
                         const SizedBox(height: 28),
 
-                        const _SectionHeader(
+                        const SettingsSectionHeader(
                           title: 'LEGAL',
                         ).animate().fadeIn(delay: 350.ms),
                         const SizedBox(height: 8),
@@ -161,7 +164,7 @@ class SettingsScreen extends StatelessWidget {
                           padding: EdgeInsets.zero,
                           child: Column(
                             children: [
-                              _SettingsItem(
+                              SettingsItem(
                                 icon: LucideIcons.shield,
                                 title: 'Privacy Policy',
                                 subtitle: 'Review our data practices',
@@ -285,120 +288,3 @@ class SettingsScreen extends StatelessWidget {
 }
 
 
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  const _SectionHeader({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 4),
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: AppColors.textTertiary,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.5,
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingsItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final VoidCallback onTap;
-  final bool isDanger;
-  final bool showChevron;
-
-  const _SettingsItem({
-    required this.icon,
-    required this.title,
-    required this.onTap,
-    this.subtitle,
-    this.isDanger = false,
-    this.showChevron = true,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isDanger
-                      ? AppColors.error.withValues(alpha: 0.15)
-                      : AppColors.surfaceLight.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  size: 20,
-                  color: isDanger ? AppColors.error : AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: isDanger
-                            ? AppColors.error
-                            : AppColors.textPrimary,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (showChevron)
-                const Icon(
-                  LucideIcons.chevronRight,
-                  color: AppColors.textTertiary,
-                  size: 18,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Divider extends StatelessWidget {
-  const _Divider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Divider(height: 1, color: AppColors.border.withValues(alpha: 0.4)),
-    );
-  }
-}
