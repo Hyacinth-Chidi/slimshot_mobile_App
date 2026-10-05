@@ -9,10 +9,12 @@ void main() {
 
   List<Color> sheen(WidgetTester tester) {
     final box = tester.widget<DecoratedBox>(
-      find.descendant(
-        of: find.byType(FrostedGlass),
-        matching: find.byType(DecoratedBox),
-      ),
+      find
+          .descendant(
+            of: find.byType(FrostedGlass),
+            matching: find.byType(DecoratedBox),
+          )
+          .first,
     );
     return ((box.decoration as BoxDecoration).gradient! as LinearGradient)
         .colors;
@@ -42,7 +44,7 @@ void main() {
     expect(find.byType(BackdropFilter), findsNothing);
   });
 
-  testWidgets('a tint colours the pane; none leaves the plain sheen',
+  testWidgets('a tint colours the pane; none leaves the designed fill',
       (tester) async {
     await pump(
       tester,
@@ -51,7 +53,7 @@ void main() {
         child: const SizedBox(width: 100, height: 60),
       ),
     );
-    expect(sheen(tester), [FrostedGlass.sheenTop, FrostedGlass.sheenBottom]);
+    expect(sheen(tester), FrostedGlass.fill);
 
     final purple = AppColors.primaryStart.withValues(alpha: 0.16);
     await pump(
@@ -63,8 +65,14 @@ void main() {
       ),
     );
     expect(sheen(tester), [
-      Color.alphaBlend(purple, FrostedGlass.sheenTop),
-      Color.alphaBlend(purple, FrostedGlass.sheenBottom),
+      for (final c in FrostedGlass.fill) Color.alphaBlend(purple, c),
     ]);
+  });
+
+  test('the fill mixes white into purple', () {
+    final fill = FrostedGlass.fill;
+    // White where the light comes from, purple where it falls away.
+    expect(fill.first.r, closeTo(fill.first.b, 0.02), reason: 'a white');
+    expect(fill.last.b, greaterThan(fill.last.g + 0.2), reason: 'a purple');
   });
 }

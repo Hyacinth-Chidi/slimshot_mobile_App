@@ -23,6 +23,21 @@ class AppColors {
   static const Color previewStage = Color(0xFF52525B); // Zinc 600
   static const Color highlight = Color(0x269333EA); // Purple @ 15% opacity
 
+  /// Light purple, for accents that sit *on* purple — the brand purple is
+  /// too dark to read over the home screen's colour field.
+  static const Color lilac = Color(0xFFD8B4FE); // Purple 300
+
+  /// Credits: the coin's colour. Gold reads as currency and stands clear of
+  /// every purple on the home screen.
+  static const Color credit = Color(0xFFFBBF24); // Amber 400
+
+  /// Accent text on purple glass: white running into lilac.
+  static const LinearGradient lightAccentGradient = LinearGradient(
+    colors: [textPrimary, lilac],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
   static const LinearGradient primaryGradient = LinearGradient(
     colors: [primaryStart, primaryEnd],
     begin: Alignment.topLeft,

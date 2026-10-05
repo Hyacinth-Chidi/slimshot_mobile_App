@@ -626,7 +626,7 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                                 ShaderMask(
                                   blendMode: BlendMode.srcIn,
                                   shaderCallback: (bounds) => AppColors
-                                      .primaryGradient
+                                      .lightAccentGradient
                                       .createShader(bounds),
                                   child: Text(
                                     'Video',

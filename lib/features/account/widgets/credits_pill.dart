@@ -70,14 +70,10 @@ class _Pill extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
 
-  static final Color _coin =
-      Color.lerp(AppColors.primaryStart, AppColors.textPrimary, 0.45)!;
-
   @override
   Widget build(BuildContext context) {
     // The home cards' glass, so the pill sits on the colour field as one of
-    // them. The coin takes the field's lilac: the brand purple is too dark
-    // to read on a purple-lit pane.
+    // them. The coin is gold: a purple one vanished into the field behind it.
     return FrostedGlass(
       borderRadius: BorderRadius.circular(999),
       child: Material(
@@ -90,7 +86,7 @@ class _Pill extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 16, color: _coin),
+                Icon(icon, size: 16, color: AppColors.credit),
                 const SizedBox(width: 6),
                 Text(
                   label,
