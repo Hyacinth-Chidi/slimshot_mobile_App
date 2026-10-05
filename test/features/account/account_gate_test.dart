@@ -99,6 +99,37 @@ void main() {
     expect(results, [true]);
   });
 
+  testWidgets('a claim dismissed by a swipe after it succeeded still counts',
+      (tester) async {
+    server
+      ..on('GET', '/me', (_) => envelope(userJson(needsClaim: true)))
+      ..on(
+        'GET',
+        '/usernames/ann_1/availability',
+        (_) => envelope({'username': 'ann_1', 'available': true}),
+      )
+      ..on(
+        'POST',
+        '/me/claim',
+        (_) => envelope({
+          'user': userJson(balance: 100),
+          'bonus': {'granted': true, 'credits': 100},
+          'referral': null,
+        }),
+      );
+    final results = await openGate(tester, signedIn: true, needsClaim: true);
+    await tester.enterText(find.byKey(const Key('username_field')), 'ann_1');
+    await tester.pump(kUsernameCheckDelay);
+    await settle(tester);
+    await tester.tap(find.text('Claim'));
+    await settle(tester);
+    expect(find.text('+100 credits'), findsOneWidget);
+
+    await tester.tapAt(const Offset(10, 10)); // not Done: away
+    await settle(tester);
+    expect(results, [true]);
+  });
+
   testWidgets('signed in but not claimed: the claim sheet only', (tester) async {
     server.on('GET', '/me', (_) => envelope(userJson(needsClaim: true)));
     final results = await openGate(tester, signedIn: true, needsClaim: true);

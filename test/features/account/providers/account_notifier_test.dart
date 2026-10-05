@@ -116,6 +116,7 @@ void main() {
     await pumpEventQueue();
 
     await c.read(accountProvider.notifier).signOut();
+    await pumpEventQueue(); // the server is told after the phone forgets
     expect(server.lastBody('POST', '/auth/logout'), {'refreshToken': 'r9'});
     expect(await session.read(), isNull);
     expect(await session.readProfile(), isNull);
@@ -135,6 +136,62 @@ void main() {
     await c.read(accountProvider.notifier).signOut();
     expect(c.read(accountProvider).isSignedIn, isFalse);
     expect(await session.read(), isNull);
+  });
+
+  test('signing out does not wait for the server', () async {
+    // A dead connection — Wi-Fi without internet — would hold the logout for
+    // its whole timeout; the phone must be signed out at once regardless.
+    final hang = Completer<http.Response>();
+    addTearDown(() => hang.complete(envelope({'loggedOut': true})));
+    server
+      ..on('GET', '/me', (_) => envelope(userJson()))
+      ..on('POST', '/auth/logout', (_) => hang.future);
+    final session = signedInSession(refresh: 'r9', profile: userJson());
+    final c = containerWith(session: session);
+    c.read(accountProvider);
+    await pumpEventQueue();
+
+    await c
+        .read(accountProvider.notifier)
+        .signOut()
+        .timeout(const Duration(seconds: 1));
+    expect(c.read(accountProvider).isSignedIn, isFalse);
+    expect(await session.read(), isNull);
+    await pumpEventQueue();
+    expect(server.lastBody('POST', '/auth/logout'), {'refreshToken': 'r9'});
+  });
+
+  test('a token refresh that lands after signing out does not sign back in',
+      () async {
+    // The access token expired while the app was away; coming back, the
+    // first request is refused and a refresh goes out — and the user signs
+    // out before it answers.
+    final exchange = Completer<http.Response>();
+    server
+      ..on(
+        'GET',
+        '/me',
+        (r) => r.headers['Authorization'] == 'Bearer a2'
+            ? envelope(userJson())
+            : failure('UNAUTHENTICATED', 401),
+      )
+      ..on('POST', '/auth/refresh', (_) => exchange.future)
+      ..on('POST', '/auth/logout', (_) => envelope({'loggedOut': true}));
+    final vault = MemoryTokenVault()
+      ..values[AccountSession.accessKey] = 'a1'
+      ..values[AccountSession.refreshKey] = 'r1';
+    final c = containerWith(session: AccountSession(vault: vault));
+    c.read(accountProvider); // restore → /me refused → refresh, which hangs
+    await pumpEventQueue();
+
+    await c.read(accountProvider.notifier).signOut();
+    exchange.complete(
+      envelope({'accessToken': 'a2', 'refreshToken': 'r2', 'expiresIn': 900}),
+    );
+    await pumpEventQueue();
+
+    expect(vault.values, isEmpty);
+    expect(c.read(accountProvider).isSignedIn, isFalse);
   });
 
   test('a profile that lands after signing out is not kept', () async {

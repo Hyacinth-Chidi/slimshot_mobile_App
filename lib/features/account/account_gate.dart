@@ -30,11 +30,14 @@ Future<bool> requireAccount(
     if (signedIn != true || !context.mounted) return false;
   }
   if (ref.read(accountProvider).needsClaim) {
-    final claimed = await showEditorSheet<bool>(
+    // Answered by the account, not by how the sheet closed: a claim that
+    // succeeded and was then swiped away rather than closed with Done has
+    // still been claimed.
+    await showEditorSheet<bool>(
       context,
       builder: (_) => const ClaimSheet(),
     );
-    if (claimed != true) return false;
   }
-  return ref.read(accountProvider).isSignedIn;
+  final account = ref.read(accountProvider);
+  return account.isSignedIn && !account.needsClaim;
 }

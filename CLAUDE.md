@@ -3421,7 +3421,12 @@ the session, so `refreshAfter` serialises them — a request refused with an acc
 has since been replaced just retries with the new one. Only a **401** on the refresh ends a
 session; a 5xx or a proxy page is thrown and the session kept. Any request that ends the
 session — a caption upload included — fires `ended`, and `AccountNotifier` flips the whole
-app to signed out.
+app to signed out. **A refresh that lands after its session ended or was replaced is neither
+saved nor allowed to end anything** (`_generation`, moved by `end` and `save`): the common
+case is coming back after 15 minutes — the first request is refused, a refresh goes out — and
+signing out before it answers, which used to put the tokens and the profile back on the
+phone (found by the branch review, probe-confirmed). A late refusal likewise ends only the
+session it was made with (`endIfCurrent`), never one signed in since.
 
 **`SlimshotApi` has three kinds of request.** `send` is signed in: the access token as a
 bearer, one refresh on `UNAUTHENTICATED`, then `SIGN_IN_REQUIRED` — never a loop.
@@ -3431,7 +3436,9 @@ The install token is **not** an access token: the server refuses it as a bearer.
 
 **`requireAccount` is the one door** (`features/account/account_gate.dart`): a kept session
 whose profile has not loaded is refreshed rather than asked to sign in; signed out, the
-sign-in sheet; unclaimed, the claim sheet. `CaptionAccess.ensureAllowed` is it, called
+sign-in sheet; unclaimed, the claim sheet. It answers from the account, not from how a sheet
+closed — a claim that succeeded and was swiped away instead of closed with Done still counts.
+`CaptionAccess.ensureAllowed` is it, called
 **before** the Auto captions options sheet, and the caption client is built on the shared
 session. After a run the profile is read again so the pill follows the charge — until stage 2
 there is no confirm before the server charges.
@@ -3451,7 +3458,9 @@ failed first:
 - **Signing out and deleting show it at once.** The session's `ended` event arrives a
   microtask later, so `_forget` sets the signed-out state itself.
 
-Sign-out works offline — the server is told if it can be. Account sheets are capped at 480 px,
+**Sign-out happens on the phone first**, and the server is told afterwards without being
+waited for: on Wi-Fi without internet the logout would otherwise hold the sign-out for its
+whole 20 s timeout, and closing the app meanwhile kept the account. Account sheets are capped at 480 px,
 open through `showEditorSheet`, and the code step's two links wrap rather than overflow at
 large text.
 

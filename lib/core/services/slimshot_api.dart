@@ -159,20 +159,25 @@ class SlimshotApi {
     if (response.statusCode != HttpStatus.unauthorized) {
       return _decode(response);
     }
-    final fresh = _errorCode(response) == 'UNAUTHENTICATED'
-        ? await _session.refreshAfter(
-            tokens.accessToken,
-            (refreshToken) => _exchange(refreshToken, timeout),
-          )
-        : null;
-    if (fresh != null) {
-      response =
-          await _perform(_authorised(build(), fresh.accessToken), timeout);
-      if (response.statusCode != HttpStatus.unauthorized) {
-        return _decode(response);
-      }
+    if (_errorCode(response) != 'UNAUTHENTICATED') {
+      await _session.endIfCurrent(tokens.accessToken);
+      throw const SlimshotApiException(SlimshotApiException.signInRequired);
     }
-    await _session.end();
+    final fresh = await _session.refreshAfter(
+      tokens.accessToken,
+      (refreshToken) => _exchange(refreshToken, timeout),
+    );
+    // No fresh session: the refresh was refused (and the session ended
+    // there), or the session ended or was replaced while it was out — in
+    // which case there is nothing of this request's left to end.
+    if (fresh == null) {
+      throw const SlimshotApiException(SlimshotApiException.signInRequired);
+    }
+    response = await _perform(_authorised(build(), fresh.accessToken), timeout);
+    if (response.statusCode != HttpStatus.unauthorized) {
+      return _decode(response);
+    }
+    await _session.endIfCurrent(fresh.accessToken);
     throw const SlimshotApiException(SlimshotApiException.signInRequired);
   }
 

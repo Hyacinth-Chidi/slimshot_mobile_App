@@ -130,19 +130,23 @@ class AccountNotifier extends StateNotifier<AccountState> {
     await _adopt(await _service.changeUsername(name), ticket);
   }
 
-  /// Ends the session here whether or not the server hears about it: a
-  /// sign-out that waited for a connection would leave the account open on a
-  /// phone the user meant to leave.
+  /// Signs out on the phone **first**, then tells the server without waiting:
+  /// a sign-out held up by a dead connection — Wi-Fi without internet holds
+  /// a request for its whole timeout — would leave the account open on a
+  /// phone the user meant to leave, and closing the app meanwhile would keep
+  /// it open for good.
   Future<void> signOut() async {
     final tokens = await _session.read();
-    if (tokens != null) {
-      try {
-        await _service.logout(tokens.refreshToken);
-      } on SlimshotApiException catch (e) {
-        debugPrint('AccountNotifier.signOut: server not told (${e.code})');
-      }
-    }
     await _forget();
+    if (tokens != null) unawaited(_tellServer(tokens.refreshToken));
+  }
+
+  Future<void> _tellServer(String refreshToken) async {
+    try {
+      await _service.logout(refreshToken);
+    } on SlimshotApiException catch (e) {
+      debugPrint('AccountNotifier.signOut: server not told (${e.code})');
+    }
   }
 
   /// Deletes the account on the server, then forgets it here. A refusal

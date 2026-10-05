@@ -32,6 +32,12 @@ class AccountSession {
   final StreamController<void> _ended = StreamController<void>.broadcast();
   Future<SessionTokens?> _turns = Future<SessionTokens?>.value();
 
+  /// Moves on whenever the session is ended or replaced. A refresh compares
+  /// it across its exchange: an answer for a session that ended while the
+  /// exchange was out — the user signed out, perhaps signed in again — is
+  /// neither saved nor allowed to end anything.
+  int _generation = 0;
+
   /// Fires whenever the session ends: signed out, deleted, or refused by the
   /// server.
   Stream<void> get ended => _ended.stream;
@@ -44,6 +50,7 @@ class AccountSession {
   }
 
   Future<void> save(SessionTokens tokens) async {
+    _generation++;
     await _vault.write(accessKey, tokens.accessToken);
     await _vault.write(refreshKey, tokens.refreshToken);
   }
@@ -55,10 +62,19 @@ class AccountSession {
   Future<void> saveProfile(String json) => _vault.write(profileKey, json);
 
   Future<void> end() async {
+    _generation++;
     await _vault.delete(accessKey);
     await _vault.delete(refreshKey);
     await _vault.delete(profileKey);
     _ended.add(null);
+  }
+
+  /// Ends the session only if it is still the one [accessToken] belongs to.
+  /// A refusal that lands late — after a sign-out and a new sign-in — speaks
+  /// for a session that is already gone, never for the new one.
+  Future<void> endIfCurrent(String accessToken) async {
+    final current = await read();
+    if (current != null && current.accessToken == accessToken) await end();
   }
 
   /// The session to retry with after a request was refused with
@@ -87,7 +103,9 @@ class AccountSession {
     final current = await read();
     if (current == null) return null;
     if (current.accessToken != failedAccess) return current;
+    final generation = _generation;
     final fresh = await refresh(current.refreshToken);
+    if (generation != _generation) return null; // ended or replaced meanwhile
     if (fresh == null) {
       await end();
       return null;

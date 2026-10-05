@@ -206,6 +206,23 @@ void main() {
       expect(await session.read(), isNull);
     });
 
+    test('a refusal for a session already replaced leaves the new one alone',
+        () async {
+      final session = signedInSession(access: 'a1', refresh: 'r1');
+      final answer = Completer<http.Response>();
+      final api = apiWith(MockClient((_) => answer.future), session: session);
+      final request = api.send(() => http.Request('GET', api.uri('/me')));
+      await pumpEventQueue();
+      await session.end(); // signed out, then in again, while it was out
+      await session.save(
+        const SessionTokens(accessToken: 'a3', refreshToken: 'r3'),
+      );
+      answer.complete(failure('SIGN_IN_REQUIRED', 401));
+
+      await expectLater(request, throwsCode(SlimshotApiException.signInRequired));
+      expect((await session.read())!.accessToken, 'a3');
+    });
+
     test('SIGN_IN_REQUIRED from the server ends the session', () async {
       final session = signedInSession();
       final api = apiWith(

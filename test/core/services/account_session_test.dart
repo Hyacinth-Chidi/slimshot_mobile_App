@@ -88,6 +88,48 @@ void main() {
     expect(again!.accessToken, 'a2');
   });
 
+  test('a refresh that lands after the session ended is not saved', () async {
+    await session.save(first);
+    final gate = Completer<void>();
+    final turn = session.refreshAfter('a1', (_) async {
+      await gate.future;
+      return second;
+    });
+    await pumpEventQueue();
+    await session.end(); // the user signed out while the exchange was out
+    gate.complete();
+
+    expect(await turn, isNull);
+    expect(await session.read(), isNull);
+  });
+
+  test('a refresh that lands after a new sign-in leaves the new one alone',
+      () async {
+    const third = SessionTokens(accessToken: 'a3', refreshToken: 'r3');
+    await session.save(first);
+    final gate = Completer<void>();
+    final turn = session.refreshAfter('a1', (_) async {
+      await gate.future;
+      return null; // even a refusal of the old token must not end the new
+    });
+    await pumpEventQueue();
+    await session.end();
+    await session.save(third);
+    gate.complete();
+
+    expect(await turn, isNull);
+    expect((await session.read())!.accessToken, 'a3');
+  });
+
+  test('ending only a session that is still current', () async {
+    const third = SessionTokens(accessToken: 'a3', refreshToken: 'r3');
+    await session.save(third);
+    await session.endIfCurrent('a1');
+    expect((await session.read())!.accessToken, 'a3');
+    await session.endIfCurrent('a3');
+    expect(await session.read(), isNull);
+  });
+
   test('with no session there is nothing to refresh', () async {
     var refreshes = 0;
     final result = await session.refreshAfter('a1', (_) async {
