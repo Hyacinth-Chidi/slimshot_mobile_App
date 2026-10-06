@@ -15,9 +15,10 @@ class AdService {
   static const bool enabled = false;
 
   /// Rewarded ads that **earn credits**: their own switch, on (spec §3 E).
-  /// `enabled` stays off, so interstitials and the Pro-unlock ads stay off;
-  /// the SDK starts when either is on (`main.dart`). The reward itself is
-  /// verified on the server (SSV), never granted by the app.
+  /// `enabled` stays off, so interstitials and the Pro-unlock ads stay off.
+  /// A credit ad starts the SDK itself, after the consent step, on the first
+  /// Watch an ad. The reward is verified on the server (SSV), never granted
+  /// by the app.
   static const bool creditAdsEnabled = true;
 
   // --- INTERSTITIAL ADS ---

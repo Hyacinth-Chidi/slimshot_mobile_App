@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/slimshot_api.dart';
@@ -13,8 +14,9 @@ import '../services/credit_ads.dart';
 /// The ways to earn credits: Watch an ad, Invite a friend. One block for the
 /// caption shortfall and the Credits screen, so the two cannot drift.
 ///
-/// [onEarned] hears the balance a granted ad left — the server's number;
-/// the app never adds credits itself.
+/// [onEarned] hears every rise in the balance while the block is on screen
+/// — a granted ad, or a reward that landed after its poll gave up ("on its
+/// way"). Always the server's number; the app never adds credits itself.
 class EarnCreditsBlock extends ConsumerStatefulWidget {
   const EarnCreditsBlock({super.key, this.onEarned});
 
@@ -27,6 +29,22 @@ class EarnCreditsBlock extends ConsumerStatefulWidget {
 class _EarnCreditsBlockState extends ConsumerState<EarnCreditsBlock> {
   bool _watching = false;
 
+  /// After "on its way": AdMob can call the server after the poll gave up,
+  /// so the balance is looked at again later (contract §13).
+  static const List<Duration> lateLooks = [
+    Duration(seconds: 30),
+    Duration(seconds: 90),
+  ];
+  final List<Timer> _looks = [];
+
+  @override
+  void dispose() {
+    for (final look in _looks) {
+      look.cancel();
+    }
+    super.dispose();
+  }
+
   Future<void> _watch() async {
     setState(() => _watching = true);
     final notifier = ref.read(accountProvider.notifier);
@@ -35,7 +53,11 @@ class _EarnCreditsBlockState extends ConsumerState<EarnCreditsBlock> {
       final balance = reward.balance;
       if (reward.outcome == AdRewardOutcome.granted && balance != null) {
         await notifier.applyBalance(balance);
-        widget.onEarned?.call(balance);
+      }
+      if (reward.outcome == AdRewardOutcome.pending) {
+        for (final wait in lateLooks) {
+          _looks.add(Timer(wait, () => unawaited(notifier.refresh())));
+        }
       }
       if (mounted) {
         ToastUtils.show(
@@ -59,8 +81,21 @@ class _EarnCreditsBlockState extends ConsumerState<EarnCreditsBlock> {
   Future<void> _invite(String code) =>
       ref.read(shareTextProvider)(inviteMessage(code));
 
+  Future<void> _copyCode(String code) async {
+    await Clipboard.setData(ClipboardData(text: code));
+    if (mounted) ToastUtils.show(context, 'Code copied');
+  }
+
   @override
   Widget build(BuildContext context) {
+    // The balance rising is what earning means here, however it arrived.
+    ref.listen<AccountState>(accountProvider, (previous, next) {
+      final before = previous?.user?.creditBalance;
+      final now = next.user?.creditBalance;
+      if (before != null && now != null && now > before) {
+        widget.onEarned?.call(now);
+      }
+    });
     final user = ref.watch(accountProvider).user;
     if (user == null) return const SizedBox.shrink();
     final adsOn = ref.watch(creditAdsEnabledProvider);
@@ -95,6 +130,23 @@ class _EarnCreditsBlockState extends ConsumerState<EarnCreditsBlock> {
           key: const Key('earn_invite'),
           label: 'Invite a friend',
           onPressed: () => unawaited(_invite(user.referralCode)),
+        ),
+        // A friend types it on their claim step, so it is shown, not only
+        // shared.
+        GestureDetector(
+          onTap: () => unawaited(_copyCode(user.referralCode)),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Your code · ${user.referralCode}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ),
         ),
       ],
     );

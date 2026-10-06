@@ -128,4 +128,19 @@ void main() {
           .having((e) => e.code, 'code', 'ACCOUNT_SUSPENDED')),
     );
   });
+
+  test('a poll the server or a proxy fails is ridden out too', () async {
+    var calls = 0;
+    server.on('GET', '/rewards/ads/session/n1', (_) {
+      if (calls++ == 0) return failure('INTERNAL_ERROR', 502);
+      return envelope({'status': 'granted', 'credits': 5, 'balance': 99});
+    });
+    expect((await ads().watch()).outcome, AdRewardOutcome.granted);
+  });
+
+  test('a session that has ended is not ridden out', () async {
+    server.on('GET', '/rewards/ads/session/n1',
+        (_) => failure('NOT_FOUND', 404));
+    await expectLater(ads().watch(), throwsA(isA<SlimshotApiException>()));
+  });
 }

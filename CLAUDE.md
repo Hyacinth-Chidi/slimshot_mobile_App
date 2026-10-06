@@ -3525,11 +3525,20 @@ watched ad, 5s after one closed early (AdMob may still call the server; past tha
 to earn credits" — a 30s wait ending "on its way" for an ad the user skipped reads as broken). The
 balance shown is the server's (`granted.balance` → `applyBalance`), and `/me` is read again after
 every ad for today's count. `409 AD_DAILY_CAP_REACHED` plays nothing and the button reads "Back
-tomorrow". A dropped poll is ridden out. `PluginRewardedAdPlayer` is the only plugin code, untested
+tomorrow". **A poll that fails is ridden out** — dropped, a proxy page, a server hiccup — since the
+user has already sat through the ad; only `NOT_FOUND` or `SIGN_IN_REQUIRED` ends it. **A reward
+that lands after the poll gave up still arrives**: an "on its way" result looks at `/me` again at
+30s and 90s (`EarnCreditsBlock.lateLooks`), and the block reports **every balance rise** through
+`onEarned` — so a late grant carries a caption shortfall on exactly as a prompt one does (found by
+the stage review: the sheet sat on "You have 0" while the credits had landed). `PluginRewardedAdPlayer` is the only plugin code, untested
 by design (it needs a device); a load landing after its 15s timeout is disposed, never shown late.
 
 **Credit ads have their own switch** (`AdService.creditAdsEnabled`, on); `AdService.enabled` —
-interstitials and the Pro-unlock ads — stays off. The SDK starts when either is on. **AdMob
+interstitials and the Pro-unlock ads — stays off. **A credit ad starts the SDK itself, on the first
+Watch an ad, after Google's consent step** (UMP: `requestConsentInfoUpdate`, then
+`loadAndShowConsentFormIfRequired`, then `canRequestAds`) — the EEA, the UK and Switzerland need
+consent for ads to serve, and a user who never earns credits never starts the SDK. The form shows
+only where the AdMob console's privacy message requires one; refused, it is asked again next tap. **AdMob
 setup is outside the code**: server-side verification on the rewarded unit (`…/3806842044`) with
 the callback `https://<server>/api/app/v1/rewards/admob/ssv`, the unit in the server's
 `ADMOB_AD_UNIT_IDS`, and the test phone added as a test device — Google's sample units never call
@@ -3539,7 +3548,9 @@ the server, and clicking your own live ads breaks AdMob policy.
 sheet takes it through `CaptionProgressSheet.earnCredits`, so the panel stays free of account
 code; a balance that now covers the price carries the run on by itself (the shortfall's decision
 completes `true` and the pipeline uploads), too little updates the line. **Invite a friend**
-shares `inviteMessage(referralCode)` — the code and the Play Store link — through `Share.share`.
+shares `inviteMessage(referralCode)` — the code and the Play Store link — through `Share.share` —
+and the code is **shown** under it ("Your code · AB3DEF7K", tap to copy): a friend types it on
+their claim step.
 
 ### Home and Settings — near-black, a little light, smoked glass; the editor stays dark
 

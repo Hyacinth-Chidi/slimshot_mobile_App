@@ -36,11 +36,47 @@ class PluginRewardedAdPlayer implements RewardedAdPlayer {
 
   static const Duration loadTimeout = Duration(seconds: 15);
 
+  static Future<bool>? _ready;
+
+  /// Google's consent step (UMP), then the SDK — once per launch, and only
+  /// when someone first asks for an ad, so a user who never earns credits
+  /// never starts the ads SDK. In the EEA, the UK and Switzerland ads need
+  /// this consent to serve; elsewhere it answers at once. The form shows
+  /// only where the AdMob console's privacy message requires one. Refused,
+  /// it is asked again on the next tap.
+  static Future<bool> _prepare() => _ready ??= _consentThenStart();
+
+  static Future<bool> _consentThenStart() async {
+    final updated = Completer<void>();
+    ConsentInformation.instance.requestConsentInfoUpdate(
+      ConsentRequestParameters(),
+      () {
+        if (!updated.isCompleted) updated.complete();
+      },
+      (_) {
+        if (!updated.isCompleted) updated.complete();
+      },
+    );
+    await updated.future;
+    final dismissed = Completer<void>();
+    unawaited(ConsentForm.loadAndShowConsentFormIfRequired((_) {
+      if (!dismissed.isCompleted) dismissed.complete();
+    }));
+    await dismissed.future;
+    if (!await ConsentInformation.instance.canRequestAds()) {
+      _ready = null;
+      return false;
+    }
+    await MobileAds.instance.initialize();
+    return true;
+  }
+
   @override
   Future<AdPlayback> play({
     required String userId,
     required String customData,
   }) async {
+    if (!await _prepare()) return AdPlayback.notShown;
     final loaded = Completer<RewardedAd?>();
     final timer = Timer(loadTimeout, () {
       if (!loaded.isCompleted) loaded.complete(null);
@@ -160,8 +196,14 @@ class CreditAdService {
       try {
         status = await _account.adSession(session.nonce);
       } on SlimshotApiException catch (e) {
-        if (e.code == SlimshotApiException.network) continue;
-        rethrow;
+        // An idempotent read, after the user sat through an ad: a dropped
+        // request, a proxy page or a server hiccup is ridden out within the
+        // window. Only a session or a sign-in that is gone ends it.
+        if (e.code == 'NOT_FOUND' ||
+            e.code == SlimshotApiException.signInRequired) {
+          rethrow;
+        }
+        continue;
       }
       switch (status.status) {
         case 'granted':

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/account/providers/account_providers.dart';
@@ -113,5 +114,49 @@ void main() {
     expect(find.text('No ad right now. Try again soon.'), findsOneWidget);
     expect(c.read(accountProvider).user!.creditBalance, 0);
     expect(earned, isEmpty);
+  });
+
+  testWidgets('a reward that lands late still reaches the balance and the run',
+      (tester) async {
+    // AdMob tells the server after the 30s window: the poll ends "on its
+    // way", and the grant shows up in /me a little later.
+    var meReads = 0;
+    server
+      ..on('GET', '/me', (_) {
+        meReads++;
+        return envelope(userJson(balance: meReads <= 2 ? 0 : 5));
+      })
+      ..on('GET', '/rewards/ads/session/n1',
+          (_) => envelope({'status': 'pending'}));
+    final c = await pumpBlock(tester);
+    await tester.tap(find.byKey(const Key('earn_watch_ad')));
+    await settle(tester);
+    expect(find.text('Your reward is on its way'), findsOneWidget);
+    expect(earned, isEmpty);
+
+    await tester.pump(const Duration(seconds: 31));
+    await settle(tester);
+    expect(c.read(accountProvider).user!.creditBalance, 5);
+    expect(earned, [5]);
+    await tester.pump(const Duration(seconds: 90)); // the second look
+  });
+
+  testWidgets('the invite code is shown, and a tap copies it',
+      (tester) async {
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    await pumpBlock(tester);
+    expect(find.text('Your code · AB3DEF7K'), findsOneWidget);
+    await tester.tap(find.text('Your code · AB3DEF7K'));
+    await settle(tester);
+    expect(copied, ['AB3DEF7K']);
   });
 }
