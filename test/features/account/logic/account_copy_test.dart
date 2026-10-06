@@ -97,4 +97,28 @@ void main() {
     expect(shortfallLine(6, 2), 'Needs 6 credits · You have 2');
     expect(shortfallLine(1, 0), 'Needs 1 credit · You have 0');
   });
+
+  test('history reads in plain words', () {
+    expect(creditHistoryLabel('signup_bonus'), 'Welcome bonus');
+    expect(creditHistoryLabel('referral_invitee'), 'Invite bonus');
+    expect(creditHistoryLabel('referral_inviter'), 'A friend joined');
+    expect(creditHistoryLabel('rewarded_ad'), 'Watched an ad');
+    expect(creditHistoryLabel('feature_charge'), 'Auto captions');
+    expect(creditHistoryLabel('feature_refund'), 'Refund');
+    expect(creditHistoryLabel('admin_adjustment'), 'Adjustment');
+    expect(creditHistoryLabel('something_new'), 'Credits');
+    expect(creditAmountLabel(5), '+5');
+    expect(creditAmountLabel(-6), '−6');
+  });
+
+  test('earning reads as the spec writes it', () {
+    expect(watchAdLabel(5), 'Watch an ad · +5');
+    expect(adsLeftLabel(7), '7 left today');
+    expect(adsLeftLabel(1), '1 left today');
+    expect(kBackTomorrow, 'Back tomorrow');
+    final invite = inviteMessage('AB3DEF7K');
+    expect(invite, contains('AB3DEF7K'));
+    expect(invite,
+        contains('https://play.google.com/store/apps/details?id=com.techfamz.slimshotai'));
+  });
 }

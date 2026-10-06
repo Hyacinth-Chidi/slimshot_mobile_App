@@ -70,3 +70,32 @@ String creditCount(int n) => n == 1 ? '1 credit' : '$n credits';
 /// user is ever shown.
 String shortfallLine(int needed, int balance) =>
     'Needs ${creditCount(needed)} · You have $balance';
+
+/// A history line's kind, in plain words.
+String creditHistoryLabel(String type) => switch (type) {
+      'signup_bonus' => 'Welcome bonus',
+      'referral_invitee' => 'Invite bonus',
+      'referral_inviter' => 'A friend joined',
+      'rewarded_ad' => 'Watched an ad',
+      'feature_charge' => 'Auto captions',
+      'feature_refund' => 'Refund',
+      'admin_adjustment' => 'Adjustment',
+      'account_deleted' => 'Account deleted',
+      'purchase' => 'Purchase',
+      _ => 'Credits',
+    };
+
+/// "+5", "−6" (a true minus sign).
+String creditAmountLabel(int amount) =>
+    amount >= 0 ? '+$amount' : '−${amount.abs()}';
+
+String watchAdLabel(int credits) => 'Watch an ad · +$credits';
+
+String adsLeftLabel(int remaining) => '$remaining left today';
+
+const String kBackTomorrow = 'Back tomorrow';
+
+/// What Invite a friend shares: the code and where to get the app.
+String inviteMessage(String code) =>
+    'Get free credits on SlimShot AI with my invite code $code\n'
+    'https://play.google.com/store/apps/details?id=com.techfamz.slimshotai';

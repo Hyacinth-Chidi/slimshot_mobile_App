@@ -11,6 +11,7 @@ class AccountUser {
     required this.creditBalance,
     required this.suspended,
     required this.needsClaim,
+    this.ads = const AdAllowance.none(),
   });
 
   factory AccountUser.fromJson(Map<String, dynamic> json) => AccountUser(
@@ -21,6 +22,7 @@ class AccountUser {
         creditBalance: (json['creditBalance'] as num?)?.toInt() ?? 0,
         suspended: json['accountStatus'] == 'suspended',
         needsClaim: json['needsClaim'] as bool? ?? false,
+        ads: AdAllowance.fromJson(json['ads']),
       );
 
   final String id;
@@ -41,6 +43,9 @@ class AccountUser {
   /// A new account that has not chosen a username and claimed yet.
   final bool needsClaim;
 
+  /// Today's rewarded ads (`/me.ads`).
+  final AdAllowance ads;
+
   Map<String, Object?> toJson() => {
         'id': id,
         'email': email,
@@ -49,6 +54,7 @@ class AccountUser {
         'creditBalance': creditBalance,
         'accountStatus': suspended ? 'suspended' : 'active',
         'needsClaim': needsClaim,
+        'ads': ads.toJson(),
       };
 
   /// The same user with a balance a spend answered with.
@@ -60,6 +66,7 @@ class AccountUser {
         creditBalance: balance,
         suspended: suspended,
         needsClaim: needsClaim,
+        ads: ads,
       );
 }
 
@@ -209,4 +216,140 @@ class CreditQuote {
 
   /// Nothing to confirm: the price step is skipped.
   bool get isFree => credits <= 0;
+}
+
+/// Today's rewarded ads, as `/me.ads` describes them. Resets at 00:00 UTC.
+class AdAllowance {
+  const AdAllowance({
+    required this.rewardCredits,
+    required this.dailyCap,
+    required this.remainingToday,
+  });
+
+  const AdAllowance.none()
+      : rewardCredits = 0,
+        dailyCap = 0,
+        remainingToday = 0;
+
+  factory AdAllowance.fromJson(Object? json) {
+    if (json is! Map) return const AdAllowance.none();
+    int read(String key) => (json[key] as num?)?.toInt() ?? 0;
+    return AdAllowance(
+      rewardCredits: read('rewardCredits'),
+      dailyCap: read('dailyCap'),
+      remainingToday: read('remainingToday'),
+    );
+  }
+
+  final int rewardCredits;
+  final int dailyCap;
+  final int remainingToday;
+
+  Map<String, Object?> toJson() => {
+        'rewardCredits': rewardCredits,
+        'dailyCap': dailyCap,
+        'remainingToday': remainingToday,
+      };
+}
+
+/// One rewarded ad's session: what its server-side verification carries.
+class AdSession {
+  const AdSession({
+    required this.nonce,
+    required this.ssvUserId,
+    required this.rewardCredits,
+    required this.adsRemainingToday,
+  });
+
+  factory AdSession.fromJson(Map<String, dynamic> json) {
+    final nonce = json['nonce'];
+    final ssvUserId = json['ssvUserId'];
+    if (nonce is! String || ssvUserId is! String) {
+      throw const SlimshotApiException(
+        SlimshotApiException.badResponse,
+        'No ad session.',
+      );
+    }
+    return AdSession(
+      nonce: nonce,
+      ssvUserId: ssvUserId,
+      rewardCredits: (json['rewardCredits'] as num?)?.toInt() ?? 0,
+      adsRemainingToday: (json['adsRemainingToday'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final String nonce;
+  final String ssvUserId;
+  final int rewardCredits;
+  final int adsRemainingToday;
+}
+
+/// How an ad's reward went: `pending`, `granted`, `capped` or `rejected`.
+class AdSessionStatus {
+  const AdSessionStatus({
+    required this.status,
+    this.credits = 0,
+    this.balance,
+  });
+
+  factory AdSessionStatus.fromJson(Map<String, dynamic> json) =>
+      AdSessionStatus(
+        status: json['status'] as String? ?? 'pending',
+        credits: (json['credits'] as num?)?.toInt() ?? 0,
+        balance: (json['balance'] as num?)?.toInt(),
+      );
+
+  final String status;
+  final int credits;
+
+  /// The balance after a grant; absent until then.
+  final int? balance;
+}
+
+/// One line of the credit history.
+class CreditEntry {
+  const CreditEntry({
+    required this.id,
+    required this.type,
+    required this.amount,
+    required this.balanceAfter,
+    required this.createdAt,
+  });
+
+  factory CreditEntry.fromJson(Map<String, dynamic> json) => CreditEntry(
+        id: json['id'] as String? ?? '',
+        type: json['type'] as String? ?? '',
+        amount: (json['amount'] as num?)?.toInt() ?? 0,
+        balanceAfter: (json['balanceAfter'] as num?)?.toInt() ?? 0,
+        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      );
+
+  final String id;
+  final String type;
+  final int amount;
+  final int balanceAfter;
+  final DateTime createdAt;
+}
+
+/// A page of history, newest first; [nextCursor] null at the end.
+class CreditHistoryPage {
+  const CreditHistoryPage({required this.items, this.nextCursor});
+
+  factory CreditHistoryPage.fromJson(Map<String, dynamic> json) {
+    final items = json['items'];
+    return CreditHistoryPage(
+      items: items is List
+          ? [
+              for (final item in items)
+                if (item is Map)
+                  CreditEntry.fromJson(Map<String, dynamic>.from(item)),
+            ]
+          : const [],
+      nextCursor: json['nextCursor'] as String?,
+    );
+  }
+
+  final List<CreditEntry> items;
+  final String? nextCursor;
 }

@@ -235,4 +235,87 @@ void main() {
       )),
     );
   });
+
+  test("/me carries today's rewarded ads", () async {
+    server.on('GET', '/me', (_) => envelope(userJson()));
+    final user = await service(signedIn: true).me();
+    expect(
+      (user.ads.rewardCredits, user.ads.dailyCap, user.ads.remainingToday),
+      (5, 10, 10),
+    );
+    expect(AccountUser.fromJson(user.toJson()).ads.remainingToday, 10,
+        reason: 'the kept profile keeps it');
+    expect(user.withBalance(3).ads.remainingToday, 10);
+  });
+
+  test('an ad session is asked for, signed in, and polled by its nonce',
+      () async {
+    server
+      ..on(
+        'POST',
+        '/rewards/ads/session',
+        (_) => envelope({
+          'nonce': 'n1',
+          'ssvUserId': 'u1',
+          'rewardCredits': 5,
+          'adsRemainingToday': 7,
+        }),
+      )
+      ..on(
+        'GET',
+        '/rewards/ads/session/n1',
+        (_) => envelope({'status': 'granted', 'credits': 5, 'balance': 99}),
+      );
+    final s = service(signedIn: true);
+    final session = await s.startAdSession();
+    expect((session.nonce, session.ssvUserId, session.rewardCredits,
+        session.adsRemainingToday), ('n1', 'u1', 5, 7));
+    expect(
+      server.to('POST', '/rewards/ads/session').last.headers['Authorization'],
+      'Bearer a1',
+    );
+    final status = await s.adSession('n1');
+    expect((status.status, status.credits, status.balance), ('granted', 5, 99));
+  });
+
+  test('a pending session has no balance yet', () async {
+    server.on('GET', '/rewards/ads/session/n1',
+        (_) => envelope({'status': 'pending'}));
+    final status = await service(signedIn: true).adSession('n1');
+    expect((status.status, status.credits, status.balance), ('pending', 0, null));
+  });
+
+  test('history pages newest first by cursor', () async {
+    server.on('GET', '/credits/history', (request) {
+      final cursor = request.url.queryParameters['cursor'];
+      return envelope(cursor == null
+          ? {
+              'items': [
+                {
+                  'id': 'c2',
+                  'type': 'feature_charge',
+                  'amount': -6,
+                  'balanceAfter': 94,
+                  'createdAt': '2026-10-03T12:00:00.000Z',
+                },
+              ],
+              'nextCursor': 'c2',
+            }
+          : {'items': [], 'nextCursor': null});
+    });
+    final s = service(signedIn: true);
+    final first = await s.history();
+    expect(first.items.single.type, 'feature_charge');
+    expect(first.items.single.amount, -6);
+    expect(first.items.single.createdAt, DateTime.utc(2026, 10, 3, 12));
+    expect(first.nextCursor, 'c2');
+    expect(server.to('GET', '/credits/history').last.url.queryParameters,
+        {'limit': '20'});
+
+    final next = await s.history(cursor: 'c2');
+    expect(next.items, isEmpty);
+    expect(next.nextCursor, isNull);
+    expect(server.to('GET', '/credits/history').last.url.queryParameters,
+        {'limit': '20', 'cursor': 'c2'});
+  });
 }

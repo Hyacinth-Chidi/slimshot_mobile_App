@@ -94,4 +94,38 @@ class AccountService {
           }),
         ),
       );
+
+  /// A new session for one rewarded ad: its nonce goes into the ad's
+  /// server-side verification, and is what the reward is asked about.
+  Future<AdSession> startAdSession() async => AdSession.fromJson(
+        await _api.send(
+          () => _api.jsonRequest(
+            'POST',
+            '/rewards/ads/session',
+            const <String, Object?>{},
+          ),
+        ),
+      );
+
+  /// How the reward for [nonce] went.
+  Future<AdSessionStatus> adSession(String nonce) async =>
+      AdSessionStatus.fromJson(
+        await _api.send(
+          () => http.Request('GET', _api.uri('/rewards/ads/session/$nonce')),
+        ),
+      );
+
+  /// A page of the credit history, newest first.
+  Future<CreditHistoryPage> history({String? cursor, int limit = 20}) async =>
+      CreditHistoryPage.fromJson(
+        await _api.send(
+          () => http.Request(
+            'GET',
+            _api.uri('/credits/history').replace(queryParameters: {
+              'limit': '$limit',
+              if (cursor != null) 'cursor': cursor,
+            }),
+          ),
+        ),
+      );
 }
