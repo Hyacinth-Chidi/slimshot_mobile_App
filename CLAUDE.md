@@ -3497,8 +3497,12 @@ light, not paint.**
   secondary, not tertiary. The coin is **`AppColors.credit`** (amber).
 - **The credits pill is pinned to the right edge** (`HomeHeader`'s brand is `Expanded`): a
   `Flexible` brand let a short balance sit against it.
-- **Account sheets are plain dark everywhere.** A glass version over home and Settings was built
-  and rejected on the device ("does not look good at all").
+- **Account sheets sit on the same light**, everywhere (`AccountSheetFrame.glows`, the home
+  composition moved closer in for a shorter shape; the top glow is wide because over a near-black
+  screen that light is what shows where the sheet begins). **Light, not glass**: a glass version
+  — a purple-and-white fill with a lit edge — was built and rejected on the device ("does not look
+  good at all"). Inside the editor too: the glow is the sheet's own, below the picture, and an
+  account sheet is not a choice judged against the footage.
 - **The editor and its sheets stay plain dark — decided, not pending.** Colour is judged there
   (filters, Adjust, chroma key, the background), and colour around the picture shifts how the
   footage reads, so the export looks different from what was approved; a glass sheet would also

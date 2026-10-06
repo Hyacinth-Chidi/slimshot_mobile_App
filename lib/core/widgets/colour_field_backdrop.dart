@@ -41,10 +41,16 @@ class BackdropGlow {
 /// Each glow is a radial gradient with a Gaussian-like falloff rather than a
 /// shape run through `ImageFiltered`: the two look alike, but a full-screen
 /// blur would be recomputed on every frame of a scroll.
+///
+/// [glows] is the composition; a surface of another shape — the account
+/// sheets — passes its own, held to the same restraint.
 class ColourFieldBackdrop extends StatelessWidget {
-  const ColourFieldBackdrop({super.key});
+  const ColourFieldBackdrop({super.key, this.glows = homeGlows});
 
-  static const List<BackdropGlow> glows = [
+  final List<BackdropGlow> glows;
+
+  /// The home and Settings screens' light.
+  static const List<BackdropGlow> homeGlows = [
     // The main light, high on the right.
     BackdropGlow(
       color: AppColors.primaryStart,

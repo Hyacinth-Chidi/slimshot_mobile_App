@@ -33,7 +33,7 @@ void main() {
     // Device-reported: the full purple field read as less premium than the
     // old near-black. Light is used sparingly — no blob strong enough to
     // turn the screen purple, and white only as a whisper.
-    const glows = ColourFieldBackdrop.glows;
+    const glows = ColourFieldBackdrop.homeGlows;
     expect(glows, isNotEmpty);
     for (final g in glows) {
       expect(g.opacity, lessThanOrEqualTo(0.30), reason: '${g.color}');

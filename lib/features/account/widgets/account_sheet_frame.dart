@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/colour_field_backdrop.dart';
 import '../../video_editor/widgets/panels/caption_sheet_parts.dart'
     show SheetGrabHandle;
 
@@ -11,13 +12,48 @@ const double kAccountSheetMaxWidth = 480;
 const TextStyle kAccountInputStyle =
     TextStyle(color: AppColors.textPrimary, fontSize: 16);
 
-/// The frame every account sheet shares: the surface, corners and grab
-/// handle the editor's sheets have, capped at [kAccountSheetMaxWidth] and
-/// lifted above the keyboard.
+/// The frame every account sheet shares: corners and grab handle, capped at
+/// [kAccountSheetMaxWidth] and lifted above the keyboard, on the home
+/// screen's near-black and soft purple light.
+///
+/// The light, not glass: a glass sheet (a purple-and-white fill with a lit
+/// edge) was built and rejected on the device. This is the backdrop the user
+/// approved for home, so a sheet reads as part of the screens it opens over.
 class AccountSheetFrame extends StatelessWidget {
   const AccountSheetFrame({super.key, required this.children});
 
   final List<Widget> children;
+
+  static const _corners = BorderRadius.vertical(top: Radius.circular(24));
+
+  /// The home screen's light composed for a sheet: shorter than a screen, so
+  /// the glows sit closer in — purple high on the right, deep purple low on
+  /// the left, a whisper of white where the first falls off.
+  static const List<BackdropGlow> glows = [
+    // Wide enough to light the sheet's whole top: over a near-black screen
+    // that light is what shows where the sheet begins.
+    BackdropGlow(
+      color: AppColors.primaryStart,
+      opacity: 0.26,
+      centre: Offset(0.80, 0.0),
+      width: 1.8,
+      height: 0.9,
+    ),
+    BackdropGlow(
+      color: AppColors.textPrimary,
+      opacity: 0.04,
+      centre: Offset(0.65, 0.0),
+      width: 0.7,
+      height: 0.35,
+    ),
+    BackdropGlow(
+      color: AppColors.primaryEnd,
+      opacity: 0.20,
+      centre: Offset(0.0, 1.0),
+      width: 1.1,
+      height: 0.7,
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -27,25 +63,32 @@ class AccountSheetFrame extends StatelessWidget {
       heightFactor: 1,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: kAccountSheetMaxWidth),
-        child: Container(
-          decoration: const BoxDecoration(
+        child: ClipRRect(
+          borderRadius: _corners,
+          child: ColoredBox(
             color: AppColors.background,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + keyboard),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Center(child: SheetGrabHandle()),
-                    ...children,
-                  ],
+            child: Stack(
+              children: [
+                const Positioned.fill(
+                  child: ColourFieldBackdrop(glows: glows),
                 ),
-              ),
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + keyboard),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Center(child: SheetGrabHandle()),
+                          ...children,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
