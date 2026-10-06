@@ -337,4 +337,48 @@ void main() {
       );
     });
   });
+
+  test('the upload reports what it charged', () async {
+    final service = serviceWith(MockClient((request) async => envelope({
+          'jobId': 'cap_1',
+          'status': 'queued',
+          'pollAfterMs': 1500,
+          'charged': {'credits': 6, 'balance': 88},
+        }, 202)));
+    final job = await service.start(
+      audioPath: audio.path,
+      idempotencyKey: 'k1',
+    );
+    expect((job.charged!.credits, job.charged!.balance), (6, 88));
+  });
+
+  test('a free job, or a resend, reports no charge', () async {
+    final service = serviceWith(MockClient((request) async => envelope({
+          'jobId': 'cap_1',
+          'status': 'queued',
+          'pollAfterMs': 1500,
+        }, 202)));
+    final job = await service.start(
+      audioPath: audio.path,
+      idempotencyKey: 'k1',
+    );
+    expect(job.charged, isNull);
+  });
+
+  test('a job the server failed is told apart from a request that failed',
+      () async {
+    final service = serviceWith(
+      MockClient((request) async => envelope({
+            'jobId': 'cap_1',
+            'status': 'failed',
+            'error': {'code': 'PROVIDER_FAILED', 'message': 'm'},
+          })),
+      delay: (_) async {},
+    );
+    await expectLater(
+      service.result(job, isCancelled: () => false),
+      throwsA(isA<CaptionJobFailed>()
+          .having((e) => e.code, 'code', 'PROVIDER_FAILED')),
+    );
+  });
 }

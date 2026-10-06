@@ -26,6 +26,13 @@ class CaptionFailure implements Exception {
   static const String renderFailed = 'RENDER_FAILED';
 }
 
+/// The server finished the job as `failed`. Told apart from a request that
+/// failed because a paid job's credits are already back by then (contract
+/// §12), which the user is told.
+class CaptionJobFailed extends SlimshotApiException {
+  const CaptionJobFailed(super.code, [super.message]);
+}
+
 /// The one line the user sees for [error] — no title, no code.
 String captionErrorMessage(Object error) {
   final code = switch (error) {

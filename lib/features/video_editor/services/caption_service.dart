@@ -7,12 +7,28 @@ import '../../../core/services/slimshot_api.dart';
 import '../logic/captions/caption_transcript.dart';
 import 'caption_errors.dart';
 
+/// What an upload took, and the balance after it.
+class CreditCharge {
+  const CreditCharge({required this.credits, required this.balance});
+
+  final int credits;
+  final int balance;
+}
+
 /// A caption job the server has accepted.
 class CaptionJobStart {
-  const CaptionJobStart({required this.jobId, required this.pollAfter});
+  const CaptionJobStart({
+    required this.jobId,
+    required this.pollAfter,
+    this.charged,
+  });
 
   final String jobId;
   final Duration pollAfter;
+
+  /// Absent for a free job and for a resend of an upload the server still
+  /// has: nothing was taken.
+  final CreditCharge? charged;
 }
 
 /// Auto captions on the server: upload the audio, then poll until the words
@@ -94,7 +110,11 @@ class CaptionService {
         'No job id.',
       );
     }
-    return CaptionJobStart(jobId: jobId, pollAfter: _pollAfter(data));
+    return CaptionJobStart(
+      jobId: jobId,
+      pollAfter: _pollAfter(data),
+      charged: _charged(data['charged']),
+    );
   }
 
   /// Polls [job] until its words arrive, at the pace the server asks for.
@@ -140,7 +160,7 @@ class CaptionService {
           final error = data['error'];
           final code = error is Map ? error['code'] : null;
           final message = error is Map ? error['message'] : null;
-          throw SlimshotApiException(
+          throw CaptionJobFailed(
             code is String ? code : 'PROVIDER_FAILED',
             message is String ? message : '',
           );
@@ -148,6 +168,14 @@ class CaptionService {
           wait = _pollAfter(data);
       }
     }
+  }
+
+  static CreditCharge? _charged(Object? value) {
+    if (value is! Map) return null;
+    final credits = value['credits'];
+    final balance = value['balance'];
+    if (credits is! num || balance is! num) return null;
+    return CreditCharge(credits: credits.toInt(), balance: balance.toInt());
   }
 
   static Duration _pollAfter(Map<String, dynamic> data) {
