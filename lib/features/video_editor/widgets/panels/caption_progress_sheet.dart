@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../account/logic/account_copy.dart';
+import '../../../account/models/account_models.dart';
 import '../../services/caption_errors.dart';
 import '../../services/caption_pipeline.dart';
 import 'caption_sheet_parts.dart';
@@ -33,6 +35,10 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
   String? _error;
   bool _finished = false;
 
+  /// The price waiting for an answer; null when none is asked.
+  CreditQuote? _quote;
+  Completer<bool>? _decision;
+
   @override
   void initState() {
     super.initState();
@@ -42,7 +48,29 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
   @override
   void dispose() {
     if (!_finished) widget.pipeline.cancel();
+    // Closed while the price was showing — Cancel, Back, a tap outside: no.
+    final decision = _decision;
+    if (decision != null && !decision.isCompleted) decision.complete(false);
     super.dispose();
+  }
+
+  Future<bool> _confirmPrice(CreditQuote quote) {
+    final decision = Completer<bool>();
+    setState(() {
+      _quote = quote;
+      _decision = decision;
+    });
+    return decision.future;
+  }
+
+  void _generate() {
+    final decision = _decision;
+    if (decision == null || decision.isCompleted) return;
+    setState(() {
+      _quote = null;
+      _decision = null;
+    });
+    decision.complete(true);
   }
 
   Future<void> _run() async {
@@ -56,6 +84,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
             _progress = progress;
           });
         },
+        confirmPrice: _confirmPrice,
       );
       _finished = true;
       if (mounted) Navigator.of(context).pop(drafts);
@@ -70,6 +99,8 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
   void _retry() {
     setState(() {
       _error = null;
+      _quote = null;
+      _decision = null;
       _stage = CaptionStage.preparing;
       _progress = 0;
     });
@@ -87,6 +118,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
   @override
   Widget build(BuildContext context) {
     final error = _error;
+    final quote = _quote;
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.background,
@@ -102,34 +134,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
             children: [
               const Center(child: SheetGrabHandle()),
               const SizedBox(height: 8),
-              if (error == null) ...[
-                Text(
-                  _label(_stage),
-                  key: const Key('caption_progress_stage'),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: _progress,
-                    minHeight: 4,
-                    color: AppColors.primaryStart,
-                    backgroundColor: AppColors.surfaceLight,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SheetActionButton(
-                  key: const Key('caption_cancel'),
-                  label: 'Cancel',
-                  onTap: () => Navigator.of(context).pop(),
-                ),
-              ] else ...[
+              if (error != null) ...[
                 Text(
                   error,
                   key: const Key('caption_error'),
@@ -159,6 +164,74 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
                       ),
                     ),
                   ],
+                ),
+              ] else if (quote != null) ...[
+                Text(
+                  quote.enough
+                      ? priceLine(quote.credits, quote.balance)
+                      : shortfallLine(quote.credits, quote.balance),
+                  key: const Key('caption_price'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                if (quote.enough)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SheetActionButton(
+                          key: const Key('caption_cancel'),
+                          label: 'Cancel',
+                          onTap: () => Navigator.of(context).pop(),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SheetActionButton(
+                          key: const Key('caption_confirm'),
+                          label: 'Generate',
+                          filled: true,
+                          onTap: _generate,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  SheetActionButton(
+                    key: const Key('caption_close'),
+                    label: 'Close',
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+              ] else ...[
+                Text(
+                  _label(_stage),
+                  key: const Key('caption_progress_stage'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: _progress,
+                    minHeight: 4,
+                    color: AppColors.primaryStart,
+                    backgroundColor: AppColors.surfaceLight,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SheetActionButton(
+                  key: const Key('caption_cancel'),
+                  label: 'Cancel',
+                  onTap: () => Navigator.of(context).pop(),
                 ),
               ],
             ],

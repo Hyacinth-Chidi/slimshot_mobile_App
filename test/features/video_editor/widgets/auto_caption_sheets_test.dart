@@ -140,15 +140,22 @@ void main() {
       required Future<CaptionAudioResult> Function() render,
       Future<CaptionTranscript> Function()? transcript,
       void Function()? onCancel,
+      CreditQuote quote =
+          const CreditQuote(credits: 0, balance: 94, enough: true),
+      void Function()? onUpload,
     }) =>
         CaptionPipeline(
           audioPath: () async => '/tmp/none.m4a',
           deleteFile: (_) async {},
           renderAudio: (path, source, onProgress) => render(),
-          quotePrice: (_) async =>
-              const CreditQuote(credits: 0, balance: 94, enough: true),
-          startJob: (path, language, key) async =>
-              const CaptionJobStart(jobId: 'cap_1', pollAfter: Duration.zero),
+          quotePrice: (_) async => quote,
+          startJob: (path, language, key) async {
+            onUpload?.call();
+            return const CaptionJobStart(
+              jobId: 'cap_1',
+              pollAfter: Duration.zero,
+            );
+          },
           awaitJob: (job, isCancelled) =>
               transcript == null ? Future.value(hello) : transcript(),
           onCancel: onCancel ?? () {},
@@ -227,6 +234,105 @@ void main() {
       await tapKey(tester, 'caption_cancel');
       expect(popped.single, isNull);
       expect(cancels, 1);
+    });
+
+    testWidgets('a paid run shows its price and waits for Generate',
+        (tester) async {
+      var uploads = 0;
+      final popped = await open(
+        tester,
+        (_) => CaptionProgressSheet(
+          pipeline: pipelineWith(
+            render: () async => sound,
+            quote: const CreditQuote(credits: 6, balance: 94, enough: true),
+            onUpload: () => uploads++,
+          ),
+          request: const CaptionRequest(),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('6 credits · You have 94'), findsOneWidget);
+      expect(uploads, 0, reason: 'nothing leaves before Generate');
+
+      await tapKey(tester, 'caption_confirm');
+      expect(uploads, 1);
+      expect((popped.single as List<CaptionDraft>).single.text, 'Hello');
+    });
+
+    testWidgets('closing at the price step uploads nothing', (tester) async {
+      var uploads = 0;
+      var cancels = 0;
+      final popped = await open(
+        tester,
+        (_) => CaptionProgressSheet(
+          pipeline: pipelineWith(
+            render: () async => sound,
+            quote: const CreditQuote(credits: 6, balance: 94, enough: true),
+            onUpload: () => uploads++,
+            onCancel: () => cancels++,
+          ),
+          request: const CaptionRequest(),
+        ),
+      );
+      await tester.pump();
+      await tapKey(tester, 'caption_cancel');
+      expect(popped.single, isNull);
+      expect((uploads, cancels), (0, 1));
+
+      // And by a tap outside the sheet.
+      final again = await open(
+        tester,
+        (_) => CaptionProgressSheet(
+          pipeline: pipelineWith(
+            render: () async => sound,
+            quote: const CreditQuote(credits: 6, balance: 94, enough: true),
+            onUpload: () => uploads++,
+          ),
+          request: const CaptionRequest(),
+        ),
+      );
+      await tester.pump();
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(again.single, isNull);
+      expect(uploads, 0);
+    });
+
+    testWidgets('short of credits: how many it needs, and only Close',
+        (tester) async {
+      var uploads = 0;
+      final popped = await open(
+        tester,
+        (_) => CaptionProgressSheet(
+          pipeline: pipelineWith(
+            render: () async => sound,
+            quote: const CreditQuote(credits: 6, balance: 2, enough: false),
+            onUpload: () => uploads++,
+          ),
+          request: const CaptionRequest(),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Needs 6 credits · You have 2'), findsOneWidget);
+      expect(find.byKey(const Key('caption_confirm')), findsNothing);
+      await tapKey(tester, 'caption_close');
+      expect(popped.single, isNull);
+      expect(uploads, 0);
+    });
+
+    testWidgets('a free run goes straight through', (tester) async {
+      final popped = await open(
+        tester,
+        (_) => CaptionProgressSheet(
+          pipeline: pipelineWith(render: () async => sound),
+          request: const CaptionRequest(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byKey(const Key('caption_price')), findsNothing);
+      expect((popped.single as List<CaptionDraft>).single.text, 'Hello');
     });
   });
 
