@@ -8,6 +8,7 @@ import '../../../core/theme/lucide_icons.dart';
 import '../../../core/widgets/frosted_glass.dart';
 import '../account_gate.dart';
 import '../providers/account_providers.dart';
+import '../screens/credits_screen.dart';
 
 /// Top right of the home screen: the balance when signed in and claimed,
 /// otherwise "Free credits", which opens the way to them.
@@ -50,6 +51,7 @@ class _CreditsPillState extends ConsumerState<CreditsPill> {
         key: const Key('credits_pill_balance'),
         icon: LucideIcons.coins,
         label: '${user.creditBalance}',
+        onTap: () => openCreditsScreen(context),
       );
     }
     return _Pill(

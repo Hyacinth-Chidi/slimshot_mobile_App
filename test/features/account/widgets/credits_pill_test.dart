@@ -85,4 +85,19 @@ void main() {
     await settle(tester);
     expect(server.to('GET', '/me').length, before + 1);
   });
+
+  testWidgets('signed in, the balance opens Credits', (tester) async {
+    server
+      ..on('GET', '/me', (_) => envelope(userJson(balance: 94)))
+      ..on('GET', '/credits/history',
+          (_) => envelope({'items': [], 'nextCursor': null}));
+    await pumpPill(
+      tester,
+      accountOverrides(server,
+          session: signedInSession(profile: userJson(balance: 94))),
+    );
+    await tester.tap(find.byKey(const Key('credits_pill_balance')));
+    await settle(tester);
+    expect(find.byKey(const Key('credits_balance')), findsOneWidget);
+  });
 }

@@ -145,4 +145,13 @@ void main() {
     expect(server.lastBody('PATCH', '/me/username'), {'username': 'ann_2'});
     expect(find.text('ann_2'), findsOneWidget);
   });
+
+  testWidgets('signed in, a Credits row opens Credits', (tester) async {
+    server.on('GET', '/credits/history',
+        (_) => envelope({'items': [], 'nextCursor': null}));
+    await pumpSection(tester, accountOverrides(server, session: signedIn()));
+    await tester.tap(find.text('Credits'));
+    await settle(tester);
+    expect(find.byKey(const Key('credits_balance')), findsOneWidget);
+  });
 }

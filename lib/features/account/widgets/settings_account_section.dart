@@ -9,6 +9,7 @@ import '../../../core/widgets/settings_rows.dart';
 import '../../video_editor/widgets/panels/editor_sheet.dart';
 import '../account_gate.dart';
 import '../providers/account_providers.dart';
+import '../screens/credits_screen.dart';
 import 'delete_account_sheet.dart';
 import 'sign_out_sheet.dart';
 import 'username_sheet.dart';
@@ -63,6 +64,13 @@ class SettingsAccountSection extends ConsumerWidget {
               subtitle: user.email,
               showChevron: false,
               onTap: () {},
+            ),
+            const SettingsDivider(),
+            SettingsItem(
+              icon: LucideIcons.coins,
+              title: 'Credits',
+              subtitle: '${user.creditBalance}',
+              onTap: () => openCreditsScreen(context),
             ),
             const SettingsDivider(),
             SettingsItem(
