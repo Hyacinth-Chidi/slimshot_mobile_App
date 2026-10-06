@@ -18,7 +18,7 @@ String captionAudioFileName(DateTime now) =>
     '${FileUtils.filePrefix}captions_${now.millisecondsSinceEpoch}.wav';
 
 /// Where a run is, for the progress sheet.
-enum CaptionStage { preparing, pricing, uploading, listening, placing }
+enum CaptionStage { preparing, uploading, listening, placing }
 
 /// What the caption sheet asked for.
 class CaptionRequest {
@@ -86,12 +86,14 @@ class CaptionPipeline {
   String? _key;
   bool _cancelled = false;
 
-  /// [confirmPrice] is asked before a paid upload; without one a paid run
-  /// never uploads. A free run is not asked.
+  /// The price is checked silently, under "Preparing audio" (the owner's
+  /// call): a run the balance covers goes straight on. [onShortfall] is told
+  /// when it does not, and answers whether the run may go on after all (stage
+  /// 3: an ad earned the difference); without one, a short run never uploads.
   Future<List<CaptionDraft>> run(
     CaptionRequest request, {
     required void Function(CaptionStage stage, double? progress) onProgress,
-    Future<bool> Function(CreditQuote quote)? confirmPrice,
+    Future<bool> Function(CreditQuote quote)? onShortfall,
   }) async {
     _cancelled = false;
     var paid = false;
@@ -112,12 +114,11 @@ class CaptionPipeline {
       // again: a fresh quote could read the balance the upload already took
       // and strand the credits it paid.
       if (_key == null) {
-        onProgress(CaptionStage.pricing, null);
         final quote = await quotePrice(audio.durationSeconds);
         _throwIfCancelled();
-        if (!quote.isFree) {
-          final approved = confirmPrice != null && await confirmPrice(quote);
-          if (!approved || _cancelled) throw const CaptionCancelled();
+        if (!quote.isFree && !quote.enough) {
+          final covered = onShortfall != null && await onShortfall(quote);
+          if (!covered || _cancelled) throw const CaptionCancelled();
         }
       }
 

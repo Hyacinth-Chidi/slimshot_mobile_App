@@ -66,10 +66,7 @@ List<String> claimResultLines(ClaimResult result) => [
 /// "1 credit", "6 credits".
 String creditCount(int n) => n == 1 ? '1 credit' : '$n credits';
 
-/// The price step when the balance covers it.
-String priceLine(int credits, int balance) =>
-    '${creditCount(credits)} · You have $balance';
-
-/// The price step, or a refusal, when it does not.
+/// What a run needs when the balance does not cover it — the only price a
+/// user is ever shown.
 String shortfallLine(int needed, int balance) =>
     'Needs ${creditCount(needed)} · You have $balance';

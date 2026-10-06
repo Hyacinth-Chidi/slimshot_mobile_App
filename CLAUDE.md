@@ -3479,22 +3479,27 @@ shell's floating nav is painted above them, so a sheet opened on a tab's navigat
 since Lucide has no brand marks — and its label scales down rather than overflow on a narrow
 phone with large text (`sign_in_sheet_test.dart` pins both).
 
-### Accounts and credits — stage 2: the price step
+### Accounts and credits — stage 2: the silent price check
 
 **Awaiting device verification.** Plan: `docs/superpowers/plans/2026-10-06-credits-stage2-price-step.md`.
-A run is **priced after the audio is rendered and before it is uploaded** (`CaptionStage.pricing`,
-"Checking price"): `AccountService.quote` sends the rendered WAV's own length — the server measures
-that file again and charges what it measures, so the app **never works a price out**. A quote
-without a price is refused (`badResponse`), never read as 0 — free would skip the step while the
-server still charged. The progress
-sheet shows `"6 credits · You have 94"` with Cancel / Generate, or `"Needs 6 credits · You have 2"`
-with Close (stage 3 puts Watch an ad and Invite there). **A free quote skips the step.** The
-pipeline asks through `run(confirmPrice:)`, and **with nobody to ask a paid run never uploads** — a
-missing confirmer declines, it never approves. Closing the sheet at the step (Cancel, Back, a tap
-outside) answers no. **A retry under a held key is not priced again**: the user already said
-Generate to that upload, the server charges at most once per key, and a fresh quote would read
-the balance the lost upload already took — "Needs 6 · You have 2" with only Close, stranding the
-credits it paid (found by the stage review). So the price step runs only while no key is held.
+A run is **priced after the audio is rendered and before it is uploaded, silently** — the owner's
+call on the device (2026-10-06): no "Checking price" stage, no confirm. It happens while the sheet
+still says "Preparing audio". `AccountService.quote` sends the rendered WAV's own length — the
+server measures that file again and charges what it measures, so the app **never works a price
+out**. A quote without a price is refused (`badResponse`), never read as 0.
+
+**A run the balance covers generates straight away. Only a shortfall is shown**:
+`"Needs 30 credits · You have 0"` with Close — stage 3 puts **Watch an ad** there (rewarded ads
+are verified on the server, SSV). The spec had a confirm step ("6 credits · You have 94" with
+Generate); it was built, seen on the device, and dropped: `priceLine` and `CaptionStage.pricing`
+are gone. The pipeline tells the sheet through `run(onShortfall:)`, whose answer says whether the
+run may go on after all (stage 3: an ad earned the difference); **with nobody to tell, a short run
+never uploads**. Closing the shortfall (Close, Back, a tap outside) stops the run.
+
+**A retry under a held key is not priced again**: the user's earlier run already went to that
+upload, the server charges at most once per key, and a fresh quote would read the balance the lost
+upload already took — a shortfall with only Close, stranding the credits it paid (found by the
+stage review). So the price is checked only while no key is held.
 
 **The charge reaches the pill at once** (`onCharged` → `AccountNotifier.applyBalance`), ticketed
 like every profile answer so a `/me` already on its way cannot put the old balance back.

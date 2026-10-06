@@ -224,51 +224,61 @@ void main() {
   const paid = CreditQuote(credits: 6, balance: 94, enough: true);
   void ignore(CaptionStage stage, double? value) {}
 
-  test('a paid run is priced on the audio it rendered, then asked', () async {
-    CreditQuote? asked;
+  const short = CreditQuote(credits: 30, balance: 0, enough: false);
+
+  test('enough credits: priced on the rendered audio, then straight on',
+      () async {
+    var shown = 0;
     await pipeline(quote: paid).run(
       const CaptionRequest(),
       onProgress: ignore,
-      confirmPrice: (q) async {
-        asked = q;
-        return true;
+      onShortfall: (_) async {
+        shown++;
+        return false;
       },
     );
     expect(quoted, [3.0], reason: "the rendered sound's own length");
-    expect(asked, same(paid));
+    expect(shown, 0, reason: 'nothing to tell a user who can pay');
     expect(keys, ['key-1']);
   });
 
-  test('declining uploads nothing and cleans up', () async {
+  test('short of credits: told, and nothing uploads', () async {
+    CreditQuote? told;
     await expectLater(
-      pipeline(quote: paid).run(
+      pipeline(quote: short).run(
         const CaptionRequest(),
         onProgress: ignore,
-        confirmPrice: (_) async => false,
+        onShortfall: (q) async {
+          told = q;
+          return false;
+        },
       ),
       throwsA(isA<CaptionCancelled>()),
     );
+    expect(told, same(short));
     expect(keys, isEmpty);
     expect(deleted, ['/tmp/captions.m4a']);
   });
 
-  test('with nobody to ask, a paid run never uploads', () async {
+  test('short, with nobody to tell, never uploads', () async {
     await expectLater(
-      pipeline(quote: paid).run(const CaptionRequest(), onProgress: ignore),
+      pipeline(quote: short).run(const CaptionRequest(), onProgress: ignore),
       throwsA(isA<CaptionCancelled>()),
     );
     expect(keys, isEmpty);
   });
 
-  test('a free run is not asked about', () async {
-    var asked = false;
-    await pipeline().run(
+  test('the price is checked under Preparing audio, never as a stage of its own',
+      () async {
+    final stages = <CaptionStage>[];
+    await pipeline(quote: paid).run(
       const CaptionRequest(),
-      onProgress: ignore,
-      confirmPrice: (_) async => asked = true,
+      onProgress: (stage, _) {
+        if (stages.isEmpty || stages.last != stage) stages.add(stage);
+      },
     );
-    expect(asked, isFalse);
-    expect(keys, ['key-1']);
+    expect(stages.first, CaptionStage.preparing);
+    expect(stages[1], CaptionStage.uploading);
   });
 
   test('a quote that fails uploads nothing', () async {
@@ -294,7 +304,6 @@ void main() {
     ).run(
       const CaptionRequest(),
       onProgress: ignore,
-      confirmPrice: (_) async => true,
     );
     expect(charges, [88]);
   });
@@ -316,7 +325,6 @@ void main() {
       ).run(
         const CaptionRequest(),
         onProgress: ignore,
-        confirmPrice: (_) async => true,
       ),
       throwsA(isA<CaptionFailure>()
           .having((e) => e.code, 'code', CaptionFailure.refunded)),
@@ -374,11 +382,10 @@ void main() {
   test('a retry under a held key is not priced again, and reuses it',
       () async {
     // Balance 8, price 6: the upload landed and took 6, its answer was lost.
-    // The retry's quote says 2 is not enough — but the key gets the paid job
-    // back for nothing, and asking again would strand the 6 credits.
+    // A fresh quote would read the 2 left as short and stop the run — but
+    // the key gets the paid job back for nothing.
     var lose = true;
     var quote = paid;
-    var asks = 0;
     final p = pipeline(
       quoteWith: () async => quote,
       start: (_) async {
@@ -386,20 +393,15 @@ void main() {
         return job;
       },
     );
-    Future<bool> yes(CreditQuote _) async {
-      asks++;
-      return true;
-    }
-
     await expectLater(
-      p.run(const CaptionRequest(), onProgress: ignore, confirmPrice: yes),
+      p.run(const CaptionRequest(), onProgress: ignore),
       throwsA(isA<SlimshotApiException>()),
     );
     lose = false;
     quote = const CreditQuote(credits: 6, balance: 2, enough: false);
-    await p.run(const CaptionRequest(), onProgress: ignore, confirmPrice: yes);
+    await p.run(const CaptionRequest(), onProgress: ignore);
     expect(keys, ['key-1', 'key-1']);
-    expect(asks, 1, reason: 'the first Generate covers the key');
+    expect(quoted, hasLength(1), reason: 'priced once, for the one upload');
   });
 
   test('a failure before the upload keeps a held key', () async {
@@ -432,7 +434,6 @@ void main() {
 
   test('a charged job whose answers stop keeps its key', () async {
     var polls = 0;
-    var asks = 0;
     final p = pipeline(
       quote: paid,
       start: (_) async => const CaptionJobStart(
@@ -447,17 +448,12 @@ void main() {
         return hello;
       },
     );
-    Future<bool> yes(CreditQuote _) async {
-      asks++;
-      return true;
-    }
-
     await expectLater(
-      p.run(const CaptionRequest(), onProgress: ignore, confirmPrice: yes),
+      p.run(const CaptionRequest(), onProgress: ignore),
       throwsA(isA<SlimshotApiException>()),
     );
-    await p.run(const CaptionRequest(), onProgress: ignore, confirmPrice: yes);
+    await p.run(const CaptionRequest(), onProgress: ignore);
     expect(keys, ['key-1', 'key-1'], reason: 'the resend gets the job back');
-    expect(asks, 1);
+    expect(quoted, hasLength(1));
   });
 }

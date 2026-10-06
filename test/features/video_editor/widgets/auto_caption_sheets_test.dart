@@ -238,7 +238,7 @@ void main() {
       expect(cancels, 1);
     });
 
-    testWidgets('a paid run shows its price and waits for Generate',
+    testWidgets('enough credits: no price, no question, straight on',
         (tester) async {
       var uploads = 0;
       final popped = await open(
@@ -253,15 +253,39 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('6 credits · You have 94'), findsOneWidget);
-      expect(uploads, 0, reason: 'nothing leaves before Generate');
-
-      await tapKey(tester, 'caption_confirm');
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.byKey(const Key('caption_price')), findsNothing);
       expect(uploads, 1);
       expect((popped.single as List<CaptionDraft>).single.text, 'Hello');
     });
 
-    testWidgets('closing at the price step uploads nothing', (tester) async {
+    testWidgets('the price check is never named', (tester) async {
+      final priced = Completer<CreditQuote>();
+      await open(
+        tester,
+        (_) => CaptionProgressSheet(
+          pipeline: CaptionPipeline(
+            audioPath: () async => '/tmp/none.m4a',
+            deleteFile: (_) async {},
+            renderAudio: (path, source, onProgress) async => sound,
+            quotePrice: (_) => priced.future,
+            startJob: (path, language, key) async => const CaptionJobStart(
+              jobId: 'cap_1',
+              pollAfter: Duration.zero,
+            ),
+            awaitJob: (job, isCancelled) => Future.value(hello),
+            onCancel: () {},
+          ),
+          request: const CaptionRequest(),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Checking price'), findsNothing);
+      expect(find.text('Preparing audio'), findsOneWidget);
+    });
+
+    testWidgets('closing the shortfall, any way, uploads nothing',
+        (tester) async {
       var uploads = 0;
       var cancels = 0;
       final popped = await open(
@@ -269,7 +293,7 @@ void main() {
         (_) => CaptionProgressSheet(
           pipeline: pipelineWith(
             render: () async => sound,
-            quote: const CreditQuote(credits: 6, balance: 94, enough: true),
+            quote: const CreditQuote(credits: 30, balance: 0, enough: false),
             onUpload: () => uploads++,
             onCancel: () => cancels++,
           ),
@@ -277,7 +301,7 @@ void main() {
         ),
       );
       await tester.pump();
-      await tapKey(tester, 'caption_cancel');
+      await tapKey(tester, 'caption_close');
       expect(popped.single, isNull);
       expect((uploads, cancels), (0, 1));
 
@@ -287,7 +311,7 @@ void main() {
         (_) => CaptionProgressSheet(
           pipeline: pipelineWith(
             render: () async => sound,
-            quote: const CreditQuote(credits: 6, balance: 94, enough: true),
+            quote: const CreditQuote(credits: 30, balance: 0, enough: false),
             onUpload: () => uploads++,
           ),
           request: const CaptionRequest(),

@@ -14,7 +14,7 @@ The app stays free and works fully signed out. Auto captions becomes the first p
 
 - Tapping it signed out opens a **sign-in sheet**: Google, or email with a one-time code.
 - A new account then **claims** its free credits by choosing a username.
-- Each run is **priced before it starts** ("6 credits · You have 94").
+- Each run is **priced before it starts**, silently; only a shortfall is shown (§4.4).
 - A user short of credits can **watch a rewarded ad** or **invite a friend**.
 - The balance sits **top right on the home screen**.
 - **Settings** gains an account section with sign out and delete account.
@@ -95,13 +95,14 @@ opened it.
 
 ### 4.4 The price step (inside the caption progress sheet)
 
-After "Preparing audio" the sheet quotes the rendered WAV's length and stops:
+**Revised by the owner on 2026-10-06, after seeing it on the device:** the price is checked
+silently while the sheet says "Preparing audio" — no "Checking price" stage and no confirm.
 
-- **Enough credits:** "6 credits · You have 94" with Generate. Cancel discards the audio.
+- **Enough credits:** generates straight away. (Was: "6 credits · You have 94" with Generate.)
 - **Not enough:** "Needs 6 credits · You have 2", with **Watch an ad · +5** (hidden at the daily
-  cap) and **Invite a friend** in place of Generate. When an ad lands, the step re-quotes and
-  Generate appears once the balance is enough.
-- **Generate** uploads. The upload's `charged.balance` updates the home pill straight away.
+  cap) and **Invite a friend**, beside Close. When an ad lands, the step re-quotes and the
+  run goes on by itself once the balance is enough.
+- The upload's `charged.balance` updates the home pill straight away.
 - **A failed job is refunded by the server.** The app re-reads `/me` and says "Captioning failed.
   Your credits were returned."
 - A free job (`credits: 0`) skips the step: there is nothing to confirm.

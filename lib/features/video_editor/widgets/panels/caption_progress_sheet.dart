@@ -35,7 +35,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
   String? _error;
   bool _finished = false;
 
-  /// The price waiting for an answer; null when none is asked.
+  /// The price the balance does not cover, while it is shown; else null.
   CreditQuote? _quote;
   Completer<bool>? _decision;
 
@@ -48,29 +48,19 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
   @override
   void dispose() {
     if (!_finished) widget.pipeline.cancel();
-    // Closed while the price was showing — Cancel, Back, a tap outside: no.
+    // Closed on the shortfall — Close, Back, a tap outside: the run stops.
     final decision = _decision;
     if (decision != null && !decision.isCompleted) decision.complete(false);
     super.dispose();
   }
 
-  Future<bool> _confirmPrice(CreditQuote quote) {
+  Future<bool> _showShortfall(CreditQuote quote) {
     final decision = Completer<bool>();
     setState(() {
       _quote = quote;
       _decision = decision;
     });
     return decision.future;
-  }
-
-  void _generate() {
-    final decision = _decision;
-    if (decision == null || decision.isCompleted) return;
-    setState(() {
-      _quote = null;
-      _decision = null;
-    });
-    decision.complete(true);
   }
 
   Future<void> _run() async {
@@ -84,7 +74,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
             _progress = progress;
           });
         },
-        confirmPrice: _confirmPrice,
+        onShortfall: _showShortfall,
       );
       _finished = true;
       if (mounted) Navigator.of(context).pop(drafts);
@@ -109,7 +99,6 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
 
   static String _label(CaptionStage stage) => switch (stage) {
         CaptionStage.preparing => 'Preparing audio',
-        CaptionStage.pricing => 'Checking price',
         // The upload is never named (the user's call): it reads as the
         // listening it leads straight into.
         CaptionStage.uploading => 'Listening',
@@ -169,9 +158,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
                 ),
               ] else if (quote != null) ...[
                 Text(
-                  quote.enough
-                      ? priceLine(quote.credits, quote.balance)
-                      : shortfallLine(quote.credits, quote.balance),
+                  shortfallLine(quote.credits, quote.balance),
                   key: const Key('caption_price'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
@@ -181,33 +168,12 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                if (quote.enough)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SheetActionButton(
-                          key: const Key('caption_cancel'),
-                          label: 'Cancel',
-                          onTap: () => Navigator.of(context).pop(),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: SheetActionButton(
-                          key: const Key('caption_confirm'),
-                          label: 'Generate',
-                          filled: true,
-                          onTap: _generate,
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  SheetActionButton(
-                    key: const Key('caption_close'),
-                    label: 'Close',
-                    onTap: () => Navigator.of(context).pop(),
-                  ),
+                // Stage 3 puts Watch an ad here.
+                SheetActionButton(
+                  key: const Key('caption_close'),
+                  label: 'Close',
+                  onTap: () => Navigator.of(context).pop(),
+                ),
               ] else ...[
                 Text(
                   _label(_stage),
