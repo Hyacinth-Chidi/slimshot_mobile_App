@@ -202,7 +202,7 @@ void main() {
     var attempts = 0;
     final p = pipeline(transcript: (_) async {
       if (attempts++ == 0) {
-        throw const SlimshotApiException('PROVIDER_FAILED');
+        throw const CaptionJobFailed('PROVIDER_FAILED');
       }
       return hello;
     });
@@ -352,31 +352,6 @@ void main() {
     expect(keys, ['key-1', 'key-2']);
   });
 
-  test("declining forgets a lost upload's key", () async {
-    var lose = true;
-    final p = pipeline(
-      quote: paid,
-      start: (_) async {
-        if (lose) throw const SlimshotApiException(SlimshotApiException.network);
-        return job;
-      },
-    );
-    await expectLater(
-      p.run(const CaptionRequest(),
-          onProgress: ignore, confirmPrice: (_) async => true),
-      throwsA(isA<SlimshotApiException>()),
-    ); // key-1 kept: the upload may have landed
-    await expectLater(
-      p.run(const CaptionRequest(),
-          onProgress: ignore, confirmPrice: (_) async => false),
-      throwsA(isA<CaptionCancelled>()),
-    );
-    lose = false;
-    await p.run(const CaptionRequest(),
-        onProgress: ignore, confirmPrice: (_) async => true);
-    expect(keys, ['key-1', 'key-2'], reason: 'a new upload, a new key');
-  });
-
   test('a refusal for credits says how many', () {
     expect(
       captionErrorMessage(const SlimshotApiException(
@@ -394,5 +369,95 @@ void main() {
       captionErrorMessage(const CaptionFailure(CaptionFailure.refunded)),
       'Captioning failed. Your credits were returned.',
     );
+  });
+
+  test('a retry under a held key is not priced again, and reuses it',
+      () async {
+    // Balance 8, price 6: the upload landed and took 6, its answer was lost.
+    // The retry's quote says 2 is not enough — but the key gets the paid job
+    // back for nothing, and asking again would strand the 6 credits.
+    var lose = true;
+    var quote = paid;
+    var asks = 0;
+    final p = pipeline(
+      quoteWith: () async => quote,
+      start: (_) async {
+        if (lose) throw const SlimshotApiException(SlimshotApiException.network);
+        return job;
+      },
+    );
+    Future<bool> yes(CreditQuote _) async {
+      asks++;
+      return true;
+    }
+
+    await expectLater(
+      p.run(const CaptionRequest(), onProgress: ignore, confirmPrice: yes),
+      throwsA(isA<SlimshotApiException>()),
+    );
+    lose = false;
+    quote = const CreditQuote(credits: 6, balance: 2, enough: false);
+    await p.run(const CaptionRequest(), onProgress: ignore, confirmPrice: yes);
+    expect(keys, ['key-1', 'key-1']);
+    expect(asks, 1, reason: 'the first Generate covers the key');
+  });
+
+  test('a failure before the upload keeps a held key', () async {
+    var stage = 0;
+    final p = pipeline(
+      render: (_) async {
+        if (stage == 1) throw Exception('render failed');
+        return sound;
+      },
+      start: (_) async {
+        if (stage == 0) {
+          throw const SlimshotApiException(SlimshotApiException.network);
+        }
+        return job;
+      },
+    );
+    await expectLater(
+      p.run(const CaptionRequest(), onProgress: ignore),
+      throwsA(isA<SlimshotApiException>()),
+    ); // key-1 held: the upload may have landed
+    stage = 1;
+    await expectLater(
+      p.run(const CaptionRequest(), onProgress: ignore),
+      throwsA(isA<Exception>()),
+    );
+    stage = 2;
+    await p.run(const CaptionRequest(), onProgress: ignore);
+    expect(keys, ['key-1', 'key-1'], reason: 'one upload, one charge');
+  });
+
+  test('a charged job whose answers stop keeps its key', () async {
+    var polls = 0;
+    var asks = 0;
+    final p = pipeline(
+      quote: paid,
+      start: (_) async => const CaptionJobStart(
+        jobId: 'cap_1',
+        pollAfter: Duration.zero,
+        charged: CreditCharge(credits: 6, balance: 88),
+      ),
+      transcript: (_) async {
+        if (polls++ == 0) {
+          throw const SlimshotApiException(SlimshotApiException.network);
+        }
+        return hello;
+      },
+    );
+    Future<bool> yes(CreditQuote _) async {
+      asks++;
+      return true;
+    }
+
+    await expectLater(
+      p.run(const CaptionRequest(), onProgress: ignore, confirmPrice: yes),
+      throwsA(isA<SlimshotApiException>()),
+    );
+    await p.run(const CaptionRequest(), onProgress: ignore, confirmPrice: yes);
+    expect(keys, ['key-1', 'key-1'], reason: 'the resend gets the job back');
+    expect(asks, 1);
   });
 }

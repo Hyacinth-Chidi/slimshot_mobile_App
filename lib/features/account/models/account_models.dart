@@ -185,11 +185,19 @@ class CreditQuote {
   });
 
   factory CreditQuote.fromJson(Map<String, dynamic> json) {
-    final credits = (json['credits'] as num?)?.toInt() ?? 0;
-    final balance = (json['balance'] as num?)?.toInt() ?? 0;
+    final credits = json['credits'];
+    final balance = json['balance'];
+    // A price missing is refused, never read as 0: free would skip the
+    // price step while the server still charged.
+    if (credits is! num || balance is! num) {
+      throw const SlimshotApiException(
+        SlimshotApiException.badResponse,
+        'No price.',
+      );
+    }
     return CreditQuote(
-      credits: credits,
-      balance: balance,
+      credits: credits.toInt(),
+      balance: balance.toInt(),
       // Worked out, never assumed: a missing flag must not read as yes.
       enough: json['enough'] as bool? ?? balance >= credits,
     );

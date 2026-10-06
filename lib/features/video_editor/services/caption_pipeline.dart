@@ -94,7 +94,6 @@ class CaptionPipeline {
     Future<bool> Function(CreditQuote quote)? confirmPrice,
   }) async {
     _cancelled = false;
-    var jobStarted = false;
     var paid = false;
     final path = await audioPath();
     try {
@@ -107,21 +106,23 @@ class CaptionPipeline {
       _throwIfCancelled();
       if (!audio.hasSound) throw const CaptionFailure(CaptionFailure.noSound);
 
-      onProgress(CaptionStage.pricing, null);
-      final quote = await quotePrice(audio.durationSeconds);
-      _throwIfCancelled();
-      if (!quote.isFree) {
-        final approved = confirmPrice != null && await confirmPrice(quote);
-        if (!approved || _cancelled) {
-          // Nothing was uploaded for this audio, so no key belongs to it.
-          _key = null;
-          throw const CaptionCancelled();
+      // A held key is an upload the user already said Generate to, which may
+      // have landed and been charged. The server charges at most once per
+      // key and a resend gets that job back for nothing, so it is not priced
+      // again: a fresh quote could read the balance the upload already took
+      // and strand the credits it paid.
+      if (_key == null) {
+        onProgress(CaptionStage.pricing, null);
+        final quote = await quotePrice(audio.durationSeconds);
+        _throwIfCancelled();
+        if (!quote.isFree) {
+          final approved = confirmPrice != null && await confirmPrice(quote);
+          if (!approved || _cancelled) throw const CaptionCancelled();
         }
       }
 
       onProgress(CaptionStage.uploading, null);
       final job = await _upload(path, request.language);
-      jobStarted = true;
       final charged = job.charged;
       if (charged != null) {
         paid = charged.credits > 0;
@@ -148,14 +149,18 @@ class CaptionPipeline {
           error is CaptionCancelled) {
         throw const CaptionCancelled();
       }
-      // A key names one upload. Once the server holds a job for it, the same
-      // key answers with that job — a failed one included — so a retry after
-      // it needs a fresh key. A retry after an upload that never landed must
-      // reuse its key, or a lost response becomes a second job.
-      final uploadLost = !jobStarted &&
-          error is SlimshotApiException &&
-          error.code == SlimshotApiException.network;
-      if (!uploadLost) _key = null;
+      // A key names one upload, and is kept until the server is known to hold
+      // a finished job for it. Kept, a resend is free: the server answers with
+      // the job it has, or never saw the key, or refuses it (and `_upload`
+      // takes a fresh one). Dropped too early — a lost response, a poll that
+      // stopped answering, a failure before the upload — the retry becomes a
+      // second job and a second charge. Only a failed job needs a fresh key:
+      // the same key would answer with that failure.
+      if (error is CaptionJobFailed ||
+          (error is SlimshotApiException &&
+              error.code == 'IDEMPOTENCY_KEY_REUSED')) {
+        _key = null;
+      }
       // The server refunds a failed paid job itself; say so.
       if (paid && error is CaptionJobFailed) {
         throw const CaptionFailure(CaptionFailure.refunded);

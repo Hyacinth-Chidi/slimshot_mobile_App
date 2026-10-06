@@ -1875,11 +1875,15 @@ sign-in and public — described in "Accounts and credits". **Debug builds allow
 server (`android/app/src/debug/AndroidManifest.xml`); release does not, so the deployed server
 must be HTTPS.
 
-**The upload key is reused only after an upload that never landed** (`CaptionPipeline`). A key
-names one upload: once the server holds a job for it the same key answers with that job, a
-failed one included, so a retry after a server-side failure takes a fresh key — and a retry
-after a lost response must reuse its key, or it becomes a second job (and, later, a second
-charge). Both directions are mutation-checked. `CaptionService` polls at the server's
+**The upload key is kept until the server is known to hold a failed job for it**
+(`CaptionPipeline`; the rule since stage 2 of credits). A key names one upload: once the server
+holds a job for it the same key answers with that job, a failed one included, so only a retry
+after a `failed` job (`CaptionJobFailed`) takes a fresh key. Every other failure keeps it — a lost
+response, a poll that stopped answering, a proxy page, a failure before the upload — because a
+retry under a new key would become a second job and, since stage 2, a **second charge**; under
+the held key the server answers with its job, never saw the key, or refuses it with
+`IDEMPOTENCY_KEY_REUSED` (one fresh key, nothing charged). It was briefly "reuse only after a
+network loss", and the stage 2 review found three double-charge paths in that. `CaptionService` polls at the server's
 `pollAfterMs` and gives up after 10 minutes. **A dropped poll is ridden out**
 (`maxPollFailures`, 3 in a row): one lost request on a mobile connection says nothing about a
 job the server is still working on, and giving up on it means rendering and uploading it again
@@ -3480,13 +3484,17 @@ phone with large text (`sign_in_sheet_test.dart` pins both).
 **Awaiting device verification.** Plan: `docs/superpowers/plans/2026-10-06-credits-stage2-price-step.md`.
 A run is **priced after the audio is rendered and before it is uploaded** (`CaptionStage.pricing`,
 "Checking price"): `AccountService.quote` sends the rendered WAV's own length — the server measures
-that file again and charges what it measures, so the app **never works a price out**. The progress
+that file again and charges what it measures, so the app **never works a price out**. A quote
+without a price is refused (`badResponse`), never read as 0 — free would skip the step while the
+server still charged. The progress
 sheet shows `"6 credits · You have 94"` with Cancel / Generate, or `"Needs 6 credits · You have 2"`
 with Close (stage 3 puts Watch an ad and Invite there). **A free quote skips the step.** The
 pipeline asks through `run(confirmPrice:)`, and **with nobody to ask a paid run never uploads** — a
 missing confirmer declines, it never approves. Closing the sheet at the step (Cancel, Back, a tap
-outside) answers no. **Declining drops the run's key**: nothing was uploaded for that audio, so a
-key kept from a lost upload would name a different one.
+outside) answers no. **A retry under a held key is not priced again**: the user already said
+Generate to that upload, the server charges at most once per key, and a fresh quote would read
+the balance the lost upload already took — "Needs 6 · You have 2" with only Close, stranding the
+credits it paid (found by the stage review). So the price step runs only while no key is held.
 
 **The charge reaches the pill at once** (`onCharged` → `AccountNotifier.applyBalance`), ticketed
 like every profile answer so a `/me` already on its way cannot put the old balance back.

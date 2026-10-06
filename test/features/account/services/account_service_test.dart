@@ -223,4 +223,16 @@ void main() {
     expect(CreditQuote.fromJson({'credits': 6, 'balance': 2}).enough, isFalse);
     expect(CreditQuote.fromJson({'credits': 6, 'balance': 6}).enough, isTrue);
   });
+
+  test('a quote without a price is refused, never read as free', () {
+    // Read as 0 it would skip the price step while the server still charged.
+    expect(
+      () => CreditQuote.fromJson({'balance': 94, 'enough': true}),
+      throwsA(isA<SlimshotApiException>().having(
+        (e) => e.code,
+        'code',
+        SlimshotApiException.badResponse,
+      )),
+    );
+  });
 }
