@@ -4,15 +4,15 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 
-/// A pane of frosted glass: what is behind it, blurred, under a fill that
-/// runs from a white sheen through purple, with a lilac glow pooled in the
-/// far corner and an edge that catches the light at the top left.
+/// A pane of smoked glass: what is behind it, blurred, under a faint white
+/// sheen that fades from the top left, with an edge that catches the light
+/// there.
 ///
-/// Made for surfaces over the colour field (`ColourFieldBackdrop`).
-/// The cards there used to be tinted Zinc grey, which over purple reads as
-/// mud rather than glass. A plain white sheen fixed that but left each card
-/// a window onto whatever was behind it; mixing white into purple gives the
-/// card a look of its own — designed, rather than cut out of the backdrop.
+/// Made for surfaces over the home and Settings backdrop
+/// (`ColourFieldBackdrop`). The glass adds no colour of its own — a version
+/// that mixed purple into the fill read, with the backdrop, as "too much
+/// purple" on the device. Neutral glass over near-black, with the colour left
+/// to the backdrop's light and the one solid card, is what reads as premium.
 ///
 /// [tint] colours the pane — a pressed card glows purple through it — and
 /// defaults to none.
@@ -30,21 +30,18 @@ class FrostedGlass extends StatelessWidget {
   final Color? tint;
   final double blurSigma;
 
-  /// The fill, top left to bottom right: white where the light comes from,
-  /// a purple wash through the middle, deep purple where it falls away.
+  /// The sheen, top left to bottom right: strongest where the light comes
+  /// from, nearly gone where it falls away.
   static final List<Color> fill = [
-    AppColors.textPrimary.withValues(alpha: 0.16),
-    AppColors.primaryStart.withValues(alpha: 0.14),
-    AppColors.primaryEnd.withValues(alpha: 0.24),
+    AppColors.textPrimary.withValues(alpha: 0.08),
+    AppColors.textPrimary.withValues(alpha: 0.04),
+    AppColors.textPrimary.withValues(alpha: 0.02),
   ];
-  static const List<double> _fillStops = [0.0, 0.55, 1.0];
+  static const List<double> _fillStops = [0.0, 0.5, 1.0];
 
-  /// The glow pooled in the bottom right corner.
-  static final Color glow = AppColors.lilac.withValues(alpha: 0.20);
-
-  /// The edge, bright at the top left and nearly gone at the bottom right.
-  static final Color edgeLit = AppColors.textPrimary.withValues(alpha: 0.30);
-  static final Color edgeShade = AppColors.textPrimary.withValues(alpha: 0.06);
+  /// The edge, lit at the top left and nearly gone at the bottom right.
+  static final Color edgeLit = AppColors.textPrimary.withValues(alpha: 0.22);
+  static final Color edgeShade = AppColors.textPrimary.withValues(alpha: 0.05);
 
   @override
   Widget build(BuildContext context) {
@@ -64,17 +61,7 @@ class FrostedGlass extends StatelessWidget {
             stops: _fillStops,
           ),
         ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: borderRadius,
-            gradient: RadialGradient(
-              center: Alignment.bottomRight,
-              radius: 1.1,
-              colors: [glow, glow.withValues(alpha: 0)],
-            ),
-          ),
-          child: child,
-        ),
+        child: child,
       ),
     );
     return ClipRRect(

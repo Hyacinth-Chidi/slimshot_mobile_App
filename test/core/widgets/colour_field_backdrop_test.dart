@@ -28,4 +28,19 @@ void main() {
       expect(taps, 1, reason: 'the backdrop must let touches through');
     });
   }
+
+  test('stays dark: a little light, not a colour field', () {
+    // Device-reported: the full purple field read as less premium than the
+    // old near-black. Light is used sparingly — no blob strong enough to
+    // turn the screen purple, and white only as a whisper.
+    const glows = ColourFieldBackdrop.glows;
+    expect(glows, isNotEmpty);
+    for (final g in glows) {
+      expect(g.opacity, lessThanOrEqualTo(0.30), reason: '${g.color}');
+    }
+    final whiteLight = glows
+        .where((g) => g.color.r > 0.9 && g.color.g > 0.9 && g.color.b > 0.9)
+        .fold<double>(0, (sum, g) => sum + g.opacity);
+    expect(whiteLight, lessThanOrEqualTo(0.06));
+  });
 }

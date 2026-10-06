@@ -70,10 +70,13 @@ void main() {
     ]);
   });
 
-  test('the fill mixes white into purple', () {
-    final fill = FrostedGlass.fill;
-    // White where the light comes from, purple where it falls away.
-    expect(fill.first.r, closeTo(fill.first.b, 0.02), reason: 'a white');
-    expect(fill.last.b, greaterThan(fill.last.g + 0.2), reason: 'a purple');
+  test('the fill is neutral: a white sheen, no purple in it', () {
+    // Device-reported: purple-filled cards over a purple field were "too
+    // much". The glass lifts what is behind it and adds no colour of its own.
+    for (final c in FrostedGlass.fill) {
+      expect(c.r, closeTo(c.g, 0.02));
+      expect(c.g, closeTo(c.b, 0.02));
+      expect(c.a, lessThanOrEqualTo(0.10));
+    }
   });
 }

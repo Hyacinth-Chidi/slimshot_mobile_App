@@ -554,9 +554,10 @@ class _HeroActionCardState extends State<_HeroActionCard> {
         widget.onTap();
       },
       onTapCancel: () => setState(() => _isPressed = false),
-      // Solid, unlike the glass tools under it: the one primary action on
-      // the screen. Deep purple behind the words, brighter behind the image,
-      // so the lilac of "Video" keeps its contrast.
+      // Solid, unlike the glass tools under it: the one primary action and
+      // the one block of colour on the screen. Kept deep — near-black purple
+      // behind the words into the brand's deep purple behind the image — since
+      // a bright purple card read as too much on the device.
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child:
@@ -569,11 +570,11 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: _isPressed
-                          ? const [AppColors.primaryEnd, AppColors.primaryEnd]
-                          : const [AppColors.primaryEnd, AppColors.primaryStart],
+                          ? const [AppColors.primaryDeep, AppColors.primaryDeep]
+                          : const [AppColors.primaryDeep, AppColors.primaryEnd],
                     ),
                     border: Border.all(
-                      color: AppColors.textPrimary.withValues(alpha: 0.18),
+                      color: AppColors.textPrimary.withValues(alpha: 0.12),
                     ),
                   ),
                   child: Stack(
@@ -591,7 +592,7 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                             height: 140,
                             decoration: BoxDecoration(
                               color: AppColors.textPrimary.withValues(
-                                alpha: 0.10,
+                                alpha: 0.05,
                               ),
                               shape: BoxShape.circle,
                             ),

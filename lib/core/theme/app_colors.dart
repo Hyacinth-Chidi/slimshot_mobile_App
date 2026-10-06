@@ -23,8 +23,12 @@ class AppColors {
   static const Color previewStage = Color(0xFF52525B); // Zinc 600
   static const Color highlight = Color(0x269333EA); // Purple @ 15% opacity
 
+  /// The darkest purple — the Edit Video card's shadow side. Rich without
+  /// being loud on a near-black screen.
+  static const Color primaryDeep = Color(0xFF3B0764); // Purple 950
+
   /// Light purple, for accents that sit *on* purple — the brand purple is
-  /// too dark to read over the home screen's colour field.
+  /// too dark to read on a purple surface.
   static const Color lilac = Color(0xFFD8B4FE); // Purple 300
 
   /// Credits: the coin's colour. Gold reads as currency and stands clear of
