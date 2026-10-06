@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 
 import '../../../core/services/slimshot_api.dart';
+import '../../account/logic/account_copy.dart';
 
 /// Polling ran for [CaptionService.pollLimit] without an answer.
 const String kCaptionPollTimeout = 'POLL_TIMEOUT';
@@ -24,6 +25,9 @@ class CaptionFailure implements Exception {
 
   /// The native audio pass failed.
   static const String renderFailed = 'RENDER_FAILED';
+
+  /// A paid job the server failed; its credits are already back.
+  static const String refunded = 'REFUNDED';
 }
 
 /// The server finished the job as `failed`. Told apart from a request that
@@ -35,6 +39,12 @@ class CaptionJobFailed extends SlimshotApiException {
 
 /// The one line the user sees for [error] — no title, no code.
 String captionErrorMessage(Object error) {
+  if (error is SlimshotApiException && error.code == 'INSUFFICIENT_CREDITS') {
+    final needed = error.detailInt('required');
+    final balance = error.detailInt('balance');
+    // The balance moved between the price and the upload: say by how much.
+    if (needed != null && balance != null) return shortfallLine(needed, balance);
+  }
   final code = switch (error) {
     SlimshotApiException(:final code) => code,
     CaptionFailure(:final code) => code,
@@ -52,6 +62,7 @@ String captionErrorMessage(Object error) {
     'PAYLOAD_TOO_LARGE' => 'This video is too long for auto captions.',
     'NOT_FOUND' => 'Captions expired before they arrived. Try again.',
     kCaptionPollTimeout => 'Captions took too long. Try again.',
+    CaptionFailure.refunded => 'Captioning failed. Your credits were returned.',
     CaptionFailure.noSpeech => 'No speech found.',
     CaptionFailure.noSound => 'No sound to caption.',
     CaptionFailure.renderFailed =>

@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/services/slimshot_api.dart';
 import '../../../core/utils/file_utils.dart';
+import '../../account/models/account_models.dart';
 import '../logic/captions/caption_grouping.dart';
 import '../logic/captions/caption_settings.dart';
 import '../logic/captions/caption_transcript.dart';
@@ -17,7 +18,7 @@ String captionAudioFileName(DateTime now) =>
     '${FileUtils.filePrefix}captions_${now.millisecondsSinceEpoch}.wav';
 
 /// Where a run is, for the progress sheet.
-enum CaptionStage { preparing, uploading, listening, placing }
+enum CaptionStage { preparing, pricing, uploading, listening, placing }
 
 /// What the caption sheet asked for.
 class CaptionRequest {
@@ -43,9 +44,11 @@ class CaptionPipeline {
   CaptionPipeline({
     required this.audioPath,
     required this.renderAudio,
+    required this.quotePrice,
     required this.startJob,
     required this.awaitJob,
     required this.onCancel,
+    this.onCharged,
     Future<void> Function(String path)? deleteFile,
     String Function()? newKey,
   })  : _deleteFile = deleteFile ?? _deleteQuietly,
@@ -57,6 +60,13 @@ class CaptionPipeline {
     CaptionSource source,
     void Function(double progress) onProgress,
   ) renderAudio;
+
+  /// What the rendered audio will cost — always asked, never worked out.
+  final Future<CreditQuote> Function(double durationSeconds) quotePrice;
+
+  /// The balance an upload's charge left, for the home pill.
+  final void Function(int balance)? onCharged;
+
   final Future<CaptionJobStart> Function(
     String audioPath,
     String? language,
@@ -76,12 +86,16 @@ class CaptionPipeline {
   String? _key;
   bool _cancelled = false;
 
+  /// [confirmPrice] is asked before a paid upload; without one a paid run
+  /// never uploads. A free run is not asked.
   Future<List<CaptionDraft>> run(
     CaptionRequest request, {
     required void Function(CaptionStage stage, double? progress) onProgress,
+    Future<bool> Function(CreditQuote quote)? confirmPrice,
   }) async {
     _cancelled = false;
     var jobStarted = false;
+    var paid = false;
     final path = await audioPath();
     try {
       onProgress(CaptionStage.preparing, 0);
@@ -93,9 +107,26 @@ class CaptionPipeline {
       _throwIfCancelled();
       if (!audio.hasSound) throw const CaptionFailure(CaptionFailure.noSound);
 
+      onProgress(CaptionStage.pricing, null);
+      final quote = await quotePrice(audio.durationSeconds);
+      _throwIfCancelled();
+      if (!quote.isFree) {
+        final approved = confirmPrice != null && await confirmPrice(quote);
+        if (!approved || _cancelled) {
+          // Nothing was uploaded for this audio, so no key belongs to it.
+          _key = null;
+          throw const CaptionCancelled();
+        }
+      }
+
       onProgress(CaptionStage.uploading, null);
-      final job = await startJob(path, request.language, _key ??= _newKey());
+      final job = await _upload(path, request.language);
       jobStarted = true;
+      final charged = job.charged;
+      if (charged != null) {
+        paid = charged.credits > 0;
+        onCharged?.call(charged.balance);
+      }
       _throwIfCancelled();
 
       onProgress(CaptionStage.listening, null);
@@ -125,9 +156,26 @@ class CaptionPipeline {
           error is SlimshotApiException &&
           error.code == SlimshotApiException.network;
       if (!uploadLost) _key = null;
+      // The server refunds a failed paid job itself; say so.
+      if (paid && error is CaptionJobFailed) {
+        throw const CaptionFailure(CaptionFailure.refunded);
+      }
       rethrow;
     } finally {
       await _deleteFile(path);
+    }
+  }
+
+  /// Uploads under this run's key. A key that already paid for an earlier
+  /// upload whose job is gone is refused with nothing charged; it is replaced
+  /// once, and a second refusal is the server's to explain.
+  Future<CaptionJobStart> _upload(String path, String? language) async {
+    try {
+      return await startJob(path, language, _key ??= _newKey());
+    } on SlimshotApiException catch (e) {
+      if (e.code != 'IDEMPOTENCY_KEY_REUSED') rethrow;
+      _key = _newKey();
+      return startJob(path, language, _key!);
     }
   }
 

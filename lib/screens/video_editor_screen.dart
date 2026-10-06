@@ -83,6 +83,7 @@ import '../features/video_editor/widgets/panels/chroma_key_sheet.dart';
 import '../features/video_editor/widgets/panels/speed_curve_sheet.dart';
 import '../features/video_editor/widgets/panels/apply_to_all_button.dart';
 import '../features/video_editor/widgets/panels/mask_panel.dart';
+import '../features/account/models/account_models.dart';
 
 class EditorTool {
   final String id;
@@ -1123,6 +1124,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         source: source,
         onProgress: onProgress,
       ),
+      // wired in Task 6
+      quotePrice: (_) async =>
+          const CreditQuote(credits: 0, balance: 0, enough: true),
       startJob: (path, language, key) => captions.start(
         audioPath: path,
         language: language,

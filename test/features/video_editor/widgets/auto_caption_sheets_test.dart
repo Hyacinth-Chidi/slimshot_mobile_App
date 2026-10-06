@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/account/models/account_models.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_settings.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_transcript.dart';
@@ -144,6 +145,8 @@ void main() {
           audioPath: () async => '/tmp/none.m4a',
           deleteFile: (_) async {},
           renderAudio: (path, source, onProgress) => render(),
+          quotePrice: (_) async =>
+              const CreditQuote(credits: 0, balance: 94, enough: true),
           startJob: (path, language, key) async =>
               const CaptionJobStart(jobId: 'cap_1', pollAfter: Duration.zero),
           awaitJob: (job, isCancelled) =>

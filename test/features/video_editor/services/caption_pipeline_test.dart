@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/account/models/account_models.dart';
 import 'package:slimshotai/core/services/slimshot_api.dart';
 import 'package:slimshotai/core/utils/file_utils.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_settings.dart';
@@ -26,17 +27,24 @@ void main() {
   late List<String> deleted;
   late List<String> keys;
   late int cancels;
+  late List<double> quoted;
+  late List<int> charges;
 
   setUp(() {
     deleted = [];
     keys = [];
     cancels = 0;
+    quoted = [];
+    charges = [];
   });
 
   CaptionPipeline pipeline({
     Future<CaptionAudioResult> Function(CaptionSource source)? render,
     Future<CaptionJobStart> Function(String? language)? start,
     Future<CaptionTranscript> Function(bool Function() isCancelled)? transcript,
+    CreditQuote quote = const CreditQuote(credits: 0, balance: 94, enough: true),
+    Future<CreditQuote> Function()? quoteWith,
+    Future<CaptionJobStart> Function(String key)? startWithKey,
   }) {
     var n = 0;
     return CaptionPipeline(
@@ -47,12 +55,18 @@ void main() {
         onProgress(0.5);
         return render == null ? sound : render(source);
       },
+      quotePrice: (seconds) async {
+        quoted.add(seconds);
+        return quoteWith == null ? quote : quoteWith();
+      },
       startJob: (path, language, key) async {
         keys.add(key);
+        if (startWithKey != null) return startWithKey(key);
         return start == null ? job : start(language);
       },
       awaitJob: (job, isCancelled) =>
           transcript == null ? Future.value(hello) : transcript(isCancelled),
+      onCharged: charges.add,
       onCancel: () => cancels++,
     );
   }
@@ -205,5 +219,180 @@ void main() {
     await p.run(const CaptionRequest(), onProgress: (_, __) {});
     await p.run(const CaptionRequest(), onProgress: (_, __) {});
     expect(keys, ['key-1', 'key-2']);
+  });
+
+  const paid = CreditQuote(credits: 6, balance: 94, enough: true);
+  void ignore(CaptionStage stage, double? value) {}
+
+  test('a paid run is priced on the audio it rendered, then asked', () async {
+    CreditQuote? asked;
+    await pipeline(quote: paid).run(
+      const CaptionRequest(),
+      onProgress: ignore,
+      confirmPrice: (q) async {
+        asked = q;
+        return true;
+      },
+    );
+    expect(quoted, [3.0], reason: "the rendered sound's own length");
+    expect(asked, same(paid));
+    expect(keys, ['key-1']);
+  });
+
+  test('declining uploads nothing and cleans up', () async {
+    await expectLater(
+      pipeline(quote: paid).run(
+        const CaptionRequest(),
+        onProgress: ignore,
+        confirmPrice: (_) async => false,
+      ),
+      throwsA(isA<CaptionCancelled>()),
+    );
+    expect(keys, isEmpty);
+    expect(deleted, ['/tmp/captions.m4a']);
+  });
+
+  test('with nobody to ask, a paid run never uploads', () async {
+    await expectLater(
+      pipeline(quote: paid).run(const CaptionRequest(), onProgress: ignore),
+      throwsA(isA<CaptionCancelled>()),
+    );
+    expect(keys, isEmpty);
+  });
+
+  test('a free run is not asked about', () async {
+    var asked = false;
+    await pipeline().run(
+      const CaptionRequest(),
+      onProgress: ignore,
+      confirmPrice: (_) async => asked = true,
+    );
+    expect(asked, isFalse);
+    expect(keys, ['key-1']);
+  });
+
+  test('a quote that fails uploads nothing', () async {
+    await expectLater(
+      pipeline(
+        quoteWith: () async =>
+            throw const SlimshotApiException('CAPTIONS_UNAVAILABLE'),
+      ).run(const CaptionRequest(), onProgress: ignore),
+      throwsA(isA<SlimshotApiException>()),
+    );
+    expect(keys, isEmpty);
+    expect(deleted, ['/tmp/captions.m4a']);
+  });
+
+  test("the upload's charged balance is reported", () async {
+    await pipeline(
+      quote: paid,
+      start: (_) async => const CaptionJobStart(
+        jobId: 'cap_1',
+        pollAfter: Duration.zero,
+        charged: CreditCharge(credits: 6, balance: 88),
+      ),
+    ).run(
+      const CaptionRequest(),
+      onProgress: ignore,
+      confirmPrice: (_) async => true,
+    );
+    expect(charges, [88]);
+  });
+
+  test('a failed paid job says the credits came back; a free one does not',
+      () async {
+    Future<CaptionTranscript> fails(bool Function() _) async =>
+        throw const CaptionJobFailed('PROVIDER_FAILED');
+
+    await expectLater(
+      pipeline(
+        quote: paid,
+        start: (_) async => const CaptionJobStart(
+          jobId: 'cap_1',
+          pollAfter: Duration.zero,
+          charged: CreditCharge(credits: 6, balance: 88),
+        ),
+        transcript: fails,
+      ).run(
+        const CaptionRequest(),
+        onProgress: ignore,
+        confirmPrice: (_) async => true,
+      ),
+      throwsA(isA<CaptionFailure>()
+          .having((e) => e.code, 'code', CaptionFailure.refunded)),
+    );
+    await expectLater(
+      pipeline(transcript: fails)
+          .run(const CaptionRequest(), onProgress: ignore),
+      throwsA(isA<CaptionJobFailed>()),
+    );
+  });
+
+  test('a key the server will not take again is replaced once', () async {
+    var tries = 0;
+    await pipeline(
+      startWithKey: (key) async {
+        if (tries++ == 0) {
+          throw const SlimshotApiException('IDEMPOTENCY_KEY_REUSED');
+        }
+        return job;
+      },
+    ).run(const CaptionRequest(), onProgress: ignore);
+    expect(keys, ['key-1', 'key-2']);
+  });
+
+  test('a second refusal of the key is not retried again', () async {
+    await expectLater(
+      pipeline(
+        startWithKey: (_) async =>
+            throw const SlimshotApiException('IDEMPOTENCY_KEY_REUSED'),
+      ).run(const CaptionRequest(), onProgress: ignore),
+      throwsA(isA<SlimshotApiException>()),
+    );
+    expect(keys, ['key-1', 'key-2']);
+  });
+
+  test("declining forgets a lost upload's key", () async {
+    var lose = true;
+    final p = pipeline(
+      quote: paid,
+      start: (_) async {
+        if (lose) throw const SlimshotApiException(SlimshotApiException.network);
+        return job;
+      },
+    );
+    await expectLater(
+      p.run(const CaptionRequest(),
+          onProgress: ignore, confirmPrice: (_) async => true),
+      throwsA(isA<SlimshotApiException>()),
+    ); // key-1 kept: the upload may have landed
+    await expectLater(
+      p.run(const CaptionRequest(),
+          onProgress: ignore, confirmPrice: (_) async => false),
+      throwsA(isA<CaptionCancelled>()),
+    );
+    lose = false;
+    await p.run(const CaptionRequest(),
+        onProgress: ignore, confirmPrice: (_) async => true);
+    expect(keys, ['key-1', 'key-2'], reason: 'a new upload, a new key');
+  });
+
+  test('a refusal for credits says how many', () {
+    expect(
+      captionErrorMessage(const SlimshotApiException(
+        'INSUFFICIENT_CREDITS',
+        'm',
+        {'required': 6, 'balance': 2},
+      )),
+      'Needs 6 credits · You have 2',
+    );
+    expect(
+      captionErrorMessage(const SlimshotApiException('INSUFFICIENT_CREDITS')),
+      'Not enough credits for these captions.',
+    );
+    expect(
+      captionErrorMessage(const CaptionFailure(CaptionFailure.refunded)),
+      'Captioning failed. Your credits were returned.',
+    );
   });
 }

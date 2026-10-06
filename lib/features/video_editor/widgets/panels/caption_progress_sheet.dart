@@ -78,6 +78,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
 
   static String _label(CaptionStage stage) => switch (stage) {
         CaptionStage.preparing => 'Preparing audio',
+        CaptionStage.pricing => 'Checking price',
         CaptionStage.uploading => 'Uploading',
         CaptionStage.listening => 'Listening',
         CaptionStage.placing => 'Placing captions',
