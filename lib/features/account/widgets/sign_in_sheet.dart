@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../core/services/slimshot_api.dart';
 import '../../../core/theme/app_colors.dart';
@@ -73,9 +74,29 @@ class _SignInSheetState extends ConsumerState<SignInSheet> {
                 borderRadius: BorderRadius.circular(14),
               ),
             ),
-            child: const Text(
-              'Continue with Google',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            // Google's own four-colour G, as its sign-in branding asks for
+            // beside "Continue with Google". An asset, not an icon font:
+            // Lucide carries no brand marks, and the G is four colours.
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SvgPicture.asset('assets/google_g.svg', width: 20, height: 20),
+                const SizedBox(width: 12),
+                // Scales down rather than overflows or cuts off: a narrow
+                // phone with large text still reads the whole label.
+                const Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Continue with Google',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

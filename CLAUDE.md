@@ -3469,13 +3469,16 @@ large text. **They open on the root navigator** (`useRootNavigator: true`; devic
 home and Settings are `StatefulShellRoute` branches with navigators of their own, and the
 shell's floating nav is painted above them, so a sheet opened on a tab's navigator slid up
 *under* the nav. Any sheet reachable from a tab must do the same. The email step's
-**Continue stays off until the field holds an email address**.
+**Continue stays off until the field holds an email address**. The Google button carries
+**Google's own four-colour G** (`assets/google_g.svg`, as its sign-in branding asks) — an asset,
+since Lucide has no brand marks — and its label scales down rather than overflow on a narrow
+phone with large text (`sign_in_sheet_test.dart` pins both).
 
 ### Home and Settings — near-black, a little light, smoked glass; the editor stays dark
 
 **Awaiting device verification** for the latest pass. Home and Settings sit on
 **`ColourFieldBackdrop`** (`core/widgets/`): near-black lit by three soft glows
-(`ColourFieldBackdrop.glows`) — deep purple high on the right, fainter deep purple low on the
+(`ColourFieldBackdrop.homeGlows`) — deep purple high on the right, fainter deep purple low on the
 left, a whisper of white — drawn as radial gradients rather than through `ImageFiltered` so a
 scroll pays no full-screen blur. Their surfaces are **`FrostedGlass`**: a backdrop blur under a
 **neutral** white sheen fading from the top left, with an edge lit there. `blurSigma: 0` drops the

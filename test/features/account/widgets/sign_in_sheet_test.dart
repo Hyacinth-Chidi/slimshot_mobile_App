@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/account/providers/account_providers.dart';
 import 'package:slimshotai/features/account/widgets/sign_in_sheet.dart';
@@ -60,6 +61,30 @@ void main() {
     expect(find.text('Sign in to use Auto captions'), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
     expect(find.byKey(const Key('sign_in_email')), findsOneWidget);
+  });
+
+  testWidgets("the Google button carries Google's own G", (tester) async {
+    await open(tester);
+    final logo = find.descendant(
+      of: find.widgetWithText(OutlinedButton, 'Continue with Google'),
+      matching: find.byType(SvgPicture),
+    );
+    expect(logo, findsOneWidget);
+    final loader = tester.widget<SvgPicture>(logo).bytesLoader as SvgAssetLoader;
+    expect(loader.assetName, 'assets/google_g.svg');
+  });
+
+  testWidgets('the Google button fits a narrow phone with large text',
+      (tester) async {
+    tester.view.physicalSize = const Size(360 * 3, 780 * 3);
+    tester.view.devicePixelRatio = 3;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await open(tester);
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SvgPicture), findsOneWidget);
   });
 
   testWidgets('without Google set up, email is the only way in', (tester) async {
