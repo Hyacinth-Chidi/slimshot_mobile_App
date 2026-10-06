@@ -92,4 +92,11 @@ void main() {
     );
     expect(claimResultLines(claimed()), ['No free credits this time.']);
   });
+
+  test('prices read as the spec writes them, singular included', () {
+    expect(priceLine(6, 94), '6 credits · You have 94');
+    expect(priceLine(1, 94), '1 credit · You have 94');
+    expect(shortfallLine(6, 2), 'Needs 6 credits · You have 2');
+    expect(shortfallLine(1, 0), 'Needs 1 credit · You have 0');
+  });
 }

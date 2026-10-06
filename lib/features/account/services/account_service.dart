@@ -79,4 +79,19 @@ class AccountService {
       () => _api.jsonRequest('DELETE', '/me', {'confirm': 'DELETE'}),
     );
   }
+
+  /// The feature name Auto captions is priced under.
+  static const String autoCaptionsFeature = 'auto_captions';
+
+  /// What [feature] will cost for [durationSeconds] of audio — the length of
+  /// the exact file about to be uploaded, which the server measures again.
+  Future<CreditQuote> quote(String feature, double durationSeconds) async =>
+      CreditQuote.fromJson(
+        await _api.send(
+          () => _api.jsonRequest('POST', '/credits/quote', {
+            'feature': feature,
+            'durationSeconds': durationSeconds,
+          }),
+        ),
+      );
 }

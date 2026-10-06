@@ -182,4 +182,45 @@ void main() {
     expect(again.suspended, isTrue);
     expect(again.needsClaim, user.needsClaim);
   });
+
+  test('a quote sends the feature and the audio length, signed in', () async {
+    server.on(
+      'POST',
+      '/credits/quote',
+      (_) => envelope({
+        'credits': 6,
+        'balance': 94,
+        'enough': true,
+        'pricingVersion': 3,
+      }),
+    );
+    final quote = await service(signedIn: true)
+        .quote(AccountService.autoCaptionsFeature, 125.4);
+
+    expect(server.lastBody('POST', '/credits/quote'), {
+      'feature': 'auto_captions',
+      'durationSeconds': 125.4,
+    });
+    expect(
+      server.to('POST', '/credits/quote').last.headers['Authorization'],
+      'Bearer a1',
+    );
+    expect((quote.credits, quote.balance, quote.enough), (6, 94, true));
+    expect(quote.isFree, isFalse);
+  });
+
+  test('a free quote is free, and a short one is not enough', () {
+    expect(
+      CreditQuote.fromJson({'credits': 0, 'balance': 3, 'enough': true}).isFree,
+      isTrue,
+    );
+    final short =
+        CreditQuote.fromJson({'credits': 6, 'balance': 2, 'enough': false});
+    expect((short.enough, short.isFree), (false, false));
+  });
+
+  test("a quote missing 'enough' works it out rather than guessing yes", () {
+    expect(CreditQuote.fromJson({'credits': 6, 'balance': 2}).enough, isFalse);
+    expect(CreditQuote.fromJson({'credits': 6, 'balance': 6}).enough, isTrue);
+  });
 }

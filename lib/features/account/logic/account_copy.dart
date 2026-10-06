@@ -62,3 +62,14 @@ List<String> claimResultLines(ClaimResult result) => [
           _ => 'No free credits this time.',
         },
     ];
+
+/// "1 credit", "6 credits".
+String creditCount(int n) => n == 1 ? '1 credit' : '$n credits';
+
+/// The price step when the balance covers it.
+String priceLine(int credits, int balance) =>
+    '${creditCount(credits)} · You have $balance';
+
+/// The price step, or a refusal, when it does not.
+String shortfallLine(int needed, int balance) =>
+    'Needs ${creditCount(needed)} · You have $balance';

@@ -50,6 +50,17 @@ class AccountUser {
         'accountStatus': suspended ? 'suspended' : 'active',
         'needsClaim': needsClaim,
       };
+
+  /// The same user with a balance a spend answered with.
+  AccountUser withBalance(int balance) => AccountUser(
+        id: id,
+        email: email,
+        username: username,
+        referralCode: referralCode,
+        creditBalance: balance,
+        suspended: suspended,
+        needsClaim: needsClaim,
+      );
 }
 
 Map<String, dynamic> _object(Object? value, String what) {
@@ -161,4 +172,33 @@ class ClaimResult {
   final int referralCredits;
 
   int get creditsGranted => bonusCredits + referralCredits;
+}
+
+/// What a run will cost, asked of the server before anything is uploaded.
+/// The app never works a price out itself: the owner can change the pricing
+/// at any time (contract §11).
+class CreditQuote {
+  const CreditQuote({
+    required this.credits,
+    required this.balance,
+    required this.enough,
+  });
+
+  factory CreditQuote.fromJson(Map<String, dynamic> json) {
+    final credits = (json['credits'] as num?)?.toInt() ?? 0;
+    final balance = (json['balance'] as num?)?.toInt() ?? 0;
+    return CreditQuote(
+      credits: credits,
+      balance: balance,
+      // Worked out, never assumed: a missing flag must not read as yes.
+      enough: json['enough'] as bool? ?? balance >= credits,
+    );
+  }
+
+  final int credits;
+  final int balance;
+  final bool enough;
+
+  /// Nothing to confirm: the price step is skipped.
+  bool get isFree => credits <= 0;
 }
