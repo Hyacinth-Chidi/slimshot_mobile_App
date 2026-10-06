@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/services/account_session.dart';
 import 'package:slimshotai/features/account/providers/account_providers.dart';
+import 'package:slimshotai/features/account/services/credit_ads.dart';
 import 'package:slimshotai/features/account/services/google_id_tokens.dart';
 
 import 'account_fakes.dart';
@@ -33,19 +34,51 @@ class FakeGoogleIdTokens implements GoogleIdTokens {
   }
 }
 
+/// The rewarded ad, scripted: [playback] is how the next one ends.
+class FakeRewardedAdPlayer implements RewardedAdPlayer {
+  AdPlayback playback = AdPlayback.earned;
+
+  /// (userId, customData) of every ad played.
+  final List<(String, String)> plays = [];
+
+  @override
+  Future<AdPlayback> play({
+    required String userId,
+    required String customData,
+  }) async {
+    plays.add((userId, customData));
+    return playback;
+  }
+}
+
 /// Accounts switched on, against [server], with [session] (signed out when
 /// omitted) and a scripted Google.
 List<Override> accountOverrides(
   FakeServer server, {
   AccountSession? session,
   GoogleIdTokens? google,
+  FakeRewardedAdPlayer? ads,
+  List<String>? shared,
 }) {
-  final shared = session ?? AccountSession(vault: MemoryTokenVault());
+  final shared0 = session ?? AccountSession(vault: MemoryTokenVault());
+  final player = ads ?? FakeRewardedAdPlayer();
+  var now = DateTime(2026, 10, 6);
   return [
     accountFeatureProvider.overrideWithValue(true),
-    accountSessionProvider.overrideWithValue(shared),
-    accountApiProvider.overrideWithValue(fakeApi(server, session: shared)),
+    accountSessionProvider.overrideWithValue(shared0),
+    accountApiProvider.overrideWithValue(fakeApi(server, session: shared0)),
     googleIdTokensProvider.overrideWithValue(google ?? FakeGoogleIdTokens()),
+    rewardedAdPlayerProvider.overrideWithValue(player),
+    // The poll on a clock the test owns: no real second goes by.
+    creditAdServiceProvider.overrideWith(
+      (ref) => CreditAdService(
+        account: ref.watch(accountServiceProvider),
+        player: player,
+        delay: (d) async => now = now.add(d),
+        clock: () => now,
+      ),
+    ),
+    shareTextProvider.overrideWithValue((text) async => shared?.add(text)),
   ];
 }
 

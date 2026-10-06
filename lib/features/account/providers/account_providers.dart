@@ -3,11 +3,14 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/services/account_session.dart';
+import '../../../core/services/ad_service.dart';
 import '../../../core/services/slimshot_api.dart';
 import '../models/account_models.dart';
 import '../services/account_service.dart';
+import '../services/credit_ads.dart';
 import '../services/google_id_tokens.dart';
 
 /// Accounts exist only in a build that has a server — the rule Auto captions
@@ -37,6 +40,28 @@ final googleIdTokensProvider =
 
 /// Who is signed in. App-wide on purpose — not autoDispose — because the
 /// home screen, Settings and the editor all show or check it.
+/// Whether Watch an ad is offered (`AdService.creditAdsEnabled`).
+final creditAdsEnabledProvider =
+    Provider<bool>((ref) => AdService.creditAdsEnabled);
+
+final rewardedAdPlayerProvider = Provider<RewardedAdPlayer>(
+  (ref) => PluginRewardedAdPlayer(AdService.rewardedAdUnitId),
+);
+
+final creditAdServiceProvider = Provider<CreditAdService>(
+  (ref) => CreditAdService(
+    account: ref.watch(accountServiceProvider),
+    player: ref.watch(rewardedAdPlayerProvider),
+  ),
+);
+
+/// The system share sheet, for Invite a friend.
+final shareTextProvider = Provider<Future<void> Function(String text)>(
+  (ref) => (text) async {
+    await Share.share(text);
+  },
+);
+
 final accountProvider =
     StateNotifierProvider<AccountNotifier, AccountState>((ref) {
   final notifier = AccountNotifier(

@@ -35,9 +35,12 @@ Future<void> main() async {
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   // Use the system gallery sheet for picking rather than the Files app.
   MediaPickerService.enableAndroidPhotoPicker();
-  // Ads are switched off for now — see `AdService.enabled`.
-  if (AdService.enabled) {
+  // `AdService.enabled` (interstitials, Pro-unlock ads) is off; credit ads
+  // have their own switch. The SDK starts when either is on.
+  if (AdService.enabled || AdService.creditAdsEnabled) {
     MobileAds.instance.initialize();
+  }
+  if (AdService.enabled) {
     AdService.loadInterstitialAd(); // Start background preload immediately
     AdService.loadRewardedAd(); // Start background preload for Rewarded Ads
   }

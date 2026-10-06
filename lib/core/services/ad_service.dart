@@ -14,6 +14,12 @@ class AdService {
   /// features away entirely.
   static const bool enabled = false;
 
+  /// Rewarded ads that **earn credits**: their own switch, on (spec §3 E).
+  /// `enabled` stays off, so interstitials and the Pro-unlock ads stay off;
+  /// the SDK starts when either is on (`main.dart`). The reward itself is
+  /// verified on the server (SSV), never granted by the app.
+  static const bool creditAdsEnabled = true;
+
   // --- INTERSTITIAL ADS ---
   static InterstitialAd? _interstitialAd;
   static bool _isAdReady = false;
@@ -36,7 +42,7 @@ class AdService {
   }
 
   // Live Ad Unit IDs for Rewarded Ads
-  static String get _rewardedAdUnitId {
+  static String get rewardedAdUnitId {
     if (Platform.isAndroid) {
       return 'ca-app-pub-7001751702275942/3806842044';
     } else if (Platform.isIOS) {
@@ -202,7 +208,7 @@ class AdService {
     _isRewardedAdLoading = true;
 
     RewardedAd.load(
-      adUnitId: _rewardedAdUnitId,
+      adUnitId: rewardedAdUnitId,
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
