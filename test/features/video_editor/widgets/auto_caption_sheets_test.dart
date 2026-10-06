@@ -143,6 +143,7 @@ void main() {
       CreditQuote quote =
           const CreditQuote(credits: 0, balance: 94, enough: true),
       void Function()? onUpload,
+      Future<CaptionJobStart> Function()? upload,
     }) =>
         CaptionPipeline(
           audioPath: () async => '/tmp/none.m4a',
@@ -151,6 +152,7 @@ void main() {
           quotePrice: (_) async => quote,
           startJob: (path, language, key) async {
             onUpload?.call();
+            if (upload != null) return upload();
             return const CaptionJobStart(
               jobId: 'cap_1',
               pollAfter: Duration.zero,
@@ -333,6 +335,24 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.byKey(const Key('caption_price')), findsNothing);
       expect((popped.single as List<CaptionDraft>).single.text, 'Hello');
+    });
+
+    testWidgets('the upload is never named: it reads as Listening',
+        (tester) async {
+      final sent = Completer<CaptionJobStart>();
+      await open(
+        tester,
+        (_) => CaptionProgressSheet(
+          pipeline: pipelineWith(
+            render: () async => sound,
+            upload: () => sent.future,
+          ),
+          request: const CaptionRequest(),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Uploading'), findsNothing);
+      expect(find.text('Listening'), findsOneWidget);
     });
   });
 
