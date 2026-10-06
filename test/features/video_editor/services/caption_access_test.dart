@@ -41,5 +41,10 @@ void main() {
         reason: 'the upload shares the app session');
     expect(body, contains('ref.read(accountProvider.notifier).refresh()'),
         reason: 'the balance follows the charge or refund');
+    expect(body, contains('quotePrice:'),
+        reason: 'the run is priced by the server before it uploads');
+    expect(body, contains('AccountService.autoCaptionsFeature'));
+    expect(body, contains('.applyBalance('),
+        reason: "the charge's balance reaches the pill at once");
   });
 }

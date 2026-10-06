@@ -83,7 +83,7 @@ import '../features/video_editor/widgets/panels/chroma_key_sheet.dart';
 import '../features/video_editor/widgets/panels/speed_curve_sheet.dart';
 import '../features/video_editor/widgets/panels/apply_to_all_button.dart';
 import '../features/video_editor/widgets/panels/mask_panel.dart';
-import '../features/account/models/account_models.dart';
+import '../features/account/services/account_service.dart';
 
 class EditorTool {
   final String id;
@@ -1112,6 +1112,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       session: ref.read(accountSessionProvider),
     );
     final captions = CaptionService(api);
+    // On the run's own client, so Cancel stops a quote in flight too.
+    final account = AccountService(api);
     final pipeline = CaptionPipeline(
       audioPath: () async {
         final dir = await getTemporaryDirectory();
@@ -1124,9 +1126,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         source: source,
         onProgress: onProgress,
       ),
-      // wired in Task 6
-      quotePrice: (_) async =>
-          const CreditQuote(credits: 0, balance: 0, enough: true),
+      quotePrice: (seconds) =>
+          account.quote(AccountService.autoCaptionsFeature, seconds),
+      onCharged: (balance) =>
+          unawaited(ref.read(accountProvider.notifier).applyBalance(balance)),
       startJob: (path, language, key) => captions.start(
         audioPath: path,
         language: language,

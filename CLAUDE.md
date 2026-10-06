@@ -3443,8 +3443,7 @@ sign-in sheet; unclaimed, the claim sheet. It answers from the account, not from
 closed — a claim that succeeded and was swiped away instead of closed with Done still counts.
 `CaptionAccess.ensureAllowed` is it, called
 **before** the Auto captions options sheet, and the caption client is built on the shared
-session. After a run the profile is read again so the pill follows the charge — until stage 2
-there is no confirm before the server charges.
+session. After a run the profile is read again, which is what shows a refund.
 
 **The signed-in state is app-wide** (`accountProvider`, not autoDispose): the cached profile
 at once, then `/me`; offline, the cached one stays. Three races, each found by a test that
@@ -3475,6 +3474,29 @@ shell's floating nav is painted above them, so a sheet opened on a tab's navigat
 **Google's own four-colour G** (`assets/google_g.svg`, as its sign-in branding asks) — an asset,
 since Lucide has no brand marks — and its label scales down rather than overflow on a narrow
 phone with large text (`sign_in_sheet_test.dart` pins both).
+
+### Accounts and credits — stage 2: the price step
+
+**Awaiting device verification.** Plan: `docs/superpowers/plans/2026-10-06-credits-stage2-price-step.md`.
+A run is **priced after the audio is rendered and before it is uploaded** (`CaptionStage.pricing`,
+"Checking price"): `AccountService.quote` sends the rendered WAV's own length — the server measures
+that file again and charges what it measures, so the app **never works a price out**. The progress
+sheet shows `"6 credits · You have 94"` with Cancel / Generate, or `"Needs 6 credits · You have 2"`
+with Close (stage 3 puts Watch an ad and Invite there). **A free quote skips the step.** The
+pipeline asks through `run(confirmPrice:)`, and **with nobody to ask a paid run never uploads** — a
+missing confirmer declines, it never approves. Closing the sheet at the step (Cancel, Back, a tap
+outside) answers no. **Declining drops the run's key**: nothing was uploaded for that audio, so a
+key kept from a lost upload would name a different one.
+
+**The charge reaches the pill at once** (`onCharged` → `AccountNotifier.applyBalance`), ticketed
+like every profile answer so a `/me` already on its way cannot put the old balance back.
+**A paid job the server fails is refunded by the server**; `CaptionService` throws
+`CaptionJobFailed` for a `failed` job (a `SlimshotApiException`, so its code still reads), and the
+pipeline turns it into "Captioning failed. Your credits were returned." only when the upload
+actually charged. `402 INSUFFICIENT_CREDITS` at the upload — the balance moved after the quote —
+says how many from `details`. `409 IDEMPOTENCY_KEY_REUSED` takes one fresh key and uploads once
+more; a second refusal is shown. The quote runs on the run's own client, so Cancel stops one in
+flight.
 
 ### Home and Settings — near-black, a little light, smoked glass; the editor stays dark
 
