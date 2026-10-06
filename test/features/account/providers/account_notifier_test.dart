@@ -319,6 +319,35 @@ void main() {
     expect(c.read(accountProvider).needsClaim, isFalse);
     expect(c.read(accountProvider).user!.creditBalance, 100);
   });
+
+  test('a charged balance shows at once', () async {
+    server.on('GET', '/me', (_) => envelope(userJson(balance: 94)));
+    final c = containerWith(session: signedInSession(profile: userJson(balance: 94)));
+    c.read(accountProvider);
+    await pumpEventQueue();
+
+    await c.read(accountProvider.notifier).applyBalance(88);
+    expect(c.read(accountProvider).user!.creditBalance, 88);
+  });
+
+  test('an older /me does not undo a charge', () async {
+    final answer = Completer<http.Response>();
+    server.on('GET', '/me', (_) => answer.future);
+    final c = containerWith(session: signedInSession(profile: userJson(balance: 94)));
+    c.read(accountProvider); // restore: its /me is now on its way
+    await pumpEventQueue();
+
+    await c.read(accountProvider.notifier).applyBalance(88);
+    answer.complete(envelope(userJson(balance: 94))); // read before the charge
+    await pumpEventQueue();
+    expect(c.read(accountProvider).user!.creditBalance, 88);
+  });
+
+  test('signed out, a balance changes nothing', () async {
+    final c = containerWith();
+    await c.read(accountProvider.notifier).applyBalance(88);
+    expect(c.read(accountProvider).isSignedIn, isFalse);
+  });
 }
 
 /// A vault whose profile writes wait on [gate] — how a slow keystore write

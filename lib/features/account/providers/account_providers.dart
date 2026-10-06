@@ -106,6 +106,16 @@ class AccountNotifier extends StateNotifier<AccountState> {
     }
   }
 
+  /// The balance a spend answered with (a caption upload's `charged`), shown
+  /// at once. It takes a ticket like any profile answer, so a `/me` that was
+  /// already on its way — read before the charge — cannot put the old
+  /// balance back.
+  Future<void> applyBalance(int balance) async {
+    final user = state.user;
+    if (user == null) return;
+    await _adopt(user.withBalance(balance), _nextTicket());
+  }
+
   Future<void> completeSignIn(SignInResult result) async {
     final ticket = _nextTicket();
     await _session.save(result.tokens);
