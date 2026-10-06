@@ -20,10 +20,18 @@ class CaptionProgressSheet extends StatefulWidget {
     super.key,
     required this.pipeline,
     required this.request,
+    this.earnCredits,
   });
 
   final CaptionPipeline pipeline;
   final CaptionRequest request;
+
+  /// The ways to earn the difference, under the shortfall line. It reports
+  /// the server's new balance through `onEarned`.
+  final Widget Function(
+    CreditQuote quote,
+    void Function(int balance) onEarned,
+  )? earnCredits;
 
   @override
   State<CaptionProgressSheet> createState() => _CaptionProgressSheetState();
@@ -52,6 +60,27 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
     final decision = _decision;
     if (decision != null && !decision.isCompleted) decision.complete(false);
     super.dispose();
+  }
+
+  /// A balance the user just earned: enough carries the run on, too little
+  /// updates the line.
+  void _earned(int balance) {
+    final quote = _quote;
+    final decision = _decision;
+    if (quote == null || decision == null || decision.isCompleted) return;
+    if (balance >= quote.credits) {
+      setState(() {
+        _quote = null;
+        _decision = null;
+      });
+      decision.complete(true);
+    } else {
+      setState(() => _quote = CreditQuote(
+            credits: quote.credits,
+            balance: balance,
+            enough: false,
+          ));
+    }
   }
 
   Future<bool> _showShortfall(CreditQuote quote) {
@@ -168,7 +197,10 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                // Stage 3 puts Watch an ad here.
+                if (widget.earnCredits != null) ...[
+                  widget.earnCredits!(quote, _earned),
+                  const SizedBox(height: 12),
+                ],
                 SheetActionButton(
                   key: const Key('caption_close'),
                   label: 'Close',

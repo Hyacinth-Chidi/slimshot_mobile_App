@@ -84,6 +84,7 @@ import '../features/video_editor/widgets/panels/speed_curve_sheet.dart';
 import '../features/video_editor/widgets/panels/apply_to_all_button.dart';
 import '../features/video_editor/widgets/panels/mask_panel.dart';
 import '../features/account/services/account_service.dart';
+import '../features/account/widgets/earn_credits_block.dart';
 
 class EditorTool {
   final String id;
@@ -1144,7 +1145,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     );
     final drafts = await showEditorSheet<List<CaptionDraft>>(
       context,
-      builder: (_) => CaptionProgressSheet(pipeline: pipeline, request: request),
+      builder: (_) => CaptionProgressSheet(
+        pipeline: pipeline,
+        request: request,
+        earnCredits: (quote, onEarned) => EarnCreditsBlock(onEarned: onEarned),
+      ),
     );
     api.close();
     // The run may have spent credits, or had them refunded: the balance on

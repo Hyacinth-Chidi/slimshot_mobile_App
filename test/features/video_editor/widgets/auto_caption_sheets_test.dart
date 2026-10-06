@@ -378,6 +378,58 @@ void main() {
       expect(find.text('Uploading'), findsNothing);
       expect(find.text('Listening'), findsOneWidget);
     });
+
+    Widget earnButton(
+      CreditQuote quote,
+      void Function(int) onEarned,
+      int balance,
+    ) =>
+        TextButton(
+          key: const Key('fake_earn'),
+          onPressed: () => onEarned(balance),
+          child: const Text('earn'),
+        );
+
+    testWidgets('earning enough carries the run on', (tester) async {
+      var uploads = 0;
+      final popped = await open(
+        tester,
+        (_) => CaptionProgressSheet(
+          pipeline: pipelineWith(
+            render: () async => sound,
+            quote: const CreditQuote(credits: 30, balance: 0, enough: false),
+            onUpload: () => uploads++,
+          ),
+          request: const CaptionRequest(),
+          earnCredits: (q, onEarned) => earnButton(q, onEarned, 35),
+        ),
+      );
+      await tester.pump();
+      await tapKey(tester, 'fake_earn');
+      expect(uploads, 1);
+      expect((popped.single as List<CaptionDraft>).single.text, 'Hello');
+    });
+
+    testWidgets('earning too little updates the line and waits',
+        (tester) async {
+      var uploads = 0;
+      await open(
+        tester,
+        (_) => CaptionProgressSheet(
+          pipeline: pipelineWith(
+            render: () async => sound,
+            quote: const CreditQuote(credits: 30, balance: 0, enough: false),
+            onUpload: () => uploads++,
+          ),
+          request: const CaptionRequest(),
+          earnCredits: (q, onEarned) => earnButton(q, onEarned, 5),
+        ),
+      );
+      await tester.pump();
+      await tapKey(tester, 'fake_earn');
+      expect(find.text('Needs 30 credits · You have 5'), findsOneWidget);
+      expect(uploads, 0);
+    });
   });
 
   group('replacing captions', () {
