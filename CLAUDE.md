@@ -3461,8 +3461,10 @@ failed first:
 - **Signing out and deleting show it at once.** The session's `ended` event arrives a
   microtask later, so `_forget` sets the signed-out state itself.
 
-**Sign-out happens on the phone first**, and the server is told afterwards without being
-waited for: on Wi-Fi without internet the logout would otherwise hold the sign-out for its
+**Sign-out asks first** (`SignOutSheet`, "Sign out of <name>?" — device-reported: one tap
+signed the user straight out); Cancel, a swipe or a tap outside keeps the account, and the button
+is the ordinary primary, not red, since the credits stay with the account. **Then it happens on
+the phone first**, and the server is told afterwards without being waited for: on Wi-Fi without internet the logout would otherwise hold the sign-out for its
 whole 20 s timeout, and closing the app meanwhile kept the account. Account sheets are capped at 480 px,
 open through `showEditorSheet`, and the code step's two links wrap rather than overflow at
 large text. **They open on the root navigator** (`useRootNavigator: true`; device-reported):

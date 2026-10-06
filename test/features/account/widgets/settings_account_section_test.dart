@@ -53,15 +53,37 @@ void main() {
     expect(find.text('Delete account'), findsOneWidget);
   });
 
-  testWidgets('signing out ends the session', (tester) async {
+  testWidgets('signing out asks first, then ends the session', (tester) async {
     server.on('POST', '/auth/logout', (_) => envelope({'loggedOut': true}));
     await pumpSection(tester, accountOverrides(server, session: signedIn()));
     await tester.tap(find.text('Sign out'));
     await settle(tester);
 
+    // Device-reported: one tap signed the user straight out.
+    expect(find.text('Sign out of ann_1?'), findsOneWidget);
+    expect(server.to('POST', '/auth/logout'), isEmpty);
+    expect(find.text('ann_1'), findsOneWidget, reason: 'still signed in');
+
+    await tester.tap(find.byKey(const Key('sign_out_confirm')));
+    await settle(tester);
     expect(server.lastBody('POST', '/auth/logout'), {'refreshToken': 'r1'});
     expect(find.text('Sign in'), findsOneWidget);
     expect(find.text('Signed out'), findsOneWidget);
+  });
+
+  testWidgets('Cancel keeps the account signed in', (tester) async {
+    server.on('POST', '/auth/logout', (_) => envelope({'loggedOut': true}));
+    await pumpSection(tester, accountOverrides(server, session: signedIn()));
+    await tester.tap(find.text('Sign out'));
+    await settle(tester);
+    await tester.tap(find.text('Cancel'));
+    await settle(tester);
+
+    expect(find.text('Sign out of ann_1?'), findsNothing);
+    expect(server.to('POST', '/auth/logout'), isEmpty);
+    expect(find.text('ann_1'), findsOneWidget);
+    final container = containerOf(tester);
+    expect(container.read(accountProvider).isSignedIn, isTrue);
   });
 
   testWidgets('deleting asks first, then deletes with the confirmation',

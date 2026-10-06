@@ -10,6 +10,7 @@ import '../../video_editor/widgets/panels/editor_sheet.dart';
 import '../account_gate.dart';
 import '../providers/account_providers.dart';
 import 'delete_account_sheet.dart';
+import 'sign_out_sheet.dart';
 import 'username_sheet.dart';
 
 /// Settings' Account section: Sign in when signed out; username, email,
@@ -69,6 +70,12 @@ class SettingsAccountSection extends ConsumerWidget {
               title: 'Sign out',
               showChevron: false,
               onTap: () async {
+                final confirmed = await showEditorSheet<bool>(
+                  context,
+                  useRootNavigator: true,
+                  builder: (_) => SignOutSheet(username: user.username),
+                );
+                if (confirmed != true) return;
                 await ref.read(accountProvider.notifier).signOut();
                 if (context.mounted) ToastUtils.show(context, 'Signed out');
               },
