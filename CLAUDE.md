@@ -3511,6 +3511,36 @@ says how many from `details`. `409 IDEMPOTENCY_KEY_REUSED` takes one fresh key a
 more; a second refusal is shown. The quote runs on the run's own client, so Cancel stops one in
 flight.
 
+### Accounts and credits — stage 3: earning
+
+**Awaiting device verification.** Plan: `docs/superpowers/plans/2026-10-06-credits-stage3-earning.md`.
+A signed-in user earns by **watching a rewarded ad** or **inviting a friend**, from the caption
+shortfall and from the **Credits screen** (the pill and Settings' Credits row open it, on the root
+navigator; balance, the ways to earn, the history paged by cursor).
+
+**The app never grants credits.** `CreditAdService.watch` asks for a session (a new nonce per ad),
+plays the ad through `RewardedAdPlayer` with `ServerSideVerificationOptions(userId: ssvUserId,
+customData: nonce)` set **before** `show`, then polls the session once a second: up to 30s after a
+watched ad, 5s after one closed early (AdMob may still call the server; past that "Watch to the end
+to earn credits" — a 30s wait ending "on its way" for an ad the user skipped reads as broken). The
+balance shown is the server's (`granted.balance` → `applyBalance`), and `/me` is read again after
+every ad for today's count. `409 AD_DAILY_CAP_REACHED` plays nothing and the button reads "Back
+tomorrow". A dropped poll is ridden out. `PluginRewardedAdPlayer` is the only plugin code, untested
+by design (it needs a device); a load landing after its 15s timeout is disposed, never shown late.
+
+**Credit ads have their own switch** (`AdService.creditAdsEnabled`, on); `AdService.enabled` —
+interstitials and the Pro-unlock ads — stays off. The SDK starts when either is on. **AdMob
+setup is outside the code**: server-side verification on the rewarded unit (`…/3806842044`) with
+the callback `https://<server>/api/app/v1/rewards/admob/ssv`, the unit in the server's
+`ADMOB_AD_UNIT_IDS`, and the test phone added as a test device — Google's sample units never call
+the server, and clicking your own live ads breaks AdMob policy.
+
+**`EarnCreditsBlock` is the one earning UI** (caption sheet and Credits screen). In the editor the
+sheet takes it through `CaptionProgressSheet.earnCredits`, so the panel stays free of account
+code; a balance that now covers the price carries the run on by itself (the shortfall's decision
+completes `true` and the pipeline uploads), too little updates the line. **Invite a friend**
+shares `inviteMessage(referralCode)` — the code and the Play Store link — through `Share.share`.
+
 ### Home and Settings — near-black, a little light, smoked glass; the editor stays dark
 
 **Awaiting device verification** for the latest pass. Home and Settings sit on
