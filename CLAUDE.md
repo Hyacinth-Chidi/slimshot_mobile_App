@@ -3609,6 +3609,12 @@ light, not paint.**
   — a purple-and-white fill with a lit edge — was built and rejected on the device ("does not look
   good at all"). Inside the editor too: the glow is the sheet's own, below the picture, and an
   account sheet is not a choice judged against the footage.
+- **A home card does what it says wherever it is touched** (`home_cards_test.dart`). Device-
+  reported: Compress Video / Compress Photo / Privacy Strip sometimes opened a blank page with only
+  the floating nav, until Back. The decorative circle in each card's corner was an
+  `OpenContainer` — a widget that opens a page when tapped — whose page was an empty box, pushed
+  inside the home tab; a tap on that corner went to it instead of the card. It is a plain circle
+  now. **Decoration must not take gestures**: nothing decorative goes in a tappable widget.
 - **The editor and its sheets stay plain dark — decided, not pending.** Colour is judged there
   (filters, Adjust, chroma key, the background), and colour around the picture shifts how the
   footage reads, so the export looks different from what was approved; a glass sheet would also

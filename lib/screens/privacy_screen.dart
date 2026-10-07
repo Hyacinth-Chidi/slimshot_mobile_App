@@ -142,12 +142,16 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      Text(
-                        'Privacy Strip',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
+                      Flexible(
+                        child: Text(
+                          'Privacy Strip',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                       ),
                     ],

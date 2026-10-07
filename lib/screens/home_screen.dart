@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import '../core/theme/lucide_icons.dart';
-import 'package:animations/animations.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'dart:io';
@@ -451,24 +450,19 @@ class _GridActionCardState extends State<_GridActionCard> {
               Positioned(
                 right: -30,
                 bottom: -30,
+                // Decoration only. It was an `OpenContainer` — a widget that
+                // opens a page when tapped — so a tap on this corner opened
+                // an empty page inside the home tab, leaving only the
+                // floating nav until Back, and never reached the card.
                 child: AnimatedScale(
                   scale: _isPressed ? 1.2 : 1.0,
                   duration: 150.ms,
-                  child: OpenContainer(
-                    closedElevation: 0,
-                    openElevation: 0,
-                    closedColor: Colors.transparent,
-                    openColor: Colors.transparent,
-                    middleColor: Colors.transparent,
-                    transitionType: ContainerTransitionType.fadeThrough,
-                    openBuilder: (context, _) => const SizedBox(),
-                    closedBuilder: (context, openContainer) => Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryStart.withValues(alpha: 0.05),
-                        shape: BoxShape.circle,
-                      ),
+                  child: Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryStart.withValues(alpha: 0.05),
+                      shape: BoxShape.circle,
                     ),
                   ),
                 ),
@@ -628,7 +622,14 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                           child: SizedBox(
                             width:
                                 150, // Constrain text width so it doesn't overlap image
-                            child: Column(
+                            // The card is a fixed 160 tall: with large text
+                            // the words shrink to fit rather than run off it.
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: SizedBox(
+                                width: 150,
+                                child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -667,6 +668,8 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                                   ),
                                 ),
                               ],
+                            ),
+                              ),
                             ),
                           ),
                         ),
