@@ -3635,8 +3635,8 @@ through `GoogleFonts`, which a test cannot load.
   locked, so the badge promised a lock that was not there.
 - **No before-and-after here — the user's call on the device.** A Now → After card with an
   estimated range was built and removed: the sizes belong to the result screen, where "after" is
-  the real file rather than a guess from a preset's "50-80%". `CompressSizeCard` stays in the
-  panels for that screen.
+  the real file rather than a guess from a preset's "50-80%". The result screen's
+  `CompressBeforeAfterCard` is where they went.
 - **The title is centred on the screen**, not in the space beside the back button
   (`CompressTopBar` stacks them); a test pins the centre on a phone and a tablet.
 - **The preview hugs the video's shape** (capped at 42% of the height for a tall one) and carries
@@ -3646,6 +3646,28 @@ through `GoogleFonts`, which a test cannot load.
   tap plays that one in the preview.
 - **From 700 px wide, two columns** (`kCompressTwoColumnWidth`): video left, settings right.
   Tests pin no overflow at 320 px wide with text at 1.3×.
+
+**The result screen is the same family** (`CompressResultView`, `compress_result_view.dart`;
+**awaiting device verification**; designed from an approved mockup). "✓ Done" centred with ✕
+(home) beside it, in place of the bouncing tick and "Ready to Share!". The screen keeps the
+player, the history entry, saving and the full-screen views; the view is tested without them.
+
+- **Before → After lives here, with real sizes** (`CompressBeforeAfterCard`): the after's share of
+  the before as a bar, the saving as a green "75% smaller" tag beside it — the tag shares the
+  bar's row because beside the sizes it overflowed a small phone with large text. **No saving is
+  claimed where the file did not get smaller**: the bar stays grey and the tag is gone, and where
+  every video was handed back as it was (`skippedCompressions`) it says so — the old strip read
+  "0%" as if something had failed.
+- **Several files show totals for all of them** ("All 5 photos"). The old strip mixed the
+  selected photo's sizes with the whole batch's percentage, so the three numbers did not agree.
+- **Details** — quality (`resultQualityLabel`: a quick preset's name, "Target size", or the
+  preset), format (`formatName`: MP4, WebM, JPG, WebP) and location — confirm what was applied.
+- **Video**: play, a scrubbable time bar and full screen on the picture (`ResultVideoFrame`).
+  **Photos**: the compare slider labelled Before / After (`ResultPhotoFrame`). Several of either
+  get the thumbnail row; a tap previews that file (a video re-opens the player on it).
+- **Save to gallery** (or "Save 5 to gallery") pinned, Share and New video / New photos under it.
+  Two columns from 700 px. The screen no longer reads fonts through `GoogleFonts` directly; the
+  full-screen player still does.
 
 **Shared files reach the compress screens through the route** (`compressInputsFromExtra`). The
 share sheet used to put them in the provider and open the screen without them — and each

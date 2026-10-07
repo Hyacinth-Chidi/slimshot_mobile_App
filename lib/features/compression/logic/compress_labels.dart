@@ -1,6 +1,7 @@
 /// The short labels the compress screens put on a file.
 library;
 
+import '../providers/compression_provider.dart';
 import 'compression_presets.dart';
 
 const _kb = 1024;
@@ -34,4 +35,27 @@ String videoInfoLabel(VideoMetadata metadata) {
   final s = (seconds % 60).toString().padLeft(2, '0');
   final clock = h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$s' : '$m:$s';
   return '${metadata.resolutionTier} · $clock';
+}
+
+/// A file format as people write it: "MP4", "WebM", "WebP".
+String formatName(String extension) => switch (extension.toLowerCase()) {
+      'webm' => 'WebM',
+      'webp' => 'WebP',
+      final other => other.toUpperCase(),
+    };
+
+/// How the result was made, for the result screen's Details: a quick
+/// preset's name, a target size, or the quality chosen. Null when none.
+String? resultQualityLabel(CompressionState state, {required bool isVideo}) {
+  final outputId = state.selectedOutputPresetId;
+  if (outputId != null) {
+    final presets = isVideo
+        ? CompressionPresets.videoOutputPresets
+        : CompressionPresets.imageOutputPresets;
+    for (final preset in presets) {
+      if (preset.id == outputId) return preset.name;
+    }
+  }
+  if (state.compressionMode == CompressionMode.targetSize) return 'Target size';
+  return state.selectedPreset?.name;
 }

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +12,7 @@ import '../core/utils/toast_utils.dart';
 import '../features/compression/logic/compression_presets.dart';
 import '../features/compression/providers/compression_provider.dart';
 import '../features/compression/widgets/compress_video_view.dart';
-import '../features/video_editor/services/video_thumbnail_service.dart';
+import '../features/compression/widgets/video_frame_thumb.dart';
 
 /// Compress one video, or several shared from another app. The layout is
 /// [CompressVideoView]; this owns the player and the provider.
@@ -191,36 +190,10 @@ class _CompressVideoScreenState extends ConsumerState<CompressVideoScreen> {
       onCancel: notifier.cancelCompression,
       thumbnails: [
         for (final file in state.inputFiles)
-          _VideoThumb(key: ValueKey(file.path), path: file.path),
+          VideoFrameThumb(key: ValueKey(file.path), path: file.path),
       ],
       previewIndex: _previewIndex,
       onPreview: _preview,
     );
   }
-}
-
-/// A video's first moments as a still, through the filmstrip's extractor.
-class _VideoThumb extends StatefulWidget {
-  const _VideoThumb({super.key, required this.path});
-
-  final String path;
-
-  @override
-  State<_VideoThumb> createState() => _VideoThumbState();
-}
-
-class _VideoThumbState extends State<_VideoThumb> {
-  late final Future<Uint8List?> _frame = VideoThumbnailService.instance
-      .singleFrame(path: widget.path, timeMs: 500, width: 160, height: 160);
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<Uint8List?>(
-        future: _frame,
-        builder: (context, snapshot) {
-          final bytes = snapshot.data;
-          return bytes == null
-              ? const ColoredBox(color: AppColors.surfaceLight)
-              : Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true);
-        },
-      );
 }
