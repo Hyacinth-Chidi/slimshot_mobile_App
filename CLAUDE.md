@@ -3615,6 +3615,42 @@ light, not paint.**
   blur the very frame being judged, over a live texture, on low-end GPUs. Purple stays an accent
   in the editor. No light mode: dark is the editing standard.
 
+### Compress video — Home's light, rows, and a size you can see coming
+
+**Awaiting device verification.** Designed from a rendered mockup the user approved
+(2026-10-07). The screen is `CompressVideoView` (`features/compression/widgets/`), a picture of
+`CompressionState` with callbacks; `CompressVideoScreen` owns only the player and the provider,
+which is what lets the layout be tested without a video. The parts are `compress_panels.dart` —
+top bar, section label, glass group, choice row, switch row, segmented control, size card, info
+chip, bottom bar and buttons — **so the photo screen can be rebuilt from the same pieces** rather
+than a second look. The new primary button is not `GradientButton`: that one sets its label
+through `GoogleFonts`, which a test cannot load.
+
+- **On Home's light and glass** (`ColourFieldBackdrop`, `FrostedGlass`) — outside the editor,
+  where no colour is being judged. The old screen hard-coded Slate (`0xFF334155`, `0xFF0F172A`).
+- **Qualities are rows, not three squeezed tiles**: icon, name, one line, a tick; Smart wears
+  **Recommended**. The video presets were renamed to fit (`Best quality` / `Smart` /
+  `Smallest`, one short description each — the history detail line reads the same names).
+  **PRO shows only while ads are on** (`showPro: AdService.enabled`): with ads off nothing is
+  locked, so the badge promised a lock that was not there.
+- **Now → After** (`CompressSizeCard`): the preset's own "50-80%" read as a range
+  (`estimateOutputRange`, `approxRange`, "≈ 9.6–24 MB"), a range because that is what a preset
+  promises. Best quality on an already efficient video reads **No change**, because the service
+  hands that file back untouched.
+- **The preview hugs the video's shape** (capped at 42% of the height for a tall one) and carries
+  `videoInfoLabel` ("1080p · 0:42") and the size — the metadata was read and never shown.
+  Compressing grows it and puts a progress ring on it (per-file %, "2 of 5" for a batch).
+- **Several videos** get a thumbnail row (`VideoThumbnailService`, the filmstrip's extractor); a
+  tap plays that one in the preview.
+- **From 700 px wide, two columns** (`kCompressTwoColumnWidth`): video left, settings right.
+  Tests pin no overflow at 320 px wide with text at 1.3×.
+
+**Shared files reach the compress screens through the route** (`compressInputsFromExtra`). The
+share sheet used to put them in the provider and open the screen without them — and each
+compress screen resets the provider as it opens, so sharing a video or photo into SlimShot
+opened a screen that found nothing and closed itself. Opened from the share sheet there is
+nothing beneath it, so back goes home rather than popping.
+
 ### Decisions already made â€” don't re-litigate
 
 | Question | Decision |

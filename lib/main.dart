@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+
+import 'features/compression/logic/compress_inputs.dart';
 import 'package:animations/animations.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/file_utils.dart';
@@ -140,10 +142,11 @@ GoRouter createAppRouter(String initialRoute) {
       GoRoute(
         path: '/compress/video',
         pageBuilder: (context, state) {
-          final initialVideo = state.extra is XFile ? state.extra as XFile : null;
           return _buildTransitionPage(
             state: state,
-            child: CompressVideoScreen(initialVideo: initialVideo),
+            child: CompressVideoScreen(
+              initialVideos: compressInputsFromExtra(state.extra),
+            ),
           );
         },
       ),
@@ -171,10 +174,11 @@ GoRouter createAppRouter(String initialRoute) {
       GoRoute(
         path: '/compress/image',
         pageBuilder: (context, state) {
-          final initialImages = state.extra as List<XFile>?;
           return _buildTransitionPage(
             state: state,
-            child: CompressImageScreen(initialImages: initialImages),
+            child: CompressImageScreen(
+              initialImages: compressInputsFromExtra(state.extra),
+            ),
           );
         },
       ),

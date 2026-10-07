@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import '../../main.dart';
-import '../compression/providers/compression_provider.dart';
 
 class ShareIntentService {
   final WidgetRef ref;
@@ -40,12 +39,13 @@ class ShareIntentService {
       }
     }
 
+    // The files go in the route: each compress screen resets the provider
+    // when it opens, so files set there first were wiped and the screen
+    // closed itself on finding none.
     if (videoFiles.isNotEmpty) {
-      ref.read(compressionProvider.notifier).setInputFiles(videoFiles);
-      appRouter.go('/compress/video');
+      appRouter.go('/compress/video', extra: videoFiles);
     } else if (imageFiles.isNotEmpty) {
-      ref.read(compressionProvider.notifier).setInputFiles(imageFiles);
-      appRouter.go('/compress/image');
+      appRouter.go('/compress/image', extra: imageFiles);
     }
     
     ReceiveSharingIntent.instance.reset();

@@ -225,12 +225,14 @@ class CompressionPresets {
     ),
   ];
 
+  // One short line each: the Compress video screen lists them as rows, and
+  // Smart wears a "Recommended" tag there rather than saying so in words.
   static const List<CompressionPreset> videoPresets = [
     CompressionPreset(
       id: 'best_quality',
-      name: 'Best Quality',
-      description: 'Preserve visual quality. Skips if already optimized.',
-      icon: LucideIcons.sparkles,
+      name: 'Best quality',
+      description: 'Looks like the original',
+      icon: LucideIcons.award,
       expectedCompression: '30-50%',
       targetBitrate: 0, // dynamic/CRF
       ffmpegPreset: 'fast',
@@ -238,17 +240,17 @@ class CompressionPresets {
     ),
     CompressionPreset(
       id: 'smart',
-      name: 'Smart Compress',
-      description: 'Recommended. Best balance of speed & quality.',
-      icon: LucideIcons.brain,
+      name: 'Smart',
+      description: 'Much smaller, still sharp',
+      icon: LucideIcons.sparkles,
       expectedCompression: '50-80%',
       targetBitrate: 2500000,
       ffmpegPreset: 'superfast',
     ),
     CompressionPreset(
       id: 'smallest',
-      name: 'Smallest Size',
-      description: 'Maximum reduction. Lightning fast.',
+      name: 'Smallest',
+      description: 'Smallest file, fastest',
       icon: LucideIcons.minimize2,
       expectedCompression: '70-90%',
       targetBitrate: 1000000,
