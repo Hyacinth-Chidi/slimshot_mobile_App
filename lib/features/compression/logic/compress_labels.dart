@@ -39,6 +39,19 @@ String videoInfoLabel(VideoMetadata metadata) {
 /// A file format as people write it: "MP4", "WebM", "WebP".
 String formatName(String extension) => switch (extension.toLowerCase()) {
       'webm' => 'WebM',
+      'jpeg' => 'JPG',
       'webp' => 'WebP',
       final other => other.toUpperCase(),
     };
+
+/// "HEIC · 12 MP": what a photo is, before it is compressed. Either half
+/// drops out when it is not known.
+String photoInfoLabel(String path, int? width, int? height) {
+  final name = path.split(RegExp(r'[/\\]')).last;
+  final dot = name.lastIndexOf('.');
+  final format = dot > 0 ? formatName(name.substring(dot + 1)) : null;
+  final pixels = width != null && height != null && width > 0 && height > 0
+      ? '${_number(width * height / 1e6, decimalsBelow: 10)} MP'
+      : null;
+  return [?format, ?pixels].join(' · ');
+}

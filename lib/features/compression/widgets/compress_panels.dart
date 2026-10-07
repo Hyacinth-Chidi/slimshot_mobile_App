@@ -306,18 +306,28 @@ class CompressOptionRow extends StatelessWidget {
             child: Row(children: [
               Icon(icon, size: 19, color: AppColors.textSecondary),
               const SizedBox(width: 12),
+              // The control sits beside its label while they fit, and drops
+              // onto a line of its own when they do not — three format
+              // segments on a narrow phone with large text.
               Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
+                child: OverflowBar(
+                  alignment: MainAxisAlignment.spaceBetween,
+                  overflowAlignment: OverflowBarAlignment.start,
+                  spacing: 8,
+                  overflowSpacing: 8,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    trailing,
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              trailing,
             ]),
           ),
         ),
@@ -375,8 +385,17 @@ class CompressSegmented extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
 
+  // Scales down — the last resort, after the option row has already moved
+  // it onto a line of its own — rather than overflow a narrow phone with
+  // large text.
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: _segments(),
+      );
+
+  Widget _segments() => Container(
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           color: AppColors.surfaceLight.withValues(alpha: 0.7),

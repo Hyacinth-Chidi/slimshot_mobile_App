@@ -41,4 +41,14 @@ void main() {
       expect(formatName('heic'), 'HEIC');
     });
   });
+
+  test('a photo reads as its format and megapixels', () {
+    expect(photoInfoLabel('IMG_1.HEIC', 4032, 3024), 'HEIC · 12 MP');
+    expect(photoInfoLabel('a.jpeg', 3264, 2448), 'JPG · 8 MP');
+    expect(photoInfoLabel('b.png', 1920, 1080), 'PNG · 2.1 MP');
+    expect(photoInfoLabel('c.webp', 800, 600), 'WebP · 0.5 MP');
+    // Without dimensions, the format alone; without an extension, the size.
+    expect(photoInfoLabel('d.jpg', null, null), 'JPG');
+    expect(photoInfoLabel('noext', 4000, 3000), '12 MP');
+  });
 }

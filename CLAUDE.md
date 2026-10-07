@@ -3669,6 +3669,22 @@ player, the history entry, saving and the full-screen views; the view is tested 
   Two columns from 700 px. The screen no longer reads fonts through `GoogleFonts` directly; the
   full-screen player still does.
 
+**Compress photo is the video screen's design** (`CompressPhotoView`; **awaiting device
+verification**; from an approved mockup). All three screens — video, photo, result — sit on one
+`CompressScaffold` (the light, the top bar, the picture, a thumbnail row, content scrolling under
+a pinned action, two columns from 700 px), so they cannot drift. What photos have of their own:
+the photo drawn over a blurred fill of itself, so a portrait photo in a wide frame has no dead
+bars; "HEIC · 12 MP" (`photoInfoLabel`); **JPG | PNG | WebP**; no WhatsApp option (the photo
+compressor has none). **The photo's shape comes from the decoded image, never the file header**
+— a phone stores most portrait photos sideways with a rotation flag the decoder applies and the
+header does not, so the header would draw them squashed; the megapixels do come from the header
+(`ImageDescriptor`), since width × height is the same either way round. **An option's control
+drops onto its own line when it does not fit beside its label** (`CompressOptionRow` is an
+`OverflowBar`), and the segmented control scales down only as the last resort after that: three
+format segments overflowed a 320 px phone at 1.3× text, and a test pins it. The image presets
+were renamed to match the video ones (`Best quality` / `Smart` / `Smallest`), and
+`expectedCompression` — read only by the old tiles' "-50%" — is gone.
+
 **Target sizes and quick presets are gone** (removed 2026-10-07 at the user's call: "remove the
 ones that are not wired"). `CompressionMode.targetSize`, the target-size lists, `OutputPreset`
 with its WhatsApp / Status / Email / Form upload / Profile entries, `applyOutputPreset`,

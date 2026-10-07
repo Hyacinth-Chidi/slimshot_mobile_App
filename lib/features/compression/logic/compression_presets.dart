@@ -9,7 +9,6 @@ class CompressionPreset {
   final double quality; // 0.0 - 1.0 (for images)
   final String ffmpegPreset; // for video (ultrafast, veryfast, medium, slow)
   final int targetBitrate; // for video in bps
-  final String expectedCompression;
   final bool isPro;
 
   const CompressionPreset({
@@ -17,7 +16,6 @@ class CompressionPreset {
     required this.name,
     required this.description,
     required this.icon,
-    required this.expectedCompression,
     this.quality = 0.8,
     this.ffmpegPreset = 'medium',
     this.targetBitrate = 3000000,
@@ -85,7 +83,6 @@ class CompressionPresets {
       name: 'Best quality',
       description: 'Looks like the original',
       icon: LucideIcons.award,
-      expectedCompression: '30-50%',
       targetBitrate: 0, // dynamic/CRF
       ffmpegPreset: 'fast',
       isPro: true,
@@ -95,7 +92,6 @@ class CompressionPresets {
       name: 'Smart',
       description: 'Much smaller, still sharp',
       icon: LucideIcons.sparkles,
-      expectedCompression: '50-80%',
       targetBitrate: 2500000,
       ffmpegPreset: 'superfast',
     ),
@@ -104,7 +100,6 @@ class CompressionPresets {
       name: 'Smallest',
       description: 'Smallest file, fastest',
       icon: LucideIcons.minimize2,
-      expectedCompression: '70-90%',
       targetBitrate: 1000000,
       ffmpegPreset: 'ultrafast',
     ),
@@ -113,27 +108,24 @@ class CompressionPresets {
   static const List<CompressionPreset> imagePresets = [
     CompressionPreset(
       id: 'best_quality',
-      name: 'Best Quality',
-      description: 'Original resolution, optimized.',
-      icon: LucideIcons.sparkles,
-      expectedCompression: '30-50%',
+      name: 'Best quality',
+      description: 'Full resolution, looks the same',
+      icon: LucideIcons.award,
       quality: 0.90,
       isPro: true,
     ),
     CompressionPreset(
       id: 'smart',
-      name: 'Smart Compress',
-      description: 'Balanced. Standard resolution.',
-      icon: LucideIcons.brain,
-      expectedCompression: '60-80%',
+      name: 'Smart',
+      description: 'Much smaller, still sharp',
+      icon: LucideIcons.sparkles,
       quality: 0.80,
     ),
     CompressionPreset(
       id: 'smallest',
-      name: 'Smallest Size',
-      description: 'Maximum reduction. Smaller resolution.',
+      name: 'Smallest',
+      description: 'Smallest file, lower resolution',
       icon: LucideIcons.minimize2,
-      expectedCompression: '80-95%',
       quality: 0.60,
     ),
   ];
