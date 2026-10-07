@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:slimshotai/features/compression/providers/compression_provider.dart';
 import 'package:slimshotai/features/compression/logic/compression_presets.dart';
 import 'package:slimshotai/features/compression/logic/compress_labels.dart';
 
@@ -40,30 +39,6 @@ void main() {
       expect(formatName('webp'), 'WebP');
       expect(formatName('png'), 'PNG');
       expect(formatName('heic'), 'HEIC');
-    });
-
-    test('quality names how the file was made', () {
-      final smart = CompressionPresets.videoPresets[1];
-      expect(
-          resultQualityLabel(CompressionState(selectedPreset: smart),
-              isVideo: true),
-          'Smart');
-      expect(
-          resultQualityLabel(
-              CompressionState(
-                  selectedPreset: smart,
-                  compressionMode: CompressionMode.targetSize),
-              isVideo: true),
-          'Target size');
-      final whatsApp = CompressionPresets.videoOutputPresets.first;
-      expect(
-          resultQualityLabel(
-              CompressionState(
-                  selectedPreset: smart, selectedOutputPresetId: whatsApp.id),
-              isVideo: true),
-          whatsApp.name);
-      expect(resultQualityLabel(const CompressionState(), isVideo: false),
-          isNull);
     });
   });
 }

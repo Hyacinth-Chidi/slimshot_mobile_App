@@ -3660,14 +3660,22 @@ player, the history entry, saving and the full-screen views; the view is tested 
   "0%" as if something had failed.
 - **Several files show totals for all of them** ("All 5 photos"). The old strip mixed the
   selected photo's sizes with the whole batch's percentage, so the three numbers did not agree.
-- **Details** — quality (`resultQualityLabel`: a quick preset's name, "Target size", or the
-  preset), format (`formatName`: MP4, WebM, JPG, WebP) and location — confirm what was applied.
+- **Details** — quality (the preset's name), format (`formatName`: MP4, WebM, JPG, WebP) and
+  location — confirm what was applied.
 - **Video**: play, a scrubbable time bar and full screen on the picture (`ResultVideoFrame`).
   **Photos**: the compare slider labelled Before / After (`ResultPhotoFrame`). Several of either
   get the thumbnail row; a tap previews that file (a video re-opens the player on it).
 - **Save to gallery** (or "Save 5 to gallery") pinned, Share and New video / New photos under it.
   Two columns from 700 px. The screen no longer reads fonts through `GoogleFonts` directly; the
   full-screen player still does.
+
+**Target sizes and quick presets are gone** (removed 2026-10-07 at the user's call: "remove the
+ones that are not wired"). `CompressionMode.targetSize`, the target-size lists, `OutputPreset`
+with its WhatsApp / Status / Email / Form upload / Profile entries, `applyOutputPreset`,
+`setTargetImageSize`/`setTargetVideoSize`, and both compressors' target-size paths (the image
+quality-and-dimension search, the video bitrate-from-size command) had no caller anywhere in the
+app — about 530 lines. Compression is a quality preset plus the options on screen. If a "fit
+under N MB" feature is wanted, it is a new design, not a revival of this.
 
 **Shared files reach the compress screens through the route** (`compressInputsFromExtra`). The
 share sheet used to put them in the provider and open the screen without them — and each

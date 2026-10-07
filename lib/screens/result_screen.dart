@@ -16,7 +16,6 @@ import '../core/theme/lucide_icons.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/before_after_slider.dart';
 import '../features/compression/logic/compress_labels.dart';
-import '../features/compression/logic/compression_presets.dart';
 import '../features/compression/providers/compression_provider.dart';
 import '../features/compression/widgets/compress_panels.dart';
 import '../features/compression/widgets/compress_result_view.dart';
@@ -94,11 +93,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     if (state.outputPaths.isEmpty) return;
 
     final isVideo = MediaSaveService.isVideoPath(state.outputPaths.first);
-    final detail = state.selectedOutputPresetId != null
-        ? 'Quick preset: ${state.selectedOutputPresetId}'
-        : state.compressionMode == CompressionMode.targetSize
-            ? 'Target size mode'
-            : state.selectedPreset?.name ?? 'Compression';
+    final detail = state.selectedPreset?.name ?? 'Compression';
 
     await HistoryService.addItem(
       HistoryItem(
@@ -292,7 +287,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       keptAsItWas: skipped.isNotEmpty && skipped.every((s) => s),
       preview: preview,
       previewAspectRatio: aspect,
-      quality: resultQualityLabel(state, isVideo: isVideo),
+      quality: state.selectedPreset?.name,
       format: formatName(
           isVideo ? state.targetVideoFormat : state.targetImageFormat),
       locationRemoved: state.removeMetadata,

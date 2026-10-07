@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,7 +16,6 @@ class ImageCompressionService {
     required CompressionPreset preset,
     bool removeMetadata = true,
     String targetFormat = 'jpg',
-    int? targetSizeBytes,
   }) async {
     try {
       final appDir = await getTemporaryDirectory();
@@ -35,28 +33,6 @@ class ImageCompressionService {
 
       final qualityPos = (preset.quality * 100).round();
       final maxDimension = _maxDimensionForPreset(preset);
-
-      if (targetSizeBytes != null) {
-        final inputFile = File(inputPath);
-        if (await inputFile.length() <= targetSizeBytes) {
-          return inputPath;
-        }
-
-        // Awaited inside the try on purpose: returning the future
-        // unawaited hands it to the caller *before* the catch below is in
-        // scope, so a file-I/O failure in there escapes the handler that is
-        // meant to turn it into a null. Flutter 3.47's
-        // `unawaited_return_in_try_block` lint found this.
-        return await _compressToTargetSize(
-          inputPath: inputPath,
-          outputExt: outputExt,
-          compressFormat: compressFormat,
-          initialQuality: qualityPos,
-          maxDimension: maxDimension,
-          keepExif: !removeMetadata,
-          targetSizeBytes: targetSizeBytes,
-        );
-      }
 
       final outputPath =
           '${appDir.path}/slimshot_temp_${const Uuid().v4()}$outputExt';
@@ -125,104 +101,6 @@ class ImageCompressionService {
       final logs = await session.getLogsAsString();
       debugPrint("❌ FFmpeg image compression failed: $logs");
       return null;
-    }
-  }
-
-  Future<String?> _compressToTargetSize({
-    required String inputPath,
-    required String outputExt,
-    required CompressFormat compressFormat,
-    required int initialQuality,
-    required int maxDimension,
-    required bool keepExif,
-    required int targetSizeBytes,
-  }) async {
-    final appDir = await getTemporaryDirectory();
-    String? smallestPath;
-    int? smallestSize;
-
-    for (final dimension in _dimensionSteps(maxDimension)) {
-      for (final quality in _qualitySteps(initialQuality)) {
-        final outputPath =
-            '${appDir.path}/slimshot_temp_${const Uuid().v4()}$outputExt';
-        final result = await _compressOnce(
-          inputPath: inputPath,
-          outputPath: outputPath,
-          quality: quality,
-          maxDimension: dimension,
-          keepExif: keepExif,
-          compressFormat: compressFormat,
-        );
-
-        if (result == null) continue;
-
-        final outputFile = File(result.path);
-        final outputSize = await outputFile.length();
-        if (outputSize <= targetSizeBytes) {
-          if (smallestPath != null) {
-            await _deleteQuietly(smallestPath);
-          }
-          return result.path;
-        }
-
-        if (smallestSize == null || outputSize < smallestSize) {
-          if (smallestPath != null) {
-            await _deleteQuietly(smallestPath);
-          }
-          smallestPath = result.path;
-          smallestSize = outputSize;
-        } else {
-          await _deleteQuietly(result.path);
-        }
-      }
-    }
-
-    if (smallestPath != null) {
-      await _deleteQuietly(smallestPath);
-    }
-    return null;
-  }
-
-  List<int> _qualitySteps(int initialQuality) {
-    final steps = <int>{
-      initialQuality.clamp(35, 95),
-      85,
-      75,
-      65,
-      55,
-      45,
-      35,
-      28,
-      22,
-    }.toList();
-    steps.sort((a, b) => b.compareTo(a));
-    return steps;
-  }
-
-  List<int> _dimensionSteps(int maxDimension) {
-    final steps = <int>{
-      maxDimension,
-      2560,
-      1920,
-      1600,
-      1280,
-      1024,
-      800,
-      640,
-      480,
-    }.where((dimension) => dimension <= maxDimension).toList();
-    steps.sort((a, b) => b.compareTo(a));
-    return steps;
-  }
-
-  Future<void> _deleteQuietly(String path) async {
-    try {
-      final file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-      }
-    } catch (_) {
-      // Best effort cleanup for failed target-size attempts.
     }
   }
 }

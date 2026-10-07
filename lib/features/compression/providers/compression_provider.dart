@@ -21,10 +21,6 @@ class CompressionState {
   final bool removeMetadata;
   final String targetImageFormat; // 'jpg', 'png', 'webp'
   final String targetVideoFormat; // 'mp4', 'webm'
-  final CompressionMode compressionMode;
-  final int? targetImageSizeBytes;
-  final int? targetVideoSizeBytes;
-  final String? selectedOutputPresetId;
 
   const CompressionState({
     this.isProcessing = false,
@@ -42,10 +38,6 @@ class CompressionState {
     this.removeMetadata = true,
     this.targetImageFormat = 'jpg',
     this.targetVideoFormat = 'mp4',
-    this.compressionMode = CompressionMode.preset,
-    this.targetImageSizeBytes,
-    this.targetVideoSizeBytes,
-    this.selectedOutputPresetId,
   });
 
   CompressionState copyWith({
@@ -64,13 +56,6 @@ class CompressionState {
     bool? removeMetadata,
     String? targetImageFormat,
     String? targetVideoFormat,
-    CompressionMode? compressionMode,
-    int? targetImageSizeBytes,
-    bool clearTargetImageSize = false,
-    int? targetVideoSizeBytes,
-    bool clearTargetVideoSize = false,
-    String? selectedOutputPresetId,
-    bool clearSelectedOutputPreset = false,
   }) {
     return CompressionState(
       isProcessing: isProcessing ?? this.isProcessing,
@@ -88,16 +73,6 @@ class CompressionState {
       removeMetadata: removeMetadata ?? this.removeMetadata,
       targetImageFormat: targetImageFormat ?? this.targetImageFormat,
       targetVideoFormat: targetVideoFormat ?? this.targetVideoFormat,
-      compressionMode: compressionMode ?? this.compressionMode,
-      targetImageSizeBytes: clearTargetImageSize
-          ? null
-          : targetImageSizeBytes ?? this.targetImageSizeBytes,
-      targetVideoSizeBytes: clearTargetVideoSize
-          ? null
-          : targetVideoSizeBytes ?? this.targetVideoSizeBytes,
-      selectedOutputPresetId: clearSelectedOutputPreset
-          ? null
-          : selectedOutputPresetId ?? this.selectedOutputPresetId,
     );
   }
 }
@@ -131,112 +106,27 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
   }
 
   void selectPreset(CompressionPreset preset) {
-    state = state.copyWith(
-      selectedPreset: preset,
-      compressionMode: CompressionMode.preset,
-      clearTargetImageSize: true,
-      clearTargetVideoSize: true,
-      clearSelectedOutputPreset: true,
-    );
-  }
-
-  void usePresetCompression() {
-    state = state.copyWith(
-      compressionMode: CompressionMode.preset,
-      clearTargetImageSize: true,
-      clearTargetVideoSize: true,
-      clearSelectedOutputPreset: true,
-    );
-  }
-
-  void setTargetImageSize(int bytes) {
-    state = state.copyWith(
-      compressionMode: CompressionMode.targetSize,
-      targetImageSizeBytes: bytes,
-      clearSelectedOutputPreset: true,
-    );
-  }
-
-  void setTargetVideoSize(int bytes) {
-    state = state.copyWith(
-      compressionMode: CompressionMode.targetSize,
-      targetVideoSizeBytes: bytes,
-      clearSelectedOutputPreset: true,
-    );
+    state = state.copyWith(selectedPreset: preset);
   }
 
   void toggleWhatsAppOptimize() {
-    state = state.copyWith(
-      whatsAppOptimize: !state.whatsAppOptimize,
-      clearSelectedOutputPreset: true,
-    );
+    state = state.copyWith(whatsAppOptimize: !state.whatsAppOptimize);
   }
 
   void toggleRemoveMetadata() {
-    state = state.copyWith(
-      removeMetadata: !state.removeMetadata,
-      clearSelectedOutputPreset: true,
-    );
+    state = state.copyWith(removeMetadata: !state.removeMetadata);
   }
 
   void setTargetImageFormat(String format) {
-    state = state.copyWith(
-      targetImageFormat: format,
-      clearSelectedOutputPreset: true,
-    );
+    state = state.copyWith(targetImageFormat: format);
   }
 
   void setTargetVideoFormat(String format) {
-    state = state.copyWith(
-      targetVideoFormat: format,
-      clearSelectedOutputPreset: true,
-    );
-  }
-
-  void applyOutputPreset(OutputPreset outputPreset) {
-    final preset = CompressionPresets.presetById(
-      outputPreset.type,
-      outputPreset.presetId,
-    );
-
-    if (outputPreset.type == CompressionType.image) {
-      state = state.copyWith(
-        selectedPreset: preset,
-        selectedOutputPresetId: outputPreset.id,
-        removeMetadata: outputPreset.removeMetadata,
-        targetImageFormat: outputPreset.targetFormat ?? state.targetImageFormat,
-        compressionMode: outputPreset.targetSizeBytes == null
-            ? CompressionMode.preset
-            : CompressionMode.targetSize,
-        targetImageSizeBytes: outputPreset.targetSizeBytes,
-        clearTargetImageSize: outputPreset.targetSizeBytes == null,
-        clearTargetVideoSize: true,
-      );
-      return;
-    }
-
-    state = state.copyWith(
-      selectedPreset: preset,
-      selectedOutputPresetId: outputPreset.id,
-      removeMetadata: outputPreset.removeMetadata,
-      whatsAppOptimize: outputPreset.whatsAppOptimize,
-      targetVideoFormat: outputPreset.targetFormat ?? state.targetVideoFormat,
-      compressionMode: outputPreset.targetSizeBytes == null
-          ? CompressionMode.preset
-          : CompressionMode.targetSize,
-      targetVideoSizeBytes: outputPreset.targetSizeBytes,
-      clearTargetVideoSize: outputPreset.targetSizeBytes == null,
-      clearTargetImageSize: true,
-    );
+    state = state.copyWith(targetVideoFormat: format);
   }
 
   Future<void> compressVideo() async {
     if (state.inputFiles.isEmpty || state.selectedPreset == null) return;
-    if (state.compressionMode == CompressionMode.targetSize &&
-        state.targetVideoSizeBytes == null) {
-      state = state.copyWith(error: 'Choose a target video size first.');
-      return;
-    }
 
     state = state.copyWith(
       isProcessing: true,
@@ -268,9 +158,6 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
           whatsAppOptimize: state.whatsAppOptimize,
           removeMetadata: state.removeMetadata,
           targetFormat: state.targetVideoFormat,
-          targetSizeBytes: state.compressionMode == CompressionMode.targetSize
-              ? state.targetVideoSizeBytes
-              : null,
           onProgress: (progressPct) {
             if (state.isProcessing && state.currentProcessingIndex == i) {
               final p = progressPct.clamp(5.0, 95.0);
@@ -285,11 +172,7 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
           results.add(resultPath);
           skipped.add(resultPath == file.path);
         } else {
-          throw Exception(
-            state.compressionMode == CompressionMode.targetSize
-                ? "Couldn't reach the target size for ${file.name}. Try a larger target."
-                : "Compression failed for file ${file.name}",
-          );
+          throw Exception('Compression failed for file ${file.name}');
         }
       }
 
@@ -311,11 +194,6 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
 
   Future<void> compressImage() async {
     if (state.inputFiles.isEmpty || state.selectedPreset == null) return;
-    if (state.compressionMode == CompressionMode.targetSize &&
-        state.targetImageSizeBytes == null) {
-      state = state.copyWith(error: 'Choose a target image size first.');
-      return;
-    }
 
     state = state.copyWith(
       isProcessing: true, 
@@ -341,9 +219,6 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
           preset: state.selectedPreset!,
           removeMetadata: state.removeMetadata,
           targetFormat: state.targetImageFormat,
-          targetSizeBytes: state.compressionMode == CompressionMode.targetSize
-              ? state.targetImageSizeBytes
-              : null,
         );
 
         state = state.copyWith(progress: 80);
@@ -353,11 +228,7 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
           totalCompressed += await compressedFile.length();
           results.add(resultPath);
         } else {
-          throw Exception(
-            state.compressionMode == CompressionMode.targetSize
-                ? "Couldn't reach the target size for ${file.name}. Try a larger target or JPG/WebP."
-                : "Compression failed for file ${file.name}",
-          );
+          throw Exception('Compression failed for file ${file.name}');
         }
       }
 
@@ -387,10 +258,6 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
       removeMetadata: state.removeMetadata,
       targetImageFormat: state.targetImageFormat,
       targetVideoFormat: state.targetVideoFormat,
-      compressionMode: state.compressionMode,
-      targetImageSizeBytes: state.targetImageSizeBytes,
-      targetVideoSizeBytes: state.targetVideoSizeBytes,
-      selectedOutputPresetId: state.selectedOutputPresetId,
     );
   }
 

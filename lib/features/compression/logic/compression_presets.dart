@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/lucide_icons.dart';
 
-enum CompressionType { video, image }
-
-enum CompressionMode { preset, targetSize }
-
 class CompressionPreset {
   final String id;
   final String name;
@@ -26,32 +22,6 @@ class CompressionPreset {
     this.ffmpegPreset = 'medium',
     this.targetBitrate = 3000000,
     this.isPro = false,
-  });
-}
-
-class OutputPreset {
-  final String id;
-  final String name;
-  final String description;
-  final IconData icon;
-  final CompressionType type;
-  final String presetId;
-  final String? targetFormat;
-  final int? targetSizeBytes;
-  final bool removeMetadata;
-  final bool whatsAppOptimize;
-
-  const OutputPreset({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.icon,
-    required this.type,
-    required this.presetId,
-    this.targetFormat,
-    this.targetSizeBytes,
-    this.removeMetadata = true,
-    this.whatsAppOptimize = false,
   });
 }
 
@@ -107,124 +77,6 @@ class VideoMetadata {
 }
 
 class CompressionPresets {
-  static const List<int> targetImageSizes = [
-    500 * 1024,
-    1 * 1024 * 1024,
-    2 * 1024 * 1024,
-    5 * 1024 * 1024,
-  ];
-
-  static const List<int> targetVideoSizes = [
-    5 * 1024 * 1024,
-    10 * 1024 * 1024,
-    16 * 1024 * 1024,
-    25 * 1024 * 1024,
-  ];
-
-  static const List<OutputPreset> imageOutputPresets = [
-    OutputPreset(
-      id: 'form_upload',
-      name: 'Form Upload',
-      description: 'JPG under 1 MB',
-      icon: LucideIcons.fileText,
-      type: CompressionType.image,
-      presetId: 'smart',
-      targetFormat: 'jpg',
-      targetSizeBytes: 1 * 1024 * 1024,
-    ),
-    OutputPreset(
-      id: 'email',
-      name: 'Email',
-      description: 'JPG under 2 MB',
-      icon: LucideIcons.mail,
-      type: CompressionType.image,
-      presetId: 'smart',
-      targetFormat: 'jpg',
-      targetSizeBytes: 2 * 1024 * 1024,
-    ),
-    OutputPreset(
-      id: 'profile_photo',
-      name: 'Profile',
-      description: 'WebP under 500 KB',
-      icon: LucideIcons.user,
-      type: CompressionType.image,
-      presetId: 'smallest',
-      targetFormat: 'webp',
-      targetSizeBytes: 500 * 1024,
-    ),
-    OutputPreset(
-      id: 'privacy_share',
-      name: 'Privacy Share',
-      description: 'Clean metadata, balanced JPG',
-      icon: LucideIcons.shieldCheck,
-      type: CompressionType.image,
-      presetId: 'smart',
-      targetFormat: 'jpg',
-    ),
-    OutputPreset(
-      id: 'save_storage',
-      name: 'Save Storage',
-      description: 'Smallest JPG output',
-      icon: LucideIcons.hardDrive,
-      type: CompressionType.image,
-      presetId: 'smallest',
-      targetFormat: 'jpg',
-    ),
-  ];
-
-  static const List<OutputPreset> videoOutputPresets = [
-    OutputPreset(
-      id: 'whatsapp_chat',
-      name: 'WhatsApp',
-      description: 'MP4 under 16 MB',
-      icon: LucideIcons.messageCircle,
-      type: CompressionType.video,
-      presetId: 'smart',
-      targetFormat: 'mp4',
-      targetSizeBytes: 16 * 1024 * 1024,
-      whatsAppOptimize: true,
-    ),
-    OutputPreset(
-      id: 'whatsapp_status',
-      name: 'Status',
-      description: 'MP4 under 10 MB',
-      icon: LucideIcons.smartphone,
-      type: CompressionType.video,
-      presetId: 'smart',
-      targetFormat: 'mp4',
-      targetSizeBytes: 10 * 1024 * 1024,
-      whatsAppOptimize: true,
-    ),
-    OutputPreset(
-      id: 'email',
-      name: 'Email',
-      description: 'MP4 under 25 MB',
-      icon: LucideIcons.mail,
-      type: CompressionType.video,
-      presetId: 'smart',
-      targetFormat: 'mp4',
-      targetSizeBytes: 25 * 1024 * 1024,
-    ),
-    OutputPreset(
-      id: 'save_storage',
-      name: 'Save Storage',
-      description: 'Smallest MP4 output',
-      icon: LucideIcons.hardDrive,
-      type: CompressionType.video,
-      presetId: 'smallest',
-      targetFormat: 'mp4',
-    ),
-    OutputPreset(
-      id: 'best_share',
-      name: 'Best Share',
-      description: 'Quality MP4, metadata removed',
-      icon: LucideIcons.sparkles,
-      type: CompressionType.video,
-      presetId: 'best_quality',
-      targetFormat: 'mp4',
-    ),
-  ];
-
   // One short line each: the Compress video screen lists them as rows, and
   // Smart wears a "Recommended" tag there rather than saying so in words.
   static const List<CompressionPreset> videoPresets = [
@@ -285,12 +137,4 @@ class CompressionPresets {
       quality: 0.60,
     ),
   ];
-
-  static CompressionPreset presetById(CompressionType type, String id) {
-    final presets = type == CompressionType.video ? videoPresets : imagePresets;
-    return presets.firstWhere(
-      (preset) => preset.id == id,
-      orElse: () => presets[1],
-    );
-  }
 }

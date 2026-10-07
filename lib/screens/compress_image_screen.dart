@@ -549,10 +549,7 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
                         child: GradientButton(
                           title: "Compress Photo",
                           icon: LucideIcons.zap,
-                          onPress: state.selectedPreset != null &&
-                                  (state.compressionMode !=
-                                          CompressionMode.targetSize ||
-                                      state.targetImageSizeBytes != null)
+                          onPress: state.selectedPreset != null
                               ? _handleCompress
                               : null,
                           isLoading: state.isProcessing,
