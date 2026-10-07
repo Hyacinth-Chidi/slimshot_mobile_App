@@ -4,15 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/lucide_icons.dart';
-import '../../../core/widgets/colour_field_backdrop.dart';
 import '../logic/compress_labels.dart';
 import 'compress_panels.dart';
-import 'compress_video_view.dart' show kCompressTwoColumnWidth;
+import 'compress_scaffold.dart';
 
 /// The finished compression, as a picture: the result, its real sizes, what
 /// was applied, and what to do with it. The screen owns the player, the
 /// history and the saving, and hands this the preview and the callbacks —
-/// the same split as [CompressVideoView]'s.
+/// the same split as the compress screens', on the same [CompressScaffold].
 class CompressResultView extends StatelessWidget {
   const CompressResultView({
     super.key,
@@ -67,139 +66,46 @@ class CompressResultView extends StatelessWidget {
       : (count == 1 ? 'photo' : 'photos');
 
   @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final wide = size.width >= kCompressTwoColumnWidth;
-    final actions = _actions();
-
-    final Widget body;
-    if (wide) {
-      body = Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            flex: 11,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 8, 16),
-              child: Column(children: [
-                Expanded(child: _frame()),
-                if (count > 1) ...[const SizedBox(height: 12), _thumbnailRow()],
-              ]),
+  Widget build(BuildContext context) => CompressScaffold(
+        topBar: CompressTopBar(
+          title: 'Done',
+          titleKey: const Key('result_title'),
+          backKey: const Key('result_close'),
+          icon: LucideIcons.x,
+          iconLabel: 'Close',
+          badge: Container(
+            width: 24,
+            height: 24,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.success,
             ),
+            child: const Icon(LucideIcons.check, size: 15, color: Colors.white),
           ),
-          Expanded(
-            flex: 9,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 16, 16),
-              child: Column(children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: _facts(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                actions,
-              ]),
-            ),
-          ),
-        ],
-      );
-    } else {
-      final width = size.width - 32;
-      final aspect = previewAspectRatio ?? (isVideo ? 16 / 9 : 3 / 4);
-      // A photo is compared by dragging across it, so it gets more room.
-      final cap = size.height * (isVideo ? 0.42 : 0.45);
-      final previewHeight = math.max(160.0, math.min(width / aspect, cap));
-      body = Column(children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(height: previewHeight, child: _frame()),
-                if (count > 1) ...[const SizedBox(height: 12), _thumbnailRow()],
-                const SizedBox(height: 14),
-                ..._facts(),
-              ],
-            ),
-          ),
+          onBack: onClose,
         ),
-        CompressBottomBar(child: actions),
-      ]);
-    }
-
-    return Material(
-      color: AppColors.background,
-      child: Stack(children: [
-        const Positioned.fill(child: ColourFieldBackdrop()),
-        SafeArea(
-          child: Column(children: [
-            CompressTopBar(
-              title: 'Done',
-              titleKey: const Key('result_title'),
-              backKey: const Key('result_close'),
-              icon: LucideIcons.x,
-              iconLabel: 'Close',
-              badge: Container(
-                width: 24,
-                height: 24,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.success,
-                ),
-                child: const Icon(LucideIcons.check,
-                    size: 15, color: Colors.white),
-              ),
-              onBack: onClose,
-            ),
-            Expanded(child: body),
-          ]),
+        // A photo is compared by dragging across it, so it gets more room.
+        phonePictureHeight: compressPhonePictureHeight(
+          MediaQuery.sizeOf(context),
+          aspectRatio: previewAspectRatio ?? (isVideo ? 16 / 9 : 3 / 4),
+          capFraction: isVideo ? 0.42 : 0.45,
         ),
-      ]),
-    );
-  }
-
-  Widget _frame() => ClipRRect(
-        key: const Key('result_preview'),
-        borderRadius: BorderRadius.circular(22),
-        child: preview,
-      );
-
-  Widget _thumbnailRow() => SizedBox(
-        height: 56,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: count,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (context, i) {
-            final shown = i == previewIndex;
-            return GestureDetector(
-              key: Key('result_thumb_$i'),
-              onTap: shown || onPreview == null ? null : () => onPreview!(i),
-              child: Container(
-                width: 56,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: shown ? AppColors.primaryStart : AppColors.border,
-                    width: shown ? 2 : 1,
-                  ),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: i < thumbnails.length
-                      ? thumbnails[i]
-                      : const SizedBox.shrink(),
-                ),
-              ),
-            );
-          },
+        picture: ClipRRect(
+          key: const Key('result_preview'),
+          borderRadius: BorderRadius.circular(22),
+          child: preview,
         ),
+        thumbnails: count > 1
+            ? CompressThumbnailRow(
+                count: count,
+                thumbnails: thumbnails,
+                previewIndex: previewIndex,
+                onPreview: onPreview,
+                keyPrefix: 'result_thumb',
+              )
+            : null,
+        content: _facts(),
+        action: _actions(),
       );
 
   List<Widget> _facts() => [

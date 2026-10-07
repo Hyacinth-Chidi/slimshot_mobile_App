@@ -1,25 +1,22 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../../core/services/ad_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/lucide_icons.dart';
-import '../../../core/widgets/colour_field_backdrop.dart';
-import '../logic/compression_presets.dart';
 import '../logic/compress_labels.dart';
+import '../logic/compression_presets.dart';
 import '../providers/compression_provider.dart';
 import 'compress_panels.dart';
+import 'compress_scaffold.dart';
 
-/// Wide enough for the video and its settings side by side: a tablet, or a
-/// phone turned on its side.
-const double kCompressTwoColumnWidth = 700;
+export 'compress_scaffold.dart' show kCompressTwoColumnWidth;
 
 /// The Compress video screen as a picture of [state]: the screen owns the
 /// player and the provider, and hands this the preview and the callbacks.
 ///
 /// Home's light and glass (`ColourFieldBackdrop`, `FrostedGlass`) — this is
-/// a screen outside the editor, where colour is not being judged.
+/// a screen outside the editor, where colour is not being judged. The layout
+/// is [CompressScaffold], shared with the photo screen and the result.
 class CompressVideoView extends StatelessWidget {
   const CompressVideoView({
     super.key,
@@ -67,115 +64,24 @@ class CompressVideoView extends StatelessWidget {
   final int previewIndex;
   final ValueChanged<int>? onPreview;
 
-  bool get _showThumbnails => _count > 1 && !_compressing;
-
   bool get _compressing => state.isProcessing;
   int get _count => state.inputFiles.length;
 
-
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final wide = size.width >= kCompressTwoColumnWidth;
-    final bottom = CompressBottomBar(
-      child: _compressing
-          ? CompressGlassButton(
-              key: const Key('compress_cancel'),
-              label: 'Cancel',
-              onPressed: onCancel,
-            )
-          : CompressPrimaryButton(
-              key: const Key('compress_start'),
-              label: 'Compress',
-              icon: LucideIcons.zap,
-              onPressed: state.selectedPreset == null ? null : onCompress,
-            ),
-    );
-
-    final Widget body;
-    if (wide) {
-      body = Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            flex: 11,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 8, 16),
-              child: Column(children: [
-                Expanded(child: _frame()),
-                if (_showThumbnails) ...[
-                  const SizedBox(height: 12),
-                  _thumbnailRow(),
-                ],
-              ]),
-            ),
-          ),
-          Expanded(
-            flex: 9,
-            child: Column(children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 16, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: _settings(),
-                  ),
-                ),
-              ),
-              bottom,
-            ]),
-          ),
-        ],
-      );
-    } else {
-      final width = size.width - 32;
-      final cap = size.height * 0.42;
-      final aspect = previewAspectRatio ?? 16 / 9;
+    final screen = MediaQuery.sizeOf(context);
+    return CompressScaffold(
+      topBar: CompressTopBar(
+        title: _compressing ? 'Compressing' : 'Compress video',
+        onBack: onBack,
+      ),
       // Hugs the video's own shape; only a tall video is capped. While it
       // compresses, the picture is what the screen is about.
-      final previewHeight = _compressing
-          ? cap
-          : math.max(160.0, math.min(width / aspect, cap));
-      body = Column(children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(height: previewHeight, child: _frame()),
-                if (_showThumbnails) ...[
-                  const SizedBox(height: 12),
-                  _thumbnailRow(),
-                ],
-                const SizedBox(height: 14),
-                ..._settings(),
-              ],
-            ),
-          ),
-        ),
-        bottom,
-      ]);
-    }
-
-    return Material(
-      color: AppColors.background,
-      child: Stack(children: [
-        const Positioned.fill(child: ColourFieldBackdrop()),
-        SafeArea(
-          child: Column(children: [
-            CompressTopBar(
-              title: _compressing ? 'Compressing' : 'Compress video',
-              onBack: onBack,
-            ),
-            Expanded(child: body),
-          ]),
-        ),
-      ]),
-    );
-  }
-
-  Widget _frame() => _PreviewFrame(
+      phonePictureHeight: _compressing
+          ? screen.height * 0.42
+          : compressPhonePictureHeight(screen,
+              aspectRatio: previewAspectRatio ?? 16 / 9),
+      picture: _PreviewFrame(
         key: const Key('compress_preview'),
         preview: preview,
         aspectRatio: previewAspectRatio,
@@ -194,98 +100,79 @@ class CompressVideoView extends StatelessWidget {
         infoIcon: _count > 1 ? LucideIcons.layers : LucideIcons.film,
         sizeLabel:
             state.originalSize > 0 ? compactSize(state.originalSize) : null,
-      );
-
-  Widget _thumbnailRow() => SizedBox(
-        height: 56,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: _count,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (context, i) {
-            final shown = i == previewIndex;
-            return GestureDetector(
-              key: Key('compress_thumb_$i'),
-              onTap: shown || onPreview == null ? null : () => onPreview!(i),
-              child: Container(
-                width: 56,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: shown ? AppColors.primaryStart : AppColors.border,
-                    width: shown ? 2 : 1,
+      ),
+      thumbnails: _count > 1 && !_compressing
+          ? CompressThumbnailRow(
+              count: _count,
+              thumbnails: thumbnails,
+              previewIndex: previewIndex,
+              onPreview: onPreview,
+              keyPrefix: 'compress_thumb',
+            )
+          : null,
+      // Sizes before and after belong to the result screen, where the after
+      // is a fact rather than a guess.
+      content: _compressing
+          ? const [CompressKeepOpenNote()]
+          : [
+              const SizedBox(height: 6),
+              const CompressSectionLabel('Quality'),
+              CompressGroup(children: [
+                for (final preset in CompressionPresets.videoPresets)
+                  CompressChoiceRow(
+                    key: Key('compress_preset_${preset.id}'),
+                    icon: preset.icon,
+                    title: preset.name,
+                    subtitle: preset.description,
+                    selected: state.selectedPreset?.id == preset.id,
+                    tag: preset.id == 'smart' ? 'Recommended' : null,
+                    badge: preset.isPro && showPro ? 'PRO' : null,
+                    onTap: () => onSelectPreset(preset),
+                  ),
+              ]),
+              const SizedBox(height: 20),
+              const CompressSectionLabel('Options'),
+              CompressGroup(children: [
+                CompressSwitchRow(
+                  key: const Key('compress_whatsapp'),
+                  icon: LucideIcons.messageCircle,
+                  label: 'WhatsApp ready',
+                  value: state.whatsAppOptimize,
+                  onToggle: onToggleWhatsApp,
+                ),
+                CompressSwitchRow(
+                  key: const Key('compress_remove_location'),
+                  icon: LucideIcons.mapPinOff,
+                  label: 'Remove location',
+                  value: state.removeMetadata,
+                  onToggle: onToggleRemoveLocation,
+                ),
+                CompressOptionRow(
+                  icon: LucideIcons.fileVideo,
+                  label: 'Format',
+                  trailing: CompressSegmented(
+                    options: const [('mp4', 'MP4'), ('webm', 'WebM')],
+                    value: state.targetVideoFormat,
+                    onChanged: onFormat,
                   ),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: i < thumbnails.length
-                      ? thumbnails[i]
-                      : const SizedBox.shrink(),
-                ),
-              ),
-            );
-          },
-        ),
-      );
-
-  // Sizes before and after belong to the result screen, where the after is
-  // a fact rather than a guess.
-  List<Widget> _settings() => [
-        if (_compressing)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              'Keep SlimShot open until it finishes.',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ]),
+              const SizedBox(height: 8),
+            ],
+      action: _compressing
+          ? CompressGlassButton(
+              key: const Key('compress_cancel'),
+              label: 'Cancel',
+              onPressed: onCancel,
+            )
+          : CompressPrimaryButton(
+              key: const Key('compress_start'),
+              label: 'Compress',
+              icon: LucideIcons.zap,
+              onPressed: state.selectedPreset == null ? null : onCompress,
             ),
-          )
-        else ...[
-          const SizedBox(height: 6),
-          const CompressSectionLabel('Quality'),
-          CompressGroup(children: [
-            for (final preset in CompressionPresets.videoPresets)
-              CompressChoiceRow(
-                key: Key('compress_preset_${preset.id}'),
-                icon: preset.icon,
-                title: preset.name,
-                subtitle: preset.description,
-                selected: state.selectedPreset?.id == preset.id,
-                tag: preset.id == 'smart' ? 'Recommended' : null,
-                badge: preset.isPro && showPro ? 'PRO' : null,
-                onTap: () => onSelectPreset(preset),
-              ),
-          ]),
-          const SizedBox(height: 20),
-          const CompressSectionLabel('Options'),
-          CompressGroup(children: [
-            CompressSwitchRow(
-              key: const Key('compress_whatsapp'),
-              icon: LucideIcons.messageCircle,
-              label: 'WhatsApp ready',
-              value: state.whatsAppOptimize,
-              onToggle: onToggleWhatsApp,
-            ),
-            CompressSwitchRow(
-              key: const Key('compress_remove_location'),
-              icon: LucideIcons.mapPinOff,
-              label: 'Remove location',
-              value: state.removeMetadata,
-              onToggle: onToggleRemoveLocation,
-            ),
-            CompressOptionRow(
-              icon: LucideIcons.fileVideo,
-              label: 'Format',
-              trailing: CompressSegmented(
-                options: const [('mp4', 'MP4'), ('webm', 'WebM')],
-                value: state.targetVideoFormat,
-                onChanged: onFormat,
-              ),
-            ),
-          ]),
-        ],
-        const SizedBox(height: 8),
-      ];
+    );
+  }
 }
 
 class _PreviewFrame extends StatelessWidget {
@@ -332,7 +219,7 @@ class _PreviewFrame extends StatelessWidget {
             ),
             if (compressing) ...[
               ColoredBox(color: Colors.black.withValues(alpha: 0.55)),
-              Center(child: _ProgressRing(progress, batchLine)),
+              Center(child: CompressProgressRing(progress, batchLine)),
             ] else ...[
               Center(
                 child: AnimatedOpacity(
@@ -366,51 +253,5 @@ class _PreviewFrame extends StatelessWidget {
             ],
           ]),
         ),
-      );
-}
-
-class _ProgressRing extends StatelessWidget {
-  const _ProgressRing(this.progress, this.batchLine);
-
-  final double progress;
-  final String? batchLine;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 104,
-        height: 104,
-        child: Stack(alignment: Alignment.center, children: [
-          SizedBox.expand(
-            child: CircularProgressIndicator(
-              value: (progress / 100).clamp(0.0, 1.0),
-              strokeWidth: 6,
-              strokeCap: StrokeCap.round,
-              color: AppColors.lilac,
-              backgroundColor: const Color(0x1FFFFFFF), // white12
-            ),
-          ),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text(
-                '${progress.round()}%',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              if (batchLine != null)
-                Text(
-                  batchLine!,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-            ]),
-          ),
-        ]),
       );
 }
