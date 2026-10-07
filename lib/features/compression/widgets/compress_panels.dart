@@ -10,7 +10,9 @@ import '../../../core/widgets/frosted_glass.dart';
 
 const Color _divider = Color(0x1AFFFFFF); // white10, the theme's divider
 
-/// A glass back button and the screen's name.
+/// A glass back button on the left and the screen's name centred on the
+/// screen — not in the space beside the button, which would sit it off
+/// centre.
 class CompressTopBar extends StatelessWidget {
   const CompressTopBar({super.key, required this.title, required this.onBack});
 
@@ -20,8 +22,26 @@ class CompressTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: Row(children: [
-          Semantics(
+        child: Stack(alignment: Alignment.center, children: [
+          // Clear of the button on both sides, so a long title cannot run
+          // under it and stays centred.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 56),
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Semantics(
             button: true,
             label: 'Back',
             child: GestureDetector(
@@ -38,18 +58,6 @@ class CompressTopBar extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
           ),
         ]),
       );

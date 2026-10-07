@@ -7,7 +7,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/lucide_icons.dart';
 import '../../../core/widgets/colour_field_backdrop.dart';
 import '../logic/compression_presets.dart';
-import '../logic/size_estimate.dart';
+import '../logic/compress_labels.dart';
 import '../providers/compression_provider.dart';
 import 'compress_panels.dart';
 
@@ -72,22 +72,6 @@ class CompressVideoView extends StatelessWidget {
   bool get _compressing => state.isProcessing;
   int get _count => state.inputFiles.length;
 
-  String get _now =>
-      state.originalSize > 0 ? compactSize(state.originalSize) : '—';
-
-  String get _after {
-    final preset = state.selectedPreset;
-    if (preset == null) return '—';
-    // Best quality hands an already efficient video back untouched.
-    if (_count == 1 &&
-        preset.id == 'best_quality' &&
-        state.videoMetadata?.isAlreadyOptimized == true) {
-      return 'No change';
-    }
-    final range =
-        estimateOutputRange(state.originalSize, preset.expectedCompression);
-    return range == null ? '—' : approxRange(range);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +192,8 @@ class CompressVideoView extends StatelessWidget {
                 ? null
                 : videoInfoLabel(state.videoMetadata!),
         infoIcon: _count > 1 ? LucideIcons.layers : LucideIcons.film,
-        sizeLabel: state.originalSize > 0 ? _now : null,
+        sizeLabel:
+            state.originalSize > 0 ? compactSize(state.originalSize) : null,
       );
 
   Widget _thumbnailRow() => SizedBox(
@@ -244,13 +229,9 @@ class CompressVideoView extends StatelessWidget {
         ),
       );
 
+  // Sizes before and after belong to the result screen, where the after is
+  // a fact rather than a guess.
   List<Widget> _settings() => [
-        CompressSizeCard(
-          key: const Key('compress_size_card'),
-          now: _now,
-          after: _after,
-        ),
-        const SizedBox(height: 20),
         if (_compressing)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 4),
@@ -260,6 +241,7 @@ class CompressVideoView extends StatelessWidget {
             ),
           )
         else ...[
+          const SizedBox(height: 6),
           const CompressSectionLabel('Quality'),
           CompressGroup(children: [
             for (final preset in CompressionPresets.videoPresets)

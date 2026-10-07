@@ -87,14 +87,12 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('ready: the video, its sizes, the qualities and the options',
+  testWidgets('ready: the video, the qualities and the options',
       (tester) async {
     await pump(tester, _state());
     expect(find.text('Compress video'), findsOneWidget);
     expect(find.text('1080p · 0:42'), findsOneWidget);
-    expect(find.text('48.2 MB'), findsWidgets);
-    // Smart: 50–80% smaller.
-    expect(find.text('≈ 9.6–24 MB'), findsOneWidget);
+    expect(find.text('48.2 MB'), findsOneWidget); // on the picture
     expect(find.text('Recommended'), findsOneWidget);
     for (final preset in CompressionPresets.videoPresets) {
       expect(find.byKey(Key('compress_preset_${preset.id}')), findsOneWidget);
@@ -111,16 +109,23 @@ void main() {
     expect(find.text('PRO'), findsNothing);
   });
 
-  testWidgets('the estimate follows the chosen quality', (tester) async {
-    await pump(tester, _state(preset: CompressionPresets.videoPresets[2]));
-    expect(find.text('≈ 4.8–14 MB'), findsOneWidget); // 70–90% smaller
+  testWidgets('no before-and-after here: the result screen shows the sizes',
+      (tester) async {
+    await pump(tester, _state());
+    expect(find.text('Now'), findsNothing);
+    expect(find.text('After'), findsNothing);
+    expect(find.textContaining('≈'), findsNothing);
+    await pump(tester, _state(processing: true, progress: 40));
+    expect(find.text('Now'), findsNothing);
   });
 
-  testWidgets('best quality on a video already optimised says no change',
-      (tester) async {
-    await pump(tester,
-        _state(preset: CompressionPresets.videoPresets[0], optimized: true));
-    expect(find.text('No change'), findsOneWidget);
+  testWidgets('the title sits at the centre of the screen', (tester) async {
+    await pump(tester, _state());
+    final title = tester.getCenter(find.text('Compress video'));
+    expect(title.dx, closeTo(390 / 2, 1));
+    await pump(tester, _state(), size: const Size(1000, 640));
+    expect(tester.getCenter(find.text('Compress video')).dx,
+        closeTo(1000 / 2, 1));
   });
 
   testWidgets('each control reports its own choice', (tester) async {
@@ -191,8 +196,9 @@ void main() {
     await pump(tester, _state(), size: const Size(1000, 640));
     expect(tester.takeException(), isNull);
     final preview = tester.getRect(find.byKey(const Key('compress_preview')));
-    final sizes = tester.getRect(find.byKey(const Key('compress_size_card')));
-    expect(preview.right, lessThanOrEqualTo(sizes.left));
-    expect(preview.top, lessThan(sizes.bottom));
+    final quality =
+        tester.getRect(find.byKey(const Key('compress_preset_best_quality')));
+    expect(preview.right, lessThanOrEqualTo(quality.left));
+    expect(preview.top, lessThan(quality.bottom));
   });
 }

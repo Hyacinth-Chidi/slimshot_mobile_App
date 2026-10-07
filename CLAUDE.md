@@ -3615,7 +3615,7 @@ light, not paint.**
   blur the very frame being judged, over a live texture, on low-end GPUs. Purple stays an accent
   in the editor. No light mode: dark is the editing standard.
 
-### Compress video — Home's light, rows, and a size you can see coming
+### Compress video — Home's light, rows, the sizes left to the result
 
 **Awaiting device verification.** Designed from a rendered mockup the user approved
 (2026-10-07). The screen is `CompressVideoView` (`features/compression/widgets/`), a picture of
@@ -3633,10 +3633,12 @@ through `GoogleFonts`, which a test cannot load.
   `Smallest`, one short description each — the history detail line reads the same names).
   **PRO shows only while ads are on** (`showPro: AdService.enabled`): with ads off nothing is
   locked, so the badge promised a lock that was not there.
-- **Now → After** (`CompressSizeCard`): the preset's own "50-80%" read as a range
-  (`estimateOutputRange`, `approxRange`, "≈ 9.6–24 MB"), a range because that is what a preset
-  promises. Best quality on an already efficient video reads **No change**, because the service
-  hands that file back untouched.
+- **No before-and-after here — the user's call on the device.** A Now → After card with an
+  estimated range was built and removed: the sizes belong to the result screen, where "after" is
+  the real file rather than a guess from a preset's "50-80%". `CompressSizeCard` stays in the
+  panels for that screen.
+- **The title is centred on the screen**, not in the space beside the back button
+  (`CompressTopBar` stacks them); a test pins the centre on a phone and a tablet.
 - **The preview hugs the video's shape** (capped at 42% of the height for a tall one) and carries
   `videoInfoLabel` ("1080p · 0:42") and the size — the metadata was read and never shown.
   Compressing grows it and puts a progress ring on it (per-file %, "2 of 5" for a batch).
