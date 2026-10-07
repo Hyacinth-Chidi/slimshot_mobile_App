@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,20 +36,32 @@ class FakeGoogleIdTokens implements GoogleIdTokens {
   }
 }
 
-/// The rewarded ad, scripted: [playback] is how the next one ends.
+/// The rewarded ad, scripted: [playback] is how the next one ends, and
+/// [failure] the reason given when none showed.
 class FakeRewardedAdPlayer implements RewardedAdPlayer {
   AdPlayback playback = AdPlayback.earned;
+  String? failure;
+
+  /// When set, a play waits on it — an ad still loading.
+  Completer<AdPlay>? hold;
 
   /// (userId, customData) of every ad played.
   final List<(String, String)> plays = [];
 
+  int prepares = 0;
+
   @override
-  Future<AdPlayback> play({
+  Future<void> prepare() async => prepares++;
+
+  @override
+  Future<AdPlay> play({
     required String userId,
     required String customData,
   }) async {
     plays.add((userId, customData));
-    return playback;
+    final held = hold;
+    if (held != null) return held.future;
+    return AdPlay(playback, failure: failure);
   }
 }
 

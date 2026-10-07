@@ -85,6 +85,22 @@ void main() {
     expect(polls(), 0);
   });
 
+  test("no ad to show carries AdMob's reason", () async {
+    player
+      ..playback = AdPlayback.notShown
+      ..failure = 'AdMob 3: No fill';
+    final reward = await ads().watch();
+    expect((reward.outcome, reward.failure),
+        (AdRewardOutcome.noAd, 'AdMob 3: No fill'));
+  });
+
+  test('the reason is said only when asked for (a debug build)', () {
+    const reward = AdReward(AdRewardOutcome.noAd, failure: 'AdMob 3: No fill');
+    expect(adRewardMessage(reward), 'No ad right now. Try again soon.');
+    expect(adRewardMessage(reward, withReason: true),
+        'No ad right now. Try again soon. (AdMob 3: No fill)');
+  });
+
   test('the daily cap plays nothing', () async {
     server.on('POST', '/rewards/ads/session',
         (_) => failure('AD_DAILY_CAP_REACHED', 409));

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -90,6 +92,63 @@ void main() {
     await tester.tap(find.byKey(const Key('earn_watch_ad')));
     await settle(tester);
     expect(ads.plays, isEmpty);
+  });
+
+  testWidgets("before today's ads are known the ad is offered, not Back tomorrow",
+      (tester) async {
+    final older = userJson(balance: 0)..remove('ads');
+    server.on('GET', '/me', (_) => envelope(older));
+    await pumpBlock(tester, profile: older);
+    expect(find.text('Back tomorrow'), findsNothing);
+    expect(find.text('Watch an ad'), findsOneWidget);
+    expect(find.textContaining('left today'), findsNothing);
+    await tester.tap(find.byKey(const Key('earn_watch_ad')));
+    await settle(tester);
+    expect(ads.plays, hasLength(1));
+  });
+
+  testWidgets('an ad starts loading as soon as the block shows',
+      (tester) async {
+    await pumpBlock(tester);
+    expect(ads.prepares, 1);
+  });
+
+  testWidgets('nothing is loaded at the cap or with credit ads off',
+      (tester) async {
+    await pumpBlock(tester, adsOn: false);
+    expect(ads.prepares, 0);
+
+    final capped = userJson(balance: 0)
+      ..['ads'] = {'rewardCredits': 5, 'dailyCap': 10, 'remainingToday': 0};
+    server.on('GET', '/me', (_) => envelope(capped));
+    await tester.pumpWidget(const SizedBox());
+    await pumpBlock(tester, profile: capped);
+    expect(ads.prepares, 0);
+  });
+
+  testWidgets('while the ad loads the button says so', (tester) async {
+    final loading = Completer<AdPlay>();
+    ads.hold = loading;
+    await pumpBlock(tester);
+    await tester.tap(find.byKey(const Key('earn_watch_ad')));
+    await tester.pump();
+    expect(find.text('Loading ad…'), findsOneWidget);
+
+    loading.complete(const AdPlay(AdPlayback.earned));
+    await settle(tester);
+    expect(find.text('Loading ad…'), findsNothing);
+    expect(find.text('+5 credits'), findsOneWidget);
+  });
+
+  testWidgets('a debug build names why no ad showed', (tester) async {
+    ads
+      ..playback = AdPlayback.notShown
+      ..failure = 'AdMob 3: No fill';
+    await pumpBlock(tester);
+    await tester.tap(find.byKey(const Key('earn_watch_ad')));
+    await settle(tester);
+    expect(find.text('No ad right now. Try again soon. (AdMob 3: No fill)'),
+        findsOneWidget);
   });
 
   testWidgets('with credit ads switched off, only the invite is offered',

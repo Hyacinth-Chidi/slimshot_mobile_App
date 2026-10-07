@@ -10,6 +10,13 @@ void main() {
     expect(AdService.enabled, isFalse);
   });
 
+  test('credit ads play the unit whose verification calls the server', () {
+    // "earn credits" — the unit with server-side verification set. The old
+    // rewarded unit (Pro unlocks) has none: an ad from it can never pay.
+    expect(AdService.creditAdUnitIdAndroid,
+        'ca-app-pub-7001751702275942/2451324896');
+  });
+
   Future<BuildContext> host(WidgetTester tester) async {
     late BuildContext captured;
     await tester.pumpWidget(MaterialApp(

@@ -3531,18 +3531,43 @@ that lands after the poll gave up still arrives**: an "on its way" result looks 
 30s and 90s (`EarnCreditsBlock.lateLooks`), and the block reports **every balance rise** through
 `onEarned` — so a late grant carries a caption shortfall on exactly as a prompt one does (found by
 the stage review: the sheet sat on "You have 0" while the credits had landed). `PluginRewardedAdPlayer` is the only plugin code, untested
-by design (it needs a device); a load landing after its 15s timeout is disposed, never shown late.
+by design (it needs a device).
+
+**An ad is loaded before it is asked for** (device-reported: ads came only on a strong network,
+otherwise "No ad right now"). Loading on the tap made the user wait out the consent check, the SDK
+start and the load together inside a 15s limit. Now `EarnCreditsBlock` calls `prepare()` when it
+shows (not at the cap, not with credit ads off), the player keeps **one** ad loaded (showable for
+an hour; kept 50 minutes) and loads the next after every play, and a load that outlasts a tap's 15s
+wait is kept for the next tap rather than thrown away. The button reads **Loading ad…** while the
+tap waits for an ad (`watch(onPlayed:)` says when that wait is over). **A failure says why in debug
+builds** — `AdPlay.failure` → `AdReward.failure`, appended by `adRewardMessage(withReason:
+kDebugMode)`: AdMob's code and message, a consent check that failed or timed out, a show that
+failed — and is logged under `SlimshotAds`; release builds keep the one line.
+
+**Today's allowance can be unknown, and unknown is not "none left"** (`AdAllowance.known`; also
+device-reported). A profile cached by a build before rewarded ads has no `ads`, and read as 0 left
+it showed **Back tomorrow** to someone with every ad still to watch, until `/me` landed. Unknown
+offers a plain **Watch an ad** with no count, and is not written back into the cache as a number.
+Opening the Credits screen reads `/me` again, so a reward that landed while it was closed shows.
 
 **Credit ads have their own switch** (`AdService.creditAdsEnabled`, on); `AdService.enabled` —
-interstitials and the Pro-unlock ads — stays off. **A credit ad starts the SDK itself, on the first
-Watch an ad, after Google's consent step** (UMP: `requestConsentInfoUpdate`, then
+interstitials and the Pro-unlock ads — stays off. **Credit ads start the SDK themselves, when an
+earning block first shows, after Google's consent step** (UMP: `requestConsentInfoUpdate`, then
 `loadAndShowConsentFormIfRequired`, then `canRequestAds`) — the EEA, the UK and Switzerland need
-consent for ads to serve, and a user who never earns credits never starts the SDK. The form shows
-only where the AdMob console's privacy message requires one; refused, it is asked again next tap. **AdMob
-setup is outside the code**: server-side verification on the rewarded unit (`…/3806842044`) with
-the callback `https://<server>/api/app/v1/rewards/admob/ssv`, the unit in the server's
-`ADMOB_AD_UNIT_IDS`, and the test phone added as a test device — Google's sample units never call
-the server, and clicking your own live ads breaks AdMob policy.
+consent for ads to serve, and a user who never earns credits never starts the SDK. **The last
+answer is used first**, Google's own pattern: where an earlier check already allowed ads the SDK
+starts at once and the check refreshes alongside; only with no answer yet is it waited for (10s at
+most). The form shows only where the AdMob console's privacy message requires one; refused, it is
+asked again next time.
+
+**Credits come from their own unit: "earn credits", `…/2451324896`** (`AdService.creditAdUnitId`),
+the unit with server-side verification set. Stage 3 first shipped on the older rewarded unit
+(`…/3806842044`, `rewardedAdUnitId`, Pro unlocks) — which has **no** callback, so an ad watched to
+the end reached nothing on the server and paid nothing (device-found: no `admob/ssv` line in the
+VPS log). `ad_service_test.dart` pins the unit. **AdMob setup is outside the code**: the callback
+`https://<server>/api/app/v1/rewards/admob/ssv` on that unit, the unit in the server's
+`ADMOB_AD_UNIT_IDS` (or that list empty), and the test phone added as a test device — Google's
+sample units never call the server, and clicking your own live ads breaks AdMob policy.
 
 **`EarnCreditsBlock` is the one earning UI** (caption sheet and Credits screen). In the editor the
 sheet takes it through `CaptionProgressSheet.earnCredits`, so the panel stays free of account

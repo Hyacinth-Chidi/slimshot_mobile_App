@@ -41,6 +41,9 @@ class _CreditsScreenState extends ConsumerState<CreditsScreen> {
   void initState() {
     super.initState();
     unawaited(_load());
+    // The balance and today's ads as the server has them now: a reward
+    // that landed while the screen was closed shows on opening.
+    unawaited(ref.read(accountProvider.notifier).refresh());
   }
 
   /// The first page until one has loaded, then the page after [_next]. A

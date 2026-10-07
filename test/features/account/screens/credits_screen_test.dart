@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/account/providers/account_providers.dart';
 import 'package:slimshotai/features/account/screens/credits_screen.dart';
 
 import '../../../support/account_fakes.dart';
@@ -48,6 +49,35 @@ void main() {
     ));
     await settle(tester);
   }
+
+  testWidgets('opening Credits reads the balance again', (tester) async {
+    // A reward that landed while the screen was closed shows on opening.
+    await tester.pumpWidget(ProviderScope(
+      overrides: accountOverrides(
+        server,
+        session: signedInSession(profile: userJson(balance: 94)),
+      ),
+      child: MaterialApp(
+        home: Scaffold(
+          // Signed in before Credits opens, as the home screen is.
+          body: Consumer(
+            builder: (context, ref, _) {
+              ref.watch(accountProvider);
+              return TextButton(
+                onPressed: () => openCreditsScreen(context),
+                child: const Text('open'),
+              );
+            },
+          ),
+        ),
+      ),
+    ));
+    await settle(tester);
+    final before = server.to('GET', '/me').length;
+    await tester.tap(find.text('open'));
+    await settle(tester);
+    expect(server.to('GET', '/me').length, before + 1);
+  });
 
   testWidgets('the balance, the ways to earn, and the history',
       (tester) async {

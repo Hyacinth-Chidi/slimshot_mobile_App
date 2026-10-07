@@ -42,7 +42,21 @@ class AdService {
     }
   }
 
-  // Live Ad Unit IDs for Rewarded Ads
+  /// The rewarded unit that **earns credits** ("earn credits"): the one
+  /// whose server-side verification calls the server. Not [rewardedAdUnitId]
+  /// — that unit has no callback, so an ad from it could never pay.
+  static const String creditAdUnitIdAndroid =
+      'ca-app-pub-7001751702275942/2451324896';
+
+  static String get creditAdUnitId {
+    if (Platform.isAndroid) return creditAdUnitIdAndroid;
+    if (Platform.isIOS) {
+      return 'ca-app-pub-3940256099942544/1712485313'; // test ID until provided
+    }
+    throw UnsupportedError('Unsupported platform');
+  }
+
+  // Live Ad Unit IDs for Rewarded Ads (Pro unlocks)
   static String get rewardedAdUnitId {
     if (Platform.isAndroid) {
       return 'ca-app-pub-7001751702275942/3806842044';

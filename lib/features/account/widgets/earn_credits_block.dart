@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,6 +30,11 @@ class EarnCreditsBlock extends ConsumerStatefulWidget {
 class _EarnCreditsBlockState extends ConsumerState<EarnCreditsBlock> {
   bool _watching = false;
 
+  /// Waiting for the ad itself, before it shows.
+  bool _loadingAd = false;
+
+  bool _prepared = false;
+
   /// After "on its way": AdMob can call the server after the poll gave up,
   /// so the balance is looked at again later (contract §13).
   static const List<Duration> lateLooks = [
@@ -46,10 +52,17 @@ class _EarnCreditsBlockState extends ConsumerState<EarnCreditsBlock> {
   }
 
   Future<void> _watch() async {
-    setState(() => _watching = true);
+    setState(() {
+      _watching = true;
+      _loadingAd = true;
+    });
     final notifier = ref.read(accountProvider.notifier);
     try {
-      final reward = await ref.read(creditAdServiceProvider).watch();
+      final reward = await ref.read(creditAdServiceProvider).watch(
+        onPlayed: () {
+          if (mounted) setState(() => _loadingAd = false);
+        },
+      );
       final balance = reward.balance;
       if (reward.outcome == AdRewardOutcome.granted && balance != null) {
         await notifier.applyBalance(balance);
@@ -62,7 +75,7 @@ class _EarnCreditsBlockState extends ConsumerState<EarnCreditsBlock> {
       if (mounted) {
         ToastUtils.show(
           context,
-          adRewardMessage(reward),
+          adRewardMessage(reward, withReason: kDebugMode),
           isError: reward.outcome != AdRewardOutcome.granted &&
               reward.outcome != AdRewardOutcome.pending,
         );
@@ -74,7 +87,12 @@ class _EarnCreditsBlockState extends ConsumerState<EarnCreditsBlock> {
     } finally {
       // Today's count, and a late grant, come from the server.
       unawaited(notifier.refresh());
-      if (mounted) setState(() => _watching = false);
+      if (mounted) {
+        setState(() {
+          _watching = false;
+          _loadingAd = false;
+        });
+      }
     }
   }
 
@@ -100,7 +118,13 @@ class _EarnCreditsBlockState extends ConsumerState<EarnCreditsBlock> {
     if (user == null) return const SizedBox.shrink();
     final adsOn = ref.watch(creditAdsEnabledProvider);
     final allowance = user.ads;
-    final atCap = allowance.remainingToday <= 0;
+    // Only a known allowance can be spent; unknown is not "none left".
+    final atCap = allowance.known && allowance.remainingToday <= 0;
+    if (adsOn && !atCap && !_prepared) {
+      // An ad loading while the user reads, so the tap plays it at once.
+      _prepared = true;
+      unawaited(ref.read(rewardedAdPlayerProvider).prepare());
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -108,11 +132,17 @@ class _EarnCreditsBlockState extends ConsumerState<EarnCreditsBlock> {
         if (adsOn) ...[
           _EarnButton(
             key: const Key('earn_watch_ad'),
-            label: atCap ? kBackTomorrow : watchAdLabel(allowance.rewardCredits),
-            busy: _watching,
+            label: atCap
+                ? kBackTomorrow
+                : _loadingAd
+                    ? kLoadingAd
+                    : allowance.known
+                        ? watchAdLabel(allowance.rewardCredits)
+                        : kWatchAd,
+            busy: _watching && !_loadingAd,
             onPressed: atCap || _watching ? null : _watch,
           ),
-          if (!atCap)
+          if (allowance.known && !atCap)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(

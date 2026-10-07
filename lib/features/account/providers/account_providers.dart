@@ -45,7 +45,7 @@ final creditAdsEnabledProvider =
     Provider<bool>((ref) => AdService.creditAdsEnabled);
 
 final rewardedAdPlayerProvider = Provider<RewardedAdPlayer>(
-  (ref) => PluginRewardedAdPlayer(AdService.rewardedAdUnitId),
+  (ref) => PluginRewardedAdPlayer(AdService.creditAdUnitId),
 );
 
 final creditAdServiceProvider = Provider<CreditAdService>(

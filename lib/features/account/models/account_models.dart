@@ -54,7 +54,8 @@ class AccountUser {
         'creditBalance': creditBalance,
         'accountStatus': suspended ? 'suspended' : 'active',
         'needsClaim': needsClaim,
-        'ads': ads.toJson(),
+        // Unknown stays unknown when cached, never "0 left".
+        if (ads.known) 'ads': ads.toJson(),
       };
 
   /// The same user with a balance a spend answered with.
@@ -224,12 +225,16 @@ class AdAllowance {
     required this.rewardCredits,
     required this.dailyCap,
     required this.remainingToday,
-  });
+  }) : known = true;
 
+  /// Not known yet: a profile without `ads` — one cached by a build from
+  /// before rewarded ads, until `/me` answers. Not "none left": read that
+  /// way it showed Back tomorrow to someone with every ad still to watch.
   const AdAllowance.none()
       : rewardCredits = 0,
         dailyCap = 0,
-        remainingToday = 0;
+        remainingToday = 0,
+        known = false;
 
   factory AdAllowance.fromJson(Object? json) {
     if (json is! Map) return const AdAllowance.none();
@@ -244,6 +249,7 @@ class AdAllowance {
   final int rewardCredits;
   final int dailyCap;
   final int remainingToday;
+  final bool known;
 
   Map<String, Object?> toJson() => {
         'rewardCredits': rewardCredits,

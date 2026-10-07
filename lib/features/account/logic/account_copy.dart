@@ -91,6 +91,11 @@ String creditAmountLabel(int amount) =>
 
 String watchAdLabel(int credits) => 'Watch an ad · +$credits';
 
+/// Before today's allowance is known: no number to promise.
+const String kWatchAd = 'Watch an ad';
+
+const String kLoadingAd = 'Loading ad…';
+
 String adsLeftLabel(int remaining) => '$remaining left today';
 
 const String kBackTomorrow = 'Back tomorrow';
