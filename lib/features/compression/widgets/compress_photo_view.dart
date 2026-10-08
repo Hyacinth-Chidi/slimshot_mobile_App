@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../../../core/services/ad_service.dart';
@@ -187,21 +185,7 @@ class _PhotoFrame extends StatelessWidget {
   Widget build(BuildContext context) => ClipRRect(
         borderRadius: BorderRadius.circular(22),
         child: Stack(fit: StackFit.expand, children: [
-          const ColoredBox(color: Colors.black),
-          ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-            child: SizedBox.expand(
-              child: FittedBox(fit: BoxFit.cover, clipBehavior: Clip.hardEdge, child: SizedBox(
-                width: 300,
-                height: 300 / (aspectRatio ?? 3 / 4),
-                child: photo,
-              )),
-            ),
-          ),
-          ColoredBox(color: Colors.black.withValues(alpha: 0.35)),
-          Center(
-            child: AspectRatio(aspectRatio: aspectRatio ?? 3 / 4, child: photo),
-          ),
+          CompressPhotoPicture(photo: photo, aspectRatio: aspectRatio),
           if (compressing) ...[
             ColoredBox(color: Colors.black.withValues(alpha: 0.55)),
             Center(child: CompressProgressRing(progress, batchLine)),

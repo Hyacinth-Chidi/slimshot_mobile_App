@@ -193,10 +193,11 @@ GoRouter createAppRouter(String initialRoute) {
       GoRoute(
         path: '/privacy',
         pageBuilder: (context, state) {
-          final initialImages = state.extra as List<XFile>?;
           return _buildTransitionPage(
             state: state,
-            child: PrivacyScreen(initialImages: initialImages),
+            child: PrivacyScreen(
+              initialImages: compressInputsFromExtra(state.extra),
+            ),
           );
         },
       ),

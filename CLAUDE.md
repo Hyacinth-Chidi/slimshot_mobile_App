@@ -3705,6 +3705,38 @@ compress screen resets the provider as it opens, so sharing a video or photo int
 opened a screen that found nothing and closed itself. Opened from the share sheet there is
 nothing beneath it, so back goes home rather than popping.
 
+### Privacy Strip — what the photo really carries, removed without re-saving it
+
+**Awaiting device verification** (the reader is Kotlin; the screens from an approved mockup).
+`PrivacyStripView` and `PrivacyReportView` (`features/privacy/widgets/`) sit on the compress
+screens' `CompressScaffold`, tested without a device; the screens own the provider, the picker
+and the photo's shape (`PhotoInspector`, shared with Compress photo).
+
+- **The screen shows what each photo really holds**, read through `PhotoMetadataReader.kt`
+  (`slimshot_ai/photo_metadata`, Android's `ExifInterface`): location as coordinates, camera,
+  date taken, author — one photo's values, or "In 3 of 5" across several; only what is there,
+  and "No location, camera or date in this photo." where nothing is. The old screen listed four
+  fixed chips for every photo, which was a claim, not a fact. An empty GPS block reads 0,0 and
+  is not a location (`PhotoMetadata.fromMap`). HEIC reads from Android 9; a file the reader
+  cannot open is "nothing found", never an error, because the strip still runs on it.
+- **The report reads each cleaned file back** (`PrivacyState.remaining`) and ticks a detail only
+  where it is confirmed gone; one that survived says **Still there**, and a file that could not be
+  read back is left unticked rather than assumed clean. "Details removed" shows only when every
+  file is verified clean.
+- **A JPEG is cleaned without re-encoding** (`stripJpegMetadata`, `logic/jpeg_metadata.dart`,
+  the user's call): its EXIF, XMP, IPTC, comments, JFXX thumbnail, MPF and any trailer after the
+  image's end are dropped and every other byte copied, so the picture is identical. The old path
+  re-saved it at quality 100 — called "lossless" in a comment, it was not: a little quality lost
+  and usually a bigger file. **EXIF also holds the rotation flag**, without which a portrait photo
+  shows on its side, so it is written back alone in a minimal EXIF block. Kept: JFIF, the colour
+  profile (`ICC_PROFILE`), Adobe's colour flag, every table and frame segment. **Not done through
+  `ExifInterface`**: it leaves the embedded thumbnail (which can show the photo before a crop) and
+  IPTC. A JPEG too unusual to walk falls back to re-encoding; PNG re-encodes losslessly; HEIC and
+  WebP become a quality-100 JPEG as before (`DefaultPhotoStripper`), since nothing can rewrite
+  them in place. A test plants "secret" in every hiding place and asserts none survives and the
+  image bytes are untouched.
+- `CompressionLoaderOverlay` is gone — the three screens that used it share the progress ring.
+
 ### Decisions already made â€” don't re-litigate
 
 | Question | Decision |

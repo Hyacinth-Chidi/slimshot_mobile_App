@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -231,4 +233,40 @@ class CompressKeepOpenNote extends StatelessWidget {
           style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
       );
+}
+
+/// A photo letterboxed over a blurred fill of itself, so a portrait photo in
+/// a wide frame — or a wide one in a tall frame — has no dead bars. The
+/// layers beneath an overlay; the frame's clip and corners are the caller's.
+class CompressPhotoPicture extends StatelessWidget {
+  const CompressPhotoPicture({
+    super.key,
+    required this.photo,
+    this.aspectRatio,
+  });
+
+  final Widget photo;
+
+  /// Width over height as the photo is shown; 3:4 until it is known.
+  final double? aspectRatio;
+
+  @override
+  Widget build(BuildContext context) {
+    final aspect = aspectRatio ?? 3 / 4;
+    return Stack(fit: StackFit.expand, children: [
+      const ColoredBox(color: Colors.black),
+      ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(width: 300, height: 300 / aspect, child: photo),
+          ),
+        ),
+      ),
+      ColoredBox(color: Colors.black.withValues(alpha: 0.35)),
+      Center(child: AspectRatio(aspectRatio: aspect, child: photo)),
+    ]);
+  }
 }

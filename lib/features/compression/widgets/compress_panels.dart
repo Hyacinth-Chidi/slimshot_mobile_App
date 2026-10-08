@@ -23,6 +23,7 @@ class CompressTopBar extends StatelessWidget {
     this.badge,
     this.titleKey,
     this.backKey,
+    this.trailing,
   });
 
   final String title;
@@ -36,6 +37,10 @@ class CompressTopBar extends StatelessWidget {
   final Widget? badge;
   final Key? titleKey;
   final Key? backKey;
+
+  /// An action at the right end (Change photos). The title keeps clear of
+  /// it as it does of the back button, so it stays centred.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -86,7 +91,42 @@ class CompressTopBar extends StatelessWidget {
               ),
             ),
           ),
+          if (trailing != null)
+            Align(alignment: Alignment.centerRight, child: trailing),
         ]),
+      );
+}
+
+/// A round glass button with one glyph, the top bar's own shape — for an
+/// action at its far end.
+class CompressGlassIconAction extends StatelessWidget {
+  const CompressGlassIconAction({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        label: label,
+        child: GestureDetector(
+          onTap: onPressed,
+          behavior: HitTestBehavior.opaque,
+          child: FrostedGlass(
+            borderRadius: BorderRadius.circular(22),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(icon, color: AppColors.textPrimary, size: 20),
+            ),
+          ),
+        ),
       );
 }
 
