@@ -2678,7 +2678,11 @@ three seconds, **empty**, the editor opened on the keyboard. Its Templates (`add
 **choose, then type**; the other way round is the selected text's own Templates (below). The two
 ids differ on purpose — `text_templates` is the sheet-tab door — so neither handler can catch
 the other's tap. **Auto captions** is the third entry, shown only in a build that carries a
-server address — it is not offered before it works (see the auto captions section).
+server address — it is not offered before it works (see the auto captions section). **It is on
+the main menu too, right after Text** (device-reported: under Text alone it was hard to find —
+captions are something people open the editor for, not a kind of text they think to look
+under). The same id in both menus, so one handler and one visibility rule serve both doors;
+`editor_menu_test.dart` pins both places.
 
 **A template is a complete starting look, and it makes an EMPTY text**
 (`logic/text_template_catalog.dart`, `panels/text_templates_sheet.dart`). Not a preset: the

@@ -132,6 +132,14 @@ const EditorMenu _rootMenu = EditorMenu(
       icon: LucideIcons.type,
       hasSubMenu: true,
     ),
+    // Also in the Text submenu, but found here: under Text alone it was hard
+    // to find (device-reported). The same id, so one handler and one
+    // visibility rule — no server address, no tool — serve both doors.
+    EditorTool(
+      id: 'auto_captions',
+      label: 'Auto captions',
+      icon: LucideIcons.subtitles,
+    ),
     EditorTool(id: 'overlay', label: 'Overlay', icon: LucideIcons.layers),
     // **Transform's children are root tools now, and Transform is a tool of its
     // own.** The submenu was a tap tax on four things a user reaches for

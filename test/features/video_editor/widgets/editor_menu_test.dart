@@ -141,6 +141,23 @@ void main() {
     expect(screen.readAsStringSync(), contains("'text': _textMenu"));
   });
 
+  test('Auto captions is on the main menu, beside Text, and in the Text menu',
+      () {
+    // Device-reported: inside the Text submenu alone it was hard to find —
+    // captions are a thing people come to the editor for, not a kind of
+    // text they think to look under. The root entry is the same id, so one
+    // handler and one visibility rule (no server, no tool) serve both.
+    final root = menuSource('_rootMenu');
+    expect(root, contains("id: 'auto_captions'"));
+    expect(root.indexOf("id: 'auto_captions'"),
+        greaterThan(root.indexOf("id: 'text'")),
+        reason: 'it sits right after Text');
+    expect(root.indexOf("id: 'auto_captions'"),
+        lessThan(root.indexOf("id: 'overlay'")),
+        reason: 'it sits right after Text');
+    expect(menuSource('_textMenu'), contains("id: 'auto_captions'"));
+  });
+
   test('a selected text offers Templates: type, then choose', () {
     // The text's own menu opens the editor on its Templates tab, which puts
     // a template on the words already there — and swaps it, as often as the
