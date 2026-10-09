@@ -48,4 +48,27 @@ void main() {
     final long = await pumpTile(tester, 'Background');
     expect(long.width, greaterThan(short.width));
   });
+
+  testWidgets('a tool that cannot act now is dimmed, not hidden', (tester) async {
+    Future<double?> opacityOf({required bool enabled}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Row(children: [
+              EditorToolTile(icon: LucideIcons.image, label: 'Overlay', enabled: enabled),
+            ]),
+          ),
+        ),
+      );
+      final dim = find.descendant(
+        of: find.byType(EditorToolTile),
+        matching: find.byType(Opacity),
+      );
+      return dim.evaluate().isEmpty ? null : tester.widget<Opacity>(dim.first).opacity;
+    }
+
+    expect(await opacityOf(enabled: false), lessThan(0.5));
+    expect(await opacityOf(enabled: true), anyOf(isNull, 1.0));
+    expect(find.text('Overlay'), findsOneWidget, reason: 'still there to be found');
+  });
 }

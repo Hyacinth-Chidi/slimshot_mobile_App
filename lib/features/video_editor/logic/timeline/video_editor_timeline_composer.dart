@@ -1,3 +1,4 @@
+import '../overlay_box_fit.dart';
 import 'dart:ui';
 
 import '../../models/audio_track_model.dart';
@@ -18,9 +19,6 @@ import '../mask/clip_mask.dart';
 /// clip B over `D` seconds, B starts `D` before A ends and the total timeline
 /// shortens by `D`. Clips keep their full source ranges. This is exactly what
 /// FFmpeg `xfade` does, which is what keeps preview and export in agreement.
-/// Fixed boxes the editor lays overlays out in, in preview-canvas pixels.
-const double _kImageOverlayBoxPx = 200.0;
-const double _kVideoOverlayBoxPx = 240.0;
 
 /// Distance a slide animation travels, in the same pixels.
 const double _kSlideDistancePx = 200.0;
@@ -316,7 +314,7 @@ class VideoEditorTimelineComposer {
           kind: 'image',
           path: overlay.imagePath,
           motion: overlay.motion,
-          box: _kImageOverlayBoxPx,
+          box: kImageOverlayBoxPx,
           mask: overlay.mask,
           chromaKey: overlay.chromaKey,
           startSeconds: overlay.startTime.inMilliseconds / 1000.0,
@@ -333,7 +331,7 @@ class VideoEditorTimelineComposer {
           kind: 'video',
           path: overlay.videoPath,
           motion: overlay.motion,
-          box: _kVideoOverlayBoxPx,
+          box: kVideoOverlayBoxPx,
           mask: overlay.mask,
           chromaKey: overlay.chromaKey,
           startSeconds: overlay.timelineStart.inMilliseconds / 1000.0,

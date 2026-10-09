@@ -13,10 +13,19 @@ import 'package:flutter/material.dart';
 /// Both toolbars — the root/clip menu and the audio context menu — draw their
 /// tools through this, so a name fits in one exactly as it fits in the other.
 class EditorToolTile extends StatelessWidget {
-  const EditorToolTile({super.key, required this.icon, required this.label});
+  const EditorToolTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    this.enabled = true,
+  });
 
   final IconData icon;
   final String label;
+
+  /// False draws the tool dimmed — still in its place, waiting for the
+  /// selection to make it apply. See `isToolbarToolEnabled`.
+  final bool enabled;
 
   /// The least a tile is wide, so short names keep the row's spacing.
   static const double kMinWidth = 56;
@@ -29,7 +38,7 @@ class EditorToolTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final tile = Container(
       constraints: const BoxConstraints(minWidth: kMinWidth),
       padding: const EdgeInsets.symmetric(horizontal: kHorizontalPadding),
       margin: const EdgeInsets.only(right: kGap),
@@ -51,5 +60,6 @@ class EditorToolTile extends StatelessWidget {
         ],
       ),
     );
+    return enabled ? tile : Opacity(opacity: 0.38, child: tile);
   }
 }

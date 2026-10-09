@@ -20,6 +20,7 @@ import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 import '../logic/timeline/lane_layout.dart';
 import '../logic/timeline/timeline_geometry.dart';
+import '../logic/clip_to_overlay.dart';
 import '../models/filter_preset.dart';
 import '../models/text_overlay_model.dart';
 import '../models/image_overlay_model.dart';
@@ -1633,6 +1634,66 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     }
 
     return false;
+  }
+
+  /// CapCut's "Overlay" on a clip: lifts the selected clip off the main track
+  /// onto the first free overlay lane at the same time, drawn exactly where it
+  /// was, and the main track closes the gap — the car-crash edit's first step.
+  /// One undo step, the new overlay selected on its own menu.
+  ///
+  /// What an overlay cannot hold yet ([clipToOverlayLosses]) is left behind;
+  /// the screen asks first when there is any. Its transitions go as a
+  /// deleted clip's do. [canvas] is the preview canvas the overlay's pixels
+  /// are measured in.
+  ///
+  /// False, changing nothing, with no clip selected or none left behind it —
+  /// the main track is never emptied, as Delete never empties it.
+  bool moveSelectedClipToOverlay({required Size canvas, required String overlayId}) {
+    final index = state.segments.indexWhere((s) => s.id == state.selectedSegmentId);
+    if (index == -1 || state.segments.length <= 1) return false;
+    if (canvas.width <= 0 || canvas.height <= 0) return false;
+    final segment = state.segments[index];
+    final asset = state.assetFor(segment);
+    if (asset == null) return false;
+
+    final moved = clipAsOverlay(
+      segment,
+      asset,
+      id: overlayId,
+      startSeconds: segmentTimelineStarts(state.segments)[index],
+      canvas: canvas,
+    );
+    saveStateForUndo();
+    final segments = [...state.segments]..removeAt(index);
+    final image = moved.image;
+    final video = moved.video;
+    if (image != null) {
+      final placed = image.copyWith(laneIndex: _laneForNew(image.startTime, image.endTime));
+      state = state.copyWith(
+        segments: segments,
+        imageOverlays: [...state.imageOverlays, placed],
+        selectedImageId: placed.id,
+        clearSelectedSegmentId: true,
+        clearSelectedTextId: true,
+        clearSelectedVideoOverlayId: true,
+        isClipSelected: false,
+        currentMenuId: 'image_overlay',
+      );
+    } else if (video != null) {
+      final placed =
+          video.copyWith(laneIndex: _laneForNew(video.timelineStart, video.timelineEnd));
+      state = state.copyWith(
+        segments: segments,
+        videoOverlays: [...state.videoOverlays, placed],
+        selectedVideoOverlayId: placed.id,
+        clearSelectedSegmentId: true,
+        clearSelectedTextId: true,
+        clearSelectedImageId: true,
+        isClipSelected: false,
+        currentMenuId: 'video_overlay',
+      );
+    }
+    return true;
   }
 
   void deleteSelectedSegment() {

@@ -27,6 +27,8 @@ import '../features/video_editor/logic/text_template_catalog.dart';
 import '../features/video_editor/widgets/panels/text_templates_sheet.dart';
 import '../features/video_editor/logic/tool_dismissal.dart';
 import '../features/video_editor/logic/toolbar_visibility.dart';
+import '../features/video_editor/logic/clip_to_overlay.dart';
+import '../features/video_editor/widgets/panels/move_to_overlay_dialog.dart';
 import '../features/video_editor/logic/timeline/timeline_geometry.dart';
 import '../features/video_editor/providers/video_editor_notifier.dart';
 import '../features/video_editor/services/media_import_service.dart';
@@ -227,6 +229,10 @@ const EditorMenu _editMenu = EditorMenu(
     EditorTool(id: 'reverse', label: 'Reverse', icon: LucideIcons.rewind),
     // Swap the media under this clip, keeping the edit.
     EditorTool(id: 'replace', label: 'Replace', icon: LucideIcons.replace),
+    // CapCut's "Overlay" on a clip: lifts it one lane down at the same time,
+    // where it was drawn, and the main track closes up. Beside Replace — both
+    // re-house the clip.
+    EditorTool(id: 'to_overlay', label: 'Overlay', icon: LucideIcons.squareStack),
     // Same tool as the root menu, but reached with a clip selected — opening it
     // from here grades that clip rather than the whole project.
     EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
@@ -1005,6 +1011,25 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       notifier.selectSegment(segmentId);
       notifier.setCurrentMenu('edit');
     }
+  }
+
+  /// CapCut's "Overlay" on a clip — lifts it onto the overlay track where it
+  /// was drawn. Asks first only when the move would leave something behind (a
+  /// filter, a speed curve…); a clip that loses nothing just moves.
+  Future<void> _moveSelectedClipToOverlay() async {
+    final segment = ref.read(videoEditorProvider).selectedSegment;
+    final canvas = ref.read(videoCanvasSizeProvider);
+    if (segment == null || canvas == null) return;
+    final losses = clipToOverlayLosses(segment);
+    if (losses.isNotEmpty) {
+      final move = await confirmMoveToOverlay(context, losses);
+      if (!move || !mounted) return;
+    }
+    final moved = ref.read(videoEditorProvider.notifier).moveSelectedClipToOverlay(
+          canvas: canvas,
+          overlayId: DateTime.now().millisecondsSinceEpoch.toString(),
+        );
+    if (moved) HapticFeedback.mediumImpact();
   }
 
   void _deleteSelectedSegment() {
@@ -2100,12 +2125,18 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
               ? index
               : index - 1;
           final tool = visibleTools[toolIndex];
+          final toolEnabled = isToolbarToolEnabled(
+            tool.id,
+            clipCount: editorState.segments.length,
+          );
 
           return Builder(
             builder: (buttonContext) {
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () async {
+                  // A dimmed tool waits for the selection to make it apply.
+                  if (!toolEnabled) return;
                   HapticFeedback.selectionClick();
                   if (tool.id == 'audio') {
                     showEditorSheet<void>(
@@ -2170,6 +2201,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     unawaited(_freezeFrameAtPlayhead());
                   } else if (tool.id == 'replace') {
                     unawaited(_replaceSelectedClip());
+                  } else if (tool.id == 'to_overlay') {
+                    unawaited(_moveSelectedClipToOverlay());
                   } else if (kTextMenuSheetTools[tool.id] case final tab?) {
                     _openSelectedTextEditor(tab);
                   } else if (tool.id == 'split') {
@@ -2307,7 +2340,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     }
                   }
                 },
-                child: EditorToolTile(icon: tool.icon, label: tool.label),
+                child: EditorToolTile(
+                  icon: tool.icon,
+                  label: tool.label,
+                  enabled: toolEnabled,
+                ),
               );
             },
           );

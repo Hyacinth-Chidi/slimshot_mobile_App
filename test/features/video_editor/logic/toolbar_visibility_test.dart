@@ -141,4 +141,20 @@ void main() {
     expect(visible('auto_captions', captionServer: true), isTrue);
     expect(declaredTools('_textMenu'), contains('auto_captions'));
   });
+
+  group('Overlay on a clip', () {
+    test('is offered with every clip', () {
+      expect(visible('to_overlay', clipCount: 1, isClipSelected: true), isTrue);
+      expect(declaredTools('_editMenu'), contains('to_overlay'));
+    });
+
+    test('is dimmed, not hidden, for the last clip on the main track', () {
+      // Moving it would empty the main track, which Delete never does either.
+      // Dimmed rather than gone, so the tool is where the user learnt it is.
+      expect(isToolbarToolEnabled('to_overlay', clipCount: 1), isFalse);
+      expect(isToolbarToolEnabled('to_overlay', clipCount: 2), isTrue);
+      expect(isToolbarToolEnabled('split', clipCount: 1), isTrue,
+          reason: 'every other tool is untouched');
+    });
+  });
 }

@@ -31,7 +31,7 @@ class ImageOverlayLayer extends ConsumerStatefulWidget {
 
 class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
   /// The square the content is fitted into, in canvas pixels.
-  static const double _kContentBox = 200.0;
+  static const double _kContentBox = kImageOverlayBoxPx;
 
   /// The overlay whose body is being dragged, pinched or turned right now.
   ///

@@ -1867,6 +1867,38 @@ belonged to the old file**: the proxy rendered from it, and a reversal that depe
 proxy. One undo step; the file joins the asset pool once, and the old asset stays for anything else
 using it. The screen takes the first pick from the same picker Add uses and re-syncs the preview.
 
+### Move to overlay — a clip lifts onto the overlay track
+
+**Awaiting device verification.** CapCut's "Overlay" on a clip, the car-crash edit's first step:
+**Overlay** on the clip menu (beside Replace; id `to_overlay`) moves the selected clip to the first
+free overlay lane **at the same time**, **drawn exactly where it was**, and the main track closes
+the gap — the tutorial's own behaviour, checked frame by frame. One undo step; the new overlay is
+selected on its own menu. A photo becomes a photo overlay, a video a video overlay.
+
+**It lands where the clip was** (`logic/clip_to_overlay.dart`, `clip_to_overlay_test.dart`). A
+clip is its picture contain-fitted into the canvas, scaled, moved and turned; an overlay is the
+same picture contain-fitted into its own square box (`kImageOverlayBoxPx` 200 /
+`kVideoOverlayBoxPx` 240, preview-canvas pixels — now **one definition** in `overlay_box_fit.dart`,
+read by the layers, the composer and this), scaled, moved and turned. So the overlay's scale is the
+clip's times the ratio of the two fits, its position the clip's canvas-fraction offset in pixels,
+its turn the clip's degrees in radians. Each is a fixed change of units, applied through
+`mapAnimatable` to the base and every keyframe alike, so a keyframed move keeps moving, easing
+included; keyframe progress is clip-relative and the overlay's is overlay-relative over the same
+span. A test fails when the fit ratio is dropped.
+
+**What cannot come along is named first** (`clipToOverlayLosses`): filter, Adjust, effect, crop,
+flip, speed curve, reverse, volume keyframes — what a clip carries and an overlay cannot hold yet.
+**Only when there is any**, one dialog says so in a line ("Filter and speed curve won't carry
+over.", `confirmMoveToOverlay`) with Cancel and Move; a clip that loses nothing just moves. Trim,
+flat speed, volume, opacity, placement and its keyframes, mask and chroma key carry. Its
+transitions go as a deleted clip's do, which has never asked. Under a speed curve the overlay
+plays its source at 1x.
+
+**The last clip stays** — moving it would empty the main track, which Delete never does — and the
+tool is **dimmed, not hidden**, for it: `EditorToolTile.enabled` and `isToolbarToolEnabled` are the
+toolbar's way to say "waiting" beside `isToolbarToolVisible`'s "not here". A dimmed tile ignores
+the tap.
+
 ### Auto captions — generating a set (Stage 1)
 
 **Device-verified by the user**: a set generates, the default look is right, and after the WAV

@@ -30,7 +30,7 @@ class VideoOverlayLayer extends ConsumerStatefulWidget {
 
 class _VideoOverlayLayerState extends ConsumerState<VideoOverlayLayer> {
   /// The square the content is fitted into, in canvas pixels.
-  static const double _kContentBox = 240.0;
+  static const double _kContentBox = kVideoOverlayBoxPx;
 
   /// Gesture state only — this layer no longer plays or draws anything.
   ///

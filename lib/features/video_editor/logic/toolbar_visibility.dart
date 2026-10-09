@@ -50,3 +50,18 @@ bool isToolbarToolVisible(
   // overlays were drawn by the engine, which animates them as it does photos.
   return true;
 }
+
+/// Whether a shown tool can act now — false draws it dimmed and ignores the
+/// tap. **Dimmed, not hidden**: a tool that vanishes and comes back is harder
+/// to find than one that waits, and dimming says what it is waiting for.
+///
+/// Overlay on a clip needs a clip left behind it: moving the last one would
+/// empty the main track, which Delete never does either.
+bool isToolbarToolEnabled(String toolId, {required int clipCount}) {
+  switch (toolId) {
+    case 'to_overlay':
+      return clipCount > 1;
+    default:
+      return true;
+  }
+}

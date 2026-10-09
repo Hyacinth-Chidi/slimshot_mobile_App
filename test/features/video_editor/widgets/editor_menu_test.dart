@@ -229,4 +229,15 @@ void main() {
       reason: 'a declared tool with no handler is a dead signpost',
     );
   });
+
+  test('a clip can be moved onto the overlay track, and the screen handles it',
+      () {
+    // CapCut's "Overlay" on a clip — the car-crash edit's first step.
+    expect(menuSource('_editMenu'), contains("id: 'to_overlay'"));
+    expect(
+      screen.readAsStringSync(),
+      contains("tool.id == 'to_overlay'"),
+      reason: 'a declared tool with no handler is a dead signpost',
+    );
+  });
 }

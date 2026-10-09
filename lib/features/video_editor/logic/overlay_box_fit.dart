@@ -1,5 +1,13 @@
 import 'dart:ui';
 
+/// The square a photo overlay's picture is fitted into, in the preview
+/// canvas's pixels — the editor's layout, the composer's conversion to
+/// fractions and a clip moved onto the overlay track all read this one value.
+const double kImageOverlayBoxPx = 200.0;
+
+/// A video overlay's square, as [kImageOverlayBoxPx] is a photo's.
+const double kVideoOverlayBoxPx = 240.0;
+
 /// The size a picture of [contentAspect] takes when contain-fitted into a
 /// square [box] — the Dart half of what `OverlayRenderer.writeCorners` does
 /// for an overlay's quad.
