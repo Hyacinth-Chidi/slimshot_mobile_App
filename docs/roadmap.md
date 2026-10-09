@@ -35,6 +35,12 @@ small, M medium, L large.
 
 ### Stage 1 — quick wins
 
+**Built 2026-10-09 on `stage1-quick-wins`, awaiting device verification.** Building it turned up
+two older faults, fixed on the branch: a mask's window was drawn upside down in the engine (clips
+and video overlays), and a clip's rotation turned the opposite way to its angle. It also added
+what item 1 needed and did not have: on-canvas handles for an **overlay's** mask (until now only
+a clip's window could be moved or sized on the canvas).
+
 1. **Mask tilt (S).** `ClipMask` gains an angle, so any shape can be rotated — the tutorial tilts
    its line. One model for clips and overlays, so both get it. Rotate in an aspect-true space, as
    `rotateCanvas` does, or the mask shears on a 9:16 canvas. Both mask vec4s are full

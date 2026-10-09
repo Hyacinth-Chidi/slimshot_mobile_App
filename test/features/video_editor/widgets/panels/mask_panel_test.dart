@@ -94,6 +94,17 @@ void main() {
     expect(n.state.canUndo, isFalse);
   });
 
+  testWidgets('every shape the model knows is offered', (tester) async {
+    // The panel orders its own chips, so a shape added to the enum and not to
+    // that order would never reach the user.
+    await pump(tester, notifierWith(clip()));
+    const labels = ['None', 'Rectangle', 'Circle', 'Linear', 'Mirror', 'Rounded'];
+    expect(labels, hasLength(ClipMaskShape.values.length));
+    for (final label in labels) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+  });
+
   testWidgets('Mirror sits right after Linear, and places a band', (tester) async {
     // The two line shapes side by side, as CapCut groups them; every other
     // chip keeps its place.

@@ -1899,6 +1899,12 @@ tool is **dimmed, not hidden**, for it: `EditorToolTile.enabled` and `isToolbarT
 toolbar's way to say "waiting" beside `isToolbarToolVisible`'s "not here". A dimmed tile ignores
 the tap.
 
+**Known:** the project's own crop and zoom (the root Crop and Zoom tools) frame every clip and
+no overlay, so a clip moved out of a project-cropped or zoomed canvas shows its full frame —
+placed at the size its full frame had, since the overlay has no crop to keep. Re-cropping a
+moved clip is the user's call; carrying a project crop onto one overlay would make it the only
+overlay the project crop reaches.
+
 ### Auto captions — generating a set (Stage 1)
 
 **Device-verified by the user**: a set generates, the default look is right, and after the WAV
