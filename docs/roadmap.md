@@ -3,111 +3,170 @@
 Current architecture and status live in `CLAUDE.md`. Approaches already tried and rejected live in
 `docs/dead-ends.md` — read that before proposing a design.
 
-Order of work is deliberate: **transitions (preview → export) → overlays → everything else.** Do not
-start overlay work until transitions are signed off on device.
+The engine milestones this file used to track are done: transitions and export run natively,
+overlays and text draw in GL, and `media_kit` and `pro_video_editor` are deleted (`CLAUDE.md` has
+the account). What follows is the next stretch of work.
 
 ---
 
-## Now — transitions
+## Next — closing the gap with CapCut
 
-Preview is rebuilt on the dual-lane GL engine and is awaiting device sign-off.
+Agreed 2026-10-09, after reviewing CapCut edits frame by frame: a tutorial for a "car crash
+effect" (split, a clip lifted onto the overlay track, a tilted line mask, an AI cutout keyframed
+along with the car, a crash sound) with the CapCut tools visible in it, and a cinematic travel edit
+(the footage seen only through the digits of "2026" as they roll and then zoom through, dips to
+black, speed ramps, three-panel strips). More reference clips are coming; this list is updated as
+they are reviewed. The clips live in `samplevideo/` beside the repo, never in it.
 
-Remaining within this milestone:
+**Work in this order**, and finish this list before taking on new reference videos. Sizes: S
+small, M medium, L large.
 
-- **Export parity.** This is the weak half. `exportTrimmedVideo` routes transitions through PVE's
-  `ClipTransition`, and `_mapTransitionType` only maps six types — `smoothLeft`, `smoothRight`,
-  `smoothUp`, `smoothDown` and `zoomIn` all fall through to `default: dissolve`. So five of eleven
-  transitions currently export as a plain crossfade regardless of what the preview showed.
+**How every stage is built** (the user's rules, 2026-10-09):
 
-  The FFmpeg `xfade` path already in `video_editor_service.dart` supports all eleven natively and
-  shares the catalog's `ffmpegXfadeName`, so routing export through it is a far shorter path to
-  parity than waiting for a Media3 Transformer export. The overlap timeline model was chosen to match
-  `xfade` semantics exactly, so durations already agree.
+- **Plan before code.** A short design the user approves, then test-first, then a device test
+  before merge.
+- **Break nothing.** A project that does not use the new feature opens, plays and exports exactly
+  as before — drafts byte-identical, engine payloads unchanged — and a test pins it.
+- **CapCut-simple UX.** The tool sits where a CapCut user looks for it and works the way CapCut's
+  does. Reuse the sheets, panels and gestures the editor already has rather than adding a new kind
+  of control. Nothing confusing, nothing that needs explaining.
+- **No over-engineering.** Build the smallest version that does what CapCut's does. No options or
+  generality for a case nobody has asked for.
 
-- **Audio on export.** Preview now applies an equal-power crossfade across the window. The export
-  filters apply `acrossfade`/`afade`, which is close but not identical. Confirm they match before
-  calling parity done.
+### Stage 1 — quick wins
+
+1. **Mask tilt (S).** `ClipMask` gains an angle, so any shape can be rotated — the tutorial tilts
+   its line. One model for clips and overlays, so both get it. Rotate in an aspect-true space, as
+   `rotateCanvas` does, or the mask shears on a 9:16 canvas. Both mask vec4s are full
+   (`shape, cx, cy, feather` / `w, h, inverted, radius`), so the angle needs a new uniform.
+   `maskCoverage` in Dart and GLSL change together.
+2. **Mirror mask (S).** A band between two parallel lines — CapCut's "Mirror". A new shape
+   **appended** to `ClipMaskShape`: the shader reads the shape as a number.
+3. **Move clip to overlay (S–M).** One tap on the clip menu lifts a main-track clip onto the first
+   free overlay lane at the same timeline time (`lane_layout.dart`), keeping what an overlay can
+   carry: trim, speed, volume, opacity, mask, chroma key and the placement keyframes. One undo
+   step. Open question for the design: whether the main track closes the gap it leaves.
+
+### Stage 2 — transitions, round two (L)
+
+4. **Port a shortlist from [GL Transitions](https://github.com/gl-transitions/gl-transitions).**
+   They plug into our engine directly: their `getFromColor` / `getToColor` / `progress` / `ratio`
+   are our `outgoingAt` / `incomingAt` / `uProgress` / `uCanvasAspect`, so each works on photos
+   and video and exports identically. 123 of the 125 are MIT and 2 are BSD — keep the authors'
+   credit in an open-source licences page. Shortlist:
+
+   | Light | Heavier (the most CapCut-like) |
+   | :--- | :--- |
+   | DirectionalScaled (×4 directions), DreamyZoom, zoomInOut, Overexposure, GlitchMemories, old_tv_lost_signal, StaticFade, Bounce, Swirl, splitSlideInOut (×2), RotateScaleVanish | CrossZoom (**the zoom blur in the tutorial**), Revolve_Left (×2 directions), tangentMotionBlur, FilmBurn, DefocusBlur, StripDatamoshGlitch, Drop_Zone_Flicker, GlitchDisplace |
+
+   Skipped: what we already have (fade, fade to colour, slide, wipes, simple zoom), slideshow-era
+   shapes (heart, stars, blinds, chessboard, bow ties, puzzle), 3D for a later category (cube,
+   doorway, page curl, swap), ones needing an image file (luma, displacement), ones too heavy for
+   any phone (fragment, powerKaleido), and cannabisleaf.
+5. **Our own CapCut signatures**, which the library lacks: **whip pan** (the tutorial's second
+   transition), shake, and zoom with overshoot.
+6. **Easing on transitions** — slow, very fast through the middle, slow — reusing the keyframe
+   easing curves. A large part of the CapCut feel.
+7. **Categories in the transition sheet** (Basic, Motion, Glitch, Light, Blur, 3D) with moving
+   previews, since 30+ tiles in one grid is a wall. Existing names stay: drafts persist them.
+8. **Heavy transitions on every phone.** CrossZoom reads 82 pixels per pixel drawn and FilmBurn
+   100, and each read runs our full sampling helper (fit, crop, grade, mask, key). Draw each lane
+   into its own texture once per frame so a transition samples plain textures. Export is never
+   the limit — it is not realtime. In the preview, probe the device at runtime and fall back to a
+   lighter version **and say so**. Never design around one handset.
+
+### Stage 3 — sound effects library (M, server + app)
+
+9. A catalogue on the SlimShot server (categories, preview, file), browsed in the audio sheet,
+   downloaded once and cached, inserted at the playhead as an ordinary audio track — the fonts
+   model. Every sound licensed for redistribution inside an app (CC0, or a bought pack that says
+   so).
+
+### Stage 4 — blend modes: stingers and video inside text (L)
+
+The tutorial's flare-and-handwriting sweep over a cut is a short pre-made video laid over the seam.
+The travel edit's opening shows the footage only through the letters of "2026" — in CapCut, white
+text on black laid over the clip with a blend mode.
+
+10. **Blend modes on overlays** (Screen, Add, Multiply…) in `OverlayRenderer`'s shader — possible
+    now that overlays draw in GL. Screen is what makes footage shot on black usable: black
+    vanishes, light remains, no alpha channel needed.
+11. **Stinger packs on the server**: short loops, 720p or lower (each one costs a decoder).
+12. **Dropping a stinger onto a cut**, centred on the seam. Design question: a kind of transition,
+    or an overlay that snaps to the seam.
+13. **Video inside text** (M–L). A clip shown only through a text's letters, with black (or the
+    project background) around them, and the text keyframed to zoom through a letter into the
+    full picture. Design question: a text-shaped mask on the clip (the `ClipMask` route, so every
+    transition inherits it) or a text overlay with a blend mode over a black field. The zoom-through
+    scales a text far past anything today's captions reach: a text rasterises at most 4096 px wide,
+    which goes soft when one digit fills a 1080p frame, so the design must say how the edges stay
+    sharp at that scale.
+
+### Stage 5 — text and captions
+
+14. **Emphasised words** (M). Tap a word to make it bigger or coloured — "DAY 6" in the tutorial.
+    Carried through the glyph atlas so the export matches.
+15. **Roll text animation** (M). Characters roll through other digits or letters before landing —
+    "6462" spinning into "2026". Possible by hand today as a run of short texts; as a catalog
+    animation the atlas must hold the in-between glyphs too, since it now holds only the final
+    ones.
+
+### Stage 6 — the larger editor features
+
+16. **Effects track** (L). Effects as bars on a lane of their own — placed at the playhead, about a
+    second long, trimmable, stackable, applying to the main video, one overlay or the whole frame —
+    instead of one effect owned by each clip. Today's 39 effects move onto it.
+17. **Clip In / Out / Combo animations** (M–L). Presets on the transform and opacity keyframe
+    model; their home is the clip menu, with a handler. Include a one-frame white **Flash** in —
+    the travel edit's panels arrive with one.
+18. **Beat marks** (M–L). Detect beats in a music track, mark them on the timeline, snap cuts and
+    effects to them.
+19. **Split-screen layouts** (M). Pick two or three panels and drop a clip into each. The travel
+    edit's three vertical strips, changing one after another, can be built today from video
+    overlays with rectangle masks, but placing each by hand is fiddly. Each panel beyond the main
+    clip is an overlay decoder, so the preview's decoder budget applies — a device that cannot
+    play them all says so.
 
 ---
 
-## In progress — timeline
+## After this list — reference videos become features, and templates
 
-Thumbnails are rebuilt: native extraction, per-clip timeline-indexed strips, fixed-width tiles,
-visible-window fetching, multi-source cache. See the filmstrip section of `CLAUDE.md`.
-
-Still to do on the timeline, all of which sit on that tile model:
-
-- **Zoom.** `_pixelsPerSecond` is a `static const 50.0` in `ScrollableTimeline`. Make it state,
-  drive it from a pinch gesture, and clamp it. `ClipFilmstrip` already recomputes its tile grid from
-  `pixelsPerSecond`, so zoom mostly falls out — but the fetch debounce matters during a pinch.
-- **Transition markers.** A tappable marker at each overlap that opens the transitions drawer for
-  that boundary, replacing the plain black gap line. The overlap region is already known from
-  `segmentTimelineStarts` plus `segmentTransitionDurations`.
-- **Snapping.** Playhead and clip edges snapping to clip boundaries, transition edges, and other
-  clips' edges while dragging.
-- **Clip visuals.** Selection state, trim handle affordance, spacing, rounded clip corners.
-
-## In progress — overlays
-
-Moving photo and video overlays onto the GL renderer, so preview and export share one definition.
-Text stays in Flutter for now.
-
-**Done:** the timeline contract. `EditorTimelineOverlay` carries each overlay with its geometry
-**normalised to canvas fractions**, sorted by lane so lower ones paint first.
-
-**Why normalised — this is the important part.** The editor stores overlay position and size in
-*preview-canvas pixels*: an image inside a fixed 200×200 box, a video inside 240×240, centred on the
-canvas centre plus a pixel offset, with slide animations travelling a fixed 200px. Those numbers mean
-different things on different screens, so the same project renders differently on a phone and a
-tablet, and a draft does not survive moving between them. Export hides it today by rescaling
-`previewSize → videoSize`. The composer converts to fractions at the contract boundary so the
-renderer never sees a device pixel. The editing UI still works in pixels — worth fixing at the source
-eventually, but the contract no longer depends on it.
-
-**Remaining:**
-
-- Kotlin `NativeTimelineOverlay` parsing, plus the in/out animation curves ported from
-  `image_overlay_layer.dart` so native can evaluate them per frame rather than per Flutter rebuild.
-- An overlay draw pass in `TransitionRenderer`: alpha blending, a transform (centre, fit-in-box,
-  scale, rotation), and a texture cache keyed by path. Images decode to a `GL_TEXTURE_2D`.
-- Video overlays need a decoder each, on top of the two playback lanes. Cap how many decode at once
-  and only run those whose window contains the playhead — three concurrent decoders is already
-  pushing the low-end target.
-- Then delete the Flutter overlay layers and the FFmpeg overlay pass.
-
-Text overlays are the awkward one: rendering them natively means matching Flutter's text layout
-exactly, which will not happen by reimplementing it in `Canvas`. The route that guarantees parity is
-to rasterise text **in Flutter** (`dart:ui` `Picture.toImage`) and upload the result as a texture, so
-the pixels come from the same engine in preview and export.
+Once the stages above are done, each new reference video the user sends is reviewed the same way:
+anything it needs that SlimShot lacks is added as a feature, and the edit itself can become a
+**template** — the user opens a Templates page, picks one, and drops in their own videos or photos
+in place of the original's. Templates need their own design when the time comes (what a
+placeholder slot is, how a template's timing fits clips of a different length, where templates
+are stored and served); none of it is decided yet.
 
 ---
 
-## Then — retire the old stack
+## Parked — AI
 
-**`media_kit` is still load-bearing even in native mode.** Untangle before it can be removed:
+Set aside 2026-10-09. These need a vision or audio model, so per the earlier decision each calls an
+API rather than shipping a model inside the app:
 
-- `VideoPreviewCanvas` requires a `VideoController` and gates on `player.state.duration`.
-- `ScrollableTimeline` requires `_player!`.
-- Video duration, pixel dimensions, and timeline thumbnails all still come from it.
+- **Remove background** — auto cutout plus a brush to fix it (CapCut's Auto removal / Custom
+  removal). The tutorial's key step.
+- **Camera tracking** — an overlay follows something moving in the shot.
+- **Auto reframe**, **Retouch** (face smoothing), **Relight**.
+- **Enhance voice**, **Isolate voice**.
+- **Video quality** (upscaling).
 
-Each of those has a native equivalent (`MediaMetadataRetriever`, the engine's own video-size event,
-a native thumbnail extractor). Replace them one at a time, then drop the dependency.
-
-**`pro_video_editor`** goes once export runs on FFmpeg `xfade` and/or Media3 Transformer.
+For background removal the API has to return a **cutout mask per frame**, applied in the shader
+the way chroma key is. A generative image or video editor (Grok Imagine, for one) is the wrong
+tool: it redraws the picture rather than cutting the original, so the person can change and
+flicker between frames, and it bills per image in and out — dollars for a few seconds of video.
 
 ---
 
 ## Later
 
-- **Draft cache management.** Proxy files live in `getTemporaryDirectory()` but are
-  referenced from draft JSON, so reopening an old draft can point at deleted files. Needs a per-draft
-  cache directory, a manifest, a source fingerprint, and a cleanup policy. Validate on draft open.
-- **Native export on Media3 Transformer.** `NativeTimelineCompositionBuilder` is the seed. It must
-  consume the same `EditorTimeline` the preview does.
 - **iOS.** Deferred until Android is stable. Mirror the same Dart timeline contract with
   AVFoundation: `AVPlayer`, `AVMutableComposition`, `AVVideoComposition`, Metal for transitions.
 - **AI timeline editing.** AI should emit timeline *operations*, never render black-box video, so
   every AI edit stays undoable and previewable through the same engine.
+- **The last FFmpeg in the editor** — the reverse and playback proxies. See "Known broken / not
+  yet done" in `CLAUDE.md`.
 
 ---
 
