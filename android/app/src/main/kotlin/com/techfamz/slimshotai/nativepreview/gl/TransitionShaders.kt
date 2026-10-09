@@ -148,12 +148,17 @@ vec4 gradeClip(vec4 c, mat4 m, vec4 o, float enabled) {
 //
 // Applied to the point being *sampled*, so the rotation is inverse: to draw
 // the clip turned clockwise we look up each pixel at its counter-clockwise
-// source. Which is why the sign here is the opposite of what a diagram of the
-// clip turning would suggest.
+// source. **Counter-clockwise in this space is a positive angle**: uv runs
+// y-UP, so the standard rotation by +radians turns a point anticlockwise on
+// screen. The first version reasoned in a y-down picture and turned the sample
+// by -radians — clockwise here — so a clip the ruler called 30 degrees
+// clockwise was drawn 30 degrees anticlockwise: the y-up/y-down slip the pan,
+// the crop and the mask each made once. The model's angle is clockwise
+// (`VideoSegment.canvasRotation`), as an overlay's and a mask's are.
 vec2 rotateCanvas(vec2 uv, float radians) {
     vec2 p = (uv - 0.5) * vec2(uCanvasAspect, 1.0);
-    float s = sin(-radians);
-    float c = cos(-radians);
+    float s = sin(radians);
+    float c = cos(radians);
     p = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
     return p / vec2(uCanvasAspect, 1.0) + 0.5;
 }

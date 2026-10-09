@@ -2488,6 +2488,15 @@ pan spins the clip about the *canvas* centre rather than its own, and a clip dra
 orbits instead of turning. The sign is the inverse of the intuitive one because it is the sampled
 point being turned, not the clip.
 
+**The clip turned the wrong way, and the code said so before a device did** (**awaiting device
+verification**). The model's angle is clockwise, but `rotateCanvas` turned the sampled point by
+`-radians` in a space that runs **y-up** — clockwise there — so a clip the ruler called 30°
+clockwise was drawn 30° anticlockwise, in preview and export alike. The comment beside it reasoned
+in a y-down picture: the slip the pan, the crop and the mask each made once. Now `+radians`. It
+surfaced because Move to overlay has to keep a turned clip's angle, and overlays turn clockwise.
+No test can see it — GLSL runs only on a device — so the device run is the check: a clip at +30°
+leans its top to the right.
+
 **Flip is two booleans, not a rotation** (`flipHorizontal`/`flipVertical`, **awaiting device
 verification**). Turning a picture 180° puts it upside down *and* back to front; a mirror does
 only the second, which is what selfie footage wants. The shader applies the mask to the *fitted*
