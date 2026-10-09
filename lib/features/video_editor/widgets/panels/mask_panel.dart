@@ -21,6 +21,18 @@ const double kMaskFeatherPerPixel = 0.002;
 ///
 /// Switching shape keeps the window where it is: the user placed it, and a
 /// different outline around the same place is what they mean.
+/// The shapes as the panel offers them: the two line shapes side by side, as
+/// CapCut groups them. The enum's own order is the wire's and append-only, so
+/// it cannot be the panel's.
+const List<ClipMaskShape> _kShapeOrder = [
+  ClipMaskShape.none,
+  ClipMaskShape.rectangle,
+  ClipMaskShape.circle,
+  ClipMaskShape.linear,
+  ClipMaskShape.mirror,
+  ClipMaskShape.roundedRectangle,
+];
+
 class MaskPanel extends ConsumerWidget {
   const MaskPanel({super.key});
 
@@ -53,7 +65,7 @@ class MaskPanel extends ConsumerWidget {
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
-              for (final shape in ClipMaskShape.values)
+              for (final shape in _kShapeOrder)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: _shapeChip(
@@ -135,6 +147,7 @@ class MaskPanel extends ConsumerWidget {
         ClipMaskShape.circle => 'Circle',
         ClipMaskShape.linear => 'Linear',
         ClipMaskShape.roundedRectangle => 'Rounded',
+        ClipMaskShape.mirror => 'Mirror',
       };
 
   static IconData _glyph(ClipMaskShape s) => switch (s) {
@@ -143,6 +156,7 @@ class MaskPanel extends ConsumerWidget {
         ClipMaskShape.circle => LucideIcons.circle,
         ClipMaskShape.linear => LucideIcons.alignLeft,
         ClipMaskShape.roundedRectangle => LucideIcons.squareDashedBottom,
+        ClipMaskShape.mirror => LucideIcons.equal,
       };
 
   /// The pill the other sheets use for a category: a filled capsule when

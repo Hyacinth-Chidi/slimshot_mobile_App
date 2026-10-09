@@ -63,8 +63,11 @@ class MaskOutlinePainter extends CustomPainter {
     final featherY = mask.feather * frame.height;
 
     canvas.save();
-    // A line runs edge to edge, so it is cut to the picture it divides.
-    if (mask.shape == ClipMaskShape.linear) canvas.clipRect(frame);
+    // A line or a band runs edge to edge, so it is cut to the picture it
+    // divides.
+    if (mask.shape == ClipMaskShape.linear || mask.shape == ClipMaskShape.mirror) {
+      canvas.clipRect(frame);
+    }
     canvas.translate(centre.dx, centre.dy);
     canvas.rotate(mask.angle * math.pi / 180);
     switch (mask.shape) {
@@ -100,6 +103,14 @@ class MaskOutlinePainter extends CustomPainter {
           ),
           soft,
         );
+      case ClipMaskShape.mirror:
+        // The band's two edges, and their soft edges one feather out.
+        final reach = frame.longestSide * 2;
+        for (final y in [-halfH, halfH]) {
+          canvas.drawLine(Offset(-reach, y), Offset(reach, y), edge);
+          final out = y < 0 ? y - featherY : y + featherY;
+          canvas.drawLine(Offset(-reach, out), Offset(reach, out), soft);
+        }
       case ClipMaskShape.linear:
         // Long enough to cross the picture at any tilt; the clip trims it.
         final reach = frame.longestSide * 2;

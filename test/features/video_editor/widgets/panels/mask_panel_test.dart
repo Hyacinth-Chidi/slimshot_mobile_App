@@ -94,6 +94,22 @@ void main() {
     expect(n.state.canUndo, isFalse);
   });
 
+  testWidgets('Mirror sits right after Linear, and places a band', (tester) async {
+    // The two line shapes side by side, as CapCut groups them; every other
+    // chip keeps its place.
+    final n = notifierWith(clip());
+    await pump(tester, n);
+    double left(String label) => tester.getRect(find.text(label)).left;
+    expect(left('Rectangle'), lessThan(left('Circle')));
+    expect(left('Circle'), lessThan(left('Linear')));
+    expect(left('Linear'), lessThan(left('Mirror')));
+    expect(left('Mirror'), lessThan(left('Rounded')));
+
+    await tester.tap(find.text('Mirror'));
+    await tester.pumpAndSettle();
+    expect(n.state.segments.single.mask.shape, ClipMaskShape.mirror);
+  });
+
   testWidgets('invert flips the window, None removes it', (tester) async {
     final n = notifierWith(clip().copyWith(
       mask: const ClipMask(shape: ClipMaskShape.linear),

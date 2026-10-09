@@ -567,11 +567,16 @@ float overlayMaskCoverage(vec2 p, vec4 a, vec4 b, vec4 t, float aspect) {
     } else if (a.x < 3.5) {
         // A line: keeps the left of itself, in the window's own axes.
         coverage = 1.0 - smoothstep(-feather, feather, d.x);
-    } else {
+    } else if (a.x < 4.5) {
         float rad = min(b.w, min(halfSize.x, halfSize.y));
         vec2 q = abs(d) - (halfSize - vec2(rad));
         float outside = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - rad;
         coverage = 1.0 - smoothstep(0.0, feather, outside);
+    } else {
+        // Mirror: a band between two parallel lines — within half its height
+        // of the centre line, edge to edge. Twin of `maskCoverage`'s mirror
+        // arm in logic/mask/clip_mask.dart.
+        coverage = 1.0 - smoothstep(0.0, feather, abs(d.y) - halfSize.y);
     }
     return mix(coverage, 1.0 - coverage, b.z);
 }

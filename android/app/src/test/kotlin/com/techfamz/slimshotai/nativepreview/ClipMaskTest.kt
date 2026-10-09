@@ -56,6 +56,18 @@ class ClipMaskTest {
     }
 
     @Test
+    fun `a mirror is shape five and never carries a corner radius`() {
+        // Appended after the rounded rectangle, so every saved shape keeps its
+        // number; its band thickness is the height.
+        val m = NativeTimelineClip.parseMask(
+            mapOf("shape" to "mirror", "height" to 0.2, "cornerRadius" to 0.3),
+        )
+        org.junit.Assert.assertEquals(5f, m[0], 0f)
+        org.junit.Assert.assertEquals(0.2f, m[5], 1e-6f)
+        org.junit.Assert.assertEquals(0f, m[7], 0f)
+    }
+
+    @Test
     fun `an unknown shape is no mask`() {
         val clip = NativeTimelineClip.fromMap(base + mapOf("mask" to mapOf("shape" to "hexagon")), "/v.mp4")!!
         assertArrayEquals(floatArrayOf(0f, 0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f), clip.maskUniforms(), 0f)

@@ -1834,6 +1834,16 @@ other shape — exactly what they have always sent. It is the shape a picture-in
 wants: a plain rectangle reads as a screenshot pasted on, and a circle crops the corners off a
 16:9 inset.
 
+**`mirror` is the fifth shape**, CapCut's band between two parallel lines (`clip_mask_mirror_test.dart`,
+**awaiting device verification** — the band is GLSL). Appended for the same reason, index 5: it
+keeps what lies within half the window's **height** of the centre line, edge to edge — the width
+plays no part — horizontal until it is tilted, feathered on both edges. The radius slot stays 0
+for it (`parseMask` now reads the radius for the rounded rectangle alone, matching Dart). **The
+panel orders its own chips** (`_kShapeOrder`): the enum is the wire's and append-only, so Mirror
+sits beside Linear, the two line shapes together as CapCut groups them, without renumbering any
+saved shape. The pinch sets the band's thickness; the outline draws its two edges and their soft
+edges, cut to the picture.
+
 **Mask is an in-place panel, not a sheet**: the window is placed on the canvas — drag to move,
 pinch to resize, twist to tilt, with the outline and a grab point drawn by `_MaskOutlinePainter` —
 and a sheet

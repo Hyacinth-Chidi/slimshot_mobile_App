@@ -28,8 +28,12 @@ import '../../models/media_asset.dart' show normaliseDegrees;
 ///
 /// **Append only.** Both sides read the shape as a number — the shader tests
 /// `a.x < 1.5` — so inserting a value would turn every saved circle into
-/// something else. `roundedRectangle` is last for that reason, not by accident.
-enum ClipMaskShape { none, rectangle, circle, linear, roundedRectangle }
+/// something else. `roundedRectangle` and `mirror` come last for that reason,
+/// not by accident: the panel orders its chips itself.
+///
+/// `mirror` is CapCut's: a band between two parallel lines, horizontal until
+/// it is tilted, whose thickness is the window's height.
+enum ClipMaskShape { none, rectangle, circle, linear, roundedRectangle, mirror }
 
 /// Least half-extent and feather the maths will accept, so a zero never
 /// reaches a division.
@@ -60,7 +64,9 @@ class ClipMask {
   /// The window's full extent, as fractions of the fitted frame. For `linear`
   /// only the centre and [feather] matter: it keeps the left of a line
   /// through the centre and fades to the right over the feather — "left" in
-  /// the window's own axes, so a tilt turns the line with it.
+  /// the window's own axes, so a tilt turns the line with it. For `mirror`
+  /// the height is the band's thickness and the width plays no part: the band
+  /// runs edge to edge.
   final double width;
   final double height;
 
@@ -247,6 +253,9 @@ double maskCoverage(ClipMask mask, double x, double y, {double aspect = 1.0}) {
       coverage = 1.0 - _smoothstep(0.0, feather, outside);
     case ClipMaskShape.linear:
       coverage = 1.0 - _smoothstep(-feather, feather, dx);
+    case ClipMaskShape.mirror:
+      // A band: within half its height of the centre line, edge to edge.
+      coverage = 1.0 - _smoothstep(0.0, feather, dy.abs() - halfH);
   }
   return mask.inverted ? 1.0 - coverage : coverage;
 }

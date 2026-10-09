@@ -381,6 +381,9 @@ internal data class NativeTimelineClip(
                 "circle" -> 2f
                 "linear" -> 3f
                 "roundedRectangle" -> 4f
+                // Appended after the rounded rectangle, so every saved shape
+                // keeps its number.
+                "mirror" -> 5f
                 else -> return NO_MASK
             }
             fun read(key: String, fallback: Double, lo: Double, hi: Double): Float {
@@ -403,7 +406,7 @@ internal data class NativeTimelineClip(
                 // The last slot carries the corner arc for a rounded
                 // rectangle, and stays 0 for every other shape — which is
                 // exactly what they have always sent.
-                if (shape >= 3.5f) read("cornerRadius", 0.12, 0.0, 2.0) else 0f,
+                if (shape == 4f) read("cornerRadius", 0.12, 0.0, 2.0) else 0f,
                 kotlin.math.cos(radians).toFloat(),
                 kotlin.math.sin(radians).toFloat(),
                 0f,
