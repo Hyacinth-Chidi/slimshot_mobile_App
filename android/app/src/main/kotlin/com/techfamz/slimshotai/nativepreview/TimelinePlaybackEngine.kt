@@ -263,6 +263,11 @@ internal class TimelinePlaybackEngine(
         // stayed where the user had put it, so the next play or scrub appeared
         // to jump — most visibly as a middle clip that never got its turn.
         val positionBeforeRebuild = if (clips.isEmpty()) null else timelinePositionSeconds()
+        // And the lane the user is looking at, whose picture a rebuild keeps
+        // up until the reloaded decoder replaces it (`LanePicture`). None in
+        // the tail, where no lane is drawn.
+        val laneOnScreen =
+            if (clips.isEmpty() || tailActive) LanePicture.NONE else masterLane
 
         val parsed = parseClips(timeline)
         if (parsed.isEmpty()) {
@@ -352,28 +357,33 @@ internal class TimelinePlaybackEngine(
         )
         renderer.clearTransition()
 
-        buildLanes()
+        rebuildShownLane = laneOnScreen
+        try {
+            buildLanes()
 
-        masterLane = clips.first().laneIndex
-        renderer.setActiveLane(masterLane)
+            masterLane = clips.first().laneIndex
+            renderer.setActiveLane(masterLane)
 
-        emit(
-            "preparing",
-            "isReady" to false,
-            "transitionCount" to transitions.size,
-            "laneCount" to lanes.count { it.blocks.isNotEmpty() },
-        )
+            emit(
+                "preparing",
+                "isReady" to false,
+                "transitionCount" to transitions.size,
+                "laneCount" to lanes.count { it.blocks.isNotEmpty() },
+            )
 
-        loadBlockFor(lanes[masterLane], 0)
-        // An explicit pending seek wins; otherwise hold the position the user
-        // was already at, clamped in case the edit shortened the timeline.
-        seek(
-            pendingSeekSeconds
-                ?: positionBeforeRebuild?.coerceIn(0.0, timelineDurationSeconds)
-                ?: 0.0,
-        )
-        // After the seek, so the seek's lane bookkeeping does not undo it.
-        prewarmTransitionLane()
+            loadBlockFor(lanes[masterLane], 0)
+            // An explicit pending seek wins; otherwise hold the position the user
+            // was already at, clamped in case the edit shortened the timeline.
+            seek(
+                pendingSeekSeconds
+                    ?: positionBeforeRebuild?.coerceIn(0.0, timelineDurationSeconds)
+                    ?: 0.0,
+            )
+            // After the seek, so the seek's lane bookkeeping does not undo it.
+            prewarmTransitionLane()
+        } finally {
+            rebuildShownLane = LanePicture.NONE
+        }
 
         logTimeline()
     }
@@ -660,8 +670,20 @@ internal class TimelinePlaybackEngine(
         player.setMediaItems(block.clips.map { it.toMediaItem() }, true)
         player.prepare()
         lane.loadedBlockIndex = blockIndex
-        renderer.invalidateLane(lane.index)
+        // The lane on screen keeps its picture through a rebuild until the new
+        // decoder's first frame replaces it; dropping it here is what flashed
+        // the canvas to the background on every edit that changes what plays.
+        if (!LanePicture.keepsPicture(lane.index, rebuildShownLane, masterLane)) {
+            renderer.invalidateLane(lane.index)
+        }
     }
+
+    /**
+     * The lane that was on screen when the current rebuild began, for the
+     * rebuild's own loads only; [LanePicture.NONE] the rest of the time, so a
+     * preroll or a gap crossing still drops a lane's stale picture.
+     */
+    private var rebuildShownLane = LanePicture.NONE
 
     /**
      * Brings the second lane's decoder up while the timeline is being loaded,

@@ -1280,6 +1280,14 @@ dispute between Dart and Kotlin shows up in one `SlimshotExport` line.
    (isSamePlaybackStructure): when only per-clip properties changed (transform commit, filter,
    volume), the engine adopts the new clip list and lets the change-guarded per-tick setters apply
    it, touching no player. Only edits that change *what plays* rebuild.
+   **And a rebuild no longer flashes either** (`LanePicture`, `LanePictureTest`, **awaiting
+   device verification**). Device-reported on the speed curve presets: a curve changes the
+   clip's length, so it rebuilds, and `loadBlockFor` invalidated the lane on screen the moment
+   its items were replaced — background until the re-prepared decoder delivered. The lane the
+   user is looking at now keeps its picture through a rebuild that leaves it on screen
+   (`rebuildShownLane`, set only for `setTimeline`'s own loads), so the frame holds until the
+   one at the new position lands, as on a seek. Every other load still drops it: a lane
+   prepared off screen holds another clip's last frame, which a transition would blend in.
 2. **Overlays/audio were capped at the first asset's length.** Six clamp sites all used
    durationSeconds. Removed: overlays and audio now extend freely past the video's end
    (_kUnboundedMs), the project runs longer over the background, and totalEditedDurationProvider +
