@@ -91,7 +91,16 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
          */
         val glyphOffsetX: Double = 0.0,
         val glyphOffsetY: Double = 0.0,
-    )
+    ) {
+        /**
+         * [mask] in the space this draw's quad samples in. A bitmap's quad
+         * carries top-down texcoords, so a photo takes the mask as sent; a
+         * video's carries bottom-up ones, so its mask is turned over, or a
+         * window dragged up the overlay would be drawn down it.
+         */
+        fun samplingMask(): FloatArray =
+            if (isExternal) NativeTimelineClip.toSamplingMask(mask) else mask
+    }
 
     /** A video overlay's decoder target: its own OES texture and surface. */
     class VideoLane {
@@ -304,7 +313,7 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, draw.textureId)
                 GLES20.glUniform1f(uAlphaOes, draw.opacity.toFloat())
-                bindMask(uMaskAOes, uMaskBOes, draw.mask)
+                bindMask(uMaskAOes, uMaskBOes, draw.samplingMask())
                 bindChroma(uChromaAOes, uChromaBOes, draw.chromaKey)
                 GLES20.glUniformMatrix4fv(
                     uTexMatrixOes,
@@ -319,7 +328,7 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, draw.textureId)
                 GLES20.glUniform1f(uAlpha2d, draw.opacity.toFloat())
-                bindMask(uMaskA2d, uMaskB2d, draw.mask)
+                bindMask(uMaskA2d, uMaskB2d, draw.samplingMask())
                 bindChroma(uChromaA2d, uChromaB2d, draw.chromaKey)
                 val texCoords = draw.srcRect?.let { writeGlyphTexCoords(it) }
                     ?: texCoordsTopDown

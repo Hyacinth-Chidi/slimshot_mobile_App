@@ -1758,7 +1758,18 @@ so every transition inherits the mask. It reads the fitted coordinate **before t
 window is over the picture as displayed, and flipping the clip must not move it. `maskCoverage` in
 Dart is the shader's twin, pinned by tests; if one changes the other must. The two vec4s
 `(shape, centerX, centerY, feather)` / `(width, height, inverted, 0)` are encoded once on each side
-(`maskUniforms`, `NativeTimelineClip.maskUniforms`) in a fixed order and tested to match.
+(`maskUniforms`, `NativeTimelineClip.parseMask`) in a fixed order and tested to match.
+
+**The mask was drawn upside down, and the code said so before a device did**
+(`MaskOrientationTest`, **awaiting device verification**). The wire is y-down like every canvas
+coordinate; the clip shader reads the mask against `fitted`, which is y-up, and nothing converted
+it — so a window dragged toward the top of the picture was drawn toward the bottom. The crop's
+bug again, one uniform over. Video overlays had it too (their quad samples bottom-up); photo
+overlays did not (top-down). The conversion is `NativeTimelineClip.toSamplingMask` — only the
+vertical centre moves, its own inverse, no mask passed through untouched — applied where the
+sampling space is known: `NativeTimelineClip.maskUniforms()` for every clip lane, and
+`OverlayRenderer.Draw.samplingMask()` for a draw from a video. `parseMask` stays the wire's
+reading, the twin of Dart's.
 
 **An overlay can be masked too, with the same model** (**awaiting device
 verification**). `ImageOverlayModel.mask` and `VideoOverlayModel.mask` are the same `ClipMask`, so a

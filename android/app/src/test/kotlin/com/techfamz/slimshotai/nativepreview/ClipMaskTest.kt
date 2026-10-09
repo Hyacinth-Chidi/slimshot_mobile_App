@@ -34,23 +34,22 @@ class ClipMaskTest {
 
     @Test
     fun `a mask encodes in the shader's order`() {
-        val clip = NativeTimelineClip.fromMap(
-            base + mapOf(
-                "mask" to mapOf(
-                    "shape" to "linear",
-                    "centerX" to 0.3,
-                    "centerY" to 0.6,
-                    "width" to 0.4,
-                    "height" to 0.5,
-                    "feather" to 0.02,
-                    "inverted" to true,
-                ),
+        // The parse is Dart's order exactly; `maskUniforms()` then turns the
+        // centre over for the lane's y-up space — see MaskOrientationTest.
+        val mask = NativeTimelineClip.parseMask(
+            mapOf(
+                "shape" to "linear",
+                "centerX" to 0.3,
+                "centerY" to 0.6,
+                "width" to 0.4,
+                "height" to 0.5,
+                "feather" to 0.02,
+                "inverted" to true,
             ),
-            "/v.mp4",
-        )!!
+        )
         assertArrayEquals(
             floatArrayOf(3f, 0.3f, 0.6f, 0.02f, 0.4f, 0.5f, 1f, 0f),
-            clip.maskUniforms(),
+            mask,
             1e-6f,
         )
     }

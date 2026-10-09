@@ -180,8 +180,14 @@ internal data class NativeTimelineClip(
     /** This clip's gain at [progress], clamped to what a player will accept. */
     fun volumeAt(progress: Double): Double = volume.resolveAt(progress).coerceIn(0.0, 1.0)
 
-    /** The mask's two vec4s for the shader. See [mask]. */
-    fun maskUniforms(): FloatArray = mask
+    /**
+     * The mask's two vec4s for the shader, in the lane's y-up sampling space.
+     * See [mask], which keeps the wire's y-down reading, and [toSamplingMask].
+     * Computed once: both engines read it every tick.
+     */
+    fun maskUniforms(): FloatArray = samplingMask
+
+    private val samplingMask: FloatArray by lazy { toSamplingMask(mask) }
 
     /** The chroma key's two vec4s for the shader. See [chromaKey]. */
     fun chromaUniforms(): FloatArray = chromaKey
@@ -392,6 +398,28 @@ internal data class NativeTimelineClip(
                 // exactly what they have always sent.
                 if (shape >= 3.5f) read("cornerRadius", 0.12, 0.0, 2.0) else 0f,
             )
+        }
+
+        /**
+         * The mask's vec4s, turned from the contract's y-DOWN space into a
+         * y-UP sampling space — the crop's conversion ([toSamplingRect]), for
+         * the mask.
+         *
+         * A clip lane always samples y-up (texcoord (0,0) is the bottom-left
+         * vertex), and so does a video overlay's quad; a photo overlay's quad
+         * is top-down and takes the mask as sent. Unconverted, a window dragged
+         * toward the top of the picture was drawn toward the bottom. Only the
+         * vertical centre moves: every shape is symmetric about its own
+         * horizontal axis, and the linear mask reads x alone.
+         *
+         * Its own inverse, and no mask is returned as it came, so a project
+         * that never used the tool sends exactly what it always sent.
+         */
+        fun toSamplingMask(mask: FloatArray): FloatArray {
+            if (mask.size < 3 || mask[0] < 0.5f) return mask
+            val turned = mask.copyOf()
+            turned[2] = 1f - mask[2]
+            return turned
         }
 
         /**
