@@ -70,7 +70,7 @@ class MaskOrientationTest {
         // happens after it, where the sampling space is known.
         val parsed = NativeTimelineClip.parseMask(nearTheTop)
         assertArrayEquals(
-            floatArrayOf(1f, 0.3f, 0.2f, 0.05f, 0.4f, 0.2f, 1f, 0f),
+            floatArrayOf(1f, 0.3f, 0.2f, 0.05f, 0.4f, 0.2f, 1f, 0f, 1f, 0f, 0f, 0f),
             parsed,
             1e-6f,
         )

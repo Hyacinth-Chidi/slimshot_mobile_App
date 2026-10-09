@@ -14,7 +14,7 @@ const double kMaskFeatherPerPixel = 0.002;
 /// The Mask tool's panel: a shape, a feather and an invert.
 ///
 /// **An in-place panel, not a sheet**, because the window itself is placed on
-/// the canvas — drag to move it, pinch to resize — and a sheet would cover the
+/// the canvas — drag to move it, pinch to resize, twist to tilt — and a sheet would cover the
 /// surface being edited. The panel holds only what the canvas cannot: which
 /// shape, how soft its edge, and which side to keep. Every change writes live
 /// through `setMaskOnSelection`; a ruler drag is one undo step.
@@ -121,7 +121,7 @@ class MaskPanel extends ConsumerWidget {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Drag on the canvas to move the window; pinch to resize it.',
+            'Drag to move, pinch to resize, twist to tilt.',
             style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
           ),
         ],

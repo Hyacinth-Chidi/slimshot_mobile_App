@@ -91,7 +91,7 @@ void main() {
     });
   });
 
-  test('the uniform encoding is two vec4s in a fixed order', () {
+  test('the uniform encoding is three vec4s in a fixed order', () {
     const m = ClipMask(
       shape: ClipMaskShape.linear,
       centerX: 0.3,
@@ -101,7 +101,9 @@ void main() {
       feather: 0.02,
       inverted: true,
     );
-    expect(maskUniforms(m), [3.0, 0.3, 0.6, 0.02, 0.4, 0.5, 1.0, 0.0]);
+    // The third is the tilt — cosine and sine, untilted here.
+    expect(maskUniforms(m),
+        [3.0, 0.3, 0.6, 0.02, 0.4, 0.5, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0]);
     expect(maskUniforms(ClipMask.none).first, 0.0);
   });
 }

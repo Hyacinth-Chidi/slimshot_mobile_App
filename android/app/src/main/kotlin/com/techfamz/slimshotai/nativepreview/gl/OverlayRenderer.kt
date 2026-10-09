@@ -57,7 +57,7 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
          */
         val srcRect: FloatArray? = null,
         /**
-         * The overlay's shape as two vec4s, in the overlay's own box. See
+         * The overlay's shape as three vec4s, in the overlay's own box. See
          * `NativeTimelineOverlay.mask`. Defaults to no mask, so every existing
          * caller draws exactly as it did.
          */
@@ -100,6 +100,16 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
          */
         fun samplingMask(): FloatArray =
             if (isExternal) NativeTimelineClip.toSamplingMask(mask) else mask
+
+        /**
+         * The width over the height, in pixels, of the picture [mask] is drawn
+         * over — what a tilt turns rigidly on. An image or video overlay is
+         * contain-fitted into a square box, so that is its content's own
+         * shape. A glyph's quad carries no mask, and a shape nothing describes
+         * is square.
+         */
+        fun maskAspect(): Float =
+            if (boxRect == null && contentAspect > 0.0) contentAspect.toFloat() else 1f
     }
 
     /** A video overlay's decoder target: its own OES texture and surface. */
@@ -154,6 +164,8 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
     private var uAlpha2d = -1
     private var uMaskA2d = -1
     private var uMaskB2d = -1
+    private var uMaskC2d = -1
+    private var uMaskAspect2d = -1
     private var uChromaA2d = -1
     private var uChromaB2d = -1
     private var aPositionOes = -1
@@ -161,6 +173,8 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
     private var uAlphaOes = -1
     private var uMaskAOes = -1
     private var uMaskBOes = -1
+    private var uMaskCOes = -1
+    private var uMaskAspectOes = -1
     private var uChromaAOes = -1
     private var uChromaBOes = -1
     private var uTexMatrixOes = -1
@@ -205,6 +219,8 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
         uAlpha2d = GLES20.glGetUniformLocation(program2d, "uAlpha")
         uMaskA2d = GLES20.glGetUniformLocation(program2d, "uMaskA")
         uMaskB2d = GLES20.glGetUniformLocation(program2d, "uMaskB")
+        uMaskC2d = GLES20.glGetUniformLocation(program2d, "uMaskC")
+        uMaskAspect2d = GLES20.glGetUniformLocation(program2d, "uMaskAspect")
         uChromaA2d = GLES20.glGetUniformLocation(program2d, "uChromaA")
         uChromaB2d = GLES20.glGetUniformLocation(program2d, "uChromaB")
 
@@ -214,6 +230,8 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
         uAlphaOes = GLES20.glGetUniformLocation(programOes, "uAlpha")
         uMaskAOes = GLES20.glGetUniformLocation(programOes, "uMaskA")
         uMaskBOes = GLES20.glGetUniformLocation(programOes, "uMaskB")
+        uMaskCOes = GLES20.glGetUniformLocation(programOes, "uMaskC")
+        uMaskAspectOes = GLES20.glGetUniformLocation(programOes, "uMaskAspect")
         uChromaAOes = GLES20.glGetUniformLocation(programOes, "uChromaA")
         uChromaBOes = GLES20.glGetUniformLocation(programOes, "uChromaB")
         uTexMatrixOes = GLES20.glGetUniformLocation(programOes, "uTexMatrix")
@@ -313,7 +331,7 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, draw.textureId)
                 GLES20.glUniform1f(uAlphaOes, draw.opacity.toFloat())
-                bindMask(uMaskAOes, uMaskBOes, draw.samplingMask())
+                bindMask(uMaskAOes, uMaskBOes, uMaskCOes, uMaskAspectOes, draw)
                 bindChroma(uChromaAOes, uChromaBOes, draw.chromaKey)
                 GLES20.glUniformMatrix4fv(
                     uTexMatrixOes,
@@ -328,7 +346,7 @@ internal class OverlayRenderer(private val frameHandler: Handler) {
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, draw.textureId)
                 GLES20.glUniform1f(uAlpha2d, draw.opacity.toFloat())
-                bindMask(uMaskA2d, uMaskB2d, draw.samplingMask())
+                bindMask(uMaskA2d, uMaskB2d, uMaskC2d, uMaskAspect2d, draw)
                 bindChroma(uChromaA2d, uChromaB2d, draw.chromaKey)
                 val texCoords = draw.srcRect?.let { writeGlyphTexCoords(it) }
                     ?: texCoordsTopDown
@@ -509,6 +527,8 @@ varying vec2 vTexCoord;
 uniform float uAlpha;
 uniform vec4 uMaskA;
 uniform vec4 uMaskB;
+uniform vec4 uMaskC;
+uniform float uMaskAspect;
 uniform vec4 uChromaA;
 uniform vec4 uChromaB;
 
@@ -516,26 +536,40 @@ uniform vec4 uChromaB;
 // `maskCoverage` in TransitionShaders and its Dart twin in
 // logic/mask/clip_mask.dart — if one changes they all must.
 //
-// a = (shape, centerX, centerY, feather), b = (width, height, inverted, radius)
-float overlayMaskCoverage(vec2 p, vec4 a, vec4 b) {
+// a = (shape, centerX, centerY, feather), b = (width, height, inverted, radius),
+// t = the tilt's (cos, sin, 0, 0) in this quad's space, aspect the box's
+// width over its height in pixels.
+float overlayMaskCoverage(vec2 p, vec4 a, vec4 b, vec4 t, float aspect) {
     if (a.x < 0.5) {
         return 1.0;
     }
     vec2 c = a.yz;
     float feather = max(a.w, 0.001);
     vec2 halfSize = max(b.xy * 0.5, vec2(0.001));
+    // Into the window's own axes: undo its tilt. t = (cos, sin, 0, 0) of the
+    // turn as this space measures it, aspect the frame's width over its height
+    // in pixels — the turn is rigid on the picture, so x is scaled to the
+    // height's units, turned and scaled back. An untilted window (cos exactly
+    // 1) skips it and reads exactly the arithmetic it always did.
+    vec2 d = p - c;
+    if (t.x < 1.0) {
+        d.x *= aspect;
+        d = vec2(t.x * d.x + t.y * d.y, -t.y * d.x + t.x * d.y);
+        d.x /= aspect;
+    }
     float coverage;
     if (a.x < 1.5) {
-        vec2 d = abs(p - c) - halfSize;
-        coverage = 1.0 - smoothstep(0.0, feather, max(d.x, d.y));
+        vec2 e = abs(d) - halfSize;
+        coverage = 1.0 - smoothstep(0.0, feather, max(e.x, e.y));
     } else if (a.x < 2.5) {
-        float r = length((p - c) / halfSize);
+        float r = length(d / halfSize);
         coverage = 1.0 - smoothstep(1.0, 1.0 + feather / max(halfSize.x, halfSize.y), r);
     } else if (a.x < 3.5) {
-        coverage = 1.0 - smoothstep(c.x - feather, c.x + feather, p.x);
+        // A line: keeps the left of itself, in the window's own axes.
+        coverage = 1.0 - smoothstep(-feather, feather, d.x);
     } else {
         float rad = min(b.w, min(halfSize.x, halfSize.y));
-        vec2 q = abs(p - c) - (halfSize - vec2(rad));
+        vec2 q = abs(d) - (halfSize - vec2(rad));
         float outside = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - rad;
         coverage = 1.0 - smoothstep(0.0, feather, outside);
     }
@@ -603,7 +637,7 @@ void main() {
     // The quad's own 0..1, which is the overlay's box — the space the mask is
     // authored in. Premultiplied alpha, so the coverage multiplies the whole
     // texel exactly as uAlpha does.
-    float keep = overlayMaskCoverage(vTexCoord, uMaskA, uMaskB);
+    float keep = overlayMaskCoverage(vTexCoord, uMaskA, uMaskB, uMaskC, uMaskAspect);
     vec4 texel = $lookup;
 
     // **The key reads unpremultiplied colour.** A bitmap arrives from Android
@@ -632,10 +666,13 @@ void main() {
     }
 
     /** The mask's two vec4s, or a no-mask pair when the uniform is absent. */
-    private fun bindMask(uA: Int, uB: Int, mask: FloatArray) {
-        if (uA < 0 || uB < 0 || mask.size < 8) return
+    private fun bindMask(uA: Int, uB: Int, uC: Int, uAspect: Int, draw: Draw) {
+        val mask = draw.samplingMask()
+        if (uA < 0 || uB < 0 || mask.size < 12) return
         GLES20.glUniform4f(uA, mask[0], mask[1], mask[2], mask[3])
         GLES20.glUniform4f(uB, mask[4], mask[5], mask[6], mask[7])
+        if (uC >= 0) GLES20.glUniform4f(uC, mask[8], mask[9], mask[10], mask[11])
+        if (uAspect >= 0) GLES20.glUniform1f(uAspect, draw.maskAspect())
     }
 
     private fun floatBufferOf(vararg values: Float): FloatBuffer {

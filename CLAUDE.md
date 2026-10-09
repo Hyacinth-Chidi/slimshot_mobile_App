@@ -1771,6 +1771,21 @@ sampling space is known: `NativeTimelineClip.maskUniforms()` for every clip lane
 `OverlayRenderer.Draw.samplingMask()` for a draw from a video. `parseMask` stays the wire's
 reading, the twin of Dart's.
 
+**A window can be tilted** (`ClipMask.angle`, `clip_mask_tilt_test.dart`, `MaskTiltTest`,
+**awaiting device verification** — the turn is GLSL). Degrees, **clockwise** (the way the fingers
+turn and every rotation in the editor reads), folded into (-180, 180] and written to the draft and
+the wire **only when not zero**, so an untwisted mask is byte-identical. A two-finger twist on the
+canvas turns it (`maskAfterGesture` — anchor-based, the pan and pinch exactly what they were),
+snapping within 3° of a right angle like the text frame (`snapMaskAngle`), with the angle shown in a
+pill at the top of the picture while twisting, as CapCut does. **The turn is rigid on the picture**:
+it happens with x scaled to the height's units, or a pixel-round window would come out a tilted
+ellipse on a 9:16 frame — a test turns one at four angles and requires the coverage unchanged, and
+fails when the turn is made on raw fractions. The shader takes the tilt as a third vec4 `(cos,
+sin, 0, 0)` and the frame's pixel aspect beside it: for a clip `uCanvasAspect * fit.x / fit.y`, for
+an overlay its content aspect (`Draw.maskAspect`). An untilted window skips the turn in the shader
+(`cos == 1`) and in the Dart twin, so it runs exactly the arithmetic it always did. A y-up space
+turns the other way: `toSamplingMask` negates the sine along with turning the centre over.
+
 **An overlay can be masked too, with the same model** (**awaiting device
 verification**). `ImageOverlayModel.mask` and `VideoOverlayModel.mask` are the same `ClipMask`, so a
 circle means one thing everywhere and there is one coverage function keeping preview and export
@@ -1807,7 +1822,8 @@ wants: a plain rectangle reads as a screenshot pasted on, and a circle crops the
 16:9 inset.
 
 **Mask is an in-place panel, not a sheet**: the window is placed on the canvas — drag to move,
-pinch to resize, with the outline and a grab point drawn by `_MaskOutlinePainter` — and a sheet
+pinch to resize, twist to tilt, with the outline and a grab point drawn by `_MaskOutlinePainter` —
+and a sheet
 would cover the surface being edited. The panel holds only what the canvas cannot: shape, feather,
 invert. While the tool is open the composer shows the clip **unplaced but cropped**: scale, pan,
 rotation and mirror suspended so the canvas maps a drag through the fit alone, the clip's own crop

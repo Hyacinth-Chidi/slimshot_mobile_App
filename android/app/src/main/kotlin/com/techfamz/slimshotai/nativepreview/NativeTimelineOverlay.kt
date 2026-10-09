@@ -237,7 +237,7 @@ internal data class NativeTimelineOverlay(
     val glyphs: List<NativeTimelineGlyph>,
     /** Text overlays only: the background box in text-box fractions. */
     /**
-     * The shape this overlay is cut to, as the same two vec4s a clip's mask
+     * The shape this overlay is cut to, as the same three vec4s a clip's mask
      * uses — `NativeTimelineClip.NO_MASK` when unmasked.
      *
      * **In the overlay's own box**, not in canvas fractions: an overlay is

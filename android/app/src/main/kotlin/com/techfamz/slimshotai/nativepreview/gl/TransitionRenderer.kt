@@ -112,7 +112,7 @@ internal class TransitionRenderer(
         @Volatile
         var opacity = 1f
 
-        /** The clip's mask as the shader's two vec4s. See `NativeTimelineClip.mask`. */
+        /** The clip's mask as the shader's three vec4s. See `NativeTimelineClip.mask`. */
         @Volatile
         var mask = NativeTimelineClip.NO_MASK
         var chromaKey = NativeTimelineClip.NO_CHROMA
@@ -1048,7 +1048,7 @@ internal class TransitionRenderer(
     fun setLaneMask(laneIndex: Int, mask: FloatArray) {
         if (released) return
         val lane = lanes.getOrNull(laneIndex) ?: return
-        if (mask.size < 8 || mask.contentEquals(lane.mask)) return
+        if (mask.size < 12 || mask.contentEquals(lane.mask)) return
         lane.mask = mask.copyOf()
         requestRender()
     }
@@ -1939,8 +1939,10 @@ internal class TransitionProgram(private val handle: Int) {
     private val uOpacityOutgoing = GLES20.glGetUniformLocation(handle, "uOpacityOutgoing")
     private val uMaskAIncoming = GLES20.glGetUniformLocation(handle, "uMaskAIncoming")
     private val uMaskBIncoming = GLES20.glGetUniformLocation(handle, "uMaskBIncoming")
+    private val uMaskCIncoming = GLES20.glGetUniformLocation(handle, "uMaskCIncoming")
     private val uMaskAOutgoing = GLES20.glGetUniformLocation(handle, "uMaskAOutgoing")
     private val uMaskBOutgoing = GLES20.glGetUniformLocation(handle, "uMaskBOutgoing")
+    private val uMaskCOutgoing = GLES20.glGetUniformLocation(handle, "uMaskCOutgoing")
     private val uChromaAIncoming = GLES20.glGetUniformLocation(handle, "uChromaAIncoming")
     private val uChromaBIncoming = GLES20.glGetUniformLocation(handle, "uChromaBIncoming")
     private val uChromaAOutgoing = GLES20.glGetUniformLocation(handle, "uChromaAOutgoing")
@@ -2087,6 +2089,7 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glUniform1f(uOpacityIncoming, opacity)
         GLES20.glUniform4f(uMaskAIncoming, mask[0], mask[1], mask[2], mask[3])
         GLES20.glUniform4f(uMaskBIncoming, mask[4], mask[5], mask[6], mask[7])
+        GLES20.glUniform4f(uMaskCIncoming, mask[8], mask[9], mask[10], mask[11])
         GLES20.glUniform4f(uChromaAIncoming, chroma[0], chroma[1], chroma[2], chroma[3])
         GLES20.glUniform4f(uChromaBIncoming, chroma[4], chroma[5], chroma[6], chroma[7])
     }
@@ -2124,6 +2127,7 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glUniform1f(uOpacityOutgoing, opacity)
         GLES20.glUniform4f(uMaskAOutgoing, mask[0], mask[1], mask[2], mask[3])
         GLES20.glUniform4f(uMaskBOutgoing, mask[4], mask[5], mask[6], mask[7])
+        GLES20.glUniform4f(uMaskCOutgoing, mask[8], mask[9], mask[10], mask[11])
         GLES20.glUniform4f(uChromaAOutgoing, chroma[0], chroma[1], chroma[2], chroma[3])
         GLES20.glUniform4f(uChromaBOutgoing, chroma[4], chroma[5], chroma[6], chroma[7])
     }

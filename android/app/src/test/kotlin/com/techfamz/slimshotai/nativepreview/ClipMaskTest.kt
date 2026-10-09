@@ -5,11 +5,12 @@ import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 /**
- * The mask on the wire, and the two vec4s the shader reads for it.
+ * The mask on the wire, and the three vec4s the shader reads for it.
  *
- * Order is `(shape, centerX, centerY, feather)` then `(width, height,
- * inverted, 0)` — the same order `maskUniforms` in Dart writes, so the two
- * sides cannot drift into reading a feather as a width.
+ * Order is `(shape, centerX, centerY, feather)`, `(width, height, inverted,
+ * radius)`, then the tilt's `(cos, sin, 0, 0)` — the same order
+ * `maskUniforms` in Dart writes, so the two sides cannot drift into reading a
+ * feather as a width.
  */
 class ClipMaskTest {
 
@@ -29,7 +30,7 @@ class ClipMaskTest {
     fun `absent from the wire is no mask, shape zero`() {
         val clip = NativeTimelineClip.fromMap(base, "/v.mp4")
         assertNotNull(clip)
-        assertArrayEquals(floatArrayOf(0f, 0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f), clip!!.maskUniforms(), 0f)
+        assertArrayEquals(floatArrayOf(0f, 0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f), clip!!.maskUniforms(), 0f)
     }
 
     @Test
@@ -48,7 +49,7 @@ class ClipMaskTest {
             ),
         )
         assertArrayEquals(
-            floatArrayOf(3f, 0.3f, 0.6f, 0.02f, 0.4f, 0.5f, 1f, 0f),
+            floatArrayOf(3f, 0.3f, 0.6f, 0.02f, 0.4f, 0.5f, 1f, 0f, 1f, 0f, 0f, 0f),
             mask,
             1e-6f,
         )
@@ -57,6 +58,6 @@ class ClipMaskTest {
     @Test
     fun `an unknown shape is no mask`() {
         val clip = NativeTimelineClip.fromMap(base + mapOf("mask" to mapOf("shape" to "hexagon")), "/v.mp4")!!
-        assertArrayEquals(floatArrayOf(0f, 0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f), clip.maskUniforms(), 0f)
+        assertArrayEquals(floatArrayOf(0f, 0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f), clip.maskUniforms(), 0f)
     }
 }

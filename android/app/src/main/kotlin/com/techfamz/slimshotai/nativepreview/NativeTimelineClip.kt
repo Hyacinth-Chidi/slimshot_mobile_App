@@ -85,10 +85,12 @@ internal data class NativeTimelineClip(
      */
     val opacity: AnimatableDouble = AnimatableDouble(baseValue = 1.0),
     /**
-     * The clip's mask as the shader's two vec4s: `(shape, centerX, centerY,
-     * feather)` then `(width, height, inverted, 0)`, shape 0 none / 1
-     * rectangle / 2 circle / 3 linear — the order Dart's `maskUniforms`
-     * writes. [NO_MASK] for every clip that carries none.
+     * The clip's mask as the shader's three vec4s: `(shape, centerX, centerY,
+     * feather)`, `(width, height, inverted, radius)` and the tilt's `(cos,
+     * sin, 0, 0)`, shape 0 none / 1 rectangle / 2 circle / 3 linear / 4
+     * rounded rectangle — the order Dart's `maskUniforms` writes, read y-down
+     * as the wire sends it. [NO_MASK] for every clip that carries none; the
+     * shader reads [maskUniforms], which turns it over for the lane.
      */
     val mask: FloatArray = NO_MASK,
     /**
@@ -181,7 +183,7 @@ internal data class NativeTimelineClip(
     fun volumeAt(progress: Double): Double = volume.resolveAt(progress).coerceIn(0.0, 1.0)
 
     /**
-     * The mask's two vec4s for the shader, in the lane's y-up sampling space.
+     * The mask's three vec4s for the shader, in the lane's y-up sampling space.
      * See [mask], which keeps the wire's y-down reading, and [toSamplingMask].
      * Computed once: both engines read it every tick.
      */
@@ -331,8 +333,8 @@ internal data class NativeTimelineClip(
         /** Shortest source span a clamped clip is given, in seconds. */
         private const val MIN_SOURCE_SPAN = 0.05
 
-        /** No mask: shape 0, centred, no extent. */
-        val NO_MASK = floatArrayOf(0f, 0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f)
+        /** No mask: shape 0, centred, no extent, untilted. */
+        val NO_MASK = floatArrayOf(0f, 0.5f, 0.5f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f)
 
         /** No chroma key: the enabled flag (index 6) is 0, which is all the
          * shader tests. */
@@ -385,6 +387,11 @@ internal data class NativeTimelineClip(
                 val v = (map[key] as? Number)?.toDouble() ?: fallback
                 return v.coerceIn(lo, hi).toFloat()
             }
+            // The tilt, degrees clockwise, absent on every mask never twisted.
+            // Turned into the cosine and sine here, once, rather than per
+            // pixel; a whole number of turns needs no folding for either.
+            val degrees = (map["angle"] as? Number)?.toDouble()?.takeIf { it.isFinite() } ?: 0.0
+            val radians = Math.toRadians(degrees)
             return floatArrayOf(
                 shape,
                 read("centerX", 0.5, 0.0, 1.0),
@@ -397,6 +404,10 @@ internal data class NativeTimelineClip(
                 // rectangle, and stays 0 for every other shape — which is
                 // exactly what they have always sent.
                 if (shape >= 3.5f) read("cornerRadius", 0.12, 0.0, 2.0) else 0f,
+                kotlin.math.cos(radians).toFloat(),
+                kotlin.math.sin(radians).toFloat(),
+                0f,
+                0f,
             )
         }
 
@@ -408,9 +419,11 @@ internal data class NativeTimelineClip(
          * A clip lane always samples y-up (texcoord (0,0) is the bottom-left
          * vertex), and so does a video overlay's quad; a photo overlay's quad
          * is top-down and takes the mask as sent. Unconverted, a window dragged
-         * toward the top of the picture was drawn toward the bottom. Only the
-         * vertical centre moves: every shape is symmetric about its own
-         * horizontal axis, and the linear mask reads x alone.
+         * toward the top of the picture was drawn toward the bottom. The
+         * vertical centre turns over, and so does the sense of the tilt —
+         * clockwise on a y-down picture is anticlockwise in y-up coordinates,
+         * so the sine changes sign. Nothing else moves: every shape is
+         * symmetric about its own horizontal axis, and a line reads one axis.
          *
          * Its own inverse, and no mask is returned as it came, so a project
          * that never used the tool sends exactly what it always sent.
@@ -419,6 +432,9 @@ internal data class NativeTimelineClip(
             if (mask.size < 3 || mask[0] < 0.5f) return mask
             val turned = mask.copyOf()
             turned[2] = 1f - mask[2]
+            // An untilted sine stays +0: a -0 would fail the renderer's
+            // change guard (`contentEquals` compares bits) on every tick.
+            if (mask.size > 9 && mask[9] != 0f) turned[9] = -mask[9]
             return turned
         }
 

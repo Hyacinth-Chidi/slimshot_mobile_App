@@ -174,8 +174,9 @@ void main() {
   group('the uniform pair', () {
     test('carries the shape index and the corner radius the shader reads', () {
       final u = maskUniforms(rounded(radius: 0.25));
-      expect(u.length, 8);
-      // (shape, cx, cy, feather) then (w, h, inverted, cornerRadius).
+      // (shape, cx, cy, feather), (w, h, inverted, cornerRadius), then the
+      // tilt's (cos, sin, 0, 0).
+      expect(u.length, 12);
       expect(u[0], ClipMaskShape.values.indexOf(ClipMaskShape.roundedRectangle).toDouble());
       expect(u[7], closeTo(0.25, 1e-9));
     });

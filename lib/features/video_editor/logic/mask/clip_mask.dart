@@ -9,13 +9,21 @@
 /// transition inherits it for free. Plain values, deliberately not animatable
 /// yet: a moving mask is four coupled numbers with their own design.
 ///
+/// A window can be **tilted** ([ClipMask.angle]) — CapCut turns its mask with
+/// a two-finger twist, and the car-crash edit leans a line mask so the car
+/// passes behind it. The turn is rigid on the picture: it happens in an
+/// aspect-true space, or a tilted circle on a 9:16 frame would come out an
+/// ellipse.
+///
 /// [maskCoverage] is the Dart twin of the shader's `maskCoverage` and exists
 /// for tests and the canvas outline; if one changes the other must.
 library;
 
 import 'dart:math' as math;
+import 'dart:ui' show Offset;
 
-/// The window's shape. `none` is the absence of a mask and writes nothing.
+import '../../models/media_asset.dart' show normaliseDegrees;
+
 /// The window's shape. `none` is the absence of a mask and writes nothing.
 ///
 /// **Append only.** Both sides read the shape as a number — the shader tests
@@ -37,6 +45,7 @@ class ClipMask {
     this.feather = 0.05,
     this.inverted = false,
     this.cornerRadius = 0.12,
+    this.angle = 0.0,
   });
 
   /// No mask: the whole picture shows.
@@ -49,8 +58,9 @@ class ClipMask {
   final double centerY;
 
   /// The window's full extent, as fractions of the fitted frame. For `linear`
-  /// only [centerX] and [feather] matter: it keeps the left of the centre and
-  /// fades to the right over the feather.
+  /// only the centre and [feather] matter: it keeps the left of a line
+  /// through the centre and fades to the right over the feather — "left" in
+  /// the window's own axes, so a tilt turns the line with it.
   final double width;
   final double height;
 
@@ -70,6 +80,14 @@ class ClipMask {
   /// Keep the outside instead of the inside.
   final bool inverted;
 
+  /// The window's tilt in degrees, **clockwise** — the way the fingers turn
+  /// it and the way every rotation in the editor reads — in `(-180, 180]`.
+  /// It turns about the window's centre, rigidly on the picture.
+  ///
+  /// Written to a draft and the wire only when not zero, so every mask that
+  /// was never twisted reads and sends exactly what it always did.
+  final double angle;
+
   bool get isNone => shape == ClipMaskShape.none;
 
   ClipMask copyWith({
@@ -81,6 +99,7 @@ class ClipMask {
     double? feather,
     bool? inverted,
     double? cornerRadius,
+    double? angle,
   }) {
     return ClipMask(
       shape: shape ?? this.shape,
@@ -91,6 +110,7 @@ class ClipMask {
       feather: feather ?? this.feather,
       inverted: inverted ?? this.inverted,
       cornerRadius: cornerRadius ?? this.cornerRadius,
+      angle: angle ?? this.angle,
     );
   }
 
@@ -104,6 +124,7 @@ class ClipMask {
         'feather': feather,
         'inverted': inverted,
         'cornerRadius': cornerRadius,
+        if (angle != 0.0) 'angle': angle,
       };
 
   /// Defensive: anything that is not a map with a known shape is [none];
@@ -132,6 +153,10 @@ class ClipMask {
       inverted: raw['inverted'] == true,
       // Absent in every mask saved before rounded corners existed.
       cornerRadius: read('cornerRadius', 0.12, 0.0, 2.0),
+      // Absent in every mask never tilted.
+      angle: raw['angle'] is num
+          ? normaliseDegrees((raw['angle'] as num).toDouble())
+          : 0.0,
     );
   }
 
@@ -145,17 +170,18 @@ class ClipMask {
       other.height == height &&
       other.feather == feather &&
       other.inverted == inverted &&
-      other.cornerRadius == cornerRadius;
+      other.cornerRadius == cornerRadius &&
+      other.angle == angle;
 
   @override
   int get hashCode =>
       Object.hash(shape, centerX, centerY, width, height, feather, inverted,
-          cornerRadius);
+          cornerRadius, angle);
 
   @override
   String toString() => isNone
       ? 'ClipMask.none'
-      : 'ClipMask(${shape.name} @ $centerX,$centerY ${width}x$height feather $feather${inverted ? ' inverted' : ''})';
+      : 'ClipMask(${shape.name} @ $centerX,$centerY ${width}x$height feather $feather${inverted ? ' inverted' : ''}${angle != 0.0 ? ' $angle°' : ''})';
 }
 
 /// GLSL's `smoothstep`, so the Dart twin and the shader agree edge for edge.
@@ -169,13 +195,30 @@ double _smoothstep(double edge0, double edge1, double x) {
 /// the window, 0 outside, a soft ramp across the feather. **The Dart twin of
 /// the shader's `maskCoverage`** — the arithmetic here is the arithmetic
 /// there, and a test pins the cases that matter.
-double maskCoverage(ClipMask mask, double x, double y) {
+///
+/// [aspect] is the frame's width over its height in pixels. Only a tilt reads
+/// it: turning the window rigidly on the picture means turning in a space
+/// where a unit of x is a unit of y, so x is scaled up by the aspect, turned,
+/// and scaled back — `rotateCanvas`' rule for a clip, applied to its window.
+double maskCoverage(ClipMask mask, double x, double y, {double aspect = 1.0}) {
   if (mask.isNone) return 1.0;
   final feather = math.max(mask.feather, kMaskMinExtent);
   final halfW = math.max(mask.width * 0.5, kMaskMinExtent);
   final halfH = math.max(mask.height * 0.5, kMaskMinExtent);
-  final dx = x - mask.centerX;
-  final dy = y - mask.centerY;
+  var dx = x - mask.centerX;
+  var dy = y - mask.centerY;
+  if (mask.angle != 0.0) {
+    // Into the window's own axes: undo its clockwise turn. y runs down, so the
+    // inverse of a clockwise turn is (c, s; -s, c).
+    final t = mask.angle * math.pi / 180.0;
+    final c = math.cos(t);
+    final s = math.sin(t);
+    final a = aspect > 0 ? aspect : 1.0;
+    final px = dx * a;
+    final py = dy;
+    dx = (c * px + s * py) / a;
+    dy = -s * px + c * py;
+  }
   double coverage;
   switch (mask.shape) {
     case ClipMaskShape.none:
@@ -203,15 +246,15 @@ double maskCoverage(ClipMask mask, double x, double y) {
           r;
       coverage = 1.0 - _smoothstep(0.0, feather, outside);
     case ClipMaskShape.linear:
-      coverage = 1.0 - _smoothstep(mask.centerX - feather, mask.centerX + feather, x);
+      coverage = 1.0 - _smoothstep(-feather, feather, dx);
   }
   return mask.inverted ? 1.0 - coverage : coverage;
 }
 
-/// The two `vec4`s the shader reads per lane: `(shape, centerX, centerY,
-/// feather)` and `(width, height, inverted, 0)`. Kotlin's
-/// `NativeTimelineClip.maskUniforms` encodes the same order from the wire, and
-/// a fixture-style test on each side pins it.
+/// The three `vec4`s the shader reads per lane: `(shape, centerX, centerY,
+/// feather)`, `(width, height, inverted, radius)` and `(cos, sin, 0, 0)` of
+/// the tilt. Kotlin's `NativeTimelineClip.parseMask` encodes the same order
+/// from the wire, and a test on each side pins it.
 List<double> maskUniforms(ClipMask mask) => [
       mask.shape.index.toDouble(),
       mask.centerX,
@@ -223,4 +266,54 @@ List<double> maskUniforms(ClipMask mask) => [
       // The slot was reserved and unused; the rounded rectangle is what it was
       // waiting for. Zero for every other shape, which is what they always sent.
       mask.shape == ClipMaskShape.roundedRectangle ? mask.cornerRadius : 0.0,
+      // The tilt as the cosine and sine the shader turns by, worked out once
+      // here rather than once per pixel.
+      math.cos(mask.angle * math.pi / 180.0),
+      math.sin(mask.angle * math.pi / 180.0),
+      0.0,
+      0.0,
     ];
+
+/// How close to a right angle a twist must come to land on it — the text
+/// frame's snap, so straightening a mask feels the same as straightening text.
+const double kMaskAngleSnapDegrees = 3.0;
+
+/// [degrees] folded into `(-180, 180]`, landing exactly on a right angle when
+/// within [kMaskAngleSnapDegrees] of one. A window leaned by an unsteady hand
+/// should still be able to stand straight.
+double snapMaskAngle(double degrees) {
+  final d = normaliseDegrees(degrees);
+  final nearest = (d / 90.0).round() * 90.0;
+  if ((d - nearest).abs() > kMaskAngleSnapDegrees) return d;
+  // `+ 0.0` turns a -0.0 into 0.0, which a draft then omits like any zero.
+  return normaliseDegrees(nearest) + 0.0;
+}
+
+/// The window after one frame of the canvas gesture, from the window the
+/// gesture began on: [pan] in frame fractions, [scale] the pinch, and
+/// [rotationRadians] the twist, clockwise, all accumulated since the fingers
+/// landed — anchor-based like every drag here, never a running sum.
+///
+/// The centre stays on the picture and the size inside what the tool makes.
+/// A gesture with no twist leaves the angle exactly as it was: snapping it
+/// would straighten a window the user only moved.
+ClipMask maskAfterGesture(
+  ClipMask start, {
+  Offset pan = Offset.zero,
+  double scale = 1.0,
+  double rotationRadians = 0.0,
+}) {
+  return start.copyWith(
+    centerX: (start.centerX + pan.dx).clamp(0.0, 1.0).toDouble(),
+    centerY: (start.centerY + pan.dy).clamp(0.0, 1.0).toDouble(),
+    width: (start.width * scale).clamp(kMaskMinExtent, 2.0).toDouble(),
+    height: (start.height * scale).clamp(kMaskMinExtent, 2.0).toDouble(),
+    angle: rotationRadians == 0.0
+        ? start.angle
+        : snapMaskAngle(start.angle + rotationRadians * 180.0 / math.pi),
+  );
+}
+
+/// What the canvas shows while a window is being twisted: whole degrees, as
+/// CapCut shows its mask's angle.
+String maskAngleLabel(double degrees) => '${degrees.round()}°';

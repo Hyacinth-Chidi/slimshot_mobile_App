@@ -82,10 +82,12 @@ uniform float uOpacityIncoming;
 uniform float uOpacityOutgoing;
 uniform vec4 uMaskAIncoming;
 uniform vec4 uMaskBIncoming;
+uniform vec4 uMaskCIncoming;
 uniform vec4 uChromaAIncoming;
 uniform vec4 uChromaBIncoming;
 uniform vec4 uMaskAOutgoing;
 uniform vec4 uMaskBOutgoing;
+uniform vec4 uMaskCOutgoing;
 uniform vec4 uChromaAOutgoing;
 uniform vec4 uChromaBOutgoing;
 uniform mat4 uColorMatrix;
@@ -180,26 +182,38 @@ vec4 backgroundAt() {
 
 // How much of the picture shows at p (fitted-frame fractions): 1 inside the
 // mask's window, 0 outside, a soft ramp across the feather. a = (shape,
-// centerX, centerY, feather), b = (width, height, inverted, 0); shape 0 is no
-// mask. The Dart twin is `maskCoverage` in logic/mask/clip_mask.dart — the
-// arithmetic here is the arithmetic there.
-float maskCoverage(vec2 p, vec4 a, vec4 b) {
+// centerX, centerY, feather), b = (width, height, inverted, radius), t = the
+// tilt's (cos, sin, 0, 0); shape 0 is no mask. The Dart twin is `maskCoverage`
+// in logic/mask/clip_mask.dart — the arithmetic here is the arithmetic there,
+// read in the lane's y-up space (`NativeTimelineClip.toSamplingMask`).
+float maskCoverage(vec2 p, vec4 a, vec4 b, vec4 t, float aspect) {
     if (a.x < 0.5) {
         return 1.0;
     }
     vec2 c = a.yz;
     float feather = max(a.w, 0.001);
     vec2 halfSize = max(b.xy * 0.5, vec2(0.001));
+    // Into the window's own axes: undo its tilt. t = (cos, sin, 0, 0) of the
+    // turn as this space measures it, aspect the frame's width over its height
+    // in pixels — the turn is rigid on the picture, so x is scaled to the
+    // height's units, turned and scaled back. An untilted window (cos exactly
+    // 1) skips it and reads exactly the arithmetic it always did.
+    vec2 d = p - c;
+    if (t.x < 1.0) {
+        d.x *= aspect;
+        d = vec2(t.x * d.x + t.y * d.y, -t.y * d.x + t.x * d.y);
+        d.x /= aspect;
+    }
     float coverage;
     if (a.x < 1.5) {
-        vec2 d = abs(p - c) - halfSize;
-        float outside = max(d.x, d.y);
-        coverage = 1.0 - smoothstep(0.0, feather, outside);
+        vec2 e = abs(d) - halfSize;
+        coverage = 1.0 - smoothstep(0.0, feather, max(e.x, e.y));
     } else if (a.x < 2.5) {
-        float r = length((p - c) / halfSize);
+        float r = length(d / halfSize);
         coverage = 1.0 - smoothstep(1.0, 1.0 + feather / max(halfSize.x, halfSize.y), r);
     } else if (a.x < 3.5) {
-        coverage = 1.0 - smoothstep(c.x - feather, c.x + feather, p.x);
+        // A line: keeps the left of itself, in the window's own axes.
+        coverage = 1.0 - smoothstep(-feather, feather, d.x);
     } else {
         // Rounded rectangle: the distance field of a rounded box. Push the box
         // in by the radius, measure to that smaller box, then subtract the
@@ -208,7 +222,7 @@ float maskCoverage(vec2 p, vec4 a, vec4 b) {
         // reserved and unused until this shape. Twin of `maskCoverage`'s
         // roundedRectangle arm in logic/mask/clip_mask.dart.
         float rad = min(b.w, min(halfSize.x, halfSize.y));
-        vec2 q = abs(p - c) - (halfSize - vec2(rad));
+        vec2 q = abs(d) - (halfSize - vec2(rad));
         float outside = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - rad;
         coverage = 1.0 - smoothstep(0.0, feather, outside);
     }
@@ -314,7 +328,15 @@ vec4 incomingAt(vec2 uv) {
     return mix(
         backgroundAt(),
         graded,
-        uOpacityIncoming * maskCoverage(windowIncoming, uMaskAIncoming, uMaskBIncoming) * keep
+        uOpacityIncoming * maskCoverage(
+            windowIncoming,
+            uMaskAIncoming,
+            uMaskBIncoming,
+            uMaskCIncoming,
+            // The fitted frame's own shape in pixels: the canvas's, times the
+            // share of each axis the clip fills.
+            uCanvasAspect * uFitIncoming.x / max(uFitIncoming.y, 0.0001)
+        ) * keep
     );
 }
 
@@ -334,7 +356,13 @@ vec4 outgoingAt(vec2 uv) {
     return mix(
         backgroundAt(),
         graded,
-        uOpacityOutgoing * maskCoverage(windowOutgoing, uMaskAOutgoing, uMaskBOutgoing) * keep
+        uOpacityOutgoing * maskCoverage(
+            windowOutgoing,
+            uMaskAOutgoing,
+            uMaskBOutgoing,
+            uMaskCOutgoing,
+            uCanvasAspect * uFitOutgoing.x / max(uFitOutgoing.y, 0.0001)
+        ) * keep
     );
 }
 
