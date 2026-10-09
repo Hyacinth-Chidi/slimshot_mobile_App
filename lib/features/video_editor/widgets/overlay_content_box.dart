@@ -25,6 +25,10 @@ class OverlayContentBox extends StatefulWidget {
   final bool isVideo;
   final double box;
 
+  /// The shape measured for [path], or null until it has been — what this
+  /// box sizes itself from, so a mask placed in the box measures the same.
+  static double? cachedAspect(String path) => _OverlayContentBoxState._aspects[path];
+
   @override
   State<OverlayContentBox> createState() => _OverlayContentBoxState();
 }

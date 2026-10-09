@@ -1795,14 +1795,27 @@ the overlay moved. The panel serves whichever of the three is selected
 (`VideoEditorNotifier.maskOnSelection` / `setMaskOnSelection`, a clip winning when several somehow
 are), so there is no second mask editor to drift from the first.
 
-**The two renderers reach the shape differently, and that is the one gap.** Export computes the
-coverage in `OverlayRenderer`'s fragment shader, reading the quad's own 0..1 — which *is* the
-overlay's box — and multiplying it into the premultiplied texel beside `uAlpha`. The preview
-cannot: overlays there are plain Flutter widgets with no shader of their own, so
-`OverlayMaskClip` clips them to the same shape instead. A clip is a **hard edge** where the shader
-ramps over the feather, so a soft-edged mask looks very slightly crisper on the canvas than in the
-file. That is the right way round — nothing appears in the export that the preview did not show —
-and it closes entirely when overlay playback moves into the engine.
+**One renderer reaches the shape, in preview and export alike.** `OverlayRenderer`'s fragment
+shader computes the coverage from the quad's own 0..1 — which *is* the overlay's box — and
+multiplies it into the premultiplied texel beside `uAlpha`. The preview used to clip overlay
+widgets to the shape with a hard edge (`OverlayMaskClip`) while the file feathered; overlays have
+drawn in GL since the native-preview overlays work, and the widget is deleted.
+
+**An overlay's window is placed on the canvas, like a clip's** (`overlay_mask_handles_test.dart`,
+**awaiting device verification**). Until Stage 1 nothing on the canvas answered for an overlay's
+mask — only a clip's window took a drag — so an overlay's window sat at its default in the middle
+of the picture while the panel said "drag on the canvas to move the window". The car-crash edit
+masks an overlay with a tilted line, so it needed the same handles. **The editor lives in each
+overlay layer**, which already lays the box out exactly where the engine draws the picture —
+keyframes, in/out animation and rotation included — and its detector sits inside the overlay's
+transforms, so a gesture's *local* focal point is already in the box's own axes: a drag across a
+turned overlay moves the window along the overlay's x and y with no rotation arithmetic
+(`OverlayMaskGesture`, shared by the photo and video layers; a test fails when it reads screen
+coordinates instead). The outline is the clip's own `MaskOutlinePainter`, drawn inside the box with
+the line widths and the angle readout counter-scaled and turned upright; the gesture maths is the
+clip's own `maskAfterGesture`. While the tool is open on a masked overlay, the outline replaces the
+overlay's frame and handles, so a mask edit cannot grab the overlay; an overlay with no window yet
+still moves, as a clip does. One undo step per gesture.
 
 **A chroma key on an overlay is built now** — see the native-preview overlays section. It was
 blocked for exactly the reason stated here: a key is a per-pixel colour decision the widget layer

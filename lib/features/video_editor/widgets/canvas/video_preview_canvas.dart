@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +13,7 @@ import '../image_overlay/image_overlay_layer.dart';
 import '../video_overlay/video_overlay_layer.dart';
 import '../text_overlay/text_overlay_layer.dart';
 import '../../logic/mask/clip_mask.dart';
+import '../mask_outline_painter.dart';
 
 enum CropDragMode { none, top, bottom, left, right, topLeft, topRight, bottomLeft, bottomRight, center }
 
@@ -337,7 +336,7 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                                       _updateMaskGesture(details, frame),
                                   onScaleEnd: (_) => _endMaskGesture(),
                                   child: CustomPaint(
-                                    painter: _MaskOutlinePainter(
+                                    painter: MaskOutlinePainter(
                                       mask: mask,
                                       frame: frame,
                                       angleLabel: _maskTwisting
@@ -486,12 +485,8 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
   double _maskPanY = 0.0;
 
   /// Whether this gesture has turned the window, which is when the canvas
-  /// shows its angle — CapCut's readout. A pinch's fingers wobble a degree or
-  /// so; that alone does not bring the number up.
+  /// shows its angle — CapCut's readout. See [kMaskTwistRadians].
   bool _maskTwisting = false;
-
-  /// How far two fingers must turn before the gesture reads as a twist.
-  static const double _kMaskTwistRadians = 2 * math.pi / 180;
 
   void _beginMaskGesture(ClipMask mask) {
     _maskGestureStart = mask;
@@ -507,7 +502,7 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     if (start == null || frame.width <= 0 || frame.height <= 0) return;
     _maskPanX += details.focalPointDelta.dx / frame.width;
     _maskPanY += details.focalPointDelta.dy / frame.height;
-    if (details.rotation.abs() >= _kMaskTwistRadians) _maskTwisting = true;
+    if (details.rotation.abs() >= kMaskTwistRadians) _maskTwisting = true;
     final next = maskAfterGesture(
       start,
       pan: Offset(_maskPanX, _maskPanY),
@@ -633,128 +628,6 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
     }
     return maxLane;
   }
-}
-
-/// The mask window's outline over the fitted frame: the edge, and a fainter
-/// line one feather out to show how far the soft edge reaches. The picture
-/// itself already shows the mask live through the engine, so this draws only
-/// what the engine cannot — where to grab — and, while it is being twisted,
-/// its angle.
-///
-/// Drawn turned by the window's tilt about its centre, in pixels — which is
-/// the turn the coverage makes, rigid on the picture.
-class _MaskOutlinePainter extends CustomPainter {
-  const _MaskOutlinePainter({required this.mask, required this.frame, this.angleLabel});
-
-  final ClipMask mask;
-  final Rect frame;
-
-  /// The readout while the window is being twisted, or null.
-  final String? angleLabel;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (mask.isNone) return;
-    final edge = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    final soft = Paint()
-      ..color = Colors.white.withValues(alpha: 0.35)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    Offset at(double fx, double fy) =>
-        Offset(frame.left + fx * frame.width, frame.top + fy * frame.height);
-    final centre = at(mask.centerX, mask.centerY);
-    final halfW = mask.width / 2 * frame.width;
-    final halfH = mask.height / 2 * frame.height;
-    final featherX = mask.feather * frame.width;
-    final featherY = mask.feather * frame.height;
-
-    canvas.save();
-    // A line runs edge to edge, so it is cut to the picture it divides.
-    if (mask.shape == ClipMaskShape.linear) canvas.clipRect(frame);
-    canvas.translate(centre.dx, centre.dy);
-    canvas.rotate(mask.angle * math.pi / 180);
-    switch (mask.shape) {
-      case ClipMaskShape.none:
-        break;
-      case ClipMaskShape.rectangle:
-        final r = Rect.fromCenter(center: Offset.zero, width: halfW * 2, height: halfH * 2);
-        canvas.drawRect(r, edge);
-        canvas.drawRect(r.inflate(featherX), soft);
-      case ClipMaskShape.circle:
-        final r = Rect.fromCenter(center: Offset.zero, width: halfW * 2, height: halfH * 2);
-        canvas.drawOval(r, edge);
-        canvas.drawOval(Rect.fromCenter(
-          center: Offset.zero,
-          width: halfW * 2 + featherX * 2,
-          height: halfH * 2 + featherY * 2,
-        ), soft);
-      case ClipMaskShape.roundedRectangle:
-        final r = Rect.fromCenter(center: Offset.zero, width: halfW * 2, height: halfH * 2);
-        // The arc in canvas pixels, clamped to the box exactly as the coverage
-        // clamps it — an outline wider than the shape would lie about it.
-        final radius = (mask.cornerRadius * frame.width)
-            .clamp(0.0, halfW < halfH ? halfW : halfH)
-            .toDouble();
-        canvas.drawRRect(RRect.fromRectAndRadius(r, Radius.circular(radius)), edge);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            r.inflate(featherX),
-            Radius.circular(radius + featherX),
-          ),
-          soft,
-        );
-      case ClipMaskShape.linear:
-        // Long enough to cross the picture at any tilt; the clip trims it.
-        final reach = frame.longestSide * 2;
-        canvas.drawLine(Offset(0, -reach), Offset(0, reach), edge);
-        canvas.drawLine(Offset(-featherX, -reach), Offset(-featherX, reach), soft);
-        canvas.drawLine(Offset(featherX, -reach), Offset(featherX, reach), soft);
-    }
-    canvas.restore();
-    // A grab point at the centre, so the window reads as a thing to hold.
-    canvas.drawCircle(centre, 5, Paint()..color = Colors.white);
-    canvas.drawCircle(centre, 5, Paint()
-      ..color = Colors.black54
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5);
-
-    final label = angleLabel;
-    if (label != null) _paintAngle(canvas, label);
-  }
-
-  /// The angle while twisting, in a small pill at the top of the picture —
-  /// where CapCut shows its mask's angle, clear of the fingers.
-  void _paintAngle(Canvas canvas, String label) {
-    final text = TextPainter(
-      text: TextSpan(
-        text: label,
-        style: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    final pill = Rect.fromCenter(
-      center: Offset(frame.center.dx, frame.top + 24),
-      width: text.width + 20,
-      height: text.height + 8,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(pill, Radius.circular(pill.height / 2)),
-      Paint()..color = Colors.black54,
-    );
-    text.paint(canvas, pill.center - Offset(text.width / 2, text.height / 2));
-  }
-
-  @override
-  bool shouldRepaint(covariant _MaskOutlinePainter old) =>
-      old.mask != mask || old.frame != frame || old.angleLabel != angleLabel;
 }
 
 class _CropBoundsPainter extends CustomPainter {

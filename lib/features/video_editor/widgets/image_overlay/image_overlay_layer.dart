@@ -9,7 +9,11 @@ import '../../../../core/theme/lucide_icons.dart';
 import '../../logic/animation/overlay_keyframes.dart';
 import '../../models/image_overlay_model.dart';
 import '../../providers/video_editor_notifier.dart';
+import '../mask_outline_painter.dart';
 import '../overlay_content_box.dart';
+import '../overlay_mask_gesture.dart';
+import '../../logic/mask/clip_mask.dart';
+import '../../logic/overlay_box_fit.dart';
 
 class ImageOverlayLayer extends ConsumerStatefulWidget {
   final Size videoCanvasSize;
@@ -39,6 +43,9 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
   /// drawings that cannot agree should not both be on screen; the frame comes
   /// back on release, where the picture rests.
   String? _movingId;
+
+  /// The Mask tool's gesture on this layer's selected overlay.
+  final OverlayMaskGesture _maskGesture = OverlayMaskGesture();
 
   Offset _imageBasePan = Offset.zero;
   Offset _imageBaseFocalPoint = Offset.zero;
@@ -94,6 +101,12 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
       final shown = overlay.shownAt(positionSeconds);
       final isSelected = overlay.id == selectedImageId;
       final padXY = isSelected ? 64.0 / shown.scale : 0.0;
+      // With the Mask tool open on this overlay, a drag places its window
+      // rather than the overlay — the clip's rule. Nothing to place until a
+      // shape is picked, so a mask-less overlay still moves.
+      final maskMode = isSelected &&
+          ref.read(videoEditorProvider).activeToolId == 'mask' &&
+          !overlay.mask.isNone;
 
       final clampedPosition = _clampImagePosition(
         shown,
@@ -173,6 +186,12 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
       // holds the scaled box at any rotation, and the detector inside them,
       // on the real box — the text layer's structure, for the same reason.
       final drawnScale = shown.scale * animScale;
+      // The box the window is a fraction of, in the detector's unscaled
+      // pixels: what the content box sizes itself to.
+      final maskBox = fittedOverlayBox(
+        contentAspect: OverlayContentBox.cachedAspect(overlay.imagePath),
+        box: _kContentBox,
+      );
       final extent = (_kContentBox + 2 * padXY) *
           math.max(1.0, drawnScale) *
           math.sqrt2;
@@ -191,6 +210,10 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
                   onTap: () => onImageTapped(overlay.id),
                   onScaleStart: (details) {
                     if (!isSelected) return;
+                    if (maskMode) {
+                      _maskGesture.begin(ref, overlay.mask, details);
+                      return;
+                    }
                     // Pauses and takes the one undo snapshot the whole gesture
                     // shares; the frames in between write with none.
                     ref.read(videoEditorProvider.notifier).beginOverlayEdit();
@@ -208,10 +231,18 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
                     setState(() => _movingId = overlay.id);
                   },
                   onScaleEnd: (_) {
+                    if (_maskGesture.active) {
+                      if (_maskGesture.end()) setState(() {});
+                      return;
+                    }
                     if (_movingId != null) setState(() => _movingId = null);
                   },
                   onScaleUpdate: (details) {
                     if (!isSelected) return;
+                    if (maskMode) {
+                      _maskGesture.update(ref, details, maskBox);
+                      return;
+                    }
                     final movedPosition =
                         _imageBasePan + (details.focalPoint - _imageBaseFocalPoint);
                     // Scale and rotation only when a second finger gives them; a
@@ -240,7 +271,26 @@ class _ImageOverlayLayerState extends ConsumerState<ImageOverlayLayer> {
                         padding: EdgeInsets.all(padXY),
                         child: imageWidget,
                       ),
-                      if (isSelected && _movingId != overlay.id) ...[
+                      if (maskMode)
+                        Positioned(
+                          top: padXY,
+                          bottom: padXY,
+                          left: padXY,
+                          right: padXY,
+                          child: CustomPaint(
+                            painter: MaskOutlinePainter(
+                              mask: overlay.mask,
+                              angleLabel: _maskGesture.twisting
+                                  ? maskAngleLabel(overlay.mask.angle)
+                                  : null,
+                              // The box is drawn scaled and turned; the lines
+                              // and the readout stay one size and upright.
+                              strokeScale: drawnScale > 0 ? 1 / drawnScale : 1,
+                              labelRotation: -shown.rotation,
+                            ),
+                          ),
+                        )
+                      else if (isSelected && _movingId != overlay.id) ...[
                         Positioned(
                           top: padXY,
                           bottom: padXY,

@@ -274,6 +274,11 @@ List<double> maskUniforms(ClipMask mask) => [
       0.0,
     ];
 
+/// How far two fingers must turn before a gesture reads as a twist and the
+/// canvas shows the angle. A pinch's fingers wobble a degree or so; that alone
+/// does not bring the readout up.
+const double kMaskTwistRadians = 2 * math.pi / 180;
+
 /// How close to a right angle a twist must come to land on it — the text
 /// frame's snap, so straightening a mask feels the same as straightening text.
 const double kMaskAngleSnapDegrees = 3.0;
