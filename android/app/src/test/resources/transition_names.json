@@ -11,6 +11,22 @@
     "smoothUp",
     "smoothDown",
     "zoomIn",
-    "zoomBlur"
+    "zoomBlur",
+    "slideScaleLeft",
+    "slideScaleRight",
+    "slideScaleUp",
+    "slideScaleDown",
+    "splitIn",
+    "splitOut",
+    "bounce",
+    "swirl",
+    "spinAway",
+    "zoomInOut",
+    "whipPan",
+    "shake",
+    "zoomBounce",
+    "dreamyZoom",
+    "motionBlur",
+    "defocus"
   ]
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -107,6 +108,12 @@ class EditorMenu {
   final List<EditorTool> tools;
   const EditorMenu({required this.id, required this.tools});
 }
+
+/// How much of the footage before a transition plays when its tile is
+/// tapped, and how much after — enough to see where it comes from and where
+/// it lands, short enough to be over before the next tap.
+const double _kTransitionPlayLeadSeconds = 0.6;
+const double _kTransitionPlayTailSeconds = 0.4;
 
 const EditorMenu _rootMenu = EditorMenu(
   id: 'root',
@@ -442,6 +449,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// duration: the engine is parked on its last frame and any event it emits
   /// would drag the playhead back to the video end.
   bool _isDrivingTail = false;
+
+  /// Where a transition played from the transitions sheet stops: just past
+  /// its window. Null when nothing is being played that way; any pause clears
+  /// it, so it never stops a playback the user started.
+  double? _transitionPlaybackStop;
 
   /// Guards the one-shot export capability probe. Temporary.
   bool _hasProbedExport = false;
@@ -1878,10 +1890,34 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   Future<void> _showTransitionsDrawer() async {
     await showEditorSheet<void>(
       context,
-      builder: (context) => const TransitionsDrawer(),
+      builder: (context) => TransitionsDrawer(
+        onTransitionChosen: _playTransitionOnCanvas,
+      ),
     );
     if (!mounted) return;
     ref.read(videoEditorProvider.notifier).deselectAll();
+  }
+
+  /// Plays the transition just applied at [segmentId]'s seam on the canvas —
+  /// from a moment before it to a moment after, then stops — so a tile's
+  /// promise is checked against the user's own footage at once.
+  ///
+  /// Through `setPlaying` like the play button: pausing first is what lets
+  /// the new transition reach the engine (the timeline is not pushed while
+  /// playing), and the play that follows syncs, seeks and starts as always.
+  void _playTransitionOnCanvas(String segmentId) {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final window = transitionWindowFor(
+      ref.read(videoEditorProvider).segments,
+      segmentId,
+    );
+    if (window == null) return;
+    notifier.setPlaying(false);
+    notifier.updatePlaybackPosition(
+      math.max(0.0, window.start - _kTransitionPlayLeadSeconds),
+    );
+    _transitionPlaybackStop = window.end + _kTransitionPlayTailSeconds;
+    notifier.setPlaying(true);
   }
 
   /// Opens the transform sheet on the selected clip — or, from the root menu,
@@ -2951,6 +2987,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         _ticker.stop();
       } else {
         _isDrivingTail = false;
+        _transitionPlaybackStop = null;
         _ticker.stop();
         unawaited(_nativePreviewService.pause());
         _audioPlayerManager.pauseAll();
@@ -2966,6 +3003,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     );
 
     ref.listen<VideoEditorState>(videoEditorProvider, (prev, state) {
+      final stopAt = _transitionPlaybackStop;
+      if (stopAt != null &&
+          state.isPlaying &&
+          state.currentPlaybackPosition >= stopAt) {
+        _transitionPlaybackStop = null;
+        ref.read(videoEditorProvider.notifier).setPlaying(false);
+        return;
+      }
       // Overlays go on their own light channel, so unlike the timeline they
       // are pushed while playing and mid-drag too — an overlay moved under the
       // finger has to move on the canvas.

@@ -52,6 +52,21 @@ List<double> segmentTimelineStarts(List<VideoSegment> segments) {
   return starts;
 }
 
+/// The timeline span of the transition from [segmentId] into the clip after
+/// it — from where that clip starts to where this one ends — or null where
+/// the seam is a cut.
+({double start, double end})? transitionWindowFor(
+  List<VideoSegment> segments,
+  String segmentId,
+) {
+  final index = segments.indexWhere((segment) => segment.id == segmentId);
+  if (index < 0) return null;
+  final overlap = segmentTransitionDurations(segments)[index];
+  if (overlap == null || overlap <= 0) return null;
+  final start = segmentTimelineStarts(segments)[index + 1];
+  return (start: start, end: start + overlap);
+}
+
 /// How much of each segment the timeline should *draw*, in seconds.
 ///
 /// A clip that transitions into the next one overlaps it in time, so drawing

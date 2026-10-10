@@ -1,4 +1,4 @@
-﻿package com.techfamz.slimshotai.nativepreview.gl
+package com.techfamz.slimshotai.nativepreview.gl
 
 /**
  * GLSL sources for every transition SlimShot renders.
@@ -610,97 +610,28 @@ void main() {
 }
 """
 
-    /**
-     * Zoom Blur — CrossZoom from gl-transitions.com. License: MIT. Author:
-     * rectalogic, ported by gre from
-     * https://gist.github.com/rectalogic/b86b90161503a0023231, itself based on
-     * glfx.js's zoom blur (Evan Wallace). The tutorial's zoom blur, and the
-     * heaviest kind: 41 steps, each reading both layers.
-     *
-     * Changes for this engine, and only these: `strength` is the library's
-     * default as a constant; the loop counts with an int against a constant —
-     * ES 2.0's Appendix A form, which every driver must take; the per-pixel
-     * jitter is interleaved gradient noise on `gl_FragCoord` rather than the
-     * sin-fract hash, whose 43758 multiplier loses its fraction in `mediump`
-     * (the grain banding CLAUDE.md records); and the colour keeps its alpha —
-     * the original forces 1, which over a transparent layer paints black where
-     * the background should show.
-     */
-    private const val ZOOM_BLUR = """
-const float STRENGTH = 0.4;
-const float PI = 3.141592653589793;
-const int STEPS = 40;
-
-float Linear_ease(float begin, float change, float duration, float time) {
-    return change * time / duration + begin;
-}
-
-float Exponential_easeInOut(float begin, float change, float duration, float time) {
-    if (time == 0.0) {
-        return begin;
-    } else if (time == duration) {
-        return begin + change;
-    }
-    time = time / (duration / 2.0);
-    if (time < 1.0) {
-        return change / 2.0 * pow(2.0, 10.0 * (time - 1.0)) + begin;
-    }
-    return change / 2.0 * (-pow(2.0, -10.0 * (time - 1.0)) + 2.0) + begin;
-}
-
-float Sinusoidal_easeInOut(float begin, float change, float duration, float time) {
-    return -change / 2.0 * (cos(PI * time / duration) - 1.0) + begin;
-}
-
-vec4 crossFade(vec2 uv, float dissolve) {
-    return mix(getFromColor(uv), getToColor(uv), dissolve);
-}
-
-vec4 transition(vec2 uv) {
-    // The centre travels across the middle half of the frame.
-    vec2 center = vec2(Linear_ease(0.25, 0.5, 1.0, progress), 0.5);
-    float dissolve = Exponential_easeInOut(0.0, 1.0, 1.0, progress);
-    // Mirrored sinusoidal loop: 0 -> strength -> 0.
-    float strength = Sinusoidal_easeInOut(0.0, STRENGTH, 0.5, progress);
-    vec4 color = vec4(0.0);
-    float total = 0.0;
-    vec2 toCenter = center - uv;
-    // Jitter the steps so their fixed count does not show as rings.
-    float offset = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-    for (int i = 0; i <= STEPS; i++) {
-        float percent = (float(i) + offset) / float(STEPS);
-        float weight = 4.0 * (percent - percent * percent);
-        color += crossFade(uv + toCenter * percent * strength, dissolve) * weight;
-        total += weight;
-    }
-    return color / total;
-}
-"""
-
-    /**
-     * Each layered transition's body, by type; [light] is the cheaper version
-     * a preview falls back to on a phone that cannot keep up — the same look
-     * with fewer steps. The export always draws the full one.
-     */
-    private val layeredBodies: Map<String, (Boolean) -> String> = mapOf(
-        "zoomBlur" to { light ->
-            if (light) ZOOM_BLUR.replace("const int STEPS = 40;", "const int STEPS = 12;") else ZOOM_BLUR
-        },
-    )
-
     /** Whether [type] is drawn from layers rather than by sampling the clips. */
-    fun isLayered(type: String?): Boolean = type != null && layeredBodies.containsKey(type)
+    fun isLayered(type: String?): Boolean =
+        type != null && LayeredTransitions.bodies.containsKey(type)
+
+    /**
+     * Whether [type] has a cheaper version for a preview that cannot keep up —
+     * the same look with fewer steps. Only the step-heavy ones do; the export
+     * always draws the full version.
+     */
+    fun hasLightVersion(type: String): Boolean = LayeredTransitions.bodies[type]?.light != null
 
     /** The fragment shader that draws one lane, as [LAYER_BODY] describes. */
     fun layerFragment(isImage: Boolean): String = fragmentHeader(isImage, isImage) + LAYER_BODY
 
-    /** The layered transition [type] over the two layers; see [layeredBodies] for [light]. */
+    /** The layered transition [type] over the two layers, full or [light]. */
     fun layeredFragmentFor(type: String, light: Boolean): String {
-        val body = layeredBodies[type] ?: error("'$type' is not a layered transition")
-        return layeredHeader() + body(light) + LAYERED_MAIN
+        val body = LayeredTransitions.bodies[type] ?: error("'$type' is not a layered transition")
+        val source = if (light) body.light ?: body.full else body.full
+        return layeredHeader() + source + LAYERED_MAIN
     }
 
-    val supportedTypes: Set<String> = bodiesByType.keys + layeredBodies.keys
+    val supportedTypes: Set<String> = bodiesByType.keys + LayeredTransitions.bodies.keys
 
     fun isSupported(type: String?): Boolean = type != null && supportedTypes.contains(type)
 

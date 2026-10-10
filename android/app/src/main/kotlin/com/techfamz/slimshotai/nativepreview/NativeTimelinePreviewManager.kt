@@ -11,6 +11,7 @@ import com.techfamz.slimshotai.export.CaptionAudioSources
 import com.techfamz.slimshotai.export.ExportCapabilities
 import com.techfamz.slimshotai.export.VideoExportEngine
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
+import com.techfamz.slimshotai.nativepreview.gl.TransitionShaders
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -449,6 +450,24 @@ class NativeTimelinePreviewManager(
                 val active = engine
                 if (active == null) pendingOverlays = parsed else active.setOverlays(parsed)
                 result.success(null)
+            }
+
+            // A transition tile's frames, drawn by the transition's own shader
+            // between two sample pictures. Null when the renderer is not up or
+            // could not draw it; the sheet then shows the transition's icon.
+            "renderTransitionPreview" -> {
+                val type = call.argument<String>("type")
+                val active = renderer
+                if (type.isNullOrBlank() || active == null || !TransitionShaders.isSupported(type)) {
+                    result.success(null)
+                    return
+                }
+                val width = (call.argument<Number>("width") ?: 160).toInt().coerceIn(16, 512)
+                val height = (call.argument<Number>("height") ?: 120).toInt().coerceIn(16, 512)
+                val frames = (call.argument<Number>("frames") ?: 16).toInt().coerceIn(1, 32)
+                active.renderTransitionPreview(type, width, height, frames) { rendered ->
+                    mainHandler.post { result.success(rendered) }
+                }
             }
 
             "setOverlayClock" -> {

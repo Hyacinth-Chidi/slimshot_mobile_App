@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../logic/captions/caption_settings.dart';
 import '../logic/text_animation_catalog.dart';
+import '../logic/transitions/transition_preview_frames.dart';
 import '../logic/text_overlay_geometry.dart';
 import '../logic/timeline/video_editor_timeline_composer.dart';
 import '../models/editor_timeline.dart';
@@ -664,6 +665,27 @@ class NativeTimelinePreviewService {
         'height': canvasSize.height.round(),
       },
     );
+  }
+
+  /// A transition tile's frames: [transitionName] drawn by its own shader
+  /// between two sample pictures, [frames] JPEGs from start to finish — or
+  /// null when the renderer is not up or could not draw it.
+  Future<List<Uint8List>?> renderTransitionPreview(
+    String transitionName, {
+    int width = kTransitionPreviewWidth,
+    int height = kTransitionPreviewHeight,
+    int frames = kTransitionPreviewFrameCount,
+  }) async {
+    final raw = await _methodChannel.invokeListMethod<Object?>(
+      'renderTransitionPreview',
+      {
+        'type': transitionName,
+        'width': width,
+        'height': height,
+        'frames': frames,
+      },
+    );
+    return raw?.whereType<Uint8List>().toList();
   }
 
   Future<void> setVolume(double volume) {

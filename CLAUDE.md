@@ -440,10 +440,11 @@ the image and letterboxed it twice.
 ### Transition catalog
 
 `lib/features/video_editor/logic/transitions/transition_catalog.dart` is the single source of truth:
-11 transitions, their labels, icons, and FFmpeg `xfade` names, plus `resolveTransitionDuration`
+28 transitions, their labels, icons, categories and FFmpeg `xfade` names (now a record only —
+export is native), plus `resolveTransitionDuration`
 (clamps to 45% of the shorter neighbouring clip). The drawer, the composer, the export mapper and the
-Kotlin shader registry all key off this. Adding a transition = one entry here + one shader in
-`TransitionShaders.kt`.
+Kotlin shader registry all key off this. Adding a transition = one entry here + one body in
+`LayeredTransitions.kt` (the eleven earliest live in `TransitionShaders.kt`).
 
 `EditorTransition.name` is persisted into drafts and sent over the channel â€” renaming needs a
 migration. Unknown names (e.g. `circleOpen` from old drafts) degrade to a hard cut, never a crash.
@@ -479,6 +480,38 @@ the light Zoom Blur. **Zoom Blur** (`zoomBlur`, CrossZoom, MIT,
 rectalogic) is the first, and the first transition with a shader loop — the only other is
 `BlurPass`; if Zoom Blur shows a plain dissolve-like picture on a device, the loop is the first
 suspect.
+
+**Sixteen more layered transitions and a sheet that plays them** (Stage 2 part 2a; spec
+`docs/superpowers/specs/2026-10-10-transitions-sheet-and-ports-design.md`; **awaiting device
+verification** — every one is GLSL). The bodies live in `gl/LayeredTransitions.kt`, each with its
+author, licence and what was changed: Slide & Scale ×4 (DirectionalScaled), Split In/Out
+(splitSlideIn/OutHorizontal), Bounce, Swirl, Spin Away (RotateScaleVanish), Zoom In-Out, Dreamy
+Zoom, Motion Blur (tangentMotionBlur), Defocus (DefocusBlur) from gl-transitions.com (MIT), and
+three of ours — **Whip Pan, Shake, Zoom Bounce**. The port rules: the library's uniforms become
+constants (a uniform nothing binds reads as zero on a device — a test rejects any stray one), loops
+count in `int`, randomness is interleaved gradient noise rather than the `sin`-`fract` hash that
+overflows `mediump`, and alpha is carried through. Only Zoom Blur, Motion Blur and Whip Pan have a
+light version (`hasLightVersion`); they are the step-heavy ones. Every shader was compiled with
+`glslangValidator` (`#version 100`) before shipping — not a device, but it catches what the
+runtime compiler would refuse.
+
+**The sheet is category pills over tiles that play the real transition** (`TransitionsDrawer`).
+`TransitionCategory` (Basic, Motion, Blur, Light, Glitch, 3D) is on each catalog entry;
+`offeredTransitionCategories` hides an empty one, and the sheet opens on the seam's own
+transition's category. A tile is **the engine's drawing**: `TransitionRenderer.renderTransitionPreview`
+runs the transition's own program — a layered one with the samples as its layers, an earlier one
+with them as two photo lanes — between two pictures drawn in code (`TransitionPreviewSamples`,
+stored upside down so GL's bottom-up rows come out upright), reads 16 frames back as JPEGs, and
+the tile loops them on one clock (rest, transition, rest — `previewFrameAt`), held while the grid
+scrolls. `TransitionPreviewFrames` asks for them **one at a time** — the renderer's thread is the
+live preview's — keeps them for the session, and remembers a failure so the tile keeps its icon.
+Skipped while an export holds the renderer. **Four tiles to a row** (`kTransitionGrid`, not the
+text grids' three): under the pills, duration and Apply to all, a 45% sheet leaves the grid about
+180px on a phone. **A tap applies the transition and plays it on the canvas** —
+`_playTransitionOnCanvas` pauses (which is what lets the new transition reach the engine), parks
+the playhead 0.6s before the window (`transitionWindowFor`), plays, and pauses 0.4s after it; any
+pause in between cancels the stop, so it never stops a playback the user started. None plays
+nothing.
 
 ### Conventions
 

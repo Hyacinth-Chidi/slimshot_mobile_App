@@ -58,6 +58,51 @@ class TransitionShadersLayeredTest {
         assertEquals(full, light.replace("const int STEPS = 12;", "const int STEPS = 40;"))
     }
 
+    private val part2a = listOf(
+        "slideScaleLeft", "slideScaleRight", "slideScaleUp", "slideScaleDown",
+        "splitIn", "splitOut", "bounce", "swirl", "spinAway", "zoomInOut",
+        "whipPan", "shake", "zoomBounce", "dreamyZoom", "motionBlur", "defocus",
+    )
+
+    @Test
+    fun `every part-2a transition is drawn, and drawn from layers`() {
+        for (type in part2a) {
+            assertTrue(type, TransitionShaders.isSupported(type))
+            assertTrue(type, TransitionShaders.isLayered(type))
+            val source = TransitionShaders.layeredFragmentFor(type, light = false)
+            assertTrue(type, Regex("""vec4 transition\(vec2 \w+\)""").containsMatchIn(source))
+            // The library's uniforms became constants: a uniform nothing binds
+            // reads as zero on a device, which silently breaks a port.
+            assertFalse(type, Regex("""uniform (bool|float|vec2|vec4) (?!uProgress|uCanvasAspect|uBackground|uColor)""")
+                .containsMatchIn(source))
+        }
+    }
+
+    @Test
+    fun `the four slide-and-scale directions differ only in their direction`() {
+        val left = TransitionShaders.layeredFragmentFor("slideScaleLeft", light = false)
+        for (type in listOf("slideScaleRight", "slideScaleUp", "slideScaleDown")) {
+            val other = TransitionShaders.layeredFragmentFor(type, light = false)
+            val differing = left.lines().zip(other.lines()).count { (a, b) -> a != b }
+            assertEquals(type, 1, differing)
+        }
+    }
+
+    @Test
+    fun `only the step-heavy transitions have a light version`() {
+        for (type in listOf("zoomBlur", "motionBlur", "whipPan")) {
+            assertTrue(type, TransitionShaders.hasLightVersion(type))
+            assertTrue(
+                type,
+                TransitionShaders.layeredFragmentFor(type, light = true) !=
+                    TransitionShaders.layeredFragmentFor(type, light = false),
+            )
+        }
+        for (type in part2a - setOf("motionBlur", "whipPan")) {
+            assertFalse(type, TransitionShaders.hasLightVersion(type))
+        }
+    }
+
     @Test
     fun `a layer is the clip premultiplied by its coverage, with nothing behind it`() {
         for (isImage in listOf(false, true)) {

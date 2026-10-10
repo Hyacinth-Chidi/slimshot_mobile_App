@@ -1900,7 +1900,8 @@ internal class TransitionRenderer(
         fill: BackgroundFill,
     ): Boolean {
         // The export always draws the full version: it is not realtime.
-        val light = exportSurface == null && transitionQuality.light
+        val light = exportSurface == null && transitionQuality.light &&
+            TransitionShaders.hasLightVersion(draw.type)
         val program = layeredProgramFor(draw.type, light) ?: return false
         program.use()
         program.bindCanvas(
@@ -1947,6 +1948,117 @@ internal class TransitionRenderer(
         fromLayer = createdFrom
         toLayer = createdTo
         return Pair(createdFrom, createdTo)
+    }
+
+    /**
+     * A transition tile's frames: [type] played between the two sample
+     * pictures at [width] x [height], [count] frames from progress 0 to 1, as
+     * JPEGs top row first. [onDone] runs on the GL thread with the frames, or
+     * with null when nothing could be drawn — released, an export holding the
+     * renderer, a program that would not build, a buffer refused.
+     *
+     * **The tile is the real transition**: a layered one is drawn with the two
+     * pictures as its layers, one of the original eleven through its own
+     * program with them as two photo lanes — the same shaders the preview and
+     * the export run, so a tile cannot promise what the transition does not do.
+     * Drawn into a target of its own; the next preview frame binds the screen
+     * again, as every frame does.
+     */
+    fun renderTransitionPreview(
+        type: String,
+        width: Int,
+        height: Int,
+        count: Int,
+        onDone: (List<ByteArray>?) -> Unit,
+    ) {
+        if (released) {
+            onDone(null)
+            return
+        }
+        val posted = handler.post {
+            val frames = try {
+                if (released || exportSurface != null || makeRenderTargetCurrent() == null) {
+                    null
+                } else {
+                    drawPreviewFrames(type, width, height, count)
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "Transition preview '$type' failed", error)
+                null
+            }
+            onDone(frames)
+        }
+        if (!posted) onDone(null)
+    }
+
+    private fun drawPreviewFrames(type: String, width: Int, height: Int, count: Int): List<ByteArray>? {
+        val layered = TransitionShaders.isLayered(type)
+        val program = (
+            if (layered) layeredProgramFor(type, light = false)
+            else programFor(type, incomingIsImage = true, outgoingIsImage = true)
+            ) ?: return null
+        val target = createRenderTarget(width, height) ?: return null
+        val (fromBitmap, toBitmap) = TransitionPreviewSamples.pair(width, height)
+        val fromTexture = uploadStill(fromBitmap)
+        val toTexture = uploadStill(toBitmap)
+        fromBitmap.recycle()
+        toBitmap.recycle()
+        val pixels = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
+        val black = floatArrayOf(0f, 0f, 0f)
+        val aspect = width.toFloat() / height
+        try {
+            return List(count) { index ->
+                target.bind()
+                GLES20.glDisable(GLES20.GL_BLEND)
+                GLES20.glClearColor(0f, 0f, 0f, 1f)
+                GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+                program.use()
+                program.bindCanvas(null, NO_COLOR_OFFSET, black, aspect)
+                if (layered) {
+                    program.bindLayers(fromTexture, toTexture)
+                } else {
+                    // The pictures are stored the right way up for GL already,
+                    // so no bitmap flip: identity, a full fit, nothing placed.
+                    program.bindIncoming(toTexture, GLES20.GL_TEXTURE_2D, IDENTITY_MATRIX, 1f, 1f, 0f, 0f)
+                    program.bindIncomingGrade(null, NO_COLOR_OFFSET)
+                    program.bindOutgoing(fromTexture, GLES20.GL_TEXTURE_2D, IDENTITY_MATRIX, 1f, 1f, 0f, 0f)
+                    program.bindOutgoingGrade(null, NO_COLOR_OFFSET)
+                }
+                program.setProgress(if (count <= 1) 0f else index.toFloat() / (count - 1))
+                drawQuad(program)
+                pixels.position(0)
+                GLES20.glReadPixels(0, 0, width, height, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, pixels)
+                encodePreviewFrame(pixels, width, height)
+            }
+        } finally {
+            GlUtil.deleteTexture(fromTexture)
+            GlUtil.deleteTexture(toTexture)
+            target.release()
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            requestRender()
+        }
+    }
+
+    private fun uploadStill(bitmap: Bitmap): Int {
+        val texture = GlUtil.createTexture2D(bitmap.width, bitmap.height)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
+        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0)
+        return texture
+    }
+
+    /** Read-back rows run bottom up; a JPEG's run top down. */
+    private fun encodePreviewFrame(pixels: ByteBuffer, width: Int, height: Int): ByteArray {
+        val raw = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        pixels.position(0)
+        raw.copyPixelsFromBuffer(pixels)
+        val flip = android.graphics.Matrix().apply { preScale(1f, -1f) }
+        val upright = Bitmap.createBitmap(raw, 0, 0, width, height, flip, false)
+        raw.recycle()
+        val out = java.io.ByteArrayOutputStream()
+        upright.compress(Bitmap.CompressFormat.JPEG, PREVIEW_JPEG_QUALITY, out)
+        upright.recycle()
+        return out.toByteArray()
     }
 
     /** Drops the layers. GL thread only. */
@@ -2053,6 +2165,9 @@ internal class TransitionRenderer(
         private const val PASSTHROUGH = "__passthrough"
         private const val LAYER = "__layer"
         private const val LAYERED = "__layered"
+
+        /** A tile frame is small and seen for a twelfth of a second. */
+        private const val PREVIEW_JPEG_QUALITY = 85
         private const val FRAME_INTERVAL_MS = 16L
         private const val SURFACE_TEARDOWN_TIMEOUT_MS = 250L
 
