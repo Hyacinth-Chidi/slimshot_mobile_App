@@ -1859,7 +1859,7 @@ would cover the surface being edited. The panel holds only what the canvas canno
 invert. While the tool is open the composer shows the clip **unplaced but cropped**: scale, pan,
 rotation and mirror suspended so the canvas maps a drag through the fit alone, the clip's own crop
 kept because the window is over the picture as it will play — the crop tool's rule, one step
-gentler (`unplaced` vs `plain`). It joins `kCanvasEditingTools`. Switching shape keeps the window
+gentler (`unplaced` vs `plain`). A tap on the picture keeps it open. Switching shape keeps the window
 where it was. Plain values, not animatable yet: a moving mask is four coupled numbers with a design
 of its own.
 
@@ -3879,7 +3879,7 @@ and the photo's shape (`PhotoInspector`, shared with Compress photo).
 | Transition scope | Same toggle in the transition sheet; "all" writes every seam except the last. |
 | Transition frame source | Two live decoders. Freeze-frame was built, reviewed and rejected. |
 | Panels vs sheets | **A tool that edits on the canvas or the timeline is an in-place panel; a set of choices about the picture is a sheet.** Crop, clip crop, Trim, Zoom and Speed stay panels — a sheet is modal and would cover the very surface they edit (handles on the canvas, handles and the stretching clip on the timeline). Curve, Transform, Filters, Effects, Transitions and **Background** are sheets. Volume could go either way and stays a panel; the two kinds share `AppMotion` and the same look. |
-| Dismissing a panel | **Back and a tap on empty canvas space close an open panel, keeping its edits** — modal semantics, as a sheet's dismissal keeps its live edits; ✕ stays the explicit discard. Mask alone has no ✕/✓ bar (`kHeaderlessTools`): it has nothing to discard. Exception: a canvas-editing tool (`kCanvasEditingTools`: crop, clip crop, zoom) ignores the canvas tap, because touching the canvas is how it is used. Back closes any tool. Only with no tool open does Back leave the editor. `logic/tool_dismissal.dart`. |
+| Dismissing a panel | **Back, an empty stretch of the timeline, and a tap in the space beside the picture close an open panel, keeping its edits** — modal semantics, as a sheet's dismissal keeps its live edits; ✕ stays the explicit discard. Mask alone has no ✕/✓ bar (`kHeaderlessTools`): it has nothing to discard. **The space beside the picture also clears the selection** (`tapIsBesidePicture`; `preview_side_tap_test.dart`, user's call 2026-10-10): every panel closes there, Mask, Crop and Zoom included, because they are used *on* the picture and the picture keeps its own tap (play/pause). It replaced a rule that made those three ignore the whole canvas tap, which left a side tap closing Volume but not Mask and deselecting a text but not a clip. A tap within `kPictureTapMarginPx` (24) of the picture's edge does nothing: handles hang half past the edge, and Flutter cannot hit them out there. Only with no tool open does Back leave the editor. `logic/tool_dismissal.dart`. |
 
 Fuller detail, ordering, and the test matrix are in `docs/roadmap.md`. Approaches already tried and
 rejected are in `docs/dead-ends.md` â€” read it before proposing an architecture.

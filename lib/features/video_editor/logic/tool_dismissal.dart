@@ -12,14 +12,28 @@
 /// as conditions inside gesture handlers.
 library;
 
-/// Tools whose editing happens **on the canvas** — handles dragged there, or a
-/// pinch on it. A tap on the canvas is part of using them, not a request to
-/// leave, so empty-space dismissal does not apply.
-const Set<String> kCanvasEditingTools = {'crop', 'clip_crop', 'zoom', 'mask'};
+import 'dart:ui';
 
-/// Whether a tap on the canvas's empty space dismisses the open [toolId].
-bool toolClosesOnCanvasTap(String toolId) =>
-    !kCanvasEditingTools.contains(toolId);
+/// How far past the picture's edge a tap still counts as "at the picture".
+///
+/// A text's or overlay's handles and the crop corners are drawn half past the
+/// edge, and Flutter cannot hit a child outside its parent's box, so a finger
+/// on the outer half of a handle lands beside the picture. Without the margin
+/// a slightly missed handle would clear the selection and close the panel.
+const double kPictureTapMarginPx = 24;
+
+/// Whether a tap at [tap] is out in the empty space around [picture] — the
+/// space beside a 9:16 picture, not the picture.
+///
+/// That tap is the editor's "done here", as an empty stretch of the timeline
+/// is: it closes **any** open panel, keeping its edits, and clears the
+/// selection. The tools that edit on the picture — Mask, Crop, Zoom — close
+/// too: they are used *on* the picture, which keeps its own tap, and the
+/// space around it is no part of them. (They once ignored the whole canvas
+/// tap, which left a tap beside the picture closing Volume but not Mask, and
+/// deselecting a text but not a clip.)
+bool tapIsBesidePicture(Offset tap, Rect picture) =>
+    !picture.inflate(kPictureTapMarginPx).contains(tap);
 
 /// Tools whose panel has no ✕ / title / ✓ bar.
 ///

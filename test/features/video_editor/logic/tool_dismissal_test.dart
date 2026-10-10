@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/tool_dismissal.dart';
 
@@ -10,25 +12,35 @@ import 'package:slimshotai/features/video_editor/logic/tool_dismissal.dart';
 /// way a sheet's dismissal keeps its live edits; ✕ remains the explicit
 /// discard).
 ///
-/// The one exception is deliberate: a tool that edits **on the canvas** must
-/// not close because the canvas was touched.
+/// The picture itself is the tools' to use — dragging a mask window or a crop
+/// corner, tapping to play — so only the empty space **around** it dismisses,
+/// and it dismisses every panel, the ones that edit on the picture included.
 ///
-/// A panel without the bar (Mask) closes the same ways, minus the two buttons:
-/// Back, and anything that leaves the selection.
+/// A panel without the bar (Mask) closes the same ways, minus the two buttons.
 void main() {
-  group('a tap on empty canvas space', () {
-    test('dismisses a tool that does not edit on the canvas', () {
-      for (final id in ['volume', 'speed', 'edit', 'opacity', 'audio']) {
-        expect(toolClosesOnCanvasTap(id), isTrue, reason: id);
-      }
+  group('a tap around the picture', () {
+    // The 9:16 picture in a wider preview area: the empty space beside it is
+    // where a tap clears the selection and closes the panel.
+    const picture = Rect.fromLTWH(200, 0, 360, 640);
+
+    test('counts out in the space beside the picture', () {
+      expect(tapIsBesidePicture(const Offset(40, 300), picture), isTrue);
+      expect(tapIsBesidePicture(const Offset(720, 300), picture), isTrue);
     });
 
-    test('leaves a canvas-editing tool open', () {
-      // Crop and clip crop drag handles on the canvas; zoom pinches it. A
-      // stray tap there is part of using the tool, not a request to leave it.
-      for (final id in ['crop', 'clip_crop', 'zoom', 'mask']) {
-        expect(toolClosesOnCanvasTap(id), isFalse, reason: id);
-      }
+    test('never counts on the picture', () {
+      expect(tapIsBesidePicture(const Offset(380, 320), picture), isFalse);
+      expect(tapIsBesidePicture(const Offset(201, 1), picture), isFalse);
+    });
+
+    test('does not count just past the edge, where a handle hangs over', () {
+      // A text's or overlay's handles and the crop corners are drawn half
+      // past the picture's edge, and Flutter cannot hit them out there: a
+      // slightly missed handle must not throw the selection or panel away.
+      final justOutside = picture.left - (kPictureTapMarginPx - 1);
+      expect(tapIsBesidePicture(Offset(justOutside, 300), picture), isFalse);
+      final pastMargin = picture.left - (kPictureTapMarginPx + 1);
+      expect(tapIsBesidePicture(Offset(pastMargin, 300), picture), isTrue);
     });
   });
 

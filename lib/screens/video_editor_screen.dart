@@ -3045,21 +3045,15 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                               onTogglePreview: () => ref
                                   .read(videoEditorProvider.notifier)
                                   .togglePreview(),
-                              onDeadZoneTapped: () {
-                                final notifier = ref.read(
-                                  videoEditorProvider.notifier,
-                                );
-                                notifier.selectTextOverlay(null);
-                                notifier.selectImageOverlay(null);
-                                // Empty space dismisses an open panel the way
-                                // it dismisses a sheet — unless the tool edits
-                                // on the canvas, where a tap is part of using
-                                // it (`toolClosesOnCanvasTap`).
-                                final tool =
-                                    ref.read(videoEditorProvider).activeToolId;
-                                if (tool != null && toolClosesOnCanvasTap(tool)) {
-                                  _commitAndCloseActiveTool();
-                                }
+                              // The space beside the picture is "done here",
+                              // as an empty stretch of the timeline is: the
+                              // panel closes keeping its edits (✓'s and
+                              // Back's own close), then nothing is selected.
+                              onOutsidePictureTapped: () {
+                                _commitAndCloseActiveTool();
+                                ref
+                                    .read(videoEditorProvider.notifier)
+                                    .deselectAll();
                               },
                               onShowTextEditor:
                                   (

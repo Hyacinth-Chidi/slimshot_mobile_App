@@ -13,6 +13,7 @@ import '../image_overlay/image_overlay_layer.dart';
 import '../video_overlay/video_overlay_layer.dart';
 import '../text_overlay/text_overlay_layer.dart';
 import '../../logic/mask/clip_mask.dart';
+import '../../logic/tool_dismissal.dart';
 import '../mask_outline_painter.dart';
 
 enum CropDragMode { none, top, bottom, left, right, topLeft, topRight, bottomLeft, bottomRight, center }
@@ -28,7 +29,10 @@ class VideoPreviewCanvas extends ConsumerStatefulWidget {
   final Widget videoSurface;
 
   final VoidCallback? onTogglePreview;
-  final VoidCallback? onDeadZoneTapped;
+
+  /// A tap out in the empty space around the picture — beside a 9:16 frame —
+  /// rather than on it (`tapIsBesidePicture`). The picture keeps its own tap.
+  final VoidCallback? onOutsidePictureTapped;
   final ValueChanged<Size>? onCanvasSizeChanged;
   final void Function(TextOverlayModel, bool)? onShowTextEditor;
 
@@ -36,7 +40,7 @@ class VideoPreviewCanvas extends ConsumerStatefulWidget {
     super.key,
     required this.videoSurface,
     this.onTogglePreview,
-    this.onDeadZoneTapped,
+    this.onOutsidePictureTapped,
     this.onCanvasSizeChanged,
     this.onShowTextEditor,
   });
@@ -126,13 +130,26 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
   Offset _baseVideoPan = Offset.zero;
   Size? _videoCanvasSize;
 
+  /// The picture's box, which an outside tap is measured against.
+  final _pictureKey = GlobalKey();
+
   @override
   Widget build(BuildContext context) {
     final editorState = ref.watch(videoEditorProvider);
     final previewSurface = widget.videoSurface;
 
     return GestureDetector(
-      onTap: widget.onDeadZoneTapped,
+      // Only taps the picture does not claim reach here — the picture's own
+      // detector takes every tap on it — so this is the space around it,
+      // less a margin where handles hang past the edge.
+      onTapUp: (details) {
+        final picture = _pictureKey.currentContext?.findRenderObject();
+        if (picture is! RenderBox || !picture.hasSize) return;
+        final at = picture.globalToLocal(details.globalPosition);
+        if (tapIsBesidePicture(at, Offset.zero & picture.size)) {
+          widget.onOutsidePictureTapped?.call();
+        }
+      },
       child: Container(
         width: double.infinity,
         height: double.infinity,
@@ -141,6 +158,7 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
           child: Padding(
             padding: const EdgeInsets.all(4.0),
             child: AspectRatio(
+              key: _pictureKey,
               // The project canvas decides the frame, and **this box is the
               // texture's shape, nothing else**. Under a custom crop the box
               // used to be reshaped by the rect while the texture stayed 9:16
