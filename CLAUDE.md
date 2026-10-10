@@ -515,8 +515,8 @@ pause in between cancels the stop, so it never stops a playback the user started
 nothing.
 
 **Light, Glitch and 3D — thirteen more** (Stage 2 part 2b; spec
-`docs/superpowers/specs/2026-10-10-transitions-part2b-design.md`; **awaiting device
-verification** — GLSL). Overexpose, Film Burn, Flash (ours); RGB Split, Lost Signal, Static,
+`docs/superpowers/specs/2026-10-10-transitions-part2b-design.md`; **device-verified
+2026-10-10**, Film Burn after the per-vertex fix). Overexpose, Film Burn, Flash (ours); RGB Split, Lost Signal, Static,
 Datamosh, Displace, Flicker; Revolve L/R and Cube L/R. **Every sin-fract hash became
 `slimHash`**, which folds its inputs to 0..1 before combining so it cannot overflow `mediump`
 (Drop_Zone_Flicker's `p * 443.9` did), and the hashing ports ask for `highp` behind
