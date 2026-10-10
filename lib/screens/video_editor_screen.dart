@@ -3046,14 +3046,22 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                                   .read(videoEditorProvider.notifier)
                                   .togglePreview(),
                               // The space beside the picture is "done here",
-                              // as an empty stretch of the timeline is: the
-                              // panel closes keeping its edits (✓'s and
-                              // Back's own close), then nothing is selected.
+                              // one level per tap: an open panel closes
+                              // keeping its edits (✓'s and Back's own close)
+                              // with the selection left as it was; with none
+                              // open, the selection clears.
                               onOutsidePictureTapped: () {
-                                _commitAndCloseActiveTool();
-                                ref
-                                    .read(videoEditorProvider.notifier)
-                                    .deselectAll();
+                                switch (outsideTapActionFor(
+                                  activeToolId:
+                                      ref.read(videoEditorProvider).activeToolId,
+                                )) {
+                                  case OutsideTapAction.closePanel:
+                                    _commitAndCloseActiveTool();
+                                  case OutsideTapAction.deselect:
+                                    ref
+                                        .read(videoEditorProvider.notifier)
+                                        .deselectAll();
+                                }
                               },
                               onShowTextEditor:
                                   (

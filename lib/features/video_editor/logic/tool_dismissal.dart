@@ -25,15 +25,30 @@ const double kPictureTapMarginPx = 24;
 /// Whether a tap at [tap] is out in the empty space around [picture] — the
 /// space beside a 9:16 picture, not the picture.
 ///
-/// That tap is the editor's "done here", as an empty stretch of the timeline
-/// is: it closes **any** open panel, keeping its edits, and clears the
-/// selection. The tools that edit on the picture — Mask, Crop, Zoom — close
+/// That tap is the editor's "done here", one level at a time
+/// ([outsideTapActionFor]): it closes **any** open panel, keeping its edits,
+/// and with none open it clears the selection. The tools that edit on the picture — Mask, Crop, Zoom — close
 /// too: they are used *on* the picture, which keeps its own tap, and the
 /// space around it is no part of them. (They once ignored the whole canvas
 /// tap, which left a tap beside the picture closing Volume but not Mask, and
 /// deselecting a text but not a clip.)
 bool tapIsBesidePicture(Offset tap, Rect picture) =>
     !picture.inflate(kPictureTapMarginPx).contains(tap);
+
+/// What a tap beside the picture does.
+enum OutsideTapAction {
+  /// A panel is open: close it, keeping its edits. The selection stays.
+  closePanel,
+
+  /// Nothing is open: clear the selection.
+  deselect,
+}
+
+/// One level per tap, the nearer first — Back's own order. Device-reported:
+/// closing the panel and dropping the selection in one tap made the user
+/// select a clip again just to open its next tool.
+OutsideTapAction outsideTapActionFor({required String? activeToolId}) =>
+    activeToolId == null ? OutsideTapAction.deselect : OutsideTapAction.closePanel;
 
 /// Tools whose panel has no ✕ / title / ✓ bar.
 ///

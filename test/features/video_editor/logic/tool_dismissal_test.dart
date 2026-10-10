@@ -33,6 +33,16 @@ void main() {
       expect(tapIsBesidePicture(const Offset(201, 1), picture), isFalse);
     });
 
+    test('steps back one level: an open panel first, then the selection', () {
+      // Device-reported: with a clip selected and Mask open, one tap closed
+      // the panel *and* dropped the clip, so the user had to select it
+      // again. The panel is the nearer level; the selection waits for the
+      // next tap — Back's own order.
+      expect(outsideTapActionFor(activeToolId: 'mask'), OutsideTapAction.closePanel);
+      expect(outsideTapActionFor(activeToolId: 'volume'), OutsideTapAction.closePanel);
+      expect(outsideTapActionFor(activeToolId: null), OutsideTapAction.deselect);
+    });
+
     test('does not count just past the edge, where a handle hangs over', () {
       // A text's or overlay's handles and the crop corners are drawn half
       // past the picture's edge, and Flutter cannot hit them out there: a
