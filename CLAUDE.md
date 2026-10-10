@@ -524,7 +524,18 @@ Datamosh, Displace, Flicker; Revolve L/R and Cube L/R. **Every sin-fract hash be
 light on the lens, damage is to the picture**: leaks, flashes, sparks and strobes wash the whole
 frame, bars included, as Fade White does; scanlines, noise and exposure pulses are scaled by the
 picture's coverage. Right is Left mirrored, one line apart (the Cube mirrors its geometry, never
-the pictures on its faces). Light versions: Film Burn and both Revolves. **The six pills share
+the pictures on its faces). Light versions: Film Burn and both Revolves.
+**Film Burn places its blotches in a vertex shader of its own** (`Body.vertex`,
+`layeredVertexFor`; device-reported: perfect in the export, jumpy and barely visible in the
+preview). Each of its thirteen blotch centres is two noise lookups — sixteen hashes and fourteen
+`pow`s — with the same answer for every pixel of a frame; per pixel that was over two hundred
+hashes, which the export waited out and the preview could not. Worked out at the quad's four
+corners and handed down as seven varying rows (of the eight GLES2 guarantees), it is the same
+arithmetic at no cost. `uProgress` is declared `mediump` there because the fragment declares it
+so — a shared uniform of two precisions does not link, which glslang's link check confirms.
+Its light version had also dropped to 5 blotches, so the speed check switching mid-transition
+made 8 vanish at once; it now keeps all 13 and differs only in blur taps. **Every other
+transition still links the shared vertex shader**, and a test pins it. **The six pills share
 the row** rather than scroll it — at natural width they ran past a phone's edge, hiding 3D —
 each label scaled down where large text would not fit.
 

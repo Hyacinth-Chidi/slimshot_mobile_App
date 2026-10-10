@@ -2113,19 +2113,20 @@ internal class TransitionRenderer(
 
     /** A layered transition's program, full or light. */
     private fun layeredProgramFor(type: String, light: Boolean): TransitionProgram? =
-        cachedProgram("$LAYERED|$type|$light", type) {
+        cachedProgram("$LAYERED|$type|$light", type, TransitionShaders.layeredVertexFor(type)) {
             TransitionShaders.layeredFragmentFor(type, light)
         }
 
     private fun cachedProgram(
         key: String,
         name: String,
+        vertex: String = TransitionShaders.VERTEX_SHADER,
         fragment: () -> String,
     ): TransitionProgram? {
         programs[key]?.let { return it }
         return try {
             val program = TransitionProgram(
-                GlUtil.createProgram(TransitionShaders.VERTEX_SHADER, fragment()),
+                GlUtil.createProgram(vertex, fragment()),
             )
             programs[key] = program
             program

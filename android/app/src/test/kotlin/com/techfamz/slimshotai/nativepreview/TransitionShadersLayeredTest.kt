@@ -173,4 +173,58 @@ class TransitionShadersLayeredTest {
             assertFalse(type, TransitionShaders.hasLightVersion(type))
         }
     }
+
+    // ------------------------------------------------ Film Burn's cost
+
+    private fun varyings(source: String): Map<String, String> =
+        Regex("""varying (?:highp |mediump |lowp )?(vec[234]|float) (\w+);""")
+            .findAll(source).associate { it.groupValues[2] to it.groupValues[1] }
+
+    @Test
+    fun `film burn places its blotches once per vertex, not once per pixel`() {
+        // Thirteen blotches, each placed by two noise lookups of sixteen hashes
+        // and fourteen pows: the same answer for every pixel of a frame, so
+        // the preview could not keep up while the export, which waits, could.
+        val vertex = TransitionShaders.layeredVertexFor("filmBurn")
+        assertTrue(vertex.contains("smoothRandom("))
+        assertTrue(vertex.contains("vBurnSpots0 = "))
+        val fragment = TransitionShaders.layeredFragmentFor("filmBurn", light = false)
+        val perPixel = fragment.substringAfter("vec4 transition(vec2 p)")
+        // Only the gentle zoom still asks for noise per pixel.
+        assertEquals(1, Regex("""smoothRandom\(""").findAll(perPixel).count())
+        assertTrue(perPixel.contains("vBurnSpots0.xy"))
+        assertTrue(perPixel.contains("vBurnSpotLast"))
+    }
+
+    @Test
+    fun `every other transition keeps the shared vertex shader`() {
+        for (type in TransitionShaders.supportedTypes - "filmBurn") {
+            assertEquals(type, TransitionShaders.VERTEX_SHADER, TransitionShaders.layeredVertexFor(type))
+        }
+    }
+
+    @Test
+    fun `film burn's two stages agree on what they share`() {
+        val vertex = TransitionShaders.layeredVertexFor("filmBurn")
+        val fragment = TransitionShaders.layeredFragmentFor("filmBurn", light = false)
+        // A uniform in both stages must carry one precision, or the link fails;
+        // the fragment header declares uProgress mediump.
+        assertTrue(vertex.contains("uniform mediump float uProgress;"))
+        assertEquals(varyings(vertex), varyings(fragment))
+        // Seven rows of the eight every GLES2 device guarantees: six vec4 and
+        // the two vec2 packed into one.
+        val vec4s = varyings(vertex).values.count { it == "vec4" }
+        val vec2s = varyings(vertex).values.count { it == "vec2" }
+        assertEquals(7, vec4s + (vec2s + 1) / 2)
+    }
+
+    @Test
+    fun `film burn's light version keeps every blotch`() {
+        // Dropping blotches made them vanish the moment the speed check
+        // switched mid-transition. Only the blur's tap count may differ.
+        val full = TransitionShaders.layeredFragmentFor("filmBurn", light = false)
+        val light = TransitionShaders.layeredFragmentFor("filmBurn", light = true)
+        assertTrue(full.contains("const int STEPS = 50;"))
+        assertEquals(full, light.replace("const int STEPS = 12;", "const int STEPS = 50;"))
+    }
 }

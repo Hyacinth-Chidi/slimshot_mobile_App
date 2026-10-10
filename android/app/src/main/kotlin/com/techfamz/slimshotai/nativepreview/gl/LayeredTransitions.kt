@@ -26,8 +26,12 @@ package com.techfamz.slimshotai.nativepreview.gl
  */
 internal object LayeredTransitions {
 
-    /** A layered transition's body, and a cheaper one where it has many steps. */
-    class Body(val full: String, val light: String? = null)
+    /**
+     * A layered transition's body, a cheaper one where it has many steps, and
+     * its own vertex shader where it has work that is the same for every
+     * pixel of a frame — null for the shared one.
+     */
+    class Body(val full: String, val light: String? = null, val vertex: String? = null)
 
     private fun withSteps(source: String, full: Int, light: Int): Body = Body(
         full = source,
@@ -599,71 +603,58 @@ vec4 transition(vec2 uv) {
 }
 """
 
+    /** Blotch `i`'s centre, as the fragment reads it. */
+    private val FILM_BURN_SPOTS: List<String> =
+        (0 until 12).map { i -> "vBurnSpots${i / 2}.${if (i % 2 == 0) "xy" else "zw"}" } + "vBurnSpotLast"
+
     /**
      * Film Burn — FilmBurn. License: MIT. Author: Anastasia Dunbar. Changes:
      * the seed is a constant; loops count in `int`; [SLIM_HASH] for each of
      * its sin-fract hashes; the blur's per-tap scatter hashes the tap and the
      * pixel. Its leaks are light, so they are added over the whole frame,
-     * background included — a burn on the film, not on the picture. The
-     * lightest preview draws 5 leaks and 12 blur taps, the brightness kept.
+     * background included — a burn on the film, not on the picture.
+     *
+     * **Its thirteen blotches are placed in the vertex shader**
+     * ([FILM_BURN_VERTEX]). Each blotch's centre is two noise lookups of
+     * sixteen hashes and fourteen `pow`s — the same answer for every pixel of
+     * a frame. Worked out per pixel, that was over two hundred hashes a pixel,
+     * which the export, waiting on each frame, absorbed and the preview could
+     * not: it dropped frames until the burn barely showed. Worked out at the
+     * quad's four corners and handed down as varyings, it costs nothing, and
+     * the arithmetic is the one the fragment ran — the picture is the same.
+     * The light preview takes 12 blur taps for 50 and keeps every blotch, so
+     * switching to it mid-transition changes only the blur's grain.
      */
-    private const val FILM_BURN = """
+    private val FILM_BURN: String = """
 $PRECISION_HIGH
 $SLIM_HASH
 const float SEED = 2.31;
 const float PI = 3.14159265358979323;
-const int SPOTS = 13;
 const int STEPS = 50;
 
-float sigmoid(float x, float a) {
-    float b = pow(x * 2.0, a) / 2.0;
-    if (x > 0.5) {
-        b = 1.0 - pow(2.0 - (x * 2.0), a) / 2.0;
-    }
-    return b;
-}
-
+$FILM_BURN_VARYINGS
+$FILM_BURN_NOISE
 float rand(float co) {
     return slimHash(vec2(co * 7.0, SEED));
 }
 
 float apow(float a, float b) { return pow(abs(a), b) * sign(b); }
 vec3 pow3(vec3 a, vec3 b) { return vec3(apow(a.r, b.r), apow(a.g, b.g), apow(a.b, b.b)); }
-float smoothMix(float a, float b, float c) { return mix(a, b, sigmoid(c, 2.0)); }
-
-float random(vec2 co, float shft) {
-    co += 10.0;
-    return smoothMix(
-        slimHash(co + vec2(floor(shft) * 1.618, SEED * 3.0)),
-        slimHash(co + vec2(floor(shft + 1.0) * 1.618, SEED * 3.0)),
-        fract(shft)
-    );
-}
-
-float smoothRandom(vec2 co, float shft) {
-    return smoothMix(
-        smoothMix(random(floor(co), shft), random(floor(co + vec2(1.0, 0.0)), shft), fract(co.x)),
-        smoothMix(random(floor(co + vec2(0.0, 1.0)), shft), random(floor(co + vec2(1.0, 1.0)), shft), fract(co.x)),
-        fract(co.y)
-    );
-}
 
 vec4 blendedColor(vec2 p) {
     return mix(getFromColor(p), getToColor(p), sigmoid(progress, 10.0));
 }
 
+// One blotch: a drifting wave and a glow round its centre.
+float leak(vec2 p, vec2 centre, float i) {
+    return sin(((p.x * rand(i) * 6.0) + (progress * 8.0)) + rand(i + 1.43))
+        * sin(((p.y * rand(i + 4.4) * 6.0) + (progress * 6.0)) + rand(i + 2.4))
+        + 1.0 - clamp(length(p - centre) * mix(20.0, 70.0, rand(i)), 0.0, 1.0);
+}
+
 vec4 transition(vec2 p) {
     vec3 f = vec3(0.0);
-    for (int k = 0; k < SPOTS; k++) {
-        float i = float(k);
-        f += sin(((p.x * rand(i) * 6.0) + (progress * 8.0)) + rand(i + 1.43))
-            * sin(((p.y * rand(i + 4.4) * 6.0) + (progress * 6.0)) + rand(i + 2.4));
-        f += 1.0 - clamp(length(p - vec2(
-            smoothRandom(vec2(progress * 1.3), i + 1.0),
-            smoothRandom(vec2(progress * 0.5), i + 6.25)
-        )) * mix(20.0, 70.0, rand(i)), 0.0, 1.0);
-    }
-    f *= 13.0 / float(SPOTS);
+${FILM_BURN_SPOTS.withIndex().joinToString("\n") { (i, at) -> "    f += leak(p, $at, ${i}.0);" }}
     f += 4.0;
     f /= 11.0;
     f = pow3(f * vec3(1.0, 0.7, 0.6), vec3(1.0, 2.0 - sin(progress * PI), 1.3));
@@ -683,6 +674,82 @@ vec4 transition(vec2 p) {
     }
     blurred /= float(STEPS);
     return blurred + vec4(f, 0.0);
+}
+"""
+
+    /**
+     * Where the thirteen blotch centres travel between the stages: six `vec4`s
+     * of two each and one `vec2`. With `vTexCoord` that is seven varying rows,
+     * inside the eight every GLES2 device guarantees.
+     */
+    private const val FILM_BURN_VARYINGS = """
+varying vec4 vBurnSpots0;
+varying vec4 vBurnSpots1;
+varying vec4 vBurnSpots2;
+varying vec4 vBurnSpots3;
+varying vec4 vBurnSpots4;
+varying vec4 vBurnSpots5;
+varying vec2 vBurnSpotLast;
+"""
+
+    /** FilmBurn's smooth noise, shared by both stages so they cannot drift. */
+    private const val FILM_BURN_NOISE = """
+float sigmoid(float x, float a) {
+    float b = pow(x * 2.0, a) / 2.0;
+    if (x > 0.5) {
+        b = 1.0 - pow(2.0 - (x * 2.0), a) / 2.0;
+    }
+    return b;
+}
+
+float smoothMix(float a, float b, float c) { return mix(a, b, sigmoid(c, 2.0)); }
+
+float random(vec2 co, float shft) {
+    co += 10.0;
+    return smoothMix(
+        slimHash(co + vec2(floor(shft) * 1.618, SEED * 3.0)),
+        slimHash(co + vec2(floor(shft + 1.0) * 1.618, SEED * 3.0)),
+        fract(shft)
+    );
+}
+
+float smoothRandom(vec2 co, float shft) {
+    return smoothMix(
+        smoothMix(random(floor(co), shft), random(floor(co + vec2(1.0, 0.0)), shft), fract(co.x)),
+        smoothMix(random(floor(co + vec2(0.0, 1.0)), shft), random(floor(co + vec2(1.0, 1.0)), shft), fract(co.x)),
+        fract(co.y)
+    );
+}
+"""
+
+    /**
+     * Film Burn's vertex shader: the shared one, plus the blotch centres —
+     * blotch `i` at `(smoothRandom(progress × 1.3, i + 1), smoothRandom(progress
+     * × 0.5, i + 6.25))`, as FilmBurn places them. `uProgress` is declared
+     * `mediump` because the fragment header declares it so, and a uniform two
+     * stages share must agree on precision or the program does not link.
+     */
+    private val FILM_BURN_VERTEX: String = """
+attribute vec4 aPosition;
+attribute vec2 aTexCoord;
+varying vec2 vTexCoord;
+uniform mediump float uProgress;
+$FILM_BURN_VARYINGS
+$SLIM_HASH
+const float SEED = 2.31;
+$FILM_BURN_NOISE
+vec2 spot(float i) {
+    return vec2(
+        smoothRandom(vec2(uProgress * 1.3), i + 1.0),
+        smoothRandom(vec2(uProgress * 0.5), i + 6.25)
+    );
+}
+
+void main() {
+    gl_Position = aPosition;
+    vTexCoord = aTexCoord;
+${(0 until 6).joinToString("\n") { k -> "    vBurnSpots$k = vec4(spot(${2 * k}.0), spot(${2 * k + 1}.0));" }}
+    vBurnSpotLast = spot(12.0);
 }
 """
 
@@ -1275,9 +1342,8 @@ vec4 transition(vec2 uv) {
         "overexposure" to Body(OVEREXPOSURE),
         "filmBurn" to Body(
             full = FILM_BURN,
-            light = FILM_BURN
-                .replace("const int SPOTS = 13;", "const int SPOTS = 5;")
-                .replace("const int STEPS = 50;", "const int STEPS = 12;"),
+            light = FILM_BURN.replace("const int STEPS = 50;", "const int STEPS = 12;"),
+            vertex = FILM_BURN_VERTEX,
         ),
         "flash" to Body(FLASH),
         "glitchMemories" to Body(GLITCH_MEMORIES),

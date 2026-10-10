@@ -39,8 +39,14 @@ because a tile reading "Glitch" under the Glitch pill says one word twice.
   `smoothstep(1.0, 0.5, t)` is undefined in GLSL; written as `1.0 - smoothstep(0.5, 1.0, t)`.
 - Right is Left mirrored: Revolve flips its direction (and the swirl centre with it); Cube
   mirrors its geometry and never the pictures on its faces. Each pair differs by one line.
-- Light versions: Film Burn (5 leaks and 12 blur taps for 13 and 50, brightness kept) and
-  both Revolves (5 motion-blur samples for 17).
+- Light versions: Film Burn (12 blur taps for 50) and both Revolves (5 motion-blur samples
+  for 17).
+- **Film Burn's blotches are placed in its own vertex shader** (device-reported: the export
+  was right, the preview jumped and barely showed the burn). Each blotch centre is the same
+  for every pixel of a frame and cost sixteen hashes and fourteen `pow`s per pixel; computed at
+  the four corners and passed as varyings, it is the same arithmetic for free. Its first light
+  version also dropped blotches, so the speed check switching mid-transition made them vanish;
+  it keeps all thirteen now.
 
 ## The sheet
 

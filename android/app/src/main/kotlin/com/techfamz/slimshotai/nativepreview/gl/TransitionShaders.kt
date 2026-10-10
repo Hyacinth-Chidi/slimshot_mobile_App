@@ -624,6 +624,13 @@ void main() {
     /** The fragment shader that draws one lane, as [LAYER_BODY] describes. */
     fun layerFragment(isImage: Boolean): String = fragmentHeader(isImage, isImage) + LAYER_BODY
 
+    /**
+     * The vertex shader [type] links with: the shared [VERTEX_SHADER] unless
+     * its body brings its own (Film Burn, which places its blotches there).
+     */
+    fun layeredVertexFor(type: String): String =
+        LayeredTransitions.bodies[type]?.vertex ?: VERTEX_SHADER
+
     /** The layered transition [type] over the two layers, full or [light]. */
     fun layeredFragmentFor(type: String, light: Boolean): String {
         val body = LayeredTransitions.bodies[type] ?: error("'$type' is not a layered transition")
