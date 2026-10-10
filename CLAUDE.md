@@ -482,8 +482,9 @@ rectalogic) is the first, and the first transition with a shader loop — the on
 suspect.
 
 **Sixteen more layered transitions and a sheet that plays them** (Stage 2 part 2a; spec
-`docs/superpowers/specs/2026-10-10-transitions-sheet-and-ports-design.md`; **awaiting device
-verification** — every one is GLSL). The bodies live in `gl/LayeredTransitions.kt`, each with its
+`docs/superpowers/specs/2026-10-10-transitions-sheet-and-ports-design.md`; **device-verified
+2026-10-10** — the sixteen transitions on the canvas and in the file, the moving tiles and
+tap-to-play). The bodies live in `gl/LayeredTransitions.kt`, each with its
 author, licence and what was changed: Slide & Scale ×4 (DirectionalScaled), Split In/Out
 (splitSlideIn/OutHorizontal), Bounce, Swirl, Spin Away (RotateScaleVanish), Zoom In-Out, Dreamy
 Zoom, Motion Blur (tangentMotionBlur), Defocus (DefocusBlur) from gl-transitions.com (MIT), and

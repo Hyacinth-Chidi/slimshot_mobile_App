@@ -62,7 +62,7 @@ groundwork first, then the ports and the sheet, then easing.
   the speed check and previews the light version). Spec `docs/superpowers/specs/2026-10-10-transitions-engine-layers-design.md`.
   Covers item 8's engine half (layers, the speed check, the loud fallback) and the first port.
 - **Part 2 — the ports, our signatures and the sheet** (items 4, 5, 7), in two halves.
-  - **2a — built, awaiting device verification.** The sheet (category pills, tiles playing the
+  - **2a — done, device-verified 2026-10-10.** The sheet (category pills, tiles playing the
     engine-drawn transition, a tap playing it on the canvas), the Basic/Motion/Blur ports and the
     three signatures (Whip Pan, Shake, Zoom Bounce). Spec `docs/superpowers/specs/2026-10-10-transitions-sheet-and-ports-design.md`.
   - **2b — next.** Light, Glitch and 3D: Overexposure, FilmBurn, Drop_Zone_Flicker,
