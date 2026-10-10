@@ -59,6 +59,12 @@ class VideoSegment {
   final SpeedCurve? speedCurve;
   final String? transitionType;
   final double? transitionDuration;
+
+  /// How the picture travels through this clip's outgoing transition — one of
+  /// the keyframe curves. Null is a straight line, as every transition was
+  /// before easing; linear is never stored. Exists only with a transition:
+  /// clearing [transitionType] clears it.
+  final KeyframeInterpolation? transitionEasing;
   final String? overrideVideoPath;
   final bool isReversed;
 
@@ -210,6 +216,7 @@ class VideoSegment {
     this.speedCurve,
     this.transitionType,
     this.transitionDuration,
+    this.transitionEasing,
     this.overrideVideoPath,
     this.isReversed = false,
     this.filterId,
@@ -343,6 +350,8 @@ class VideoSegment {
     bool clearTransitionType = false,
     double? transitionDuration,
     bool clearTransitionDuration = false,
+    KeyframeInterpolation? transitionEasing,
+    bool clearTransitionEasing = false,
     String? overrideVideoPath,
     bool clearOverrideVideoPath = false,
     bool? isReversed,
@@ -374,6 +383,9 @@ class VideoSegment {
       speedCurve: clearSpeedCurve ? null : (speedCurve ?? this.speedCurve),
       transitionType: clearTransitionType ? null : (transitionType ?? this.transitionType),
       transitionDuration: clearTransitionDuration ? null : (transitionDuration ?? this.transitionDuration),
+      transitionEasing: clearTransitionEasing || clearTransitionType
+          ? null
+          : (transitionEasing ?? this.transitionEasing),
       overrideVideoPath: clearOverrideVideoPath ? null : (overrideVideoPath ?? this.overrideVideoPath),
       isReversed: isReversed ?? this.isReversed,
       filterId: clearFilterId ? null : (filterId ?? this.filterId),
@@ -435,6 +447,8 @@ class VideoSegment {
       if (speedCurve != null) 'speedCurve': speedCurve!.toJson(),
       'transitionType': transitionType,
       'transitionDuration': transitionDuration,
+      // Only when eased, so every draft without a curve is what it always was.
+      if (transitionEasing != null) 'transitionEasing': transitionEasing!.name,
       'overrideVideoPath': overrideVideoPath,
       'isReversed': isReversed,
       'filterId': filterId,
@@ -500,6 +514,7 @@ class VideoSegment {
       speedCurve: SpeedCurve.fromJson(json['speedCurve']),
       transitionType: json['transitionType'] as String?,
       transitionDuration: (json['transitionDuration'] as num?)?.toDouble(),
+      transitionEasing: _transitionEasingFromJson(json['transitionEasing']),
       overrideVideoPath: json['overrideVideoPath'] as String?,
       isReversed: json['isReversed'] as bool? ?? false,
       // Absent in drafts saved before clips could carry their own filter.
@@ -541,4 +556,12 @@ class VideoSegment {
       chromaKey: ChromaKey.fromJson(json['chromaKey']),
     );
   }
+}
+
+/// A stored transition curve, or null for a straight line — absent, linear,
+/// or a name this build cannot read (which [keyframeInterpolationByName]
+/// already reads as linear).
+KeyframeInterpolation? _transitionEasingFromJson(Object? name) {
+  final easing = keyframeInterpolationByName(name);
+  return easing == KeyframeInterpolation.linear ? null : easing;
 }

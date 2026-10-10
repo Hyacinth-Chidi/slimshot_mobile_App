@@ -11,7 +11,7 @@ import com.techfamz.slimshotai.nativepreview.gl.TransitionShaders
  * receives has already been truncated for playback, so deriving the window from
  * clip boundaries would place it inside the wrong clip.
  */
-data class NativeTimelineTransitionIntent(
+internal data class NativeTimelineTransitionIntent(
     val leftClipId: String,
     val rightClipId: String,
     val leftClipIndex: Int,
@@ -20,6 +20,12 @@ data class NativeTimelineTransitionIntent(
     val durationSeconds: Double,
     val timelineStartSeconds: Double,
     val timelineEndSeconds: Double,
+    /**
+     * How the picture travels through the window — the keyframe curves, so a
+     * transition eases exactly as a keyframe does. Linear unless the seam
+     * carries one; the wire omits it then.
+     */
+    val easing: KeyframeInterpolation = KeyframeInterpolation.LINEAR,
 ) {
     /**
      * Stable identity for this window. The renderer tags its captured outgoing
@@ -41,12 +47,31 @@ data class NativeTimelineTransitionIntent(
             .toFloat()
     }
 
+    /**
+     * How far the **picture** has travelled at [timelineSeconds]: [progressAt]
+     * through [easing]. The shader's progress, in preview and export alike.
+     * The sound's crossfade keeps [progressAt] — an eased crossfade would surge
+     * or, under a bounce, swing back, where the picture only changes pace.
+     */
+    fun pictureProgressAt(timelineSeconds: Double): Float =
+        applyKeyframeEasing(easing, progressAt(timelineSeconds).toDouble()).toFloat()
+
     private companion object {
         const val MIN_DURATION_SECONDS = 0.001
     }
 }
 
-object NativeTimelineTransitionIntents {
+internal object NativeTimelineTransitionIntents {
+
+    /**
+     * Whether [a] and [b] are the same windows of the same transitions, easing
+     * aside. Easing changes only the shader's progress, which the engine reads
+     * every tick, so an edit that only re-eases a seam need not rebuild a lane.
+     */
+    fun sameWindows(
+        a: List<NativeTimelineTransitionIntent>,
+        b: List<NativeTimelineTransitionIntent>,
+    ): Boolean = a.size == b.size && a.indices.all { i -> a[i] == b[i].copy(easing = a[i].easing) }
 
     /**
      * Reads the `transitions` array the Dart composer emits.
@@ -77,6 +102,7 @@ object NativeTimelineTransitionIntents {
                 durationSeconds = map.number("durationSeconds") ?: (end - start),
                 timelineStartSeconds = start,
                 timelineEndSeconds = end,
+                easing = keyframeInterpolationByName(map["easing"] as? String),
             )
         }
     }

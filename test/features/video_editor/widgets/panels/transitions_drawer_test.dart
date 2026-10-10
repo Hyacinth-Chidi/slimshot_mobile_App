@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/logic/transitions/transition_preview_frames.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_segment.dart';
@@ -207,5 +208,32 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('a cut has no curve to set', (tester) async {
+    await pump(tester, notifierWith());
+    expect(find.byKey(const Key('transition_easing')), findsNothing);
+  });
+
+  testWidgets('the curve opens the keyframe easing sheet, and a choice '
+      'applies and plays', (tester) async {
+    final n = notifierWith(transition: 'dissolve');
+    final chosen = <String>[];
+    await pump(tester, n, onChosen: chosen.add);
+
+    await tester.tap(find.byKey(const Key('transition_easing')));
+    // Let the sheet slide fully up; the tiles loop for ever, so never settle.
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('Quadratic'), findsOneWidget);
+
+    await tester.tap(find.text('Quadratic'));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text('Ease'));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(n.state.segments.first.transitionEasing, KeyframeInterpolation.quadInOut);
+    expect(chosen, ['a']);
   });
 }

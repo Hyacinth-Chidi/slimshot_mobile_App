@@ -31,12 +31,16 @@ import 'screens/workspace_screen.dart';
 import 'screens/main_shell_screen.dart';
 
 import 'features/sharing/share_intent_service.dart';
+import 'core/legal/third_party_licences.dart';
 
 Future<void> main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   // Use the system gallery sheet for picking rather than the Files app.
   MediaPickerService.enableAndroidPhotoPicker();
+  // Notices for code the app ships that no package declares (the ported
+  // transitions), on Flutter's licences page in Settings.
+  registerThirdPartyLicences();
   // `AdService.enabled` (interstitials, Pro-unlock ads) is off. Credit ads
   // start the SDK themselves, after Google's consent step, on the first
   // Watch an ad (`PluginRewardedAdPlayer`).

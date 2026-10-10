@@ -425,7 +425,7 @@ internal class VideoExportEngine(
                         renderer.setTransition(
                             TransitionDraw(
                                 type = window.type,
-                                progress = window.progressAt(t),
+                                progress = window.pictureProgressAt(t),
                                 outgoingLane = outgoing.laneIndex,
                                 incomingLane = incoming.laneIndex,
                             ),

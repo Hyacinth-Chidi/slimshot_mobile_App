@@ -8,6 +8,7 @@ import '../core/widgets/colour_field_backdrop.dart';
 import '../core/utils/file_utils.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/responsive_layout.dart';
+import '../core/legal/third_party_licences.dart';
 import '../core/widgets/settings_rows.dart';
 import '../features/account/widgets/settings_account_section.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -161,6 +162,12 @@ class SettingsScreen extends StatelessWidget {
                                   }
                                 }
                               },
+                            ),
+                            SettingsItem(
+                              icon: LucideIcons.fileText,
+                              title: 'Open-source licences',
+                              subtitle: 'Notices for code SlimShot uses',
+                              onTap: () => openSourceLicences(context),
                             ),
                           ],
                         ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.1),

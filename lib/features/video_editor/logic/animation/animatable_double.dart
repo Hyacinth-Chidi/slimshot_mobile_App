@@ -301,6 +301,11 @@ class Keyframe {
       'Keyframe($progress -> $value, ${interpolation.name})';
 }
 
+/// Reads a persisted curve name — [_interpolationByName], for the curves a
+/// transition borrows from the keyframes.
+KeyframeInterpolation keyframeInterpolationByName(Object? name) =>
+    _interpolationByName(name);
+
 /// An interpolation name that this build does not know degrades to the default
 /// rather than throwing — a draft from a newer build must still open.
 KeyframeInterpolation _interpolationByName(Object? name) {

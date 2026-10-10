@@ -1025,6 +1025,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       isReversed: segment.isReversed,
       transitionType: segment.transitionType,
       transitionDuration: segment.transitionDuration,
+      transitionEasing: segment.transitionEasing,
       // Both halves are the same footage with the same look and the same
       // placement; a split is a cut, not a reason to lose either.
       filterId: segment.filterId,
@@ -2628,7 +2629,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// a window with no incoming clip.
   void setSegmentTransition(String? type, [double? duration]) {
     if (state.transitionAppliesToAll) {
-      _applyTransitionToAllSeams(type, duration);
+      _applyTransitionToAllSeams(type, duration, _selectedSeam()?.transitionEasing);
       return;
     }
 
@@ -2651,7 +2652,63 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     state = state.copyWith(segments: updatedSegments);
   }
 
-  void _applyTransitionToAllSeams(String? type, double? duration) {
+  /// The seam the transition sheet is editing, or null.
+  VideoSegment? _selectedSeam() {
+    final id = state.selectedTransitionSegmentId;
+    if (id == null) return null;
+    for (final segment in state.segments) {
+      if (segment.id == id) return segment;
+    }
+    return null;
+  }
+
+  /// Sets how the picture travels through the selected seam's transition —
+  /// every seam's under Apply to all — as one undo step. Linear is stored as
+  /// none. A cut has nothing to ease, and the same curve again changes
+  /// nothing, so neither takes an undo step.
+  void setSegmentTransitionEasing(KeyframeInterpolation easing) {
+    final stored = easing == KeyframeInterpolation.linear ? null : easing;
+    final seam = _selectedSeam();
+    if (seam == null || seam.transitionType == null) return;
+    final index = state.segments.indexOf(seam);
+    if (index >= state.segments.length - 1) return;
+
+    if (state.transitionAppliesToAll) {
+      final last = state.segments.length - 1;
+      final changes = [
+        for (var i = 0; i < last; i++)
+          if (state.segments[i].transitionType != null &&
+              state.segments[i].transitionEasing != stored)
+            i,
+      ];
+      if (changes.isEmpty) return;
+      saveStateForUndo();
+      final updated = [...state.segments];
+      for (final i in changes) {
+        updated[i] = updated[i].copyWith(
+          transitionEasing: stored,
+          clearTransitionEasing: stored == null,
+        );
+      }
+      state = state.copyWith(segments: updated);
+      return;
+    }
+
+    if (seam.transitionEasing == stored) return;
+    saveStateForUndo();
+    final updated = [...state.segments];
+    updated[index] = seam.copyWith(
+      transitionEasing: stored,
+      clearTransitionEasing: stored == null,
+    );
+    state = state.copyWith(segments: updated);
+  }
+
+  void _applyTransitionToAllSeams(
+    String? type,
+    double? duration, [
+    KeyframeInterpolation? easing,
+  ]) {
     if (state.segments.length < 2) return;
 
     saveStateForUndo();
@@ -2670,6 +2727,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
               clearTransitionType: type == null,
               transitionDuration: duration,
               clearTransitionDuration: duration == null,
+              transitionEasing: easing,
+              clearTransitionEasing: easing == null,
             ),
       ],
     );
@@ -2700,6 +2759,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       _applyTransitionToAllSeams(
         selected.transitionType,
         selected.transitionDuration,
+        selected.transitionEasing,
       );
     }
   }

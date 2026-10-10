@@ -149,7 +149,7 @@ class VideoEditorTimelineComposer {
       ),
       videoClips: videoClips,
       playbackClips: _composePlaybackClips(videoClips),
-      transitions: _composeTransitions(videoClips, transitionDurations),
+      transitions: _composeTransitions(videoClips, transitionDurations, segments),
       audioClips: state.audioTracks
           .map(_composeAudioClip)
           .toList(growable: false),
@@ -358,6 +358,7 @@ class VideoEditorTimelineComposer {
   List<EditorTimelineTransition> _composeTransitions(
     List<EditorTimelineVideoClip> clips,
     List<double?> transitionDurations,
+    List<VideoSegment> segments,
   ) {
     final transitions = <EditorTimelineTransition>[];
 
@@ -381,6 +382,8 @@ class VideoEditorTimelineComposer {
           // closes where the outgoing clip ends.
           timelineStartSeconds: left.timelineEnd - duration,
           timelineEndSeconds: left.timelineEnd,
+          // One clip per segment, in order, so the index is the segment's.
+          easing: segments[index].transitionEasing,
         ),
       );
     }

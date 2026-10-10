@@ -539,6 +539,23 @@ transition still links the shared vertex shader**, and a test pins it. **The six
 the row** rather than scroll it — at natural width they ran past a phone's edge, hiding 3D —
 each label scaled down where large text would not fit.
 
+**Easing on transitions** (Stage 2 part 3; spec `docs/superpowers/specs/2026-10-10-transitions-easing-design.md`;
+**awaiting device verification**). A curve button beside the duration opens the keyframes' own
+easing sheet; each choice applies and plays on the canvas. **The picture only**:
+`NativeTimelineTransitionIntent.pictureProgressAt` is the window's progress through the curve,
+read by the shader in both engines, while the sound's equal-power crossfade keeps `progressAt` —
+an eased crossfade would surge, and a bounce would swing the sound back. Per seam on
+`VideoSegment.transitionEasing`, **null for a straight line, linear never stored**, so a seam
+without a curve writes nothing new to the draft or the engine. **Clearing a transition clears its
+easing inside `copyWith`**, which is what covers None, reorder, a split's left half and the last
+seam without each site remembering; a split's right half carries it. An easing-only edit takes the
+engine's soft path (`sameWindows` sets easing aside). The tiles stay linear.
+
+**Open-source licences** (`core/legal/third_party_licences.dart`): the GL Transitions MIT notice
+and every ported author are registered in `main()`, and Settings → LEGAL opens Flutter's
+`LicensePage` on the root navigator. **A new port adds its author to `kGlTransitionsAuthors`** —
+the credit beside the shader in `LayeredTransitions.kt` does not ship in the APK.
+
 ### Conventions
 
 - **State:** Riverpod `StateNotifier` + `.autoDispose`. Hand-written immutable state, no `freezed`.

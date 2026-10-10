@@ -802,7 +802,7 @@ internal class TimelinePlaybackEngine(
                 renderer.setTransition(
                     TransitionDraw(
                         type = window.type,
-                        progress = window.progressAt(target),
+                        progress = window.pictureProgressAt(target),
                         outgoingLane = outgoing.laneIndex,
                         incomingLane = incoming.laneIndex,
                     ),
@@ -1387,7 +1387,7 @@ internal class TimelinePlaybackEngine(
             renderer.setTransition(
                 TransitionDraw(
                     type = window.type,
-                    progress = window.progressAt(position),
+                    progress = window.pictureProgressAt(position),
                     outgoingLane = outgoing.laneIndex,
                     incomingLane = incoming.laneIndex,
                 ),
@@ -1657,7 +1657,9 @@ internal class TimelinePlaybackEngine(
     ): Boolean {
         if (clips.isEmpty()) return false
         if (clips.size != next.size) return false
-        if (transitions != nextTransitions) return false
+        // Easing aside: it only shapes the shader's progress, read every tick,
+        // so re-easing a seam adopts softly. Any other transition change rebuilds.
+        if (!NativeTimelineTransitionIntents.sameWindows(transitions, nextTransitions)) return false
 
         for (i in clips.indices) {
             val a = clips[i]

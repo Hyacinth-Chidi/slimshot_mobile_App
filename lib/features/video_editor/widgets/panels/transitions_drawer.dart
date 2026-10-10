@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/animation/animatable_double.dart';
 import '../../logic/transitions/transition_catalog.dart';
 import '../../logic/transitions/transition_preview_frames.dart';
 import '../../providers/transition_preview_provider.dart';
@@ -12,6 +13,7 @@ import '../../providers/video_editor_notifier.dart';
 import '../text_overlay/text_preview_tile.dart';
 import 'apply_to_all_toggle.dart';
 import 'editor_sheet.dart';
+import 'keyframe_easing_sheet.dart';
 
 /// One turn of every tile's loop: a rest, the transition, a rest.
 const Duration _kTileLoop = Duration(milliseconds: 1800);
@@ -200,6 +202,35 @@ class _TransitionsDrawerState extends ConsumerState<TransitionsDrawer>
                           '${currentDuration.toStringAsFixed(1)}s',
                           style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
                           textAlign: TextAlign.right,
+                        ),
+                      ),
+                      // How the picture travels through the window — the
+                      // keyframes' own easing sheet, so a curve means the
+                      // same thing on a seam as on a diamond. Lit while the
+                      // seam is eased; each choice plays on the canvas, as a
+                      // tile does.
+                      GestureDetector(
+                        key: const Key('transition_easing'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => showKeyframeEasingSheet(
+                          context,
+                          current: activeSegment.transitionEasing ??
+                              KeyframeInterpolation.linear,
+                          onSelected: (easing) {
+                            notifier.setSegmentTransitionEasing(easing);
+                            widget.onTransitionChosen
+                                ?.call(resolvedTargetSegmentId);
+                          },
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 12, top: 8, bottom: 8),
+                          child: Icon(
+                            LucideIcons.spline,
+                            size: 20,
+                            color: activeSegment.transitionEasing != null
+                                ? AppColors.primaryStart
+                                : AppColors.textSecondary,
+                          ),
                         ),
                       ),
                     ],

@@ -91,12 +91,19 @@ class EditorTimelineTransition {
     required this.durationSeconds,
     required this.timelineStartSeconds,
     required this.timelineEndSeconds,
+    this.easing,
   });
 
   final String leftClipId;
   final String rightClipId;
   final int leftClipIndex;
   final int rightClipIndex;
+
+  /// The curve the picture travels on through the window, or null for a
+  /// straight line. Sent only when set, so an uneased seam's payload is what
+  /// it always was; the engine applies it to the shader's progress alone and
+  /// keeps the sound's crossfade on the plain clock.
+  final KeyframeInterpolation? easing;
 
   /// Persisted transition identifier, matching `EditorTransition.name`.
   final String type;
@@ -115,6 +122,7 @@ class EditorTimelineTransition {
       'durationSeconds': durationSeconds,
       'timelineStartSeconds': timelineStartSeconds,
       'timelineEndSeconds': timelineEndSeconds,
+      if (easing != null) 'easing': easing!.name,
     };
   }
 }
