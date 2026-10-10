@@ -42,10 +42,12 @@ void main() {
     VideoEditorNotifier n, {
     TransitionPreviewRenderer? render,
     ValueChanged<String>? onChosen,
+    double width = 400,
+    double textScale = 1.0,
   }) async {
     // Tall, so the sheet — held to a share of the screen — shows every tile.
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(400, 2400);
+    tester.view.physicalSize = Size(width, 2400);
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
@@ -56,6 +58,11 @@ void main() {
           ),
         ],
         child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
           home: Scaffold(
             body: Align(
               alignment: Alignment.bottomCenter,
@@ -69,13 +76,41 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
   }
 
-  testWidgets('offers only the categories that hold something', (tester) async {
+  testWidgets('offers every category, in order', (tester) async {
     await pump(tester, notifierWith());
-    for (final label in ['Basic', 'Motion', 'Blur']) {
+    final labels = ['Basic', 'Motion', 'Blur', 'Light', 'Glitch', '3D'];
+    for (final label in labels) {
       expect(find.text(label), findsOneWidget);
     }
-    expect(find.text('Glitch'), findsNothing);
-    expect(find.text('3D'), findsNothing);
+    for (var k = 1; k < labels.length; k++) {
+      expect(
+        tester.getTopLeft(find.text(labels[k - 1])).dx <
+            tester.getTopLeft(find.text(labels[k])).dx,
+        isTrue,
+        reason: labels[k],
+      );
+    }
+  });
+
+  testWidgets('all six pills fit a small phone with large text, no scrolling',
+      (tester) async {
+    await pump(tester, notifierWith(), width: 360, textScale: 1.3);
+    final pills = ['Basic', 'Motion', 'Blur', 'Light', 'Glitch', '3D'];
+    for (final label in pills) {
+      final box = tester.getRect(find.text(label));
+      expect(box.left, greaterThanOrEqualTo(0), reason: label);
+      expect(box.right, lessThanOrEqualTo(360), reason: label);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the 3D pill shows the revolves and cubes', (tester) async {
+    await pump(tester, notifierWith());
+    await tester.tap(find.text('3D'));
+    await tester.pump(const Duration(milliseconds: 50));
+    for (final label in ['Revolve L', 'Revolve R', 'Cube L', 'Cube R']) {
+      expect(find.text(label), findsOneWidget);
+    }
   });
 
   testWidgets('opens on Basic with nothing applied, None first', (tester) async {

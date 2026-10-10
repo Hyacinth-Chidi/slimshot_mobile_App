@@ -27,6 +27,19 @@
     "zoomBounce",
     "dreamyZoom",
     "motionBlur",
-    "defocus"
+    "defocus",
+    "overexposure",
+    "filmBurn",
+    "flash",
+    "glitchMemories",
+    "lostSignal",
+    "tvStatic",
+    "datamosh",
+    "glitchDisplace",
+    "flicker",
+    "revolveLeft",
+    "revolveRight",
+    "cubeLeft",
+    "cubeRight"
   ]
 }

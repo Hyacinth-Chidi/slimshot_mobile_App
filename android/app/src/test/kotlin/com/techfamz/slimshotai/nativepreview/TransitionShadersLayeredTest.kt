@@ -114,4 +114,63 @@ class TransitionShadersLayeredTest {
             assertFalse(source.substringAfter("void main()").contains("backgroundAt()"))
         }
     }
+
+    private val part2b = listOf(
+        "overexposure", "filmBurn", "flash",
+        "glitchMemories", "lostSignal", "tvStatic", "datamosh", "glitchDisplace", "flicker",
+        "revolveLeft", "revolveRight", "cubeLeft", "cubeRight",
+    )
+
+    @Test
+    fun `every part-2b transition is drawn, and drawn from layers`() {
+        for (type in part2b) {
+            assertTrue(type, TransitionShaders.isSupported(type))
+            assertTrue(type, TransitionShaders.isLayered(type))
+            val source = TransitionShaders.layeredFragmentFor(type, light = false)
+            assertTrue(type, Regex("""vec4 transition\(vec2 \w+\)""").containsMatchIn(source))
+            assertFalse(type, Regex("""uniform (bool|float|vec2|vec4) (?!uProgress|uCanvasAspect|uBackground|uColor)""")
+                .containsMatchIn(source))
+        }
+    }
+
+    @Test
+    fun `no layered transition hashes with sin-fract`() {
+        // fract(sin(x) * 43758.5) keeps no fraction in mediump, and the glitch
+        // ports lean on their hash for every block they tear.
+        for (type in TransitionShaders.supportedTypes.filter { TransitionShaders.isLayered(it) }) {
+            for (light in listOf(false, true)) {
+                val source = TransitionShaders.layeredFragmentFor(type, light)
+                assertFalse(type, source.contains("43758"))
+            }
+        }
+    }
+
+    @Test
+    fun `the hashing ports ask for highp where the GPU has it`() {
+        for (type in listOf("filmBurn", "lostSignal", "tvStatic", "datamosh", "flicker")) {
+            val source = TransitionShaders.layeredFragmentFor(type, light = false)
+            assertTrue(type, source.contains("#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#endif"))
+            assertTrue(type, source.contains("float slimHash(vec2 p)"))
+        }
+    }
+
+    @Test
+    fun `the left and right revolves and cubes differ only in their direction`() {
+        for ((left, right) in listOf("revolveLeft" to "revolveRight", "cubeLeft" to "cubeRight")) {
+            val a = TransitionShaders.layeredFragmentFor(left, light = false).lines()
+            val b = TransitionShaders.layeredFragmentFor(right, light = false).lines()
+            assertEquals(left, a.size, b.size)
+            assertEquals(left, 1, a.zip(b).count { (x, y) -> x != y })
+        }
+    }
+
+    @Test
+    fun `the part-2b light versions are the step-heavy ones`() {
+        for (type in listOf("filmBurn", "revolveLeft", "revolveRight")) {
+            assertTrue(type, TransitionShaders.hasLightVersion(type))
+        }
+        for (type in part2b - setOf("filmBurn", "revolveLeft", "revolveRight")) {
+            assertFalse(type, TransitionShaders.hasLightVersion(type))
+        }
+    }
 }

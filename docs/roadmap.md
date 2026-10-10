@@ -65,9 +65,9 @@ groundwork first, then the ports and the sheet, then easing.
   - **2a — done, device-verified 2026-10-10.** The sheet (category pills, tiles playing the
     engine-drawn transition, a tap playing it on the canvas), the Basic/Motion/Blur ports and the
     three signatures (Whip Pan, Shake, Zoom Bounce). Spec `docs/superpowers/specs/2026-10-10-transitions-sheet-and-ports-design.md`.
-  - **2b — next.** Light, Glitch and 3D: Overexposure, FilmBurn, Drop_Zone_Flicker,
-    GlitchMemories, old_tv_lost_signal, StaticFade, StripDatamoshGlitch, GlitchDisplace,
-    Revolve_Left (×2).
+  - **2b — built, awaiting device verification.** Light, Glitch and 3D: Overexpose, Film Burn,
+    Flash (ours); RGB Split, Lost Signal, Static, Datamosh, Displace, Flicker; Revolve L/R, Cube
+    L/R. Spec `docs/superpowers/specs/2026-10-10-transitions-part2b-design.md`.
 - **Part 3 — easing** (item 6).
 
 4. **Port a shortlist from [GL Transitions](https://github.com/gl-transitions/gl-transitions).**

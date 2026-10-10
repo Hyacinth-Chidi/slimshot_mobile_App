@@ -243,46 +243,60 @@ class _TransitionsDrawerState extends ConsumerState<TransitionsDrawer>
 
   /// The pills, in the shape the effects and easing sheets use: a filled
   /// capsule for the one showing, plain text otherwise.
+  ///
+  /// **They share the row rather than scroll it.** Six pills at their natural
+  /// width run past a phone's edge, and a category that has to be scrolled to
+  /// is one most people never find — so each takes an equal share, its label
+  /// scaled down where large text would not fit.
   Widget _categoryRow(
     List<TransitionCategory> categories,
     TransitionCategory showing,
   ) {
-    return SizedBox(
-      height: 36,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: categories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final category = categories[index];
-          final isActive = category == showing;
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              if (isActive) return;
-              setState(() => _category = category);
-              // A grid replaced mid-scroll never reports the scroll's end.
-              if (!_clock.isAnimating) _clock.repeat();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isActive ? AppColors.highlight : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                category.label,
-                style: TextStyle(
-                  color: isActive ? AppColors.textPrimary : AppColors.textSecondary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        height: 36,
+        child: Row(
+          children: [
+            for (var index = 0; index < categories.length; index++) ...[
+              if (index > 0) const SizedBox(width: 4),
+              Expanded(child: _categoryPill(categories[index], showing)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _categoryPill(TransitionCategory category, TransitionCategory showing) {
+    final isActive = category == showing;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (isActive) return;
+        setState(() => _category = category);
+        // A grid replaced mid-scroll never reports the scroll's end.
+        if (!_clock.isAnimating) _clock.repeat();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isActive ? AppColors.highlight : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            category.label,
+            maxLines: 1,
+            style: TextStyle(
+              color: isActive ? AppColors.textPrimary : AppColors.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }

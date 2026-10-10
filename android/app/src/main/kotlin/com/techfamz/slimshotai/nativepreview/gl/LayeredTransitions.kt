@@ -552,6 +552,706 @@ vec4 transition(vec2 uv) {
 }
 """
 
+    // ------------------------------------------------- Light, Glitch, 3D
+
+    /**
+     * Asks for `highp` where the GPU has it. The glitch ports draw a fresh
+     * random value per block, row and frame; in `mediump` (fp16 on most
+     * phones) a hash keeps only a few distinct values and the tearing turns
+     * regular. A GPU without high-precision fragments takes [SLIM_HASH] in
+     * `mediump`, which stays finite there — coarser, never broken.
+     */
+    private const val PRECISION_HIGH = """
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#endif
+"""
+
+    /**
+     * The hash every port here uses in place of `fract(sin(x) * 43758.5)`.
+     * Inputs are small — cells, rows, frames — and each is folded into 0..1
+     * before they are combined, so nothing grows past a few hundred: no
+     * overflow in `mediump`, where `p * 443.9` (Drop_Zone_Flicker's) can.
+     */
+    private const val SLIM_HASH = """
+float slimHash(vec2 p) {
+    vec2 q = fract(p * vec2(0.1031, 0.1137) + vec2(0.3719, 0.7123));
+    q += dot(q, q.yx + 3.33);
+    return fract((q.x + q.y) * q.x);
+}
+"""
+
+    /**
+     * Overexposure — Overexposure. License: MIT. Author: Ben Zhang. Changes:
+     * the strength is a constant; the original's `* a` is gone, because a
+     * layer is premultiplied already.
+     */
+    private const val OVEREXPOSURE = """
+const float STRENGTH = 0.6;
+const float PI = 3.141592653589793;
+
+vec4 transition(vec2 uv) {
+    vec4 from = getFromColor(uv);
+    vec4 to = getToColor(uv);
+    float fromM = 1.0 - progress + sin(PI * progress) * STRENGTH;
+    float toM = progress + sin(PI * progress) * STRENGTH;
+    return vec4(from.rgb * fromM + to.rgb * toM, mix(from.a, to.a, progress));
+}
+"""
+
+    /**
+     * Film Burn — FilmBurn. License: MIT. Author: Anastasia Dunbar. Changes:
+     * the seed is a constant; loops count in `int`; [SLIM_HASH] for each of
+     * its sin-fract hashes; the blur's per-tap scatter hashes the tap and the
+     * pixel. Its leaks are light, so they are added over the whole frame,
+     * background included — a burn on the film, not on the picture. The
+     * lightest preview draws 5 leaks and 12 blur taps, the brightness kept.
+     */
+    private const val FILM_BURN = """
+$PRECISION_HIGH
+$SLIM_HASH
+const float SEED = 2.31;
+const float PI = 3.14159265358979323;
+const int SPOTS = 13;
+const int STEPS = 50;
+
+float sigmoid(float x, float a) {
+    float b = pow(x * 2.0, a) / 2.0;
+    if (x > 0.5) {
+        b = 1.0 - pow(2.0 - (x * 2.0), a) / 2.0;
+    }
+    return b;
+}
+
+float rand(float co) {
+    return slimHash(vec2(co * 7.0, SEED));
+}
+
+float apow(float a, float b) { return pow(abs(a), b) * sign(b); }
+vec3 pow3(vec3 a, vec3 b) { return vec3(apow(a.r, b.r), apow(a.g, b.g), apow(a.b, b.b)); }
+float smoothMix(float a, float b, float c) { return mix(a, b, sigmoid(c, 2.0)); }
+
+float random(vec2 co, float shft) {
+    co += 10.0;
+    return smoothMix(
+        slimHash(co + vec2(floor(shft) * 1.618, SEED * 3.0)),
+        slimHash(co + vec2(floor(shft + 1.0) * 1.618, SEED * 3.0)),
+        fract(shft)
+    );
+}
+
+float smoothRandom(vec2 co, float shft) {
+    return smoothMix(
+        smoothMix(random(floor(co), shft), random(floor(co + vec2(1.0, 0.0)), shft), fract(co.x)),
+        smoothMix(random(floor(co + vec2(0.0, 1.0)), shft), random(floor(co + vec2(1.0, 1.0)), shft), fract(co.x)),
+        fract(co.y)
+    );
+}
+
+vec4 blendedColor(vec2 p) {
+    return mix(getFromColor(p), getToColor(p), sigmoid(progress, 10.0));
+}
+
+vec4 transition(vec2 p) {
+    vec3 f = vec3(0.0);
+    for (int k = 0; k < SPOTS; k++) {
+        float i = float(k);
+        f += sin(((p.x * rand(i) * 6.0) + (progress * 8.0)) + rand(i + 1.43))
+            * sin(((p.y * rand(i + 4.4) * 6.0) + (progress * 6.0)) + rand(i + 2.4));
+        f += 1.0 - clamp(length(p - vec2(
+            smoothRandom(vec2(progress * 1.3), i + 1.0),
+            smoothRandom(vec2(progress * 0.5), i + 6.25)
+        )) * mix(20.0, 70.0, rand(i)), 0.0, 1.0);
+    }
+    f *= 13.0 / float(SPOTS);
+    f += 4.0;
+    f /= 11.0;
+    f = pow3(f * vec3(1.0, 0.7, 0.6), vec3(1.0, 2.0 - sin(progress * PI), 1.3));
+    f *= sin(progress * PI);
+
+    p -= 0.5;
+    p *= 1.0 + (smoothRandom(vec2(progress * 5.0), 6.3) * sin(progress * PI) * 0.05);
+    p += 0.5;
+
+    vec4 blurred = vec4(0.0);
+    float blurAmount = sin(progress * PI) * 0.03;
+    for (int k = 0; k < STEPS; k++) {
+        float i = float(k);
+        float angle = degrees((i / float(STEPS)) * 360.0);
+        vec2 q = vec2(cos(angle), sin(angle)) * (slimHash(vec2(i, (p.x + p.y) * 517.0)) + blurAmount);
+        blurred += blendedColor(p + q * blurAmount);
+    }
+    blurred /= float(STEPS);
+    return blurred + vec4(f, 0.0);
+}
+"""
+
+    /**
+     * Flash — ours. The cut hides behind a short white flash: nothing at the
+     * ends, full white at the middle, bright for about a fifth of the window.
+     * White over the whole frame, bars included, as Fade White is.
+     */
+    private const val FLASH = """
+vec4 transition(vec2 uv) {
+    vec4 picture = progress < 0.5 ? getFromColor(uv) : getToColor(uv);
+    float flash = pow(1.0 - abs(2.0 * progress - 1.0), 3.0);
+    return mix(picture, vec4(1.0), flash);
+}
+"""
+
+    /**
+     * Glitch — GlitchMemories. License: MIT. Author: Gunnar Roth, from
+     * natewave's work. Changes: alpha is the green sample's rather than 1.
+     * The original's block is `floor(p / 16)`, which for uv in 0..1 is always
+     * 0: the whole frame shifts as one, stepping with progress — kept as it is.
+     */
+    private const val GLITCH_MEMORIES = """
+vec4 transition(vec2 p) {
+    vec2 uvNoise = floor(vec2(progress) * vec2(1200.0, 3500.0)) / vec2(64.0);
+    vec2 dist = progress > 0.0 ? (fract(uvNoise) - 0.5) * 0.3 * (1.0 - progress) : vec2(0.0);
+    vec2 red = p + dist * 0.2;
+    vec2 green = p + dist * 0.3;
+    vec2 blue = p + dist * 0.5;
+    vec4 g = mix(getFromColor(green), getToColor(green), progress);
+    return vec4(
+        mix(getFromColor(red), getToColor(red), progress).r,
+        g.g,
+        mix(getFromColor(blue), getToColor(blue), progress).b,
+        g.a
+    );
+}
+"""
+
+    /**
+     * Lost Signal — old_tv_lost_signal. License: MIT. Author: mernking
+     * (gitlab.com/Godswork). Changes: [SLIM_HASH], the tracking lines
+     * re-drawn on each of thirty steps rather than hashed from a continuous
+     * progress; the scanline darkening is on the picture, scaled by its
+     * coverage, so the bars stay clean.
+     */
+    private const val LOST_SIGNAL = """
+$PRECISION_HIGH
+$SLIM_HASH
+const float PI = 3.14159265;
+
+vec4 transition(vec2 uv) {
+    float p = progress;
+    float strength = sin(p * PI);
+    vec4 color = mix(getFromColor(uv), getToColor(uv), p);
+
+    float lineY = floor(uv.y * 120.0);
+    float line = step(0.92, slimHash(vec2(lineY, floor(p * 30.0))));
+    float drift = sin(uv.y * 30.0 + p * 10.0) * 0.02 * strength;
+    vec2 shifted = uv + vec2(drift, 0.0);
+    vec4 lineColor = mix(getFromColor(shifted), getToColor(shifted), p);
+    color = mix(color, lineColor, line * strength);
+
+    color.rgb -= sin(uv.y * 900.0) * 0.03 * strength * color.a;
+    return color;
+}
+"""
+
+    /**
+     * Static — StaticFade. License: MIT. Author: Ben Lucas. Changes: the noise
+     * size and brightness are constants; [SLIM_HASH], the snow re-drawn on
+     * each of sixty steps. The snow is opaque, so it covers the bars too —
+     * a screen of static, not static on the picture.
+     */
+    private const val TV_STATIC = """
+$PRECISION_HIGH
+$SLIM_HASH
+const float NOISE_PIXELS = 200.0;
+const float LUMINOSITY = 0.8;
+
+float staticIntensity(float t) {
+    float transitionProgress = abs(2.0 * (t - 0.5));
+    float threshold = 1.2 * (1.0 - transitionProgress) - 0.1;
+    return min(1.0, threshold);
+}
+
+vec4 transition(vec2 uv) {
+    vec4 picture = mix(getFromColor(uv), getToColor(uv), step(0.5, progress));
+    vec2 cell = floor(uv * NOISE_PIXELS);
+    float frame = floor(progress * 60.0);
+    vec3 snow = LUMINOSITY * vec3(
+        slimHash(cell + vec2(frame * 2.0, frame * 3.0)),
+        slimHash(cell + vec2(frame * 3.0 + 401.0, frame * 5.0)),
+        slimHash(cell + vec2(frame * 5.0, frame * 7.0 + 809.0))
+    );
+    float covered = step(slimHash(cell + vec2(57.0, 113.0)), staticIntensity(progress));
+    return mix(picture, vec4(snow, 1.0), covered);
+}
+"""
+
+    /**
+     * Datamosh — StripDatamoshGlitch. License: MIT. Author: bread. Changes:
+     * the parameters are constants; [SLIM_HASH] for both hashes; alpha is the
+     * green sample's rather than 1. Damage to the picture — its noise — is
+     * scaled by its coverage; its light — the sparks and the strobe — is laid
+     * over the whole frame.
+     */
+    private const val DATAMOSH = """
+$PRECISION_HIGH
+$SLIM_HASH
+const float STRENGTH = 1.0;
+const float HORIZONTAL_BARS = 42.0;
+const float VERTICAL_SLITS = 18.0;
+const float TEAR = 0.18;
+const float CHROMA = 0.032;
+const float RESIDUE = 0.62;
+const float NOISE_AMOUNT = 0.16;
+const float SCAN_AMOUNT = 0.13;
+const float FLASH_AMOUNT = 0.20;
+const float PI = 3.141592653589793;
+
+float hash1(float n) { return slimHash(vec2(n, 17.0)); }
+float sat(float v) { return clamp(v, 0.0, 1.0); }
+float burst() { return pow(max(0.0, sin(progress * PI)), 0.42) * STRENGTH; }
+vec2 safeUv(vec2 uv) { return clamp(uv, vec2(0.0), vec2(1.0)); }
+
+float stripeY(vec2 uv, float density, float seed, float minWidth, float maxWidth) {
+    float y = uv.y * density + seed * 0.137;
+    float id = floor(y);
+    float f = fract(y);
+    float c = slimHash(vec2(id, seed));
+    float w = mix(minWidth, maxWidth, slimHash(vec2(id + 9.17, seed + 2.31)));
+    return 1.0 - smoothstep(w, w + 0.018, abs(f - c));
+}
+
+float stripeX(vec2 uv, float density, float seed, float minWidth, float maxWidth) {
+    float x = uv.x * density + seed * 0.091;
+    float id = floor(x);
+    float f = fract(x);
+    float c = slimHash(vec2(id, seed + 41.0));
+    float w = mix(minWidth, maxWidth, slimHash(vec2(id + 4.7, seed + 8.9)));
+    return 1.0 - smoothstep(w, w + 0.012, abs(f - c));
+}
+
+float brokenGate(vec2 uv, float row, float rnd, float frame) {
+    float segs = mix(1.0, 9.0, slimHash(vec2(row, frame + 44.0)));
+    float seg = floor(uv.x * segs);
+    return step(0.16, slimHash(vec2(seg, row + frame * 3.0 + rnd)));
+}
+
+float horizontalMask(vec2 uv, float frame) {
+    float r1 = floor((uv.y + hash1(frame) * 0.031) * HORIZONTAL_BARS * 0.38);
+    float r2 = floor((uv.y + hash1(frame + 2.0) * 0.013) * HORIZONTAL_BARS);
+    float r3 = floor((uv.y + hash1(frame + 7.0) * 0.006) * HORIZONTAL_BARS * 3.4);
+
+    float thick = stripeY(uv, HORIZONTAL_BARS * 0.38, frame + 1.0, 0.035, 0.22);
+    float mid = stripeY(uv, HORIZONTAL_BARS, frame + 4.0, 0.014, 0.11);
+    float hair = stripeY(uv, HORIZONTAL_BARS * 3.4, frame + 9.0, 0.004, 0.035);
+
+    thick *= step(0.42, slimHash(vec2(r1, frame + 10.0)));
+    mid *= step(0.48, slimHash(vec2(r2, frame + 20.0)));
+    hair *= step(0.62, slimHash(vec2(r3, frame + 30.0)));
+
+    thick *= brokenGate(uv, r1, slimHash(vec2(r1, frame)), frame);
+    mid *= brokenGate(uv, r2, slimHash(vec2(r2, frame)), frame + 3.0);
+
+    return sat(max(thick, max(mid, hair)));
+}
+
+float verticalMask(vec2 uv, float frame) {
+    float col = floor((uv.x + hash1(frame + 12.0) * 0.017) * VERTICAL_SLITS);
+    float slit = stripeX(uv, VERTICAL_SLITS, frame + 13.0, 0.01, 0.075);
+    slit *= step(0.66, slimHash(vec2(col, frame + 19.0)));
+    return sat(slit);
+}
+
+vec4 chromaFrom(vec2 uv, vec2 s) {
+    uv = safeUv(uv);
+    vec4 c = getFromColor(uv);
+    return vec4(getFromColor(safeUv(uv + s)).r, c.g, getFromColor(safeUv(uv - s)).b, c.a);
+}
+
+vec4 chromaTo(vec2 uv, vec2 s) {
+    uv = safeUv(uv);
+    vec4 c = getToColor(uv);
+    return vec4(getToColor(safeUv(uv - s)).r, c.g, getToColor(safeUv(uv + s)).b, c.a);
+}
+
+vec2 distortUv(vec2 uv, float dir, float b, float h, float v, float frame) {
+    float row = floor(uv.y * HORIZONTAL_BARS);
+    float col = floor(uv.x * VERTICAL_SLITS);
+    float rowRnd = slimHash(vec2(row, frame));
+    float colRnd = slimHash(vec2(col, frame + 27.0));
+    float xTear = (rowRnd - 0.5) * 2.0 * TEAR * b * h;
+    xTear += sin(uv.y * 120.0 + progress * 95.0) * 0.006 * b;
+    float yDrag = (colRnd - 0.5) * 0.13 * b * v;
+    float micro = (slimHash(vec2(row, col + frame)) - 0.5) * 0.018 * b * max(h, v);
+    return uv + vec2(xTear * dir + micro, yDrag);
+}
+
+vec4 transition(vec2 uv) {
+    if (progress <= 0.0) return getFromColor(uv);
+    if (progress >= 1.0) return getToColor(uv);
+
+    float b = burst();
+    float frame = floor(progress * 30.0);
+
+    float h = horizontalMask(uv, frame);
+    float v = verticalMask(uv, frame);
+    float glitch = sat(max(h, v * 0.75));
+
+    float row = floor(uv.y * HORIZONTAL_BARS);
+    float rowRnd = slimHash(vec2(row, frame + 5.0));
+
+    float bandDelay = (rowRnd - 0.5) * 0.30 * h;
+    float reveal = smoothstep(0.18, 0.84, progress + bandDelay);
+
+    vec2 split = vec2(CHROMA * b * (1.0 + 1.7 * glitch), CHROMA * 0.22 * b * v);
+    vec2 fromUv = distortUv(uv, 1.0, b, h, v, frame);
+    vec2 toUv = distortUv(uv, -1.0, b, h, v, frame);
+    vec4 color = mix(chromaFrom(fromUv, split), chromaTo(toUv, split), reveal);
+
+    vec2 smearUv = uv;
+    smearUv.x += (rowRnd - 0.5) * 0.46 * b * h;
+    smearUv.y += (slimHash(vec2(row, frame + 31.0)) - 0.5) * 0.045 * b * h;
+    float sliceReveal = smoothstep(0.28, 0.78, progress + (rowRnd - 0.5) * 0.22);
+    vec4 sliceColor = mix(
+        chromaFrom(smearUv, split * 1.65),
+        chromaTo(smearUv - vec2((rowRnd - 0.5) * 0.18 * b, 0.0), split * 1.65),
+        sliceReveal
+    );
+    color = mix(color, sliceColor, h * b * RESIDUE);
+
+    float hairLine = stripeY(uv, 190.0, frame + 55.0, 0.002, 0.012);
+    hairLine *= step(0.70, slimHash(vec2(floor(uv.y * 190.0), frame + 56.0)));
+    color.rgb += vec3(0.72, 0.90, 1.0) * hairLine * b * 0.28;
+
+    float scan = 0.5 + 0.5 * sin(uv.y * 980.0 + progress * 130.0);
+    color.rgb *= 1.0 - SCAN_AMOUNT * b * scan;
+
+    vec2 nCell = floor(uv * vec2(360.0 * ratio, 210.0));
+    float n = slimHash(nCell + vec2(frame * 7.0, frame * 13.0));
+    color.rgb += (n - 0.5) * NOISE_AMOUNT * b * (0.55 + glitch) * color.a;
+
+    float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+    color.rgb = mix(color.rgb, vec3(luma), 0.18 * b * glitch);
+
+    float strobe = step(0.78, hash1(frame + 3.14)) * pow(b, 1.65);
+    color.rgb += vec3(strobe * FLASH_AMOUNT);
+
+    return vec4(clamp(color.rgb, vec3(0.0), vec3(1.0)), color.a);
+}
+"""
+
+    /**
+     * Displace — GlitchDisplace. License: MIT. Author: Matt DesLauriers.
+     * Changes: the voronoi it computed and never used is gone, and its hash
+     * with it; the reversed `smoothstep(1.0, 0.5, t)` — undefined in GLSL —
+     * is written as `1.0 - smoothstep(0.5, 1.0, t)`, what drivers that take it
+     * return; the grey flash keeps the darker sample's alpha rather than 2.
+     */
+    private const val GLITCH_DISPLACE = """
+vec2 displace(vec4 tex, vec2 texCoord, float dotDepth, float textureDepth, float strength) {
+    vec4 dis = tex * dotDepth + 1.0 - tex * textureDepth;
+    dis.x = dis.x - 1.0 + textureDepth * dotDepth;
+    dis.y = dis.y - 1.0 + textureDepth * dotDepth;
+    return texCoord + vec2(dis.x, dis.y) * strength;
+}
+
+float ease1(float t) {
+    if (t == 0.0 || t == 1.0) return t;
+    return t < 0.5 ? 0.5 * pow(2.0, 20.0 * t - 10.0) : -0.5 * pow(2.0, 10.0 - t * 20.0) + 1.0;
+}
+
+float ease2(float t) {
+    return t == 1.0 ? t : 1.0 - pow(2.0, -10.0 * t);
+}
+
+vec4 transition(vec2 p) {
+    vec4 color1 = getFromColor(p);
+    vec4 color2 = getToColor(p);
+    vec2 disp = displace(color1, p, 0.33, 0.7, 1.0 - ease1(progress));
+    vec2 disp2 = displace(color2, p, 0.33, 0.5, ease2(progress));
+    vec4 dColor1 = getToColor(disp);
+    vec4 dColor2 = getFromColor(disp2);
+    float val = ease1(progress);
+    vec4 darker = min(dColor2, dColor1);
+    vec3 gray = vec3(dot(darker.rgb, vec3(0.299, 0.587, 0.114)));
+    dColor2 = vec4(gray * 2.0, darker.a);
+    color1 = mix(color1, dColor2, smoothstep(0.0, 0.5, progress));
+    color2 = mix(color2, dColor1, 1.0 - smoothstep(0.5, 1.0, progress));
+    return mix(color1, color2, val);
+}
+"""
+
+    /**
+     * Flicker — Drop_Zone_Flicker. License: MIT. Author: bread. Changes: the
+     * parameters are constants; [SLIM_HASH] for its hash, whose `p * 443.9`
+     * overflows `mediump`; alpha is the green sample's rather than 1; its
+     * scanlines and exposure pulses are on the picture, scaled by coverage.
+     * It flashes back to the outgoing clip on purpose — the reference does.
+     */
+    private const val FLICKER = """
+$PRECISION_HIGH
+$SLIM_HASH
+const float FRAME_RATE = 24.0;
+const float RGB_OFFSET = 0.014;
+const float BLOCK_AMOUNT = 0.72;
+const float GHOST_AMOUNT = 0.62;
+const float RED_CYAN = 0.58;
+const float SCANLINE = 0.075;
+
+float sat(float x) { return clamp(x, 0.0, 1.0); }
+vec2 safeUv(vec2 uv) { return clamp(uv, vec2(0.001), vec2(0.999)); }
+
+float frameReveal(float f) {
+    if (f < 0.5) return 0.00;
+    if (f < 1.5) return 0.28;
+    if (f < 2.5) return 0.43;
+    if (f < 3.5) return 0.46;
+    if (f < 4.5) return 0.38;
+    if (f < 5.5) return 0.48;
+    if (f < 6.5) return 0.26;
+    if (f < 7.5) return 0.10;
+    if (f < 8.5) return 0.00;
+    if (f < 9.5) return 0.00;
+    if (f < 10.5) return 0.30;
+    if (f < 11.5) return 0.58;
+    if (f < 12.5) return 1.00;
+    if (f < 13.5) return 0.70;
+    if (f < 14.5) return 0.42;
+    if (f < 15.5) return 0.55;
+    if (f < 16.5) return 0.72;
+    if (f < 17.5) return 0.88;
+    if (f < 18.5) return 0.34;
+    if (f < 19.5) return 0.48;
+    if (f < 20.5) return 0.56;
+    if (f < 21.5) return 0.76;
+    if (f < 22.5) return 0.93;
+    return 1.00;
+}
+
+float frameGlitch(float f) {
+    if (f < 0.5) return 0.00;
+    if (f < 6.5) return 0.92;
+    if (f < 10.5) return 0.38;
+    if (f < 11.5) return 0.78;
+    if (f < 12.5) return 0.12;
+    if (f < 17.5) return 0.74;
+    if (f < 22.5) return 0.88;
+    if (f < 23.5) return 0.28;
+    return 0.00;
+}
+
+vec4 chromaFrom(vec2 uv, float amt) {
+    vec2 o = vec2(amt, 0.0);
+    vec4 c = getFromColor(safeUv(uv));
+    return vec4(getFromColor(safeUv(uv + o)).r, c.g, getFromColor(safeUv(uv - o)).b, c.a);
+}
+
+vec4 chromaTo(vec2 uv, float amt) {
+    vec2 o = vec2(amt, 0.0);
+    vec4 c = getToColor(safeUv(uv));
+    return vec4(getToColor(safeUv(uv - o)).r, c.g, getToColor(safeUv(uv + o)).b, c.a);
+}
+
+float blockMask(vec2 uv, float f) {
+    vec2 big = floor(uv * vec2(4.0, 2.0));
+    vec2 small = floor(uv * vec2(8.0, 4.0));
+    float wide = step(0.48, slimHash(vec2(big.x, f * 1.37)));
+    float chunks = step(0.56, slimHash(small + vec2(f * 2.11, f * 0.73)));
+    float verticalCut = smoothstep(-0.035, 0.035, uv.x - mix(0.18, 0.78, slimHash(vec2(f, 4.7))));
+    return sat(mix(wide, chunks, 0.38) * 0.72 + verticalCut * 0.28);
+}
+
+vec4 transition(vec2 uv) {
+    if (progress <= 0.0) return getFromColor(uv);
+    if (progress >= 1.0) return getToColor(uv);
+
+    float f = floor(progress * FRAME_RATE);
+    float reveal = frameReveal(f);
+    float glitch = frameGlitch(f);
+
+    float rnd = slimHash(vec2(f, 9.13));
+    vec2 jitter = vec2((rnd - 0.5) * 0.042, (slimHash(vec2(f, 2.71)) - 0.5) * 0.010) * glitch;
+    vec2 fromUv = safeUv(uv + jitter);
+    vec2 toUv = safeUv(uv - jitter * 0.55);
+
+    float block = blockMask(uv, f);
+    float localReveal = sat(
+        reveal
+        + (block - 0.5) * BLOCK_AMOUNT * glitch
+        + (slimHash(vec2(f, floor(uv.y * 9.0))) - 0.5) * 0.18 * glitch
+    );
+    localReveal = smoothstep(0.22, 0.78, localReveal);
+
+    vec4 oldClip = chromaFrom(fromUv, RGB_OFFSET * glitch);
+    vec4 newClip = chromaTo(toUv, RGB_OFFSET * glitch);
+    vec4 color = mix(oldClip, newClip, localReveal);
+
+    float leftWash = (1.0 - smoothstep(0.10, 0.78, uv.x)) * glitch;
+    float cyanWash = smoothstep(0.08, 0.62, uv.x) * (1.0 - smoothstep(0.86, 1.0, uv.x)) * glitch;
+    vec3 redGhost = oldClip.rgb * vec3(1.34, 0.42, 0.38);
+    vec3 cyanGhost = newClip.rgb * vec3(0.48, 1.12, 1.24);
+    color.rgb = mix(color.rgb, redGhost, leftWash * RED_CYAN * 0.42);
+    color.rgb = mix(color.rgb, cyanGhost, cyanWash * RED_CYAN * 0.30);
+
+    float oldReturn = glitch * (1.0 - smoothstep(0.94, 1.0, reveal));
+    oldReturn *= 0.18 + 0.52 * (1.0 - abs(localReveal - 0.5) * 2.0);
+    color.rgb = mix(color.rgb, oldClip.rgb, oldReturn * GHOST_AMOUNT);
+
+    float lines = sin((uv.y + f * 0.017) * 1080.0);
+    color.rgb += lines * SCANLINE * glitch * color.a;
+
+    float exposurePulse = (slimHash(vec2(f, 12.4)) - 0.35) * 0.10 * glitch;
+    color.rgb += exposurePulse * color.a;
+
+    return vec4(clamp(color.rgb, vec3(0.0), vec3(1.0)), color.a);
+}
+"""
+
+    /**
+     * Revolve — Revolve_Left. License: MIT. Author: bread. Changes: the
+     * parameters are constants; the motion-blur loop counts in `int`;
+     * `direction` is [direction], -1 for Left as the original ships and +1 for
+     * Right, the swirl's centre mirrored with it. 17 samples, each reading
+     * both layers; the light preview takes 5.
+     */
+    private fun revolve(direction: String) = """
+const float DIRECTION = $direction;
+const vec2 CENTER = vec2(0.5 + 0.04 * DIRECTION, 0.52);
+const float MAX_ROTATION = 1.95;
+const float PEAK_ZOOM = 2.22;
+const float SWIRL = 2.85;
+const float BARREL = 0.38;
+const float MOTION_BLUR = 1.0;
+const float SWITCH_START = 0.30;
+const float SWITCH_END = 0.50;
+const float SHADOW = 0.16;
+const int STEPS = 8;
+
+float sat(float x) { return clamp(x, 0.0, 1.0); }
+
+float ease(float x) {
+    x = sat(x);
+    return x * x * (3.0 - 2.0 * x);
+}
+
+float revolveEnvelope(float t) {
+    float rise = ease((t - 0.10) / 0.33);
+    float fall = 1.0 - ease((t - 0.43) / 0.29);
+    return rise * fall;
+}
+
+vec2 rotate2(vec2 p, float a) {
+    float s = sin(a);
+    float c = cos(a);
+    return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+}
+
+vec2 warpUv(vec2 uv, float t) {
+    float e = revolveEnvelope(t);
+    vec2 p = uv - CENTER;
+    p.x *= ratio;
+    float r = length(p);
+    float edgeSpin = MAX_ROTATION * e;
+    float coreSpin = SWIRL * e * pow(1.0 - sat(r / 0.96), 1.55);
+    p = rotate2(p, -DIRECTION * (edgeSpin + coreSpin));
+    p /= 1.0 + (PEAK_ZOOM - 1.0) * pow(e, 0.85);
+    float rr = length(p);
+    p *= 1.0 + BARREL * e * rr * rr * 2.8;
+    p.x /= ratio;
+    return clamp(p + CENTER, vec2(0.001), vec2(0.999));
+}
+
+vec4 sampleRevolve(vec2 uv, float t) {
+    vec2 p = warpUv(uv, t);
+    return mix(getFromColor(p), getToColor(p), smoothstep(SWITCH_START, SWITCH_END, t));
+}
+
+vec4 transition(vec2 uv) {
+    if (progress <= 0.0) return getFromColor(uv);
+    if (progress >= 1.0) return getToColor(uv);
+
+    float e = revolveEnvelope(progress);
+    float span = 0.060 * MOTION_BLUR * e;
+    vec4 color = vec4(0.0);
+    float total = 0.0;
+    for (int i = -STEPS; i <= STEPS; i++) {
+        float x = float(i) / float(STEPS);
+        float w = 1.0 - abs(x);
+        w = w * w + 0.01;
+        color += sampleRevolve(uv, sat(progress + x * span)) * w;
+        total += w;
+    }
+    color /= total;
+
+    vec2 q = uv - vec2(0.5);
+    q.x *= ratio;
+    color.rgb *= 1.0 - SHADOW * e * smoothstep(0.35, 0.95, length(q));
+    return color;
+}
+"""
+
+    /**
+     * Cube — cube. License: MIT. Author: gre. Changes: the parameters are
+     * constants; its floor reflects over the background rather than over
+     * black. Right is the same cube turned the other way: the geometry is
+     * mirrored ([mirror] 1.0) but never the pictures on its faces.
+     */
+    private fun cube(mirror: String) = """
+const float MIRROR = $mirror;
+const float PERSP = 0.7;
+const float UNZOOM = 0.3;
+const float REFLECTION = 0.4;
+const float FLOATING = 3.0;
+
+vec2 mirrored(vec2 p) { return vec2(mix(p.x, 1.0 - p.x, MIRROR), p.y); }
+vec4 fromAt(vec2 p) { return getFromColor(mirrored(p)); }
+vec4 toAt(vec2 p) { return getToColor(mirrored(p)); }
+
+vec2 project(vec2 p) {
+    return p * vec2(1.0, -1.2) + vec2(0.0, -FLOATING / 100.0);
+}
+
+bool inBounds(vec2 p) {
+    return all(lessThan(vec2(0.0), p)) && all(lessThan(p, vec2(1.0)));
+}
+
+vec4 floorReflection(vec2 pfr, vec2 pto) {
+    vec4 c = vec4(0.0);
+    pfr = project(pfr);
+    if (inBounds(pfr)) {
+        c += fromAt(pfr) * REFLECTION * (1.0 - pfr.y);
+    }
+    pto = project(pto);
+    if (inBounds(pto)) {
+        c += toAt(pto) * REFLECTION * (1.0 - pto.y);
+    }
+    return c;
+}
+
+vec2 xskew(vec2 p, float persp, float center) {
+    float x = mix(p.x, 1.0 - p.x, center);
+    return (
+        (
+            vec2(x, (p.y - 0.5 * (1.0 - persp) * x) / (1.0 + (persp - 1.0) * x))
+            - vec2(0.5 - distance(center, 0.5), 0.0)
+        )
+        * vec2(0.5 / distance(center, 0.5) * (center < 0.5 ? 1.0 : -1.0), 1.0)
+        + vec2(center < 0.5 ? 0.0 : 1.0, 0.0)
+    );
+}
+
+vec4 transition(vec2 uv) {
+    vec2 op = mirrored(uv);
+    float uz = UNZOOM * 2.0 * (0.5 - distance(0.5, progress));
+    vec2 p = -uz * 0.5 + (1.0 + uz) * op;
+    vec2 fromP = xskew((p - vec2(progress, 0.0)) / vec2(1.0 - progress, 1.0), 1.0 - mix(progress, 0.0, PERSP), 0.0);
+    vec2 toP = xskew(p / vec2(progress, 1.0), mix(pow(progress, 2.0), 1.0, PERSP), 1.0);
+    if (inBounds(fromP)) {
+        return fromAt(fromP);
+    } else if (inBounds(toP)) {
+        return toAt(toP);
+    }
+    return floorReflection(fromP, toP);
+}
+"""
+
     /** Every layered transition, by the name the catalog persists. */
     val bodies: Map<String, Body> = mapOf(
         "zoomBlur" to withSteps(ZOOM_BLUR, full = 40, light = 12),
@@ -572,5 +1272,23 @@ vec4 transition(vec2 uv) {
         "dreamyZoom" to Body(DREAMY_ZOOM),
         "motionBlur" to withSteps(MOTION_BLUR, full = 20, light = 8),
         "defocus" to Body(DEFOCUS),
+        "overexposure" to Body(OVEREXPOSURE),
+        "filmBurn" to Body(
+            full = FILM_BURN,
+            light = FILM_BURN
+                .replace("const int SPOTS = 13;", "const int SPOTS = 5;")
+                .replace("const int STEPS = 50;", "const int STEPS = 12;"),
+        ),
+        "flash" to Body(FLASH),
+        "glitchMemories" to Body(GLITCH_MEMORIES),
+        "lostSignal" to Body(LOST_SIGNAL),
+        "tvStatic" to Body(TV_STATIC),
+        "datamosh" to Body(DATAMOSH),
+        "glitchDisplace" to Body(GLITCH_DISPLACE),
+        "flicker" to Body(FLICKER),
+        "revolveLeft" to withSteps(revolve("-1.0"), full = 8, light = 2),
+        "revolveRight" to withSteps(revolve("1.0"), full = 8, light = 2),
+        "cubeLeft" to Body(cube("0.0")),
+        "cubeRight" to Body(cube("1.0")),
     )
 }

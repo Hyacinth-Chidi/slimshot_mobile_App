@@ -29,15 +29,55 @@ void main() {
     expect(EditorTransition.slideScaleLeft.category, TransitionCategory.motion);
   });
 
+  test('the light, glitch and 3D ports sit in their own pills', () {
+    expect(EditorTransition.overexposure.category, TransitionCategory.light);
+    expect(EditorTransition.filmBurn.category, TransitionCategory.light);
+    expect(EditorTransition.flash.category, TransitionCategory.light);
+    for (final t in [
+      EditorTransition.glitchMemories,
+      EditorTransition.lostSignal,
+      EditorTransition.tvStatic,
+      EditorTransition.datamosh,
+      EditorTransition.glitchDisplace,
+      EditorTransition.flicker,
+    ]) {
+      expect(t.category, TransitionCategory.glitch, reason: t.name);
+    }
+    for (final t in [
+      EditorTransition.revolveLeft,
+      EditorTransition.revolveRight,
+      EditorTransition.cubeLeft,
+      EditorTransition.cubeRight,
+    ]) {
+      expect(t.category, TransitionCategory.threeD, reason: t.name);
+    }
+  });
+
+  test('no transition is labelled like a pill', () {
+    // A tile reading "Glitch" under a pill reading "Glitch" is two of one word.
+    final pills = TransitionCategory.values.map((c) => c.label).toSet();
+    for (final t in EditorTransition.values) {
+      expect(pills, isNot(contains(t.label)), reason: t.name);
+    }
+  });
+
   test('only categories that hold something are offered', () {
     final offered = offeredTransitionCategories();
     expect(offered, isNotEmpty);
     for (final category in offered) {
       expect(transitionsIn(category), isNotEmpty, reason: category.name);
     }
-    // Light, Glitch and 3D arrive with part 2b.
-    expect(offered, isNot(contains(TransitionCategory.glitch)));
-    expect(offered.first, TransitionCategory.basic);
+    // Every pill holds something now, in declaration order.
+    expect(offered, TransitionCategory.values);
+  });
+
+  test('a category with nothing in it is not offered', () {
+    expect(
+      offeredTransitionCategories(
+        from: [EditorTransition.cubeLeft, EditorTransition.dissolve],
+      ),
+      [TransitionCategory.basic, TransitionCategory.threeD],
+    );
   });
 
   test('the sheet opens on the category of the transition in use', () {

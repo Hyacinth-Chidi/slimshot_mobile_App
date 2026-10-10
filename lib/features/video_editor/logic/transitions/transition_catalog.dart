@@ -47,7 +47,23 @@ enum EditorTransition {
   zoomBounce('Zoom Bounce', 'zoomin', LucideIcons.maximize2, TransitionCategory.motion),
   dreamyZoom('Dreamy Zoom', 'zoomin', LucideIcons.sparkles, TransitionCategory.blur),
   motionBlur('Motion Blur', 'hblur', LucideIcons.moveHorizontal, TransitionCategory.blur),
-  defocus('Defocus', 'fade', LucideIcons.aperture, TransitionCategory.blur);
+  defocus('Defocus', 'fade', LucideIcons.aperture, TransitionCategory.blur),
+
+  // Part 2b — layered as well. Light is light on the lens: it washes the whole
+  // frame, bars included; Glitch tears the picture.
+  overexposure('Overexpose', 'fadewhite', LucideIcons.sunDim, TransitionCategory.light),
+  filmBurn('Film Burn', 'fadewhite', LucideIcons.flame, TransitionCategory.light),
+  flash('Flash', 'fadewhite', LucideIcons.zap, TransitionCategory.light),
+  glitchMemories('RGB Split', 'pixelize', LucideIcons.layers, TransitionCategory.glitch),
+  lostSignal('Lost Signal', 'pixelize', LucideIcons.signalZero, TransitionCategory.glitch),
+  tvStatic('Static', 'pixelize', LucideIcons.tv, TransitionCategory.glitch),
+  datamosh('Datamosh', 'pixelize', LucideIcons.binary, TransitionCategory.glitch),
+  glitchDisplace('Displace', 'pixelize', LucideIcons.scanLine, TransitionCategory.glitch),
+  flicker('Flicker', 'pixelize', LucideIcons.activity, TransitionCategory.glitch),
+  revolveLeft('Revolve L', 'radial', LucideIcons.rotateCcw, TransitionCategory.threeD),
+  revolveRight('Revolve R', 'radial', LucideIcons.rotateCw, TransitionCategory.threeD),
+  cubeLeft('Cube L', 'slideleft', LucideIcons.box, TransitionCategory.threeD),
+  cubeRight('Cube R', 'slideright', LucideIcons.rotate3d, TransitionCategory.threeD);
 
   const EditorTransition(this.label, this.ffmpegXfadeName, this.icon, this.category);
 
@@ -83,9 +99,8 @@ enum EditorTransition {
 
 /// The pills of the transitions sheet, in the order they are shown.
 ///
-/// Light, Glitch and 3D are declared before they hold anything so the order is
-/// fixed now; [offeredTransitionCategories] leaves out an empty one, so the
-/// sheet never shows a pill that opens on nothing.
+/// [offeredTransitionCategories] leaves out an empty one, so the sheet never
+/// shows a pill that opens on nothing.
 enum TransitionCategory {
   basic('Basic'),
   motion('Motion'),
@@ -106,10 +121,15 @@ List<EditorTransition> transitionsIn(TransitionCategory category) => [
     ];
 
 /// The categories the sheet shows: every one that holds a transition.
-List<TransitionCategory> offeredTransitionCategories() => [
-      for (final category in TransitionCategory.values)
-        if (transitionsIn(category).isNotEmpty) category,
-    ];
+List<TransitionCategory> offeredTransitionCategories({
+  Iterable<EditorTransition> from = EditorTransition.values,
+}) {
+  final held = {for (final transition in from) transition.category};
+  return [
+    for (final category in TransitionCategory.values)
+      if (held.contains(category)) category,
+  ];
+}
 
 /// The category the sheet opens on for a seam carrying [transitionName] —
 /// Basic for none, or for a name this build no longer knows.

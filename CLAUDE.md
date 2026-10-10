@@ -440,7 +440,7 @@ the image and letterboxed it twice.
 ### Transition catalog
 
 `lib/features/video_editor/logic/transitions/transition_catalog.dart` is the single source of truth:
-28 transitions, their labels, icons, categories and FFmpeg `xfade` names (now a record only —
+41 transitions, their labels, icons, categories and FFmpeg `xfade` names (now a record only —
 export is native), plus `resolveTransitionDuration`
 (clamps to 45% of the shorter neighbouring clip). The drawer, the composer, the export mapper and the
 Kotlin shader registry all key off this. Adding a transition = one entry here + one body in
@@ -513,6 +513,20 @@ text grids' three): under the pills, duration and Apply to all, a 45% sheet leav
 the playhead 0.6s before the window (`transitionWindowFor`), plays, and pauses 0.4s after it; any
 pause in between cancels the stop, so it never stops a playback the user started. None plays
 nothing.
+
+**Light, Glitch and 3D — thirteen more** (Stage 2 part 2b; spec
+`docs/superpowers/specs/2026-10-10-transitions-part2b-design.md`; **awaiting device
+verification** — GLSL). Overexpose, Film Burn, Flash (ours); RGB Split, Lost Signal, Static,
+Datamosh, Displace, Flicker; Revolve L/R and Cube L/R. **Every sin-fract hash became
+`slimHash`**, which folds its inputs to 0..1 before combining so it cannot overflow `mediump`
+(Drop_Zone_Flicker's `p * 443.9` did), and the hashing ports ask for `highp` behind
+`#ifdef GL_FRAGMENT_PRECISION_HIGH`; a test fails on any `43758` in a layered source. **Light is
+light on the lens, damage is to the picture**: leaks, flashes, sparks and strobes wash the whole
+frame, bars included, as Fade White does; scanlines, noise and exposure pulses are scaled by the
+picture's coverage. Right is Left mirrored, one line apart (the Cube mirrors its geometry, never
+the pictures on its faces). Light versions: Film Burn and both Revolves. **The six pills share
+the row** rather than scroll it — at natural width they ran past a phone's edge, hiding 3D —
+each label scaled down where large text would not fit.
 
 ### Conventions
 
