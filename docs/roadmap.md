@@ -35,7 +35,7 @@ small, M medium, L large.
 
 ### Stage 1 — quick wins
 
-**Built 2026-10-09 on `stage1-quick-wins`, awaiting device verification.** Building it turned up
+**Done — device-verified by the user and merged 2026-10-10.** Building it turned up
 two older faults, fixed on the branch: a mask's window was drawn upside down in the engine (clips
 and video overlays), and a clip's rotation turned the opposite way to its angle. It also added
 what item 1 needed and did not have: on-canvas handles for an **overlay's** mask (until now only
@@ -54,6 +54,15 @@ a clip's window could be moved or sized on the canvas).
    step. Open question for the design: whether the main track closes the gap it leaves.
 
 ### Stage 2 — transitions, round two (L)
+
+**In three parts, each with its own spec, plan and device test** (agreed 2026-10-10): the engine
+groundwork first, then the ports and the sheet, then easing.
+
+- **Part 1 — lane layers and Zoom Blur. Built on `stage2-transitions-engine`, awaiting device
+  verification.** Spec `docs/superpowers/specs/2026-10-10-transitions-engine-layers-design.md`.
+  Covers item 8's engine half (layers, the speed check, the loud fallback) and the first port.
+- **Part 2 — the ports, our signatures and the sheet** (items 4, 5, 7).
+- **Part 3 — easing** (item 6).
 
 4. **Port a shortlist from [GL Transitions](https://github.com/gl-transitions/gl-transitions).**
    They plug into our engine directly: their `getFromColor` / `getToColor` / `progress` / `ratio`

@@ -447,6 +447,34 @@ Kotlin shader registry all key off this. Adding a transition = one entry here + 
 
 `EditorTransition.name` is persisted into drafts and sent over the channel â€” renaming needs a
 migration. Unknown names (e.g. `circleOpen` from old drafts) degrade to a hard cut, never a crash.
+**`test/fixtures/transition_names.json`** is the one list both sides test against
+(`transition_names_fixture_test.dart`, `TransitionNamesFixtureTest`), so a name the sheet offers and
+the engine lacks fails a test instead of shipping as a hard cut.
+
+**Layered transitions** (Stage 2 part 1; spec `docs/superpowers/specs/2026-10-10-transitions-engine-layers-design.md`;
+**awaiting device verification**). The GL Transitions ports read each clip many times per pixel
+(CrossZoom ~80, FilmBurn ~100), and through `incomingAt`/`outgoingAt` — fit, crop, grade, mask
+and key on *every* read — they would crawl on the low-end target. So a layered transition
+(`TransitionShaders.isLayered`) draws each lane **once per frame into a layer**
+(`layerFragment`: the finished picture premultiplied by its coverage, transparent where no clip is)
+and reads only the two layers through the library's own API (`getFromColor`, `getToColor`,
+`progress`, `ratio`), then lays the result over `backgroundAt()` at the fragment's own position.
+For any blend linear in its inputs that is exactly today's `mix(bg, picture, coverage)`, so masks,
+keys, opacity and a background photo behave as they always have, and the background stays put while
+the clips move. **A port must carry alpha through**: the original's forced `a = 1.0` would paint
+black where the background should show. **The eleven earlier transitions keep their own path,
+byte for byte** — `TransitionShadersGoldenTest` hashes every source they compile; the header's
+`backgroundAt` and `outputColor` were moved into shared constants and the hash proves the header
+assembles to the same text. Layers are frame-sized `RenderTarget`s, allocated on the first layered
+frame, released with the effect targets and when a timeline has no layered transition; a device that
+refuses them plays a dissolve **and says so once**. The blurred background's cover picture draws a
+layered transition as a dissolve — the blur hides the difference. **`TransitionQualityGovernor`**
+(preview only): when the median of 12 layered frames, swap included, is over 45ms, heavy
+transitions drop to their light version (Zoom Blur: 12 steps instead of 40) for the session, said
+once; the export always draws the full version. **Zoom Blur** (`zoomBlur`, CrossZoom, MIT,
+rectalogic) is the first, and the first transition with a shader loop — the only other is
+`BlurPass`; if Zoom Blur shows a plain dissolve-like picture on a device, the loop is the first
+suspect.
 
 ### Conventions
 

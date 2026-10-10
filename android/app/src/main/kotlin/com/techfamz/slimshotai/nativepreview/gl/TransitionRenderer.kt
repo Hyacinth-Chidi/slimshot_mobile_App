@@ -10,6 +10,7 @@ import android.opengl.Matrix
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import com.techfamz.slimshotai.nativepreview.LaneFit
@@ -334,6 +335,23 @@ internal class TransitionRenderer(
         onWarning(message)
     }
     private var blurWarned = false
+
+    /**
+     * The two layers a layered transition reads (`TransitionShaders.isLayered`):
+     * the outgoing lane's and the incoming lane's finished pictures, drawn once
+     * per frame. Allocated on the first layered frame at the frame's size and
+     * reused; dropped with the effect targets and when a timeline no longer
+     * has a layered transition. GL thread only.
+     */
+    private var fromLayer: RenderTarget? = null
+    private var toLayer: RenderTarget? = null
+    private var layersWarned = false
+
+    /** Whether the preview draws heavy transitions in their light version. */
+    private val transitionQuality = TransitionQualityGovernor()
+
+    /** Set by the draw when the frame was a layered transition's; read by [renderFrame]. */
+    private var layeredFrameDrawn = false
 
     /** Letterbox and empty-canvas colour, linear 0..1 RGB. */
     @Volatile
@@ -788,11 +806,22 @@ internal class TransitionRenderer(
      * pays for a `glLinkProgram` in the render path.
      */
     fun warmUpShaders(types: Collection<String>, includeImageVariants: Boolean) {
-        if (released || types.isEmpty()) return
+        if (released) return
         handler.post {
             if (released) return@post
             if (makeRenderTargetCurrent() == null) return@post
+            // A timeline with no layered transition holds no layers: two
+            // frame-sized textures nobody will read.
+            if (types.none { TransitionShaders.isLayered(it) }) releaseLayerTargets()
             for (type in types) {
+                if (TransitionShaders.isLayered(type)) {
+                    // The light version is linked only if the preview ever
+                    // needs it; the full one and the layer programs now.
+                    layeredProgramFor(type, light = false)
+                    layerProgramFor(isImage = false)
+                    if (includeImageVariants) layerProgramFor(isImage = true)
+                    continue
+                }
                 programFor(type, incomingIsImage = false, outgoingIsImage = false)
                 if (!includeImageVariants) continue
                 // A photo can sit on either side of a transition, so both mixed
@@ -1230,6 +1259,8 @@ internal class TransitionRenderer(
         // would fight it for the GL context and the output target.
         if (exportSurface != null) return
         val surface = makeRenderTargetCurrent() ?: return
+        val startedMs = SystemClock.uptimeMillis()
+        layeredFrameDrawn = false
 
         // On this thread with the context current, every draw — so a still or
         // an overlay frame that landed since the last one simply appears.
@@ -1238,6 +1269,18 @@ internal class TransitionRenderer(
         composite(surfaceWidth, surfaceHeight)
 
         egl.swapBuffers(surface)
+
+        // How long a layered frame takes on this phone, swap included — a GPU
+        // that cannot keep up shows here as a swap that waits. Preview only:
+        // this path never runs during an export.
+        if (layeredFrameDrawn &&
+            transitionQuality.record(SystemClock.uptimeMillis() - startedMs)
+        ) {
+            val message = "This phone draws heavy transitions in a lighter version in the " +
+                "preview; the export uses the full version."
+            Log.w(TAG, message)
+            onWarning(message)
+        }
 
         // Progress advances continuously, so keep drawing through the window
         // even on a frame where neither decoder handed us anything new.
@@ -1297,6 +1340,11 @@ internal class TransitionRenderer(
         // blur draws into its own target first.
         val fill = resolveBackgroundFill(viewportWidth, viewportHeight)
 
+        // A layered transition's two layers, drawn before the frame's own
+        // target is bound — each binds its own — so nothing below has to put a
+        // framebuffer back. Null for every other frame.
+        val layers = renderTransitionLayers(viewportWidth, viewportHeight)
+
         val passes = effectPasses
         val scene = if (passes.isEmpty()) {
             null
@@ -1312,7 +1360,7 @@ internal class TransitionRenderer(
             // draw. Every project without an effect is this one.
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
             GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
-            drawScene(fill)
+            drawScene(fill, layers)
             drawPreviewOverlays(viewportWidth, viewportHeight)
             return
         }
@@ -1320,7 +1368,7 @@ internal class TransitionRenderer(
         // Lanes into the scene texture, then the passes over it. `bind` sets the
         // viewport to the target's own size, which is the output's size here.
         scene.bind()
-        drawScene(fill)
+        drawScene(fill, layers)
 
         // Every pass `run` executes writes to one of its own targets — it has to
         // return a sampleable texture, so it cannot use the interface's null
@@ -1388,6 +1436,9 @@ internal class TransitionRenderer(
      * every caller is already on it (teardown and [endExport]).
      */
     private fun releaseEffectTargets() {
+        // The layers are frame-sized like the scene target, and sized to the
+        // export's frame during one, so they go with it.
+        releaseLayerTargets()
         sceneTarget?.release()
         sceneTarget = null
         effectChain.release()
@@ -1501,16 +1552,25 @@ internal class TransitionRenderer(
         return blurChain.run(target.textureId, passes + passes, width, height)
     }
 
-    private fun drawScene(fill: BackgroundFill) {
-        drawLanes(fill, cover = false)
+    private fun drawScene(fill: BackgroundFill, layers: Pair<RenderTarget, RenderTarget>?) {
+        drawLanes(fill, cover = false, layers = layers)
     }
 
     /**
      * Clears to the colour and draws the lanes. [cover] draws each lane
      * cover-fitted, centred and unrotated — the blurred background's picture —
      * instead of placed as the user placed it.
+     *
+     * [layers] are a layered transition's, when this frame has them. Without
+     * them — the blurred background's cover picture, or a device that refused
+     * the buffers — a layered transition is drawn as a dissolve: the blur makes
+     * the two indistinguishable, and a refusal has already been said.
      */
-    private fun drawLanes(fill: BackgroundFill, cover: Boolean) {
+    private fun drawLanes(
+        fill: BackgroundFill,
+        cover: Boolean,
+        layers: Pair<RenderTarget, RenderTarget>? = null,
+    ) {
         GLES20.glClearColor(backgroundColor[0], backgroundColor[1], backgroundColor[2], 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
@@ -1526,8 +1586,10 @@ internal class TransitionRenderer(
             incoming != null && incoming.hasContent
 
         if (canBlend) {
+            val layered = TransitionShaders.isLayered(draw!!.type)
+            if (layered && layers != null && drawLayered(draw, layers, fill)) return
             val program = programFor(
-                draw!!.type,
+                if (layered) "dissolve" else draw.type,
                 incoming!!.showingImage,
                 outgoing!!.showingImage,
             )
@@ -1788,6 +1850,111 @@ internal class TransitionRenderer(
         program.bindOutgoingGrade(lane.colorMatrix, lane.colorOffset)
     }
 
+    /**
+     * Draws the two lanes of the current layered transition into their layers,
+     * or returns null — no layered transition, a lane without a picture yet, a
+     * program that would not build, or buffers the device refused (said once;
+     * the transition then plays as a dissolve).
+     */
+    private fun renderTransitionLayers(width: Int, height: Int): Pair<RenderTarget, RenderTarget>? {
+        val draw = transition ?: return null
+        if (!TransitionShaders.isLayered(draw.type)) return null
+        val outgoing = lanes.getOrNull(draw.outgoingLane) ?: return null
+        val incoming = lanes.getOrNull(draw.incomingLane) ?: return null
+        if (!outgoing.hasContent || !incoming.hasContent) return null
+        val outgoingProgram = layerProgramFor(outgoing.showingImage) ?: return null
+        val incomingProgram = layerProgramFor(incoming.showingImage) ?: return null
+        val targets = prepareLayerTargets(width, height) ?: return null
+        drawLayer(targets.first, outgoingProgram, outgoing)
+        drawLayer(targets.second, incomingProgram, incoming)
+        return targets
+    }
+
+    /** One lane's picture into [target]: premultiplied, transparent where it is not. */
+    private fun drawLayer(target: RenderTarget, program: TransitionProgram, lane: Lane) {
+        target.bind()
+        // A layer is written, never blended into: the effect passes make the
+        // same guard against a draw that left blending on.
+        GLES20.glDisable(GLES20.GL_BLEND)
+        GLES20.glClearColor(0f, 0f, 0f, 0f)
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        program.use()
+        // Only the canvas shape matters to a layer — placement and the mask
+        // read it. The project grade and the background belong to the finished
+        // frame, not to a clip's layer.
+        program.bindCanvas(null, NO_COLOR_OFFSET, backgroundColor, viewportAspect)
+        bindLaneAsIncoming(program, lane)
+        drawQuad(program)
+    }
+
+    /**
+     * The layered transition over the two layers, laid over the background
+     * with the project look, into the bound framebuffer. False if its program
+     * would not build, and the caller falls back to a dissolve.
+     */
+    private fun drawLayered(
+        draw: TransitionDraw,
+        layers: Pair<RenderTarget, RenderTarget>,
+        fill: BackgroundFill,
+    ): Boolean {
+        // The export always draws the full version: it is not realtime.
+        val light = exportSurface == null && transitionQuality.light
+        val program = layeredProgramFor(draw.type, light) ?: return false
+        program.use()
+        program.bindCanvas(
+            colorMatrix,
+            colorOffset,
+            backgroundColor,
+            viewportAspect,
+            fill.texture,
+            fill.fit,
+            fill.flipV,
+        )
+        program.bindLayers(layers.first.textureId, layers.second.textureId)
+        program.setProgress(draw.progress)
+        drawQuad(program)
+        layeredFrameDrawn = true
+        return true
+    }
+
+    /**
+     * The two layers at [width] x [height], or null if the device refused —
+     * said once. Reallocated only when the size changes, like the effect
+     * targets: two frame-sized textures churned per frame is a stutter.
+     */
+    private fun prepareLayerTargets(width: Int, height: Int): Pair<RenderTarget, RenderTarget>? {
+        val from = fromLayer
+        val to = toLayer
+        if (from != null && to != null && from.width == width && from.height == height) {
+            return Pair(from, to)
+        }
+        releaseLayerTargets()
+        val createdFrom = createRenderTarget(width, height)
+        val createdTo = createdFrom?.let { createRenderTarget(width, height) }
+        if (createdFrom == null || createdTo == null) {
+            createdFrom?.release()
+            if (!layersWarned) {
+                layersWarned = true
+                val message = "This phone could not set up a transition's buffers; " +
+                    "it plays as a dissolve instead."
+                Log.w(TAG, message)
+                onWarning(message)
+            }
+            return null
+        }
+        fromLayer = createdFrom
+        toLayer = createdTo
+        return Pair(createdFrom, createdTo)
+    }
+
+    /** Drops the layers. GL thread only. */
+    private fun releaseLayerTargets() {
+        fromLayer?.release()
+        fromLayer = null
+        toLayer?.release()
+        toLayer = null
+    }
+
     private fun drawQuad(program: TransitionProgram) {
         program.bindGeometry(quadVertices, quadTexCoords)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
@@ -1817,22 +1984,39 @@ internal class TransitionRenderer(
         type: String,
         incomingIsImage: Boolean,
         outgoingIsImage: Boolean,
-    ): TransitionProgram? {
-        val key = "$type|$incomingIsImage|$outgoingIsImage"
-        programs[key]?.let { return it }
-        return try {
-            val fragment = if (type == PASSTHROUGH) {
+    ): TransitionProgram? =
+        cachedProgram("$type|$incomingIsImage|$outgoingIsImage", type) {
+            if (type == PASSTHROUGH) {
                 TransitionShaders.passthroughFragment(incomingIsImage)
             } else {
                 TransitionShaders.fragmentShaderFor(type, incomingIsImage, outgoingIsImage)
             }
+        }
+
+    /** The program that draws one lane into a layer. */
+    private fun layerProgramFor(isImage: Boolean): TransitionProgram? =
+        cachedProgram("$LAYER|$isImage", LAYER) { TransitionShaders.layerFragment(isImage) }
+
+    /** A layered transition's program, full or light. */
+    private fun layeredProgramFor(type: String, light: Boolean): TransitionProgram? =
+        cachedProgram("$LAYERED|$type|$light", type) {
+            TransitionShaders.layeredFragmentFor(type, light)
+        }
+
+    private fun cachedProgram(
+        key: String,
+        name: String,
+        fragment: () -> String,
+    ): TransitionProgram? {
+        programs[key]?.let { return it }
+        return try {
             val program = TransitionProgram(
-                GlUtil.createProgram(TransitionShaders.VERTEX_SHADER, fragment),
+                GlUtil.createProgram(TransitionShaders.VERTEX_SHADER, fragment()),
             )
             programs[key] = program
             program
         } catch (error: Exception) {
-            reportError("Transition shader '$type' failed to build", error)
+            reportError("Transition shader '$name' failed to build", error)
             null
         }
     }
@@ -1865,6 +2049,8 @@ internal class TransitionRenderer(
     companion object {
         private const val TAG = "TransitionRenderer"
         private const val PASSTHROUGH = "__passthrough"
+        private const val LAYER = "__layer"
+        private const val LAYERED = "__layered"
         private const val FRAME_INTERVAL_MS = 16L
         private const val SURFACE_TEARDOWN_TIMEOUT_MS = 250L
 
@@ -1963,8 +2149,24 @@ internal class TransitionProgram(private val handle: Int) {
         GLES20.glGetUniformLocation(handle, "uClipOffsetOutgoing")
     private val uClipColorOutgoing =
         GLES20.glGetUniformLocation(handle, "uClipColorOutgoing")
+    private val uFrom = GLES20.glGetUniformLocation(handle, "uFrom")
+    private val uTo = GLES20.glGetUniformLocation(handle, "uTo")
 
     fun use() = GLES20.glUseProgram(handle)
+
+    /**
+     * A layered transition's two layers, on the units the lanes use — the
+     * layered program samples no lane, so 0 and 1 are free for them.
+     */
+    fun bindLayers(fromTexture: Int, toTexture: Int) {
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, fromTexture)
+        GLES20.glUniform1i(uFrom, 0)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, toTexture)
+        GLES20.glUniform1i(uTo, 1)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+    }
 
     /** The grade belonging to the clip on the incoming lane. */
     fun bindIncomingGrade(colorMatrix: FloatArray?, colorOffset: FloatArray) {

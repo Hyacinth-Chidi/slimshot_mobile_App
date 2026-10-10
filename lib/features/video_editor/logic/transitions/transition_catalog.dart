@@ -22,7 +22,12 @@ enum EditorTransition {
   smoothRight('Smooth R', 'smoothright', LucideIcons.arrowRight),
   smoothUp('Smooth U', 'smoothup', LucideIcons.arrowUp),
   smoothDown('Smooth D', 'smoothdown', LucideIcons.arrowDown),
-  zoomIn('Zoom In', 'zoomin', LucideIcons.zoomIn);
+  zoomIn('Zoom In', 'zoomin', LucideIcons.zoomIn),
+
+  /// CrossZoom from gl-transitions.com, the first *layered* transition: the
+  /// engine draws each clip once into a layer and the transition reads only
+  /// the layers (`TransitionShaders.isLayered`). The tutorial's zoom blur.
+  zoomBlur('Zoom Blur', 'zoomin', LucideIcons.focus);
 
   const EditorTransition(this.label, this.ffmpegXfadeName, this.icon);
 

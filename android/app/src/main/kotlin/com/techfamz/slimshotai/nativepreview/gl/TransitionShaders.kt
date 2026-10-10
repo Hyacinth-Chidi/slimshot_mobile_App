@@ -175,15 +175,7 @@ vec2 rotateCanvas(vec2 uv, float radians) {
 // stays put while the clips move over it. uBackgroundImageFit is the visible
 // fraction of the photo per axis, centred (BackgroundFit.cover); bitmaps are
 // top-left origin, so v is flipped.
-vec4 backgroundAt() {
-    if (uBackgroundImageOn < 0.5) {
-        return vec4(uBackground, 1.0);
-    }
-    vec2 bg = (vTexCoord - 0.5) * uBackgroundImageFit + 0.5;
-    // A bitmap is top-left origin and flips; a texture the renderer drew
-    // itself (the blurred clip) is already the right way up.
-    return texture2D(uBackgroundImage, vec2(bg.x, mix(bg.y, 1.0 - bg.y, uBackgroundImageFlip)));
-}
+$BACKGROUND_AT
 
 // How much of the picture shows at p (fitted-frame fractions): 1 inside the
 // mask's window, 0 outside, a soft ramp across the feather. a = (shape,
@@ -386,16 +378,35 @@ float ease(float t) {
 // per clip: doing that would grade a transition's two lanes separately and then
 // blend the results, which is not the same picture. A clip's *own* filter is a
 // different thing and is applied in gradeClip, before the blend.
-void outputColor(vec4 c) {
+$OUTPUT_COLOR
+"""
+    }
+
+    /**
+     * The letterbox fill at the fragment's own canvas position. Shared, word
+     * for word, by the per-lane header and the layered one — the guard test
+     * (`TransitionShadersGoldenTest`) pins that the per-lane header still
+     * assembles to exactly the text it always was.
+     */
+    private const val BACKGROUND_AT = """vec4 backgroundAt() {
+    if (uBackgroundImageOn < 0.5) {
+        return vec4(uBackground, 1.0);
+    }
+    vec2 bg = (vTexCoord - 0.5) * uBackgroundImageFit + 0.5;
+    // A bitmap is top-left origin and flips; a texture the renderer drew
+    // itself (the blurred clip) is already the right way up.
+    return texture2D(uBackgroundImage, vec2(bg.x, mix(bg.y, 1.0 - bg.y, uBackgroundImageFlip)));
+}"""
+
+    /** The project look, once, on the finished frame. Shared like [BACKGROUND_AT]. */
+    private const val OUTPUT_COLOR = """void outputColor(vec4 c) {
     if (uColorEnabled < 0.5) {
         gl_FragColor = c;
         return;
     }
     vec4 graded = uColorMatrix * c + uColorOffset;
     gl_FragColor = vec4(clamp(graded.rgb, 0.0, 1.0), c.a);
-}
-"""
-    }
+}"""
 
     private val PASSTHROUGH_BODY = """
 void main() {
@@ -513,9 +524,185 @@ void main() {
         "zoomIn" to ZOOM_IN,
     )
 
-    val supportedTypes: Set<String> = bodiesByType.keys
+    // ------------------------------------------------------------ layered
+    //
+    // A layered transition never samples a clip itself. Each lane is drawn
+    // once per frame into a layer ([layerFragment]) and the transition reads
+    // only the two layers — so one that reads each pixel forty times pays for
+    // the clip's fit, crop, grade, mask and key once, not forty times. The
+    // eleven transitions above keep their own path, untouched.
 
-    fun isSupported(type: String?): Boolean = type != null && bodiesByType.containsKey(type)
+    /**
+     * One lane as a layer: the clip's finished picture — placed, cropped,
+     * mirrored, keyed and graded as `incomingAt` draws it — premultiplied by
+     * its coverage, and nothing where the clip is not.
+     *
+     * **No background.** It is laid under the finished transition at the
+     * fragment's own position ([LAYERED_MAIN]), so it stays put while the clips
+     * move, and over it this is `mix(backgroundAt(), graded, coverage)` —
+     * exactly what `incomingAt` returns. The steps are `incomingAt`'s own; if
+     * one changes, the other must.
+     */
+    private const val LAYER_BODY = """
+void main() {
+    vec2 centred = rotateCanvas(vTexCoord - uPanIncoming * vec2(1.0, -1.0), uRotationIncoming);
+    vec2 fitted = (centred - 0.5) / uFitIncoming + 0.5;
+    if (fitted.x < 0.0 || fitted.x > 1.0 || fitted.y < 0.0 || fitted.y > 1.0) {
+        gl_FragColor = vec4(0.0);
+        return;
+    }
+    vec2 frame = fitted;
+    fitted = mix(fitted, 1.0 - fitted, uFlipIncoming);
+    vec2 source = uContentRectIncoming.xy + fitted * uContentRectIncoming.zw;
+    vec4 texel = texture2D(uIncoming, (uTexMatrixIncoming * vec4(source, 0.0, 1.0)).xy);
+    float keep = chromaCoverage(texel.rgb, uChromaAIncoming, uChromaBIncoming);
+    texel = vec4(despill(texel.rgb, uChromaAIncoming, uChromaBIncoming), texel.a);
+    vec4 graded = gradeClip(texel, uClipMatrixIncoming, uClipOffsetIncoming, uClipColorIncoming);
+    float cover = uOpacityIncoming * maskCoverage(
+        frame,
+        uMaskAIncoming,
+        uMaskBIncoming,
+        uMaskCIncoming,
+        uCanvasAspect * uFitIncoming.x / max(uFitIncoming.y, 0.0001)
+    ) * keep;
+    gl_FragColor = vec4(graded.rgb * cover, cover);
+}
+"""
+
+    /**
+     * The header a layered transition is written against: the GL Transitions
+     * API (gl-transitions.com) — `getFromColor`, `getToColor`, `progress`,
+     * `ratio` — over the two layers, which is what lets a port stay close to
+     * its original. y runs up, as the library expects.
+     */
+    private fun layeredHeader(): String = """precision mediump float;
+varying vec2 vTexCoord;
+uniform sampler2D uFrom;
+uniform sampler2D uTo;
+uniform float uProgress;
+uniform float uCanvasAspect;
+uniform vec3 uBackground;
+uniform sampler2D uBackgroundImage;
+uniform float uBackgroundImageOn;
+uniform vec2 uBackgroundImageFit;
+uniform float uBackgroundImageFlip;
+uniform mat4 uColorMatrix;
+uniform vec4 uColorOffset;
+uniform float uColorEnabled;
+
+// The outgoing clip's layer and the incoming one's: premultiplied, transparent
+// where no clip is. A port must carry alpha through its arithmetic.
+vec4 getFromColor(vec2 uv) { return texture2D(uFrom, uv); }
+vec4 getToColor(vec2 uv) { return texture2D(uTo, uv); }
+#define progress uProgress
+#define ratio uCanvasAspect
+
+$BACKGROUND_AT
+
+$OUTPUT_COLOR
+"""
+
+    /** The transition laid over the background, then the project look. */
+    private const val LAYERED_MAIN = """
+void main() {
+    vec4 c = transition(vTexCoord);
+    outputColor(vec4(c.rgb + backgroundAt().rgb * (1.0 - c.a), 1.0));
+}
+"""
+
+    /**
+     * Zoom Blur — CrossZoom from gl-transitions.com. License: MIT. Author:
+     * rectalogic, ported by gre from
+     * https://gist.github.com/rectalogic/b86b90161503a0023231, itself based on
+     * glfx.js's zoom blur (Evan Wallace). The tutorial's zoom blur, and the
+     * heaviest kind: 41 steps, each reading both layers.
+     *
+     * Changes for this engine, and only these: `strength` is the library's
+     * default as a constant; the loop counts with an int against a constant —
+     * ES 2.0's Appendix A form, which every driver must take; the per-pixel
+     * jitter is interleaved gradient noise on `gl_FragCoord` rather than the
+     * sin-fract hash, whose 43758 multiplier loses its fraction in `mediump`
+     * (the grain banding CLAUDE.md records); and the colour keeps its alpha —
+     * the original forces 1, which over a transparent layer paints black where
+     * the background should show.
+     */
+    private const val ZOOM_BLUR = """
+const float STRENGTH = 0.4;
+const float PI = 3.141592653589793;
+const int STEPS = 40;
+
+float Linear_ease(float begin, float change, float duration, float time) {
+    return change * time / duration + begin;
+}
+
+float Exponential_easeInOut(float begin, float change, float duration, float time) {
+    if (time == 0.0) {
+        return begin;
+    } else if (time == duration) {
+        return begin + change;
+    }
+    time = time / (duration / 2.0);
+    if (time < 1.0) {
+        return change / 2.0 * pow(2.0, 10.0 * (time - 1.0)) + begin;
+    }
+    return change / 2.0 * (-pow(2.0, -10.0 * (time - 1.0)) + 2.0) + begin;
+}
+
+float Sinusoidal_easeInOut(float begin, float change, float duration, float time) {
+    return -change / 2.0 * (cos(PI * time / duration) - 1.0) + begin;
+}
+
+vec4 crossFade(vec2 uv, float dissolve) {
+    return mix(getFromColor(uv), getToColor(uv), dissolve);
+}
+
+vec4 transition(vec2 uv) {
+    // The centre travels across the middle half of the frame.
+    vec2 center = vec2(Linear_ease(0.25, 0.5, 1.0, progress), 0.5);
+    float dissolve = Exponential_easeInOut(0.0, 1.0, 1.0, progress);
+    // Mirrored sinusoidal loop: 0 -> strength -> 0.
+    float strength = Sinusoidal_easeInOut(0.0, STRENGTH, 0.5, progress);
+    vec4 color = vec4(0.0);
+    float total = 0.0;
+    vec2 toCenter = center - uv;
+    // Jitter the steps so their fixed count does not show as rings.
+    float offset = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    for (int i = 0; i <= STEPS; i++) {
+        float percent = (float(i) + offset) / float(STEPS);
+        float weight = 4.0 * (percent - percent * percent);
+        color += crossFade(uv + toCenter * percent * strength, dissolve) * weight;
+        total += weight;
+    }
+    return color / total;
+}
+"""
+
+    /**
+     * Each layered transition's body, by type; [light] is the cheaper version
+     * a preview falls back to on a phone that cannot keep up — the same look
+     * with fewer steps. The export always draws the full one.
+     */
+    private val layeredBodies: Map<String, (Boolean) -> String> = mapOf(
+        "zoomBlur" to { light ->
+            if (light) ZOOM_BLUR.replace("const int STEPS = 40;", "const int STEPS = 12;") else ZOOM_BLUR
+        },
+    )
+
+    /** Whether [type] is drawn from layers rather than by sampling the clips. */
+    fun isLayered(type: String?): Boolean = type != null && layeredBodies.containsKey(type)
+
+    /** The fragment shader that draws one lane, as [LAYER_BODY] describes. */
+    fun layerFragment(isImage: Boolean): String = fragmentHeader(isImage, isImage) + LAYER_BODY
+
+    /** The layered transition [type] over the two layers; see [layeredBodies] for [light]. */
+    fun layeredFragmentFor(type: String, light: Boolean): String {
+        val body = layeredBodies[type] ?: error("'$type' is not a layered transition")
+        return layeredHeader() + body(light) + LAYERED_MAIN
+    }
+
+    val supportedTypes: Set<String> = bodiesByType.keys + layeredBodies.keys
+
+    fun isSupported(type: String?): Boolean = type != null && supportedTypes.contains(type)
 
     /**
      * Fragment shader for [type], for the given pair of source kinds.

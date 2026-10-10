@@ -1,0 +1,16 @@
+{
+  "transitions": [
+    "dissolve",
+    "fadeToBlack",
+    "fadeToWhite",
+    "slide",
+    "push",
+    "wipe",
+    "smoothLeft",
+    "smoothRight",
+    "smoothUp",
+    "smoothDown",
+    "zoomIn",
+    "zoomBlur"
+  ]
+}
