@@ -452,7 +452,8 @@ migration. Unknown names (e.g. `circleOpen` from old drafts) degrade to a hard c
 the engine lacks fails a test instead of shipping as a hard cut.
 
 **Layered transitions** (Stage 2 part 1; spec `docs/superpowers/specs/2026-10-10-transitions-engine-layers-design.md`;
-**awaiting device verification**). The GL Transitions ports read each clip many times per pixel
+**device-verified** — preview, export, masks over a background photo, the earlier transitions
+unchanged). The GL Transitions ports read each clip many times per pixel
 (CrossZoom ~80, FilmBurn ~100), and through `incomingAt`/`outgoingAt` — fit, crop, grade, mask
 and key on *every* read — they would crawl on the low-end target. So a layered transition
 (`TransitionShaders.isLayered`) draws each lane **once per frame into a layer**
@@ -470,8 +471,11 @@ frame, released with the effect targets and when a timeline has no layered trans
 refuses them plays a dissolve **and says so once**. The blurred background's cover picture draws a
 layered transition as a dissolve — the blur hides the difference. **`TransitionQualityGovernor`**
 (preview only): when the median of 12 layered frames, swap included, is over 45ms, heavy
-transitions drop to their light version (Zoom Blur: 12 steps instead of 40) for the session, said
-once; the export always draws the full version. **Zoom Blur** (`zoomBlur`, CrossZoom, MIT,
+transitions drop to their light version (Zoom Blur: 12 steps instead of 40) for the session —
+**logged, not toasted** (the user's call: the export always draws the full version, so a lighter
+preview is nothing to interrupt anyone with; a refused-buffers dissolve still toasts, because the
+file itself differs). **Device-verified on the Infinix**, which trips the check: its preview plays
+the light Zoom Blur. **Zoom Blur** (`zoomBlur`, CrossZoom, MIT,
 rectalogic) is the first, and the first transition with a shader loop — the only other is
 `BlurPass`; if Zoom Blur shows a plain dissolve-like picture on a device, the loop is the first
 suspect.

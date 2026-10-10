@@ -58,8 +58,8 @@ a clip's window could be moved or sized on the canvas).
 **In three parts, each with its own spec, plan and device test** (agreed 2026-10-10): the engine
 groundwork first, then the ports and the sheet, then easing.
 
-- **Part 1 — lane layers and Zoom Blur. Built on `stage2-transitions-engine`, awaiting device
-  verification.** Spec `docs/superpowers/specs/2026-10-10-transitions-engine-layers-design.md`.
+- **Part 1 — lane layers and Zoom Blur. Done, device-verified 2026-10-10** (the Infinix trips
+  the speed check and previews the light version). Spec `docs/superpowers/specs/2026-10-10-transitions-engine-layers-design.md`.
   Covers item 8's engine half (layers, the speed check, the loud fallback) and the first port.
 - **Part 2 — the ports, our signatures and the sheet** (items 4, 5, 7).
 - **Part 3 — easing** (item 6).

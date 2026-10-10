@@ -1273,13 +1273,15 @@ internal class TransitionRenderer(
         // How long a layered frame takes on this phone, swap included — a GPU
         // that cannot keep up shows here as a swap that waits. Preview only:
         // this path never runs during an export.
+        //
+        // Logged, not toasted — the user's call on the device: the export is
+        // untouched, so a preview drawing fewer steps is nothing to interrupt
+        // anyone with. (A refusal of the layers *does* toast: there the file
+        // itself would differ.)
         if (layeredFrameDrawn &&
             transitionQuality.record(SystemClock.uptimeMillis() - startedMs)
         ) {
-            val message = "This phone draws heavy transitions in a lighter version in the " +
-                "preview; the export uses the full version."
-            Log.w(TAG, message)
-            onWarning(message)
+            Log.w(TAG, "Heavy transitions now draw their light version in the preview")
         }
 
         // Progress advances continuously, so keep drawing through the window
