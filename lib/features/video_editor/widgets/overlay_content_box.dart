@@ -29,6 +29,12 @@ class OverlayContentBox extends StatefulWidget {
   /// box sizes itself from, so a mask placed in the box measures the same.
   static double? cachedAspect(String path) => _OverlayContentBoxState._aspects[path];
 
+  /// Remembers [aspect] for [path] as if it had been measured. Tests have no
+  /// file to decode.
+  @visibleForTesting
+  static void debugRememberAspect(String path, double aspect) =>
+      _OverlayContentBoxState._aspects[path] = aspect;
+
   @override
   State<OverlayContentBox> createState() => _OverlayContentBoxState();
 }

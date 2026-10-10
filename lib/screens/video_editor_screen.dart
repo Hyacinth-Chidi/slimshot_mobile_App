@@ -2420,66 +2420,70 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  // Discarding a preview needs no player call for speed, but
-                  // the live volume override has to be lifted explicitly: the
-                  // engine holds it until a timeline push, and a discard pushes
-                  // none.
-                  _liftLiveVolume();
-                  // Imported music plays through its own player, which the
-                  // slider set directly and nothing re-syncs on a discard.
-                  final audioId = editorState.selectedAudioId;
-                  if (activeToolId == 'volume' && audioId != null) {
-                    final track = editorState.audioTracks
-                        .where((a) => a.id == audioId)
-                        .firstOrNull;
-                    if (track != null) {
-                      _audioPlayerManager.setVolumeSync(track.id, track.volume);
+          // Mask has no bar: its changes are already applied, so ✕ and ✓
+          // both only closed it (`toolPanelHasHeader`).
+          if (toolPanelHasHeader(activeToolId)) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    // Discarding a preview needs no player call for speed, but
+                    // the live volume override has to be lifted explicitly: the
+                    // engine holds it until a timeline push, and a discard pushes
+                    // none.
+                    _liftLiveVolume();
+                    // Imported music plays through its own player, which the
+                    // slider set directly and nothing re-syncs on a discard.
+                    final audioId = editorState.selectedAudioId;
+                    if (activeToolId == 'volume' && audioId != null) {
+                      final track = editorState.audioTracks
+                          .where((a) => a.id == audioId)
+                          .firstOrNull;
+                      if (track != null) {
+                        _audioPlayerManager.setVolumeSync(track.id, track.volume);
+                      }
                     }
-                  }
-                  // Puts back whatever the slider wrote live — an overlay's
-                  // volume or opacity, a clip's opacity.
-                  notifier.discardActiveTool();
-                },
-                child: const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Icon(
-                    LucideIcons.x,
-                    color: AppColors.textSecondary,
-                    size: 20,
+                    // Puts back whatever the slider wrote live — an overlay's
+                    // volume or opacity, a clip's opacity.
+                    notifier.discardActiveTool();
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Icon(
+                      LucideIcons.x,
+                      color: AppColors.textSecondary,
+                      size: 20,
+                    ),
                   ),
                 ),
-              ),
-              Text(
-                _getToolLabel(activeToolId),
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  _commitAndCloseActiveTool();
-                },
-                child: const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Icon(
-                    LucideIcons.check,
-                    color: AppColors.primaryStart,
-                    size: 20,
+                Text(
+                  _getToolLabel(activeToolId),
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    _commitAndCloseActiveTool();
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Icon(
+                      LucideIcons.check,
+                      color: AppColors.primaryStart,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           content,
         ],
       ),

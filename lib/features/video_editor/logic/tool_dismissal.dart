@@ -21,6 +21,20 @@ const Set<String> kCanvasEditingTools = {'crop', 'clip_crop', 'zoom', 'mask'};
 bool toolClosesOnCanvasTap(String toolId) =>
     !kCanvasEditingTools.contains(toolId);
 
+/// Tools whose panel has no ✕ / title / ✓ bar.
+///
+/// Mask's bar was two buttons that both just closed it — every Mask change
+/// applies as it is made, and its ✕ had nothing to put back — plus the name of
+/// the tool the user had just tapped. Its space went to the shapes (the user's
+/// call, after CapCut). It closes with Back and with anything that leaves the
+/// selection; a tap on the picture keeps it open, because that is where the
+/// window is moved. Volume and Opacity keep their bar: their ✕ is the only way
+/// to throw a drag away.
+const Set<String> kHeaderlessTools = {'mask'};
+
+/// Whether the open [toolId]'s panel carries the ✕ / title / ✓ bar.
+bool toolPanelHasHeader(String toolId) => !kHeaderlessTools.contains(toolId);
+
 /// What the system Back button does in the editor.
 enum BackAction {
   /// A tool is open: close it, keeping its edits, and stay in the editor.

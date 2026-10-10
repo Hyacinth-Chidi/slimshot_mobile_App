@@ -283,6 +283,34 @@ List<double> maskUniforms(ClipMask mask) => [
       0.0,
     ];
 
+/// [current] with its shape changed to [shape] — what a tap on a shape tile
+/// writes.
+///
+/// The window stays where the user put it: a different outline around the
+/// same place is what they mean. A first shape places the default window, and
+/// None removes the mask.
+///
+/// **A circle is made round on the picture** ([roundMaskWindow]). The window is
+/// fractions of the picture's width and height, so the default 60% of each is
+/// two different lengths on any picture that is not square — device-reported
+/// as an oval, which a pinch (scaling both alike) then kept. [aspect] is the
+/// picture's width over its height in pixels; unknown reads as square.
+ClipMask maskWithShape(ClipMask current, ClipMaskShape shape, {required double? aspect}) {
+  if (shape == ClipMaskShape.none) return ClipMask.none;
+  final next = current.isNone ? ClipMask(shape: shape) : current.copyWith(shape: shape);
+  return shape == ClipMaskShape.circle ? roundMaskWindow(next, aspect) : next;
+}
+
+/// [mask]'s window made as wide as it is tall on a picture of [aspect] (width
+/// over height, in pixels), about the same centre. The diameter is the
+/// window's shorter side on screen, so it never grows past what was drawn.
+ClipMask roundMaskWindow(ClipMask mask, double? aspect) {
+  final a = aspect != null && aspect.isFinite && aspect > 0 ? aspect : 1.0;
+  // Both sides in units of the picture's height.
+  final diameter = math.min(mask.width * a, mask.height);
+  return mask.copyWith(width: diameter / a, height: diameter);
+}
+
 /// How far two fingers must turn before a gesture reads as a twist and the
 /// canvas shows the angle. A pinch's fingers wobble a degree or so; that alone
 /// does not bring the readout up.

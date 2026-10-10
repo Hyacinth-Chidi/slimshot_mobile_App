@@ -1863,6 +1863,26 @@ gentler (`unplaced` vs `plain`). It joins `kCanvasEditingTools`. Switching shape
 where it was. Plain values, not animatable yet: a moving mask is four coupled numbers with a design
 of its own.
 
+**The Mask panel has no ✕ / title / ✓ bar, and its shapes are tiles** (`toolPanelHasHeader`,
+`kHeaderlessTools`; `mask_panel_test.dart`, `tool_dismissal_test.dart`; **awaiting device
+verification**; the user's call, after CapCut). Every Mask change applies as it is made and its ✕
+had nothing to put back, so the bar was two buttons that both just closed the panel; it closes
+with Back and with anything that leaves the selection, and a tap on the picture still keeps it
+open. **Only Mask**: on Volume and Opacity ✕ is the only way to throw a drag away. In the bar's
+place, one row of tiles — each shape drawn as what it does (`_MaskShapeGlyph`), its name small
+under it — sized so all six fit across a 360dp phone (44–56px, scrolling only on a narrower one),
+styled as the crop panel's ratio tiles.
+
+**A Circle is round on the picture** (`maskWithShape`, `roundMaskWindow`,
+`clip_mask_circle_test.dart`). Device-reported as an oval: a window is fractions of the picture's
+width and height, so the default 60% of each is two different lengths on any picture that is not
+square, and a pinch — scaling both alike — kept it stretched. Choosing Circle now sizes the window
+round in pixels, its diameter the window's shorter side on screen, about the same centre; the
+other shapes still keep the window exactly. The picture's shape is the one the canvas fits: a
+clip's from `VideoEditorState.maskPictureAspect` (now also what `_maskFrame` reads, one
+definition), an overlay's from `OverlayContentBox.cachedAspect`. A circle saved before this stays
+as it was until Circle is chosen again.
+
 ### Replace clip — swap the file, keep the edit
 
 `replaceClipAsset` puts a picked file under the selected clip. Everything the user did to the clip
@@ -3859,7 +3879,7 @@ and the photo's shape (`PhotoInspector`, shared with Compress photo).
 | Transition scope | Same toggle in the transition sheet; "all" writes every seam except the last. |
 | Transition frame source | Two live decoders. Freeze-frame was built, reviewed and rejected. |
 | Panels vs sheets | **A tool that edits on the canvas or the timeline is an in-place panel; a set of choices about the picture is a sheet.** Crop, clip crop, Trim, Zoom and Speed stay panels — a sheet is modal and would cover the very surface they edit (handles on the canvas, handles and the stretching clip on the timeline). Curve, Transform, Filters, Effects, Transitions and **Background** are sheets. Volume could go either way and stays a panel; the two kinds share `AppMotion` and the same look. |
-| Dismissing a panel | **Back and a tap on empty canvas space close an open panel, keeping its edits** — modal semantics, as a sheet's dismissal keeps its live edits; ✕ stays the explicit discard. Exception: a canvas-editing tool (`kCanvasEditingTools`: crop, clip crop, zoom) ignores the canvas tap, because touching the canvas is how it is used. Back closes any tool. Only with no tool open does Back leave the editor. `logic/tool_dismissal.dart`. |
+| Dismissing a panel | **Back and a tap on empty canvas space close an open panel, keeping its edits** — modal semantics, as a sheet's dismissal keeps its live edits; ✕ stays the explicit discard. Mask alone has no ✕/✓ bar (`kHeaderlessTools`): it has nothing to discard. Exception: a canvas-editing tool (`kCanvasEditingTools`: crop, clip crop, zoom) ignores the canvas tap, because touching the canvas is how it is used. Back closes any tool. Only with no tool open does Back leave the editor. `logic/tool_dismissal.dart`. |
 
 Fuller detail, ordering, and the test matrix are in `docs/roadmap.md`. Approaches already tried and
 rejected are in `docs/dead-ends.md` â€” read it before proposing an architecture.

@@ -522,15 +522,11 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
   /// own crop under the mask handles, unlike under the crop handles, because
   /// the window is over the picture as it will play.
   Rect _maskFrame(VideoEditorState state, Size box) {
-    final whole = Offset.zero & box;
     final segment = state.selectedSegment;
-    final asset = segment == null ? null : state.assetFor(segment);
-    if (segment == null || asset == null) return whole;
+    if (segment == null) return Offset.zero & box;
+    // An unprobed asset has no aspect, and the fit is then the whole box.
     return fittedFrameRect(
-      contentAspect: contentAspectRatio(
-        composeCropRects(state.projectCropRect, segment.cropRect),
-        Size(asset.width, asset.height),
-      ),
+      contentAspect: state.maskPictureAspect(segment),
       canvasSize: box,
     );
   }

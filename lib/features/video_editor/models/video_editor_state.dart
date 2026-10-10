@@ -6,6 +6,7 @@ import '../logic/animation/animatable_double.dart';
 import '../logic/animation/clip_keyframes.dart';
 import '../logic/animation/keyframe_core.dart';
 import '../logic/animation/overlay_keyframes.dart';
+import '../logic/canvas_geometry.dart';
 import '../logic/timeline/timeline_geometry.dart';
 import 'filter_preset.dart';
 import 'media_asset.dart';
@@ -546,6 +547,22 @@ class VideoEditorState {
   /// asset id still resolves to something playable.
   MediaAsset? assetFor(VideoSegment segment) {
     return assetById(segment.assetId) ?? (assets.isEmpty ? null : assets.first);
+  }
+
+  /// The shape of [segment]'s picture under the mask tool — width over height,
+  /// in pixels — or null for an asset not yet probed: its frame narrowed by
+  /// the project's crop and its own, which the composer keeps under the mask
+  /// handles. A clip's mask is authored in fractions of this picture, so the
+  /// canvas fits it to place the handles and the Mask panel makes a circle
+  /// round on it — one definition, or the two would disagree about what round
+  /// is.
+  double? maskPictureAspect(VideoSegment segment) {
+    final asset = assetFor(segment);
+    if (asset == null) return null;
+    return contentAspectRatio(
+      composeCropRects(projectCropRect, segment.cropRect),
+      Size(asset.width, asset.height),
+    );
   }
 
   /// The project's crop, as fractions of every clip's source frame.

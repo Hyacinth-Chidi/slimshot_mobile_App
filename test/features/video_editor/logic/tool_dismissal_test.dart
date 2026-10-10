@@ -12,6 +12,9 @@ import 'package:slimshotai/features/video_editor/logic/tool_dismissal.dart';
 ///
 /// The one exception is deliberate: a tool that edits **on the canvas** must
 /// not close because the canvas was touched.
+///
+/// A panel without the bar (Mask) closes the same ways, minus the two buttons:
+/// Back, and anything that leaves the selection.
 void main() {
   group('a tap on empty canvas space', () {
     test('dismisses a tool that does not edit on the canvas', () {
@@ -38,6 +41,22 @@ void main() {
 
     test('leaves the editor when no tool is open', () {
       expect(backActionFor(activeToolId: null), BackAction.leaveEditor);
+    });
+  });
+
+  group('the ✕ / title / ✓ bar', () {
+    test('is not on the Mask panel', () {
+      // Every Mask change applies as it is made and its ✕ undid nothing, so
+      // the bar was two buttons that both just closed it, plus the name of
+      // the tool the user had just tapped. The space goes to the shapes.
+      expect(toolPanelHasHeader('mask'), isFalse);
+    });
+
+    test('stays on every other panel', () {
+      // On Volume and Opacity ✕ is the only way to throw a drag away.
+      for (final id in ['volume', 'opacity', 'speed', 'crop', 'clip_crop', 'zoom']) {
+        expect(toolPanelHasHeader(id), isTrue, reason: id);
+      }
     });
   });
 }
