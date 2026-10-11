@@ -2748,8 +2748,32 @@ wrap a negative y samples the opposite edge of the picture.
 
 ### 3. Then â€” timeline UX
 
-Zoom (`_pixelsPerSecond` is a `static const 50.0`; `ClipFilmstrip` already recomputes its grid from
-it), snapping, clip visuals. All sit on the tile model. Reorder and the cut seam are done.
+Zoom and snapping are done (below); clip visuals — speed, mute and duration badges — remain.
+Reorder and the cut seam are done.
+
+#### Zoom — pinch the timeline
+
+**Awaiting device verification.** Two fingers on the track zoom it **about the playhead**: the
+instant under the playhead when the pinch begins stays under it (`_pinchAnchorSeconds`), from
+`kMaxPixelsPerSecond` (600, ~20px a frame at 30fps) out to where the whole project fills
+`kZoomOutFitFraction` (80%) of the screen — never closer than `kDefaultPixelsPerSecond` (50), the
+scale the editor opens at and the one it had before; not saved with the draft
+(`logic/timeline/timeline_zoom.dart`). `_pixelsPerSecond` became a field and everything on the
+track is placed through it, so lanes, handles, diamonds, markers, the filmstrip (fixed-width
+tiles, so more frames rather than stretched ones) and the ruler all follow.
+
+- **A `Listener`, not a recogniser**: it sees every finger without entering the arena, so a
+  one-finger scrub, trim or carry is exactly what it was; the pinch begins at the second finger,
+  and not while something is being moved or trimmed (`_isHandlingItem`).
+- **Both scroll views hold still while pinching** (`NeverScrollableScrollPhysics`), or the first
+  finger's scroll fights the zoom's own placement; the scrub it may have started is ended, never
+  glided onto a seam.
+- **The offset is corrected, not jumped** (`ScrollPosition.correctPixels`): a jump sends scroll
+  notifications, which the timeline reads as a scrub — the playhead would move and playback pause
+  for a zoom. A test pins the anchor and fails without the correction.
+- **The ruler's step comes from the zoom** (`rulerTickInterval`: the finest of 0.1s … 1h with labels
+  `kRulerMinLabelSpacingPx` apart), not from the project's length, and it paints only a screen
+  either side of what is visible — zoomed in, a long project's whole ruler is thousands of labels.
 
 #### Trim handles
 
@@ -3116,6 +3140,21 @@ preview or the canvas â€” the only rounding left is the playhead's 2px glow
 bars' 1px softening, which are lines, not boxes.
 
 #### Snapping
+
+**One rule for everything on the lanes** (`logic/timeline/timeline_snapping.dart`, **awaiting
+device verification**). Moving a text, photo, video overlay or audio track, and trimming either
+edge of one, pulls onto the nearest of: 0:00, the playhead, every cut between clips, and the start
+and end of every other item on any lane (`timelineSnapTargets`). A move snaps whichever of its two
+edges is nearer a target (`snapMovingSpan`). The reach is `kSnapTolerancePx` converted through the
+current zoom (`snapToleranceSeconds`), so it feels the same at every scale. A guide line runs
+through the filmstrip and every lane where it landed, with one haptic tick on arrival. **The
+targets are taken once, when the gesture starts** (`_snapTargetsFor`): a move previews its own
+start on the playhead, so a live playhead target would chase the item and snap it to itself.
+Snapping comes first and the lane rules (`lane_layout.dart`) still have the last word. The text
+mover's old pull to whole seconds is gone — an arbitrary point. A main-track clip's **end** trim
+also meets the lane items' edges (`_snapTrimEndToItems`; not under a speed curve or a reversal,
+where source and timeline are not a straight line); its start trim keeps the playhead alone, since
+trimming the start shifts every later clip.
 
 **A scrub release within `kSnapTolerancePx` (8px) of a clip seam glides onto it** — on release,
 not during the drag. The playhead is fixed and the content scrolls under it, so snapping the

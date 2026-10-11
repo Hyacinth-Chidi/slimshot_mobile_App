@@ -12,6 +12,8 @@ import '../../../../core/theme/app_motion.dart';
 import '../../../../core/utils/toast_utils.dart';
 import '../../logic/timeline/lane_layout.dart';
 import '../../logic/timeline/timeline_geometry.dart';
+import '../../logic/timeline/timeline_snapping.dart';
+import '../../logic/timeline/timeline_zoom.dart';
 import '../../logic/transitions/transition_catalog.dart';
 import '../../models/media_asset.dart';
 import '../../models/video_segment.dart';
@@ -254,7 +256,20 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   /// opening filmstrip tiles are already being fetched on first paint.
   static const double _kInitialVisibleSeconds = 12.0;
 
-  static const double _pixelsPerSecond = 50.0;
+  /// The timeline's scale: what a pinch changes. Everything on the track is
+  /// placed through it, so a zoom moves every lane, handle, marker and the
+  /// ruler together. Not saved: the editor reopens at the default.
+  double _pixelsPerSecond = kDefaultPixelsPerSecond;
+
+  /// The fingers on the track, by pointer — a pinch is two of them.
+  final Map<int, Offset> _pinchPointers = {};
+  bool _isPinching = false;
+  double _pinchStartDistance = 0;
+  double _pinchStartScale = kDefaultPixelsPerSecond;
+
+  /// The timeline instant under the playhead when the pinch began: the zoom
+  /// is about it, so the frame being looked at stays put.
+  double _pinchAnchorSeconds = 0;
   static const double _filmstripHeight = 48.0; // Reduced to be more compact
 
   /// Width of the marker drawn where one clip is cut from the next.
@@ -290,7 +305,6 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   static final Duration _kMinTrimDuration =
       Duration(milliseconds: (kMinClipDurationSeconds * 1000).round());
   static const double _timeRulerHeight = 20.0;
-  static const int _textSnapThresholdMs = 200;
 
   /// Width of the lane-identity gutter drawn in the run-in before 00:00.
   static const double _laneGutterWidth = 72.0;
@@ -353,7 +367,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   String? _draggingTextId;
   Duration? _textDragInitialStart;
   Duration? _textDragInitialEnd;
-  int? _activeSnapGuideMs;
+  /// Where the last snap landed, in timeline seconds: the guide line.
+  double? _snapGuideSeconds;
   String? _trimmingTextId;
   Duration? _textTrimInitialTime;
   double _textTrimAccumulatedDelta = 0.0;
@@ -462,10 +477,81 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     super.dispose();
   }
 
+  /// Whether a finger is already moving, trimming or carrying something —
+  /// then a second finger is not a pinch.
+  bool get _isHandlingItem =>
+      _isDraggingTrimHandle ||
+      _isDraggingTextClip ||
+      _isDraggingImageClip ||
+      _isDraggingAudioClip ||
+      _isDraggingVideoClip ||
+      _isReorderingClip ||
+      _trimmingTextId != null ||
+      _trimmingAudioId != null ||
+      _trimmingImageId != null ||
+      _trimmingVideoId != null;
+
+  /// The furthest this project may zoom out.
+  double get _minPixelsPerSecond => minPixelsPerSecond(
+        viewportWidth: _scrollController.hasClients
+            ? _scrollController.position.viewportDimension
+            : MediaQuery.sizeOf(context).width,
+        durationSeconds: _totalEditedDuration,
+      );
+
+  void _onTrackPointerDown(PointerDownEvent event) {
+    _pinchPointers[event.pointer] = event.position;
+    if (_pinchPointers.length != 2 ||
+        _isPinching ||
+        _isHandlingItem ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final points = _pinchPointers.values.toList();
+    final distance = (points[0] - points[1]).distance;
+    if (distance < 1) return;
+    _pinchStartDistance = distance;
+    _pinchStartScale = _pixelsPerSecond;
+    // The scroll offset is the playhead's time at the current scale: content
+    // is padded by half a screen, so offset x puts time x / scale under it.
+    _pinchAnchorSeconds = _scrollController.offset / _pixelsPerSecond;
+    setState(() => _isPinching = true);
+    widget.onPausePlayback();
+  }
+
+  void _onTrackPointerMove(PointerMoveEvent event) {
+    if (!_pinchPointers.containsKey(event.pointer)) return;
+    _pinchPointers[event.pointer] = event.position;
+    if (!_isPinching || _pinchPointers.length < 2) return;
+    final points = _pinchPointers.values.take(2).toList();
+    final next = zoomedPixelsPerSecond(
+      start: _pinchStartScale,
+      scale: (points[0] - points[1]).distance / _pinchStartDistance,
+      min: _minPixelsPerSecond,
+    );
+    if ((next - _pixelsPerSecond).abs() < 0.01) return;
+    // Place the anchor back under the playhead at the new scale before the
+    // rebuild lays the wider (or narrower) track out. Corrected rather than
+    // jumped to, so no scroll notification goes out: a zoom is not a scrub,
+    // and the playhead's time does not change.
+    if (_scrollController.hasClients) {
+      _scrollController.position.correctPixels(_pinchAnchorSeconds * next);
+    }
+    setState(() => _pixelsPerSecond = next);
+  }
+
+  void _onTrackPointerEnd(PointerEvent event) {
+    _pinchPointers.remove(event.pointer);
+    if (_isPinching && _pinchPointers.length < 2) {
+      setState(() => _isPinching = false);
+    }
+  }
+
   void _syncScrollToTimelinePosition(double timelinePosition) {
     // A carried clip owns the scroll position; letting the playhead pull it
-    // back would fight the drag.
-    if (_isUserScrolling ||
+    // back would fight the drag. A pinch places the scroll itself.
+    if (_isPinching ||
+        _isUserScrolling ||
         _isDraggingTrimHandle ||
         _isDraggingTextClip ||
         _isReorderingClip) {
@@ -518,6 +604,17 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   bool _onScrollNotification(ScrollNotification notification) {
     // Only handle horizontal scrolling for the timeline position
     if (notification.metrics.axis != Axis.horizontal) {
+      return false;
+    }
+
+    // A pinch stops the scroll the first finger may have started; that scrub
+    // still has to end, but nothing it reports is a new position and it must
+    // not glide onto a seam.
+    if (_isPinching) {
+      if (notification is ScrollEndNotification && _isUserScrolling) {
+        _isUserScrolling = false;
+        widget.onScrubEnd?.call();
+      }
       return false;
     }
 
@@ -627,7 +724,15 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     // playhead is timeline seconds; the trim is source seconds; the tolerance
     // is pixels — converted here, with the clip's speed, so the pull feels the
     // same on a sped clip.
-    final next = _snapTrimToPlayhead(free);
+    var next = _snapTrimToPlayhead(free);
+    // The end edge also meets what is on the lanes — ending a clip where the
+    // music or a title ends. The start edge cannot: trimming it shifts every
+    // later clip, so the clip's start stays where it is on the timeline.
+    if (handle == _TrimHandle.end && next == free) {
+      next = _snapTrimEndToItems(free);
+    } else {
+      _showSnapGuide(null);
+    }
 
     // Clamped to the shortest allowed clip here, rather than left for
     // `_updateTrim` to reject: a rejected update leaves the handle wherever the
@@ -671,8 +776,41 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     return snapped;
   }
 
+  /// The selected clip's end, at [sourceSeconds], pulled onto the start or end
+  /// of any lane item its timeline edge comes within reach of. Only for a
+  /// clip whose source runs straight through time — a speed curve or a
+  /// reversal makes the mapping something other than a line.
+  double _snapTrimEndToItems(double sourceSeconds) {
+    final segments = widget.segments;
+    final index = segments.indexWhere((s) => s.id == widget.selectedSegmentId);
+    if (index < 0) return sourceSeconds;
+    final segment = segments[index];
+    if (segment.speedCurve != null || segment.isReversed) {
+      _showSnapGuide(null);
+      return sourceSeconds;
+    }
+    final clipStart = segmentTimelineStarts(segments)[index];
+    final edges = [
+      for (final item in laneSpansOf(
+        texts: widget.textOverlays,
+        images: widget.imageOverlays,
+        videos: widget.videoOverlays,
+        audios: widget.audioTracks,
+      )) ...[item.start, item.end],
+    ];
+    final result = snapEdge(
+      value: clipStart + (sourceSeconds - segment.sourceStart) / segment.speed,
+      targets: edges,
+      tolerance: snapToleranceSeconds(_pixelsPerSecond),
+    );
+    _showSnapGuide(result.guide);
+    if (result.guide == null) return sourceSeconds;
+    return segment.sourceStart + (result.value - clipStart) * segment.speed;
+  }
+
   void _endTrimDrag() {
     _trimSnapped = false;
+    _clearSnap();
     if (!_isDraggingTrimHandle) return;
     _isDraggingTrimHandle = false;
     setState(() => _activeTrimHandle = null);
@@ -828,7 +966,6 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _draggingTextId = text.id;
       _textDragInitialStart = text.startTime;
       _textDragInitialEnd = text.endTime;
-      _activeSnapGuideMs = text.startTime.inMilliseconds;
       _dragStartLaneIndex = text.laneIndex;
       _dragStartMaxLane = _maxMoveLaneFor(text.id);
     });
@@ -836,34 +973,72 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     widget.onTextTapped?.call(text.id);
   }
 
-  int _applyTextSnap(int proposedStartMs, int maxStartMs) {
-    int snappedStartMs = proposedStartMs;
-    int? snapGuideMs;
+  /// The snap targets for the gesture under way, worked out once when it
+  /// starts: a move previews its own start on the playhead, so a target read
+  /// live would chase the item and snap it to itself. Cleared at every
+  /// gesture's end ([_clearSnap]).
+  List<double>? _gestureSnapTargets;
+  String? _gestureSnapId;
 
-    final playheadMs = (widget.timelinePositionSeconds * 1000)
-        .round()
-        .clamp(0, (_totalEditedDuration * 1000).round())
-        .toInt();
-    if ((proposedStartMs - playheadMs).abs() <= _textSnapThresholdMs) {
-      snappedStartMs = playheadMs;
-      snapGuideMs = playheadMs;
-    } else {
-      final nearestSecondMs = (proposedStartMs / 1000).round() * 1000;
-      if ((proposedStartMs - nearestSecondMs).abs() <= _textSnapThresholdMs) {
-        snappedStartMs = nearestSecondMs;
-        snapGuideMs = nearestSecondMs;
-      }
+  List<double> _snapTargetsFor(String id) {
+    if (_gestureSnapTargets != null && _gestureSnapId == id) {
+      return _gestureSnapTargets!;
     }
+    _gestureSnapId = id;
+    return _gestureSnapTargets = timelineSnapTargets(
+      playheadSeconds: widget.timelinePositionSeconds,
+      clipBoundaries: clipBoundaryTimes(widget.segments),
+      items: laneSpansOf(
+        texts: widget.textOverlays,
+        images: widget.imageOverlays,
+        videos: widget.videoOverlays,
+        audios: widget.audioTracks,
+      ),
+      excludeId: id,
+    );
+  }
 
-    snappedStartMs = snappedStartMs.clamp(0, maxStartMs).toInt();
+  /// [start] for item [id] spanning [length] seconds, after the snap — and the
+  /// guide line drawn where it landed.
+  double _snapMove(String id, double start, double length) {
+    final result = snapMovingSpan(
+      start: start,
+      length: length,
+      targets: _snapTargetsFor(id),
+      tolerance: snapToleranceSeconds(_pixelsPerSecond),
+    );
+    _showSnapGuide(result.guide);
+    return result.value;
+  }
 
-    if (_activeSnapGuideMs != snapGuideMs) {
-      setState(() {
-        _activeSnapGuideMs = snapGuideMs;
-      });
-    }
+  /// One edge of item [id] at [value] — a trim — after the snap.
+  double _snapItemEdge(String id, double value) {
+    final result = snapEdge(
+      value: value,
+      targets: _snapTargetsFor(id),
+      tolerance: snapToleranceSeconds(_pixelsPerSecond),
+    );
+    _showSnapGuide(result.guide);
+    return result.value;
+  }
 
-    return snappedStartMs;
+  Duration _snapEdgeDuration(String id, Duration edge) {
+    final seconds = _snapItemEdge(id, edge.inMicroseconds / 1e6);
+    return Duration(microseconds: (seconds * 1e6).round());
+  }
+
+  /// The guide line, and one tick of haptics as something lands — not on
+  /// every frame held there.
+  void _showSnapGuide(double? guide) {
+    if (guide == _snapGuideSeconds) return;
+    if (guide != null) HapticFeedback.selectionClick();
+    setState(() => _snapGuideSeconds = guide);
+  }
+
+  void _clearSnap() {
+    _gestureSnapTargets = null;
+    _gestureSnapId = null;
+    if (_snapGuideSeconds != null) setState(() => _snapGuideSeconds = null);
   }
 
   void _moveTextClip(LongPressMoveUpdateDetails details) {
@@ -887,7 +1062,13 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final proposedStartMs = (_textDragInitialStart!.inMilliseconds + deltaMs)
         .clamp(0, maxStartMs)
         .toInt();
-    final nextStartMs = _applyTextSnap(proposedStartMs, maxStartMs);
+    final nextStartMs = (_snapMove(
+              _draggingTextId!,
+              proposedStartMs / 1000.0,
+              clipDurationMs / 1000.0,
+            ) *
+            1000)
+        .round();
     final nextEndMs = nextStartMs + clipDurationMs;
 
     final nextStart = Duration(milliseconds: nextStartMs);
@@ -917,8 +1098,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _draggingTextId = null;
       _textDragInitialStart = null;
       _textDragInitialEnd = null;
-      _activeSnapGuideMs = null;
     });
+    _clearSnap();
     widget.onDragEnd?.call();
   }
 
@@ -950,6 +1131,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     // — the *first asset's* length — so music could not be dragged past it.
     double nextStart = _audioDragInitialTimelineStart! + deltaSeconds;
     if (nextStart < 0) nextStart = 0;
+    nextStart = _snapMove(
+      audio.id,
+      nextStart,
+      audio.timelineEnd - audio.timelineStart,
+    );
 
     // Same downward lane order as the overlay movers: drag down = higher lane.
     final lanesMoved = (details.localOffsetFromOrigin.dy / _laneHeight)
@@ -972,6 +1158,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _draggingAudioId = null;
       _audioDragInitialTimelineStart = null;
     });
+    _clearSnap();
     widget.onDragEnd?.call();
   }
 
@@ -1002,7 +1189,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     if (audio.id != _trimmingAudioId) return;
 
     _audioTrimAccumulatedDelta += details.delta.dx;
-    final deltaSeconds = _audioTrimAccumulatedDelta / _pixelsPerSecond;
+    // The left edge's timeline position, snapped; the source follows by the
+    // same distance.
+    final deltaSeconds = _snapItemEdge(
+          audio.id,
+          _audioTrimInitialTimelineStart! +
+              _audioTrimAccumulatedDelta / _pixelsPerSecond,
+        ) -
+        _audioTrimInitialTimelineStart!;
 
     double newTimelineStart = _audioTrimInitialTimelineStart! + deltaSeconds;
     double newSourceStart = _audioTrimInitialSourceStart! + deltaSeconds;
@@ -1046,7 +1240,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     if (audio.id != _trimmingAudioId) return;
 
     _audioTrimAccumulatedDelta += details.delta.dx;
-    final deltaSeconds = _audioTrimAccumulatedDelta / _pixelsPerSecond;
+    // The right edge's timeline position, snapped.
+    final initialTimelineEnd = _audioTrimInitialTimelineStart! +
+        (_audioTrimInitialSourceEnd! - _audioTrimInitialSourceStart!);
+    final deltaSeconds = _snapItemEdge(
+          audio.id,
+          initialTimelineEnd + _audioTrimAccumulatedDelta / _pixelsPerSecond,
+        ) -
+        initialTimelineEnd;
 
     double newSourceEnd = _audioTrimInitialSourceEnd! + deltaSeconds;
 
@@ -1078,6 +1279,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _audioTrimInitialSourceStart = null;
       _audioTrimInitialSourceEnd = null;
     });
+    _clearSnap();
     widget.onDragEnd?.call();
   }
 
@@ -1874,16 +2076,30 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       child: Stack(
         children: [
           // â”€â”€ Scrollable content â”€â”€
-          SingleChildScrollView(
+          // A Listener, not a gesture recogniser: it sees every finger without
+          // entering the arena, so one-finger scrubs, trims and drags are
+          // exactly what they were and a pinch only begins at the second.
+          Listener(
+            onPointerDown: _onTrackPointerDown,
+            onPointerMove: _onTrackPointerMove,
+            onPointerUp: _onTrackPointerEnd,
+            onPointerCancel: _onTrackPointerEnd,
+            child: SingleChildScrollView(
             controller: _verticalScrollController,
             scrollDirection: Axis.vertical,
-            physics: const BouncingScrollPhysics(),
+            // Both scroll views hold still while two fingers zoom: otherwise
+            // the first finger's scroll fights the zoom's own placement.
+            physics: _isPinching
+                ? const NeverScrollableScrollPhysics()
+                : const BouncingScrollPhysics(),
             child: NotificationListener<ScrollNotification>(
               onNotification: _onScrollNotification,
               child: SingleChildScrollView(
                 controller: _scrollController,
                 scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
+                physics: _isPinching
+                    ? const NeverScrollableScrollPhysics()
+                    : const BouncingScrollPhysics(),
                 child: Container(
                   padding: EdgeInsets.only(
                     left: halfWidth,
@@ -1912,6 +2128,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                                 durationSeconds: _totalEditedDuration,
                                 pixelsPerSecond: _pixelsPerSecond,
                                 formatTime: _formatTimeRuler,
+                                // A screen either side of what is visible, so
+                                // a fling never reveals an unpainted stretch.
+                                fromSeconds: _visibleStartSeconds -
+                                    (_visibleEndSeconds - _visibleStartSeconds),
+                                toSeconds: _visibleEndSeconds +
+                                    (_visibleEndSeconds - _visibleStartSeconds),
                               ),
                             ),
                           ),
@@ -1971,14 +2193,15 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                             totalHeight: totalHeight,
                           ),
 
-                          if (_activeSnapGuideMs != null)
+                          // The snap guide: through the filmstrip and every
+                          // lane, so the cut or edge it lines up with is in
+                          // view whichever row it is on.
+                          if (_snapGuideSeconds != null)
                             Positioned(
-                              top: lanesTop + 2,
-                              left:
-                                  (_activeSnapGuideMs! / 1000.0) *
-                                  _pixelsPerSecond,
+                              top: filmstripTop,
+                              left: _snapGuideSeconds! * _pixelsPerSecond - 1,
                               width: 2,
-                              height: _laneHeight - 4,
+                              height: totalHeight - filmstripTop,
                               child: IgnorePointer(
                                 child: Container(
                                   decoration: BoxDecoration(
@@ -2062,6 +2285,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 ),
               ),
             ),
+          ),
           ),
 
           // â”€â”€ Cover card, tracked over the scroll position â”€â”€
@@ -2398,6 +2622,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 var newStart = Duration(
                   milliseconds: _textTrimInitialTime!.inMilliseconds + deltaMs,
                 );
+                newStart = _snapEdgeDuration(text.id, newStart);
                 if (newStart < Duration.zero) newStart = Duration.zero;
                 if (newStart > text.endTime - _kMinTrimDuration)
                   newStart = text.endTime - _kMinTrimDuration;
@@ -2406,6 +2631,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 _previewTrimPosition(newStart.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                _clearSnap();
                 widget.onDragEnd?.call();
                 setState(() {
                   _trimmingTextId = null;
@@ -2445,6 +2671,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 var newEnd = Duration(
                   milliseconds: _textTrimInitialTime!.inMilliseconds + deltaMs,
                 );
+                newEnd = _snapEdgeDuration(text.id, newEnd);
                 // Unbounded above: overlays may outlast the video, like audio.
                 const maxEnd = Duration(milliseconds: _kUnboundedMs);
                 if (newEnd > maxEnd) newEnd = maxEnd;
@@ -2455,6 +2682,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 _previewTrimPosition(newEnd.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                _clearSnap();
                 widget.onDragEnd?.call();
                 setState(() {
                   _trimmingTextId = null;
@@ -2505,9 +2733,16 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final proposedStartMs = (_imageDragInitialStart!.inMilliseconds + deltaMs)
         .clamp(0, maxStartMs)
         .toInt();
-    final nextEndMs = proposedStartMs + clipDurationMs;
+    final snappedStartMs = (_snapMove(
+              _draggingImageId!,
+              proposedStartMs / 1000.0,
+              clipDurationMs / 1000.0,
+            ) *
+            1000)
+        .round();
+    final nextEndMs = snappedStartMs + clipDurationMs;
 
-    final nextStart = Duration(milliseconds: proposedStartMs);
+    final nextStart = Duration(milliseconds: snappedStartMs);
     final nextEnd = Duration(milliseconds: nextEndMs);
 
     // Lanes stack *downward* (lane 0 nearest the filmstrip), so dragging down
@@ -2535,6 +2770,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _imageDragInitialStart = null;
       _imageDragInitialEnd = null;
     });
+    _clearSnap();
     widget.onDragEnd?.call();
   }
 
@@ -2668,6 +2904,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 var newStart = Duration(
                   milliseconds: _imageTrimInitialTime!.inMilliseconds + deltaMs,
                 );
+                newStart = _snapEdgeDuration(image.id, newStart);
                 if (newStart < Duration.zero) newStart = Duration.zero;
                 if (newStart > image.endTime - _kMinTrimDuration)
                   newStart = image.endTime - _kMinTrimDuration;
@@ -2680,6 +2917,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 _previewTrimPosition(newStart.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                _clearSnap();
                 widget.onDragEnd?.call();
                 setState(() {
                   _trimmingImageId = null;
@@ -2721,6 +2959,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 var newEnd = Duration(
                   milliseconds: _imageTrimInitialTime!.inMilliseconds + deltaMs,
                 );
+                newEnd = _snapEdgeDuration(image.id, newEnd);
                 // Unbounded above: overlays may outlast the video, like audio.
                 const maxEnd = Duration(milliseconds: _kUnboundedMs);
                 if (newEnd > maxEnd) newEnd = maxEnd;
@@ -2735,6 +2974,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 _previewTrimPosition(newEnd.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                _clearSnap();
                 widget.onDragEnd?.call();
                 setState(() {
                   _trimmingImageId = null;
@@ -2785,9 +3025,16 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final proposedStartMs = (_videoDragInitialStart!.inMilliseconds + deltaMs)
         .clamp(0, maxStartMs)
         .toInt();
-    final nextEndMs = proposedStartMs + clipDurationMs;
+    final snappedStartMs = (_snapMove(
+              _draggingVideoId!,
+              proposedStartMs / 1000.0,
+              clipDurationMs / 1000.0,
+            ) *
+            1000)
+        .round();
+    final nextEndMs = snappedStartMs + clipDurationMs;
 
-    final nextStart = Duration(milliseconds: proposedStartMs);
+    final nextStart = Duration(milliseconds: snappedStartMs);
     final nextEnd = Duration(milliseconds: nextEndMs);
 
     // Lanes stack *downward* (lane 0 nearest the filmstrip), so dragging down
@@ -2815,6 +3062,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _videoDragInitialStart = null;
       _videoDragInitialEnd = null;
     });
+    _clearSnap();
     widget.onDragEnd?.call();
   }
 
@@ -2949,6 +3197,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 var newStart = Duration(
                   milliseconds: _videoTrimInitialTime!.inMilliseconds + deltaMs,
                 );
+                newStart = _snapEdgeDuration(video.id, newStart);
                 if (newStart < Duration.zero) newStart = Duration.zero;
                 if (newStart > video.timelineEnd - _kMinTrimDuration)
                   newStart =
@@ -2962,6 +3211,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 _previewTrimPosition(newStart.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                _clearSnap();
                 widget.onDragEnd?.call();
                 setState(() {
                   _trimmingVideoId = null;
@@ -3003,6 +3253,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 var newEnd = Duration(
                   milliseconds: _videoTrimInitialTime!.inMilliseconds + deltaMs,
                 );
+                newEnd = _snapEdgeDuration(video.id, newEnd);
                 // Unbounded above: overlays may outlast the video, like audio.
                 const maxEnd = Duration(milliseconds: _kUnboundedMs);
                 if (newEnd > maxEnd) newEnd = maxEnd;
@@ -3018,6 +3269,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 _previewTrimPosition(newEnd.inMilliseconds / 1000.0);
               },
               onEnd: () {
+                _clearSnap();
                 widget.onDragEnd?.call();
                 setState(() {
                   _trimmingVideoId = null;
@@ -3040,10 +3292,17 @@ class _TimeRulerPainter extends CustomPainter {
   final double pixelsPerSecond;
   final String Function(double) formatTime;
 
+  /// The stretch worth painting: zoomed in, the whole ruler of a long project
+  /// is thousands of labels, nearly all of them off screen.
+  final double fromSeconds;
+  final double toSeconds;
+
   _TimeRulerPainter({
     required this.durationSeconds,
     required this.pixelsPerSecond,
     required this.formatTime,
+    this.fromSeconds = 0,
+    this.toSeconds = double.infinity,
   });
 
   @override
@@ -3060,28 +3319,24 @@ class _TimeRulerPainter extends CustomPainter {
       fontWeight: FontWeight.w500,
     );
 
-    // Determine a good interval for tick marks
-    double interval;
-    if (durationSeconds <= 10) {
-      interval = 2;
-    } else if (durationSeconds <= 30) {
-      interval = 5;
-    } else if (durationSeconds <= 120) {
-      interval = 10;
-    } else {
-      interval = 20;
-    }
+    // From the zoom, not the project's length: labels stay readable at any
+    // scale (`rulerTickInterval`).
+    final interval = rulerTickInterval(pixelsPerSecond);
+    final from = fromSeconds.clamp(0.0, durationSeconds).toDouble();
+    final to = toSeconds.clamp(0.0, durationSeconds).toDouble();
 
-    for (double t = 0; t <= durationSeconds; t += interval) {
+    // Counted in whole steps, not summed, so a 0.1s step does not drift.
+    final first = (from / interval).floor();
+    final last = (to / interval).ceil();
+    for (var i = first; i <= last; i++) {
+      final t = i * interval;
+      if (t > durationSeconds + 1e-9) break;
       final x = t * pixelsPerSecond;
-      // Tick mark
       canvas.drawLine(
         Offset(x, size.height - 4),
         Offset(x, size.height),
         tickPaint,
       );
-
-      // Label
       final tp = TextPainter(
         text: TextSpan(text: formatTime(t), style: textStyle),
         textDirection: TextDirection.ltr,
@@ -3094,7 +3349,9 @@ class _TimeRulerPainter extends CustomPainter {
     final smallTickPaint = Paint()
       ..color = Colors.white12
       ..strokeWidth = 0.5;
-    for (double t = 0; t <= durationSeconds; t += smallInterval) {
+    for (var i = first * 4; i <= last * 4; i++) {
+      final t = i * smallInterval;
+      if (t > durationSeconds + 1e-9) break;
       final x = t * pixelsPerSecond;
       canvas.drawLine(
         Offset(x, size.height - 2),
