@@ -540,7 +540,7 @@ the row** rather than scroll it — at natural width they ran past a phone's edg
 each label scaled down where large text would not fit.
 
 **Easing on transitions** (Stage 2 part 3; spec `docs/superpowers/specs/2026-10-10-transitions-easing-design.md`;
-**awaiting device verification**). A curve button beside the duration opens the keyframes' own
+**device-verified 2026-10-11**). A curve button beside the duration opens the keyframes' own
 easing sheet; each choice applies and plays on the canvas. **The picture only**:
 `NativeTimelineTransitionIntent.pictureProgressAt` is the window's progress through the curve,
 read by the shader in both engines, while the sound's equal-power crossfade keeps `progressAt` —

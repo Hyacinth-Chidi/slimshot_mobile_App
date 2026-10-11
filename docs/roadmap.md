@@ -68,7 +68,7 @@ groundwork first, then the ports and the sheet, then easing.
   - **2b — done, device-verified 2026-10-10.** Light, Glitch and 3D: Overexpose, Film Burn,
     Flash (ours); RGB Split, Lost Signal, Static, Datamosh, Displace, Flicker; Revolve L/R, Cube
     L/R. Spec `docs/superpowers/specs/2026-10-10-transitions-part2b-design.md`.
-- **Part 3 — easing** (item 6). **Built, awaiting device verification.** Per seam, the
+- **Part 3 — easing** (item 6). **Done, device-verified 2026-10-11.** Per seam, the
   keyframes' easing sheet, the picture only. With it, the open-source licences page item 4
   called for. Spec `docs/superpowers/specs/2026-10-10-transitions-easing-design.md`.
 
