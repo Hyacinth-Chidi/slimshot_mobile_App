@@ -3546,6 +3546,13 @@ library now opens from the submenu's Music.
   `AppColors.soundEffect` where music and the user's own sound stay purple; its lane's gutter
   shows `sparkles`, the menu's own icon, beside music's note. Music from the library is ordinary
   audio.
+- **A selected audio clip is framed in white, with slim white handles outside it** (the user's
+  call): the slab is 8px from the clip's edge outward (10 while held), the touch area 16px and
+  reaching 4px into the clip (`_kAudioHandleInset`). Purple was the fill's own hue, so the frame
+  and handles disappeared into it.
+- **The sheet opens on Downloaded when its library holds anything, otherwise on the first
+  category** (the user's call; `_opensOnDownloaded`): what the user already chose comes first.
+  The categories arriving does not move it.
 - **Music is the same sheet, pointed at the server's `music` root** (`kMusicRoot`; the user's
   call, with the categories already in the dashboard). `SoundLibrarySheet` /
   `SoundLibraryController` serve both, opened by `_showSoundLibrary(root)`. Music adds **Import**

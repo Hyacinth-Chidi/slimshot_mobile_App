@@ -42,6 +42,43 @@ void main() {
       expect(c.sounds.map((s) => s.id), ['a', 'b']);
     });
 
+    test('opens on Downloaded when this library has sounds', () async {
+      await opened();
+      await c.download(_a);
+      c.dispose();
+      await opened();
+      expect(c.selected, kDownloadedPill);
+      expect(c.sounds.map((s) => s.id), ['a']);
+    });
+
+    test('a sound in the other library does not open Downloaded', () async {
+      final music = h.build(root: kMusicRoot);
+      await music.open();
+      await settle();
+      await music.download(const CatalogSound(id: 'm', title: 'Sound m'));
+      music.dispose();
+      await opened();
+      expect(c.selected, 'impacts');
+    });
+
+    test('Downloaded stays when the categories arrive', () async {
+      await opened();
+      await c.download(_a);
+      c.dispose();
+      await h.cache.saveCategories(const [
+        CatalogCategory(id: '1', slug: 'impacts', name: 'Impacts'),
+      ]);
+      h.server.gates['categories'] = Completer();
+      c = h.build();
+      unawaited(c.open());
+      await until(() => c.pills.length > 1);
+      expect(c.selected, kDownloadedPill);
+      h.server.gates['categories']!.complete();
+      await settle();
+      expect(c.selected, kDownloadedPill);
+      expect(c.pills, contains('funny-memes'));
+    });
+
     test('cached rows show before the server answers', () async {
       await h.cache.saveCategories(const [
         CatalogCategory(id: '1', slug: 'impacts', name: 'Impacts'),

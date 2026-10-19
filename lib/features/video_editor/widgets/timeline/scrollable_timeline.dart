@@ -295,6 +295,10 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   /// How far a carried clip lifts off the track, and how much it grows.
   static const double _kCarriedLiftPx = 6.0;
   static const double _kCarriedScale = 1.06;
+
+  /// How far an audio handle's touch area reaches into the clip; its slab
+  /// sits outside, from the clip's edge outward.
+  static const double _kAudioHandleInset = 4.0;
   static const double _laneHeight = 32.0;
   static const double _handleWidth = 12.0; // Thinner handle
   static const double _handleTouchWidth =
@@ -934,14 +938,29 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     );
   }
 
-  /// The audio lane's handle block: full-height colour with a centred grip
-  /// bar — the same bar on both ends, because a chevron implied a direction
-  /// the drag does not have.
-  Widget _audioHandleVisual(bool isHeld) {
-    return Container(
-      color: isHeld ? AppColors.textPrimary : AppColors.primaryStart,
-      child: Center(
-        child: Container(width: 2.5, height: 14, color: Colors.black),
+  /// The audio lane's handle: a slim white slab just outside the clip's
+  /// edge with a centred grip bar — the same bar on both ends, because a
+  /// chevron implied a direction the drag does not have. The touch area is
+  /// wider than the slab and reaches into the clip; held, the slab widens
+  /// outward.
+  Widget _audioHandleVisual(String audioId, {required bool start, required bool isHeld}) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: start ? 0 : _kAudioHandleInset,
+        right: start ? _kAudioHandleInset : 0,
+      ),
+      child: Align(
+        alignment: start ? Alignment.centerRight : Alignment.centerLeft,
+        child: AnimatedContainer(
+          key: ValueKey('audio-handle:$audioId:${start ? 'start' : 'end'}'),
+          duration: const Duration(milliseconds: 110),
+          curve: Curves.easeOut,
+          width: isHeld ? 10 : 8,
+          color: AppColors.textPrimary,
+          child: Center(
+            child: Container(width: 2, height: 12, color: Colors.black),
+          ),
+        ),
       ),
     );
   }
@@ -2375,6 +2394,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             onLongPressMoveUpdate: _moveAudioClip,
             onLongPressEnd: (_) => _endAudioClipDrag(),
             child: Container(
+              key: ValueKey('audio-clip:${audio.id}'),
               decoration: BoxDecoration(
                 // The fill does not change with selection — swapping it for
                 // opaque purpleAccent recoloured the body under the waveform,
@@ -2382,10 +2402,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 // Selection is the border's job, like every other clip.
                 color: audioTrackColor(audio, dragging: isBeingDragged),
                 border: Border.all(
-                  color: isBeingDragged
-                      ? Colors.white
-                      : isSelected
-                      ? AppColors.primaryStart
+                  color: isBeingDragged || isSelected
+                      ? AppColors.textPrimary
                       : Colors.transparent,
                   width: isBeingDragged ? 2 : (isSelected ? 2.0 : 1.5),
                 ),
@@ -2442,7 +2460,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
               onStart: (_) => _beginAudioTrim(audio),
               onUpdate: _updateAudioTrimStart,
               onEnd: _endAudioTrim,
-              visual: _audioHandleVisual,
+              visual: (held) =>
+                  _audioHandleVisual(audio.id, start: true, isHeld: held),
             ),
           ),
         );
@@ -2459,7 +2478,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
               onStart: (_) => _beginAudioTrim(audio),
               onUpdate: _updateAudioTrimEnd,
               onEnd: _endAudioTrim,
-              visual: _audioHandleVisual,
+              visual: (held) =>
+                  _audioHandleVisual(audio.id, start: false, isHeld: held),
             ),
           ),
         );

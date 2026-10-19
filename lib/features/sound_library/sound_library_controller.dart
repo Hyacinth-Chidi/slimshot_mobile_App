@@ -222,6 +222,11 @@ class SoundLibraryController extends ChangeNotifier {
     if (!_disposed) _notices.add(SoundSheetNotice(kind, title));
   }
 
+  /// The sheet opens on Downloaded when this library has sounds on the
+  /// phone — what the user already chose comes first — and on the first
+  /// category otherwise.
+  bool get _opensOnDownloaded => _downloaded.isNotEmpty;
+
   /// Shows what is kept at once, then asks the server. Once per controller:
   /// a second call is a no-op.
   Future<void> open() async {
@@ -231,7 +236,7 @@ class SoundLibraryController extends ChangeNotifier {
     await _cache.load();
     if (_disposed) return;
     _categories = _cache.categories;
-    if (_categories.isNotEmpty) {
+    if (_categories.isNotEmpty && !_opensOnDownloaded) {
       _selected = _categories.first.slug;
       _sounds = _cache.page(_selected);
     }
@@ -310,7 +315,10 @@ class SoundLibraryController extends ChangeNotifier {
       _categories = categories;
       _offline = false;
       unawaited(_cache.saveCategories(categories).catchError((_) {}));
-      if (opening && _selected == kDownloadedPill && categories.isNotEmpty) {
+      if (opening &&
+          _selected == kDownloadedPill &&
+          categories.isNotEmpty &&
+          !_opensOnDownloaded) {
         _selected = categories.first.slug;
         _sounds = _cache.page(_selected);
       } else if (!pills.contains(_selected)) {
