@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/theme/lucide_icons.dart';
+import '../core/theme/sound_effect_icon.dart';
 
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_motion.dart';
@@ -97,12 +98,16 @@ class EditorTool {
   final String id;
   final String label;
   final IconData icon;
+
+  /// Drawn in place of [icon] where Lucide has no fitting glyph.
+  final Widget Function(double size, Color color)? glyph;
   final bool hasSubMenu;
 
   const EditorTool({
     required this.id,
     required this.label,
     required this.icon,
+    this.glyph,
     this.hasSubMenu = false,
   });
 }
@@ -262,7 +267,12 @@ const EditorMenu _audioMenu = EditorMenu(
     // Music, beside Effects: "Sounds" read as if effects were not sounds.
     EditorTool(id: 'music', label: 'Music', icon: LucideIcons.music),
     // The sound effects library. Its own id: `effects` is the clip menu's.
-    EditorTool(id: 'sound_effects', label: 'Sound effects', icon: LucideIcons.bellRing),
+    EditorTool(
+      id: 'sound_effects',
+      label: 'Sound effects',
+      icon: LucideIcons.music,
+      glyph: SoundEffectIcon.glyph,
+    ),
     EditorTool(id: 'extract', label: 'Extract', icon: LucideIcons.folderOpen),
     EditorTool(id: 'record', label: 'Record', icon: LucideIcons.mic),
   ],
@@ -2111,7 +2121,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                 if (audioId != null) notifier.duplicateAudioTrack(audioId);
               }
             },
-            child: EditorToolTile(icon: tool.icon, label: tool.label),
+            child: EditorToolTile(
+              icon: tool.icon,
+              glyph: tool.glyph,
+              label: tool.label,
+            ),
           );
         },
       ),
@@ -2411,6 +2425,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                 },
                 child: EditorToolTile(
                   icon: tool.icon,
+                  glyph: tool.glyph,
                   label: tool.label,
                   enabled: toolEnabled,
                 ),

@@ -1,6 +1,5 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_highlight.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_placement.dart';
@@ -266,19 +265,19 @@ void main() {
       laneIndex: 1,
     );
     final plain = TextOverlayModel(id: 't', text: 'Hi');
-    List<IconData> icons(int lane, List<TextOverlayModel> texts) =>
-        laneGutterIcons(
+    List<LaneGutterKind> icons(int lane, List<TextOverlayModel> texts) =>
+        laneGutterKinds(
           lane: lane,
           audios: const [],
           texts: texts,
           images: const [],
           videos: const [],
         );
-    expect(icons(1, [caption, plain]), [LucideIcons.subtitles]);
-    expect(icons(0, [caption, plain]), [LucideIcons.type]);
+    expect(icons(1, [caption, plain]), [LaneGutterKind.caption]);
+    expect(icons(0, [caption, plain]), [LaneGutterKind.text]);
     expect(
       icons(0, [plain, caption.copyWith(laneIndex: 0)]),
-      [LucideIcons.type, LucideIcons.subtitles],
+      [LaneGutterKind.text, LaneGutterKind.caption],
     );
   });
 }

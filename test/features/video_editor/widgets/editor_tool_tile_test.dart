@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/theme/lucide_icons.dart';
+import 'package:slimshotai/core/theme/sound_effect_icon.dart';
 import 'package:slimshotai/features/video_editor/widgets/editor_tool_tile.dart';
 
 /// A toolbar tool shows its whole name.
@@ -70,5 +71,27 @@ void main() {
     expect(await opacityOf(enabled: false), lessThan(0.5));
     expect(await opacityOf(enabled: true), anyOf(isNull, 1.0));
     expect(find.text('Overlay'), findsOneWidget, reason: 'still there to be found');
+  });
+
+  testWidgets('a tool with a glyph of its own draws it in place of the icon',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Row(
+            children: [
+              EditorToolTile(
+                icon: LucideIcons.music,
+                glyph: SoundEffectIcon.glyph,
+                label: 'Sound effects',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    final glyph = tester.widget<SoundEffectIcon>(find.byType(SoundEffectIcon));
+    expect(glyph.size, 24);
+    expect(find.byType(Icon), findsNothing);
   });
 }

@@ -1896,14 +1896,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     ];
 
     for (var lane = 0; lane <= maxLane; lane++) {
-      final icons = laneGutterIcons(
+      final kinds = laneGutterKinds(
         lane: lane,
         audios: widget.audioTracks,
         texts: widget.textOverlays,
         images: widget.imageOverlays,
         videos: widget.videoOverlays,
       );
-      if (icons.isEmpty) continue;
+      if (kinds.isEmpty) continue;
 
       widgets.add(
         Positioned(
@@ -1915,8 +1915,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                for (final icon in icons) ...[
-                  Icon(icon, size: 12, color: Colors.white54),
+                for (final kind in kinds) ...[
+                  laneGutterGlyph(kind, size: 12, color: Colors.white54),
                   const SizedBox(width: 4),
                 ],
               ],

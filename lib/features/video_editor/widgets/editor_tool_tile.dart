@@ -17,10 +17,15 @@ class EditorToolTile extends StatelessWidget {
     super.key,
     required this.icon,
     required this.label,
+    this.glyph,
     this.enabled = true,
   });
 
   final IconData icon;
+
+  /// Drawn in place of [icon] for a tool Lucide has no glyph for, at the
+  /// icon's size and colour (`SoundEffectIcon.glyph`).
+  final Widget Function(double size, Color color)? glyph;
   final String label;
 
   /// False draws the tool dimmed — still in its place, waiting for the
@@ -45,7 +50,8 @@ class EditorToolTile extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: Colors.white, size: 24),
+          glyph?.call(24, Colors.white) ??
+              Icon(icon, color: Colors.white, size: 24),
           const SizedBox(height: 4),
           Text(
             label,

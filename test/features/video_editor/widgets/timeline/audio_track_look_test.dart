@@ -1,7 +1,7 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/theme/app_colors.dart';
-import 'package:slimshotai/core/theme/lucide_icons.dart';
+import 'package:slimshotai/core/theme/sound_effect_icon.dart';
 import 'package:slimshotai/features/video_editor/models/audio_track_model.dart';
 import 'package:slimshotai/features/video_editor/widgets/timeline/audio_track_color.dart';
 import 'package:slimshotai/features/video_editor/widgets/timeline/lane_gutter_icons.dart';
@@ -32,18 +32,31 @@ void main() {
   });
 
   test('a lane of sound effects shows the sound effects icon', () {
-    List<IconData> icons(int lane, List<AudioTrackModel> audios) => laneGutterIcons(
+    List<LaneGutterKind> icons(int lane, List<AudioTrackModel> audios) => laneGutterKinds(
           lane: lane,
           audios: audios,
           texts: const [],
           images: const [],
           videos: const [],
         );
-    expect(icons(0, [music, effect]), [LucideIcons.music]);
-    expect(icons(1, [music, effect]), [LucideIcons.bellRing]);
+    expect(icons(0, [music, effect]), [LaneGutterKind.music]);
+    expect(icons(1, [music, effect]), [LaneGutterKind.soundEffect]);
     expect(
       icons(0, [music, effect.copyWith(laneIndex: 0)]),
-      [LucideIcons.music, LucideIcons.bellRing],
+      [LaneGutterKind.music, LaneGutterKind.soundEffect],
     );
+  });
+
+  testWidgets('a sound effects lane is marked with the tool glyph',
+      (tester) async {
+    await tester.pumpWidget(Directionality(
+      textDirection: TextDirection.ltr,
+      child: Row(children: [
+        laneGutterGlyph(LaneGutterKind.soundEffect, size: 12, color: Colors.white),
+        laneGutterGlyph(LaneGutterKind.music, size: 12, color: Colors.white),
+      ]),
+    ));
+    expect(find.byType(SoundEffectIcon), findsOneWidget);
+    expect(find.byType(Icon), findsOneWidget);
   });
 }

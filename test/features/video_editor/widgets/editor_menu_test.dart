@@ -199,11 +199,14 @@ void main() {
     // Its own id: `effects` is the clip menu's tool, and the handler used to
     // tell the two apart by which menu was open.
     final audio = menuSource('_audioMenu');
-    expect(audio, contains("id: 'sound_effects', label: 'Sound effects'"));
+    expect(audio, contains("id: 'sound_effects',"));
+    expect(audio, contains("label: 'Sound effects',"));
     expect(audio, isNot(contains("id: 'effects'")));
-    // Not the clip Effects' sparkles: two tools, two icons.
-    expect(audio, contains('LucideIcons.bellRing'));
+    // Not the clip Effects' sparkles: two tools, two icons. Its own glyph,
+    // a note with a hit, since Lucide has none — drawn by both toolbars.
+    expect(audio, contains('glyph: SoundEffectIcon.glyph'));
     expect(audio, isNot(contains('LucideIcons.sparkles')));
+    expect('glyph: tool.glyph'.allMatches(screen.readAsStringSync()).length, 2);
     final source = screen.readAsStringSync();
     expect(source, contains("tool.id == 'sound_effects'"));
     expect(source, contains('SoundLibrarySheet('));

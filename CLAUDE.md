@@ -3544,8 +3544,13 @@ library now opens from the submenu's Music.
   sound effects library carries `AudioTrackModel.isSoundEffect` — written to the draft only when
   true, so older drafts read as ordinary audio — and `audioTrackColor` draws it in
   `AppColors.soundEffect` where music and the user's own sound stay purple; its lane's gutter
-  shows `bellRing`, the menu's own icon, beside music's note — not `sparkles`, which is the
-  clip Effects tool's (the user's call: two tools, two icons). Music from the library is ordinary
+  shows the tool's own glyph beside music's note. **The glyph is drawn, not Lucide's**
+  (`SoundEffectIcon`, `core/theme/sound_effect_icon.dart`: a beamed note with a burst and three
+  rays, the user's pick from a reference): `sparkles` is the clip Effects tool's and a bell read as
+  an alarm, and Lucide has nothing with a hit in it. It is drawn in Lucide's manner — 24-unit grid,
+  round strokes — and takes an `Icon`'s size and colour. `EditorTool.glyph` /
+  `EditorToolTile.glyph` draw it in place of the icon; the gutter returns `LaneGutterKind`s and
+  `laneGutterGlyph` draws each, so a kind without a Lucide glyph needs no special case. Music from the library is ordinary
   audio.
 - **A selected audio clip is framed in white, with slim white handles outside it** (the user's
   call): the slab is 8px from the clip's edge outward (10 while held), the touch area 16px and
