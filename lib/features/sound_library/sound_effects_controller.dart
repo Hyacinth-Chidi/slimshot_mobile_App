@@ -114,6 +114,7 @@ class SoundEffectsController extends ChangeNotifier {
   String? _listenPending;
   String? _addingId;
   bool _disposed = false;
+  bool _opened = false;
 
   Stream<SoundSheetNotice> get notices => _notices.stream;
 
@@ -156,8 +157,11 @@ class SoundEffectsController extends ChangeNotifier {
     if (!_disposed) _notices.add(SoundSheetNotice(kind, title));
   }
 
-  /// Shows what is kept at once, then asks the server.
+  /// Shows what is kept at once, then asks the server. Once per controller:
+  /// a second call is a no-op.
   Future<void> open() async {
+    if (_opened) return;
+    _opened = true;
     _downloaded = await _library.load();
     await _cache.load();
     if (_disposed) return;
