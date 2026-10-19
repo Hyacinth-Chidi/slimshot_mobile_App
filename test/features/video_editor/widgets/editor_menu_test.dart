@@ -201,6 +201,9 @@ void main() {
     final audio = menuSource('_audioMenu');
     expect(audio, contains("id: 'sound_effects', label: 'Sound effects'"));
     expect(audio, isNot(contains("id: 'effects'")));
+    // Not the clip Effects' sparkles: two tools, two icons.
+    expect(audio, contains('LucideIcons.bellRing'));
+    expect(audio, isNot(contains('LucideIcons.sparkles')));
     final source = screen.readAsStringSync();
     expect(source, contains("tool.id == 'sound_effects'"));
     expect(source, contains('SoundLibrarySheet('));

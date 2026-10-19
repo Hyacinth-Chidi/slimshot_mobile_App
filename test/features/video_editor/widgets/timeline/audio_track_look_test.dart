@@ -31,7 +31,7 @@ void main() {
     );
   });
 
-  test('a lane of sound effects shows the effects icon', () {
+  test('a lane of sound effects shows the sound effects icon', () {
     List<IconData> icons(int lane, List<AudioTrackModel> audios) => laneGutterIcons(
           lane: lane,
           audios: audios,
@@ -40,10 +40,10 @@ void main() {
           videos: const [],
         );
     expect(icons(0, [music, effect]), [LucideIcons.music]);
-    expect(icons(1, [music, effect]), [LucideIcons.sparkles]);
+    expect(icons(1, [music, effect]), [LucideIcons.bellRing]);
     expect(
       icons(0, [music, effect.copyWith(laneIndex: 0)]),
-      [LucideIcons.music, LucideIcons.sparkles],
+      [LucideIcons.music, LucideIcons.bellRing],
     );
   });
 }

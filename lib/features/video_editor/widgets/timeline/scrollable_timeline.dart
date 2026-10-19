@@ -296,8 +296,9 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   static const double _kCarriedLiftPx = 6.0;
   static const double _kCarriedScale = 1.06;
 
-  /// How far an audio handle's touch area reaches into the clip; its slab
-  /// sits outside, from the clip's edge outward.
+  /// An audio handle's touch area, and how far it reaches past the slab
+  /// toward the clip; the slab sits outside, from the clip's edge outward.
+  static const double _kAudioHandleTouchWidth = 16.0;
   static const double _kAudioHandleInset = 4.0;
   static const double _laneHeight = 32.0;
   static const double _handleWidth = 12.0; // Thinner handle
@@ -942,41 +943,61 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   /// edge with a centred grip bar — the same bar on both ends, because a
   /// chevron implied a direction the drag does not have. The touch area is
   /// wider than the slab and reaches into the clip; held, the slab widens
-  /// outward.
-  Widget _audioHandleVisual(String audioId, {required bool start, required bool isHeld}) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: start ? 0 : _kAudioHandleInset,
-        right: start ? _kAudioHandleInset : 0,
-      ),
-      child: Align(
-        alignment: start ? Alignment.centerRight : Alignment.centerLeft,
-        child: AnimatedContainer(
-          key: ValueKey('audio-handle:$audioId:${start ? 'start' : 'end'}'),
-          duration: const Duration(milliseconds: 110),
-          curve: Curves.easeOut,
-          width: isHeld ? 10 : 8,
-          color: AppColors.textPrimary,
-          child: Center(
-            child: Container(width: 2, height: 12, color: Colors.black),
+  /// away from the clip. [outsideLeft] puts the slab on the left of the
+  /// clip's edge (a start handle) rather than the right.
+  Widget Function(bool isHeld) _audioHandleVisual(
+    String handleKey, {
+    required bool outsideLeft,
+  }) {
+    return (isHeld) => Padding(
+          padding: EdgeInsets.only(
+            left: outsideLeft ? 0 : _kAudioHandleInset,
+            right: outsideLeft ? _kAudioHandleInset : 0,
           ),
-        ),
-      ),
-    );
+          child: Align(
+            alignment:
+                outsideLeft ? Alignment.centerRight : Alignment.centerLeft,
+            child: AnimatedContainer(
+              key: ValueKey('handle:$handleKey'),
+              duration: const Duration(milliseconds: 110),
+              curve: Curves.easeOut,
+              width: isHeld ? 10 : 8,
+              color: AppColors.textPrimary,
+              child: Center(
+                child: Container(width: 2, height: 12, color: Colors.black),
+              ),
+            ),
+          ),
+        );
   }
 
-  /// The overlay lanes' slim handle: a centred bar that widens and brightens
-  /// while held, like the clip trim handles.
-  Widget _overlayHandleVisual(bool isHeld) {
-    return Align(
-      alignment: Alignment.center,
-      child: AnimatedContainer(
+  /// An item starting at 0:00 keeps its left handle inside itself: drawn
+  /// outside, it would cross the line that marks the timeline's start and
+  /// read as the item running past it. It can still be dragged right.
+  bool _atTimelineStart(double startPx) => startPx < 0.5;
+
+  /// The overlay lanes' slim handle: a bar centred on the item's edge that
+  /// widens and brightens while held, like the clip trim handles. [inside]
+  /// starts it at the edge instead, growing into the item
+  /// ([_atTimelineStart]).
+  Widget Function(bool isHeld) _overlayHandleVisual(
+    String handleKey, {
+    bool inside = false,
+  }) {
+    return (isHeld) {
+      final bar = AnimatedContainer(
+        key: ValueKey('handle:$handleKey'),
         duration: const Duration(milliseconds: 110),
         curve: Curves.easeOut,
         width: isHeld ? 12 : 8,
         color: isHeld ? AppColors.textPrimary : AppColors.primaryStart,
-      ),
-    );
+      );
+      if (!inside) return Align(alignment: Alignment.center, child: bar);
+      return Padding(
+        padding: const EdgeInsets.only(left: _handleTouchWidth / 2),
+        child: Align(alignment: Alignment.centerLeft, child: bar),
+      );
+    };
   }
 
   void _beginTextClipDrag(TextOverlayModel text) {
@@ -2452,16 +2473,20 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         widgets.add(
           Positioned(
             top: topOffset,
-            left: startPx - 12,
-            width: 16,
+            left: _atTimelineStart(startPx)
+                ? startPx - _kAudioHandleInset
+                : startPx - (_kAudioHandleTouchWidth - _kAudioHandleInset),
+            width: _kAudioHandleTouchWidth,
             height: _laneHeight - 8,
             child: _laneTrimHandle(
               handleKey: 'audio:${audio.id}:start',
               onStart: (_) => _beginAudioTrim(audio),
               onUpdate: _updateAudioTrimStart,
               onEnd: _endAudioTrim,
-              visual: (held) =>
-                  _audioHandleVisual(audio.id, start: true, isHeld: held),
+              visual: _audioHandleVisual(
+                'audio:${audio.id}:start',
+                outsideLeft: !_atTimelineStart(startPx),
+              ),
             ),
           ),
         );
@@ -2470,16 +2495,18 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         widgets.add(
           Positioned(
             top: topOffset,
-            left: startPx + widthPx - 4,
-            width: 16,
+            left: startPx + widthPx - _kAudioHandleInset,
+            width: _kAudioHandleTouchWidth,
             height: _laneHeight - 8,
             child: _laneTrimHandle(
               handleKey: 'audio:${audio.id}:end',
               onStart: (_) => _beginAudioTrim(audio),
               onUpdate: _updateAudioTrimEnd,
               onEnd: _endAudioTrim,
-              visual: (held) =>
-                  _audioHandleVisual(audio.id, start: false, isHeld: held),
+              visual: _audioHandleVisual(
+                'audio:${audio.id}:end',
+                outsideLeft: false,
+              ),
             ),
           ),
         );
@@ -2658,7 +2685,10 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   _textTrimInitialTime = null;
                 });
               },
-              visual: _overlayHandleVisual,
+              visual: _overlayHandleVisual(
+                'text:${text.id}:start',
+                inside: _atTimelineStart(startPx),
+              ),
             ),
           ),
         );
@@ -2709,7 +2739,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   _textTrimInitialTime = null;
                 });
               },
-              visual: _overlayHandleVisual,
+              visual: _overlayHandleVisual('text:${text.id}:end'),
             ),
           ),
         );
@@ -2944,7 +2974,10 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   _imageTrimInitialTime = null;
                 });
               },
-              visual: _overlayHandleVisual,
+              visual: _overlayHandleVisual(
+                'image:${image.id}:start',
+                inside: _atTimelineStart(startPx),
+              ),
             ),
           ),
         );
@@ -3001,7 +3034,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   _imageTrimInitialTime = null;
                 });
               },
-              visual: _overlayHandleVisual,
+              visual: _overlayHandleVisual('image:${image.id}:end'),
             ),
           ),
         );
@@ -3238,7 +3271,10 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   _videoTrimInitialTime = null;
                 });
               },
-              visual: _overlayHandleVisual,
+              visual: _overlayHandleVisual(
+                'video:${video.id}:start',
+                inside: _atTimelineStart(startPx),
+              ),
             ),
           ),
         );
@@ -3296,7 +3332,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   _videoTrimInitialTime = null;
                 });
               },
-              visual: _overlayHandleVisual,
+              visual: _overlayHandleVisual('video:${video.id}:end'),
             ),
           ),
         );

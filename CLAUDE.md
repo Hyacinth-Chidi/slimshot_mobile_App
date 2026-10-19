@@ -3544,12 +3544,18 @@ library now opens from the submenu's Music.
   sound effects library carries `AudioTrackModel.isSoundEffect` — written to the draft only when
   true, so older drafts read as ordinary audio — and `audioTrackColor` draws it in
   `AppColors.soundEffect` where music and the user's own sound stay purple; its lane's gutter
-  shows `sparkles`, the menu's own icon, beside music's note. Music from the library is ordinary
+  shows `bellRing`, the menu's own icon, beside music's note — not `sparkles`, which is the
+  clip Effects tool's (the user's call: two tools, two icons). Music from the library is ordinary
   audio.
 - **A selected audio clip is framed in white, with slim white handles outside it** (the user's
   call): the slab is 8px from the clip's edge outward (10 while held), the touch area 16px and
   reaching 4px into the clip (`_kAudioHandleInset`). Purple was the fill's own hue, so the frame
   and handles disappeared into it.
+- **An item starting at 0:00 keeps its left handle inside itself** (`_atTimelineStart`, every
+  lane — audio, text, photo, video overlay; `lane_trim_handles_test.dart`; the user's call).
+  Drawn outside, the handle crossed the line marking the timeline's start and the item read as
+  running past it. Not hidden: it still trims the start by dragging right. Main clips need no
+  rule — their grips have always been drawn inside the clip.
 - **The sheet opens on Downloaded when its library holds anything, otherwise on the first
   category** (the user's call; `_opensOnDownloaded`): what the user already chose comes first.
   The categories arriving does not move it.
