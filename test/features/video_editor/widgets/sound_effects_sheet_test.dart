@@ -22,22 +22,22 @@ void main() {
     added = [];
   });
 
-  tearDown(() async {
-    // Windows may still hold a file the sheet just wrote; a temp folder left
-    // behind is not a failure of the sheet.
-    try {
-      if (await root.exists()) await root.delete(recursive: true);
-    } on FileSystemException {
-      // left for the OS to sweep
-    }
-  });
+  tearDown(() => deleteTemp(root));
 
   /// Taps [finder] in real time: what the tap starts writes real files,
   /// which a fake clock never lets finish.
-  Future<void> tapAndWork(WidgetTester tester, Finder finder) async {
+  Future<void> tapAndWork(
+    WidgetTester tester,
+    Finder finder, {
+    bool Function()? until_,
+  }) async {
     await tester.runAsync(() async {
       await tester.tap(finder);
-      await settle();
+      if (until_ != null) {
+        await until(until_);
+      } else {
+        await settle();
+      }
     });
     await tester.pump();
   }
@@ -98,7 +98,8 @@ void main() {
 
   testWidgets('tapping + adds, closes, and calls onAdd once', (tester) async {
     await openSheet(tester);
-    await tapAndWork(tester, find.byKey(const ValueKey('sfx_add_a')));
+    await tapAndWork(tester, find.byKey(const ValueKey('sfx_add_a')),
+        until_: () => added.isNotEmpty);
     await tester.pump(const Duration(milliseconds: 600));
     expect(added.map((s) => s.id), ['a']);
     expect(find.byType(SoundEffectsSheet), findsNothing);
@@ -106,7 +107,8 @@ void main() {
 
   testWidgets('tapping a row plays it and shows pause', (tester) async {
     await openSheet(tester);
-    await tapAndWork(tester, find.text('Sound a'));
+    await tapAndWork(tester, find.text('Sound a'),
+        until_: () => h.player.played.isNotEmpty);
     expect(h.player.played.single, endsWith('a.mp3'));
     expect(find.byIcon(LucideIcons.pause), findsOneWidget);
   });
@@ -117,7 +119,8 @@ void main() {
     expect(find.text("You're offline"), findsOneWidget);
     h.server.overrides.remove('categories');
     final before = h.server.hitsFor('categories');
-    await tapAndWork(tester, find.text('Retry'));
+    await tapAndWork(tester, find.text('Retry'),
+        until_: () => !c.offline);
     expect(h.server.hitsFor('categories'), before + 1);
     expect(find.text("You're offline"), findsNothing);
   });
@@ -131,7 +134,8 @@ void main() {
   testWidgets('a failed download toasts', (tester) async {
     h.server.overrides['download:a'] = () => FakeCatalogServer.error('INTERNAL', 500);
     await openSheet(tester);
-    await tapAndWork(tester, find.byKey(const ValueKey('sfx_add_a')));
+    await tapAndWork(tester, find.byKey(const ValueKey('sfx_add_a')),
+        until_: () => c.addingId == null && h.server.hitsFor('download:a') > 0);
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text("Couldn't download Sound a"), findsOneWidget);
     expect(added, isEmpty);

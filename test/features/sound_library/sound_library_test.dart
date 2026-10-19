@@ -7,6 +7,8 @@ import 'package:http/testing.dart';
 import 'package:slimshotai/features/sound_library/data/catalog_models.dart';
 import 'package:slimshotai/features/sound_library/data/sound_library.dart';
 
+import 'support.dart';
+
 const _sound = CatalogSound(
   id: 'cm2a1',
   title: 'UI Button',
@@ -33,9 +35,7 @@ void main() {
     hits = {};
   });
 
-  tearDown(() async {
-    if (await root.exists()) await root.delete(recursive: true);
-  });
+  tearDown(() => deleteTemp(root));
 
   /// Serves the sound in two chunks and the cover as one; [sound] and
   /// [cover] replace either answer.

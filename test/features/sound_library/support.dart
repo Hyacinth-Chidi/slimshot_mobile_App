@@ -167,3 +167,29 @@ Future<void> settle() async {
   }
   await Future<void>.delayed(const Duration(milliseconds: 20));
 }
+
+/// Real time until [done] holds — for work that touches the disk, whose
+/// speed a loaded test run does not promise. Fails after [timeout].
+Future<void> until(bool Function() done, {Duration timeout = const Duration(seconds: 5)}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (!done()) {
+    if (DateTime.now().isAfter(deadline)) {
+      throw TimeoutException('condition not met', timeout);
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  await settle();
+}
+
+/// Deletes a test's temp folder, giving Windows a moment to let go of a file
+/// a write just closed; one it still holds is left for the OS to sweep.
+Future<void> deleteTemp(Directory dir) async {
+  for (var attempt = 0; attempt < 5; attempt++) {
+    try {
+      if (await dir.exists()) await dir.delete(recursive: true);
+      return;
+    } on FileSystemException {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  }
+}

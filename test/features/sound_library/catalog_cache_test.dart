@@ -4,13 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/sound_library/data/catalog_cache.dart';
 import 'package:slimshotai/features/sound_library/data/catalog_models.dart';
 
+import 'support.dart';
+
 void main() {
   late Directory root;
 
   setUp(() async => root = await Directory.systemTemp.createTemp('catalog_cache_test'));
-  tearDown(() async {
-    if (await root.exists()) await root.delete(recursive: true);
-  });
+  tearDown(() => deleteTemp(root));
 
   test('round-trips categories and first pages', () async {
     final cache = CatalogCache(root: root);

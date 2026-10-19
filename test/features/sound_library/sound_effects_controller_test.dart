@@ -21,9 +21,7 @@ void main() {
     h = ControllerHarness(root);
   });
 
-  tearDown(() async {
-    if (await root.exists()) await root.delete(recursive: true);
-  });
+  tearDown(() => deleteTemp(root));
 
   Future<SoundEffectsController> opened() async {
     c = h.build();
