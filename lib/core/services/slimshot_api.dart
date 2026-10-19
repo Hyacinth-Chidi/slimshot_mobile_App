@@ -188,6 +188,15 @@ class SlimshotApi {
   }) async =>
       _decode(await _perform(build(), timeout));
 
+  /// A public request whose answer is read whole — for the catalogue, whose
+  /// `data` is a list and whose pages carry `meta`. Refusals throw exactly
+  /// as [sendPublic]'s do.
+  Future<ApiEnvelope> sendPublicEnvelope(
+    http.BaseRequest Function() build, {
+    Duration timeout = defaultTimeout,
+  }) async =>
+      _decodeEnvelope(await _perform(build(), timeout));
+
   /// POSTs [body] as JSON with this install's token added as `deviceToken` —
   /// how a sign-in names the phone. A token the server no longer knows (a
   /// reset database) is replaced once and the request sent again.
@@ -301,20 +310,47 @@ class SlimshotApi {
     if (body is Map && body['success'] == true && body['data'] is Map) {
       return Map<String, dynamic>.from(body['data'] as Map);
     }
+    throw _refusal(response, body);
+  }
+
+  ApiEnvelope _decodeEnvelope(http.Response response) {
+    final body = _body(response);
+    if (body is Map && body['success'] == true) {
+      final meta = body['meta'];
+      return ApiEnvelope(
+        body['data'],
+        meta is Map ? Map<String, dynamic>.from(meta) : const {},
+      );
+    }
+    throw _refusal(response, body);
+  }
+
+  /// What an answer that is not a success says: the server's own error
+  /// when it sent one, else a bad response.
+  static SlimshotApiException _refusal(http.Response response, Object? body) {
     if (body is Map && body['error'] is Map) {
       final error = body['error'] as Map;
       final code = error['code'];
       final message = error['message'];
       final details = error['details'];
-      throw SlimshotApiException(
+      return SlimshotApiException(
         code is String ? code : 'HTTP_${response.statusCode}',
         message is String ? message : '',
         details is Map ? Map<String, Object?>.from(details) : const {},
       );
     }
-    throw SlimshotApiException(
+    return SlimshotApiException(
       SlimshotApiException.badResponse,
       'HTTP ${response.statusCode}',
     );
   }
+}
+
+/// A success envelope whole: `data` as the server sent it — a list as
+/// readily as an object — and the paging `meta` beside it.
+class ApiEnvelope {
+  const ApiEnvelope(this.data, this.meta);
+
+  final Object? data;
+  final Map<String, dynamic> meta;
 }

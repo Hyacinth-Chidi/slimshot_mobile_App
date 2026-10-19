@@ -355,4 +355,54 @@ void main() {
       expect(SlimshotApi.isConfigured, isFalse);
     });
   });
+
+  group('public envelopes', () {
+    test('keeps a list data and the meta', () async {
+      http.BaseRequest? seen;
+      final api = apiWith(MockClient((request) async {
+        seen = request;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': [1, 2],
+            'meta': {'nextCursor': 'c'},
+          }),
+          200,
+        );
+      }));
+      final envelope = await api.sendPublicEnvelope(
+        () => http.Request('GET', api.uri('/catalog/assets')),
+      );
+      expect(envelope.data, [1, 2]);
+      expect(envelope.meta['nextCursor'], 'c');
+      expect(seen!.headers.containsKey('Authorization'), isFalse);
+    });
+
+    test('an error envelope throws its code and details', () async {
+      final api = apiWith(MockClient((_) async =>
+          failure('RATE_LIMITED', 429, details: {'retryAfterSeconds': 41})));
+      Object? thrown;
+      try {
+        await api.sendPublicEnvelope(
+          () => http.Request('GET', api.uri('/catalog/assets')),
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown, isA<SlimshotApiException>());
+      final e = thrown as SlimshotApiException;
+      expect(e.code, 'RATE_LIMITED');
+      expect(e.detailInt('retryAfterSeconds'), 41);
+    });
+
+    test('a body that is not an envelope is a bad response', () async {
+      final api = apiWith(MockClient((_) async => http.Response('<html>', 502)));
+      expect(
+        api.sendPublicEnvelope(
+          () => http.Request('GET', api.uri('/catalog/assets')),
+        ),
+        throwsCode(SlimshotApiException.badResponse),
+      );
+    });
+  });
 }
