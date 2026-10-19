@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/models/draft_project.dart';
 import '../../../core/services/draft_service.dart';
 import '../../../core/utils/file_utils.dart';
+import '../../sound_library/data/sound_library.dart';
 import '../logic/animation/animatable_double.dart';
 import '../logic/animation/clip_keyframes.dart';
 import '../logic/animation/keyframe_core.dart';
@@ -4055,6 +4057,20 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       audioTracks: [...state.audioTracks, placedTrack],
       selectedAudioId: placedTrack.id,
     );
+  }
+
+  /// A sound from the library, at the playhead and its full length, on the
+  /// first free lane — an ordinary audio track from here on, one undo step.
+  void addLibrarySound(LibrarySound sound) {
+    final seconds = sound.durationMs / 1000.0;
+    addAudioTrack(AudioTrackModel(
+      id: const Uuid().v4(),
+      filePath: sound.filePath,
+      sourceDuration: seconds,
+      sourceStart: 0,
+      sourceEnd: seconds,
+      timelineStart: state.currentPlaybackPosition,
+    ));
   }
 
   void updateAudioTrack(AudioTrackModel updatedTrack) {
