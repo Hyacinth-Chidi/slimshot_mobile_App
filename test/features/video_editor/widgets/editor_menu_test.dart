@@ -199,7 +199,7 @@ void main() {
     // Its own id: `effects` is the clip menu's tool, and the handler used to
     // tell the two apart by which menu was open.
     final audio = menuSource('_audioMenu');
-    expect(audio, contains("id: 'sound_effects', label: 'Effects'"));
+    expect(audio, contains("id: 'sound_effects', label: 'Sound effects'"));
     expect(audio, isNot(contains("id: 'effects'")));
     final source = screen.readAsStringSync();
     expect(source, contains("tool.id == 'sound_effects'"));

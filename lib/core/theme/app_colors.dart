@@ -35,6 +35,9 @@ class AppColors {
   /// every purple on the home screen.
   static const Color credit = Color(0xFFFBBF24); // Amber 400
 
+  /// A sound effect's clip on the timeline, apart from music's purple.
+  static const Color soundEffect = Color(0xFFF97316); // Orange 500
+
   /// Accent text on purple glass: white running into lilac.
   static const LinearGradient lightAccentGradient = LinearGradient(
     colors: [textPrimary, lilac],

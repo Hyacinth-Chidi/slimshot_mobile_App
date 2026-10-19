@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/sound_library/data/catalog_models.dart';
 import 'package:slimshotai/features/sound_library/data/sound_library.dart';
 import 'package:slimshotai/features/video_editor/models/audio_track_model.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
@@ -58,5 +59,23 @@ void main() {
       ..addLibrarySound(whoosh);
     final ids = notifier.state.audioTracks.map((t) => t.id).toSet();
     expect(ids.length, 2);
+  });
+
+  test('a sound effect goes on as a sound effect', () {
+    final notifier = notifierAt(1)..addLibrarySound(whoosh);
+    expect(notifier.state.audioTracks.single.isSoundEffect, isTrue);
+  });
+
+  test('music from the library goes on as ordinary audio', () {
+    final song = LibrarySound(
+      id: 'song',
+      title: 'Song',
+      filePath: '/docs/sound_library/song.mp3',
+      durationMs: 30000,
+      downloadedAt: DateTime(2026, 10, 19),
+      library: kMusicRoot,
+    );
+    final notifier = notifierAt(1)..addLibrarySound(song);
+    expect(notifier.state.audioTracks.single.isSoundEffect, isFalse);
   });
 }

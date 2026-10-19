@@ -25,6 +25,7 @@ import '../../models/video_editor_state.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../../services/video_thumbnail_service.dart';
 import '../panels/cover_picker_sheet.dart';
+import 'audio_track_color.dart';
 import 'clip_filmstrip.dart';
 import 'clip_keyframe_diamonds.dart';
 import 'lane_gutter_icons.dart';
@@ -2379,9 +2380,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 // opaque purpleAccent recoloured the body under the waveform,
                 // which read as a second purple washing over the clip.
                 // Selection is the border's job, like every other clip.
-                color: isBeingDragged
-                    ? Colors.purpleAccent.shade400
-                    : Colors.purple.withValues(alpha: 0.5),
+                color: audioTrackColor(audio, dragging: isBeingDragged),
                 border: Border.all(
                   color: isBeingDragged
                       ? Colors.white
@@ -2393,7 +2392,8 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 boxShadow: isBeingDragged
                     ? [
                         BoxShadow(
-                          color: Colors.purple.withValues(alpha: 0.45),
+                          color: audioTrackColor(audio, dragging: true)
+                              .withValues(alpha: 0.45),
                           blurRadius: 12,
                           spreadRadius: 1,
                           offset: const Offset(0, 2),

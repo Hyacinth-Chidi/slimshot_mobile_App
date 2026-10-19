@@ -262,7 +262,7 @@ const EditorMenu _audioMenu = EditorMenu(
     // Music, beside Effects: "Sounds" read as if effects were not sounds.
     EditorTool(id: 'music', label: 'Music', icon: LucideIcons.music),
     // The sound effects library. Its own id: `effects` is the clip menu's.
-    EditorTool(id: 'sound_effects', label: 'Effects', icon: LucideIcons.sparkles),
+    EditorTool(id: 'sound_effects', label: 'Sound effects', icon: LucideIcons.sparkles),
     EditorTool(id: 'extract', label: 'Extract', icon: LucideIcons.folderOpen),
     EditorTool(id: 'record', label: 'Record', icon: LucideIcons.mic),
   ],

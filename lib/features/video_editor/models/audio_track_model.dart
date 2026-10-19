@@ -8,6 +8,11 @@ class AudioTrackModel {
   final double volume;
   final int laneIndex;
 
+  /// Added from the sound effects library: drawn in its own colour on the
+  /// timeline so a whoosh is told from the music at a glance. Written to a
+  /// draft only when true, so a track from before reads as ordinary audio.
+  final bool isSoundEffect;
+
   const AudioTrackModel({
     required this.id,
     required this.filePath,
@@ -17,6 +22,7 @@ class AudioTrackModel {
     required this.timelineStart,
     this.volume = 1.0,
     this.laneIndex = 0,
+    this.isSoundEffect = false,
   });
 
   double get trimmedDuration => sourceEnd - sourceStart;
@@ -31,6 +37,7 @@ class AudioTrackModel {
     double? timelineStart,
     double? volume,
     int? laneIndex,
+    bool? isSoundEffect,
   }) {
     return AudioTrackModel(
       id: id ?? this.id,
@@ -41,6 +48,7 @@ class AudioTrackModel {
       timelineStart: timelineStart ?? this.timelineStart,
       volume: volume ?? this.volume,
       laneIndex: laneIndex ?? this.laneIndex,
+      isSoundEffect: isSoundEffect ?? this.isSoundEffect,
     );
   }
 
@@ -54,6 +62,7 @@ class AudioTrackModel {
       'timelineStart': timelineStart,
       'volume': volume,
       'laneIndex': laneIndex,
+      if (isSoundEffect) 'isSoundEffect': true,
     };
   }
 
@@ -67,6 +76,7 @@ class AudioTrackModel {
       timelineStart: (json['timelineStart'] as num).toDouble(),
       volume: (json['volume'] as num?)?.toDouble() ?? 1.0,
       laneIndex: json['laneIndex'] as int? ?? 0,
+      isSoundEffect: json['isSoundEffect'] == true,
     );
   }
 }

@@ -16,7 +16,10 @@ List<IconData> laneGutterIcons({
   required List<VideoOverlayModel> videos,
 }) {
   return [
-    if (audios.any((a) => a.laneIndex == lane)) LucideIcons.music,
+    if (audios.any((a) => a.laneIndex == lane && !a.isSoundEffect))
+      LucideIcons.music,
+    if (audios.any((a) => a.laneIndex == lane && a.isSoundEffect))
+      LucideIcons.sparkles,
     if (texts.any((t) => t.laneIndex == lane && !t.isCaption))
       LucideIcons.type,
     if (texts.any((t) => t.laneIndex == lane && t.isCaption))

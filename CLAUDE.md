@@ -3522,7 +3522,7 @@ impossibility, and an exact feather instead of a hard-edged clip.
 
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-10-19-sound-effects-library-design.md`,
 plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-api.md` — build
-against it alone. **Effects** on the audio menu (id `sound_effects`; `effects` stays the clip
+against it alone. **Sound effects** on the audio menu (id `sound_effects`; `effects` stays the clip
 menu's, which is why the old handler's "which menu is open" gate is gone) opens a 0.7-high sheet,
 hidden without a server address (`isToolbarToolVisible`'s `hasCatalogServer`). **The audio menu
 had never been reachable** (device-found): the root Audio tool is declared with a submenu, but a
@@ -3540,6 +3540,12 @@ library now opens from the submenu's Music.
   playhead (`addLibrarySound`, an ordinary `AudioTrackModel` through `addAudioTrack`: first free
   lane, selected, one undo step) and closes the sheet. **Accepted cost**: every sound listened
   to counts as a download in the dashboard.
+- **A sound effect is orange on the timeline** (the user's call): a track added from the
+  sound effects library carries `AudioTrackModel.isSoundEffect` — written to the draft only when
+  true, so older drafts read as ordinary audio — and `audioTrackColor` draws it in
+  `AppColors.soundEffect` where music and the user's own sound stay purple; its lane's gutter
+  shows `sparkles`, the menu's own icon, beside music's note. Music from the library is ordinary
+  audio.
 - **Music is the same sheet, pointed at the server's `music` root** (`kMusicRoot`; the user's
   call, with the categories already in the dashboard). `SoundLibrarySheet` /
   `SoundLibraryController` serve both, opened by `_showSoundLibrary(root)`. Music adds **Import**

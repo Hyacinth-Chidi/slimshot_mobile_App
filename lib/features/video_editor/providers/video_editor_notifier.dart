@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/models/draft_project.dart';
 import '../../../core/services/draft_service.dart';
 import '../../../core/utils/file_utils.dart';
+import '../../sound_library/data/catalog_models.dart';
 import '../../sound_library/data/sound_library.dart';
 import '../logic/animation/animatable_double.dart';
 import '../logic/animation/clip_keyframes.dart';
@@ -4073,6 +4074,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       sourceStart: 0,
       sourceEnd: seconds,
       timelineStart: state.currentPlaybackPosition,
+      isSoundEffect: sound.library == kSoundEffectsRoot,
     ));
     selectAudioTrack(id);
   }
