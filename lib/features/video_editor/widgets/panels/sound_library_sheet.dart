@@ -8,34 +8,38 @@ import '../../../../core/theme/lucide_icons.dart';
 import '../../../../core/utils/toast_utils.dart';
 import '../../../sound_library/data/catalog_models.dart';
 import '../../../sound_library/data/sound_library.dart';
-import '../../../sound_library/sound_effects_controller.dart';
+import '../../../sound_library/sound_library_controller.dart';
 
 /// The sound effects library: pills from the server (Downloaded first), and
 /// rows of cover, title, length and a **+**. A tap on a row listens — the
 /// download is the preview — and the + puts the sound on the timeline and
 /// closes the sheet.
 ///
-/// Layout only: every rule is [SoundEffectsController]'s. The sheet owns the
+/// Layout only: every rule is [SoundLibraryController]'s. The sheet owns the
 /// controller and disposes it on close.
-class SoundEffectsSheet extends StatefulWidget {
-  const SoundEffectsSheet({
+class SoundLibrarySheet extends StatefulWidget {
+  const SoundLibrarySheet({
     super.key,
     required this.controller,
     required this.onAdd,
+    this.onImport,
   });
 
-  final SoundEffectsController controller;
+  final SoundLibraryController controller;
   final void Function(LibrarySound sound) onAdd;
 
+  /// The user's own file, beside the search. Music offers it; effects do not.
+  final VoidCallback? onImport;
+
   @override
-  State<SoundEffectsSheet> createState() => _SoundEffectsSheetState();
+  State<SoundLibrarySheet> createState() => _SoundLibrarySheetState();
 }
 
-class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
+class _SoundLibrarySheetState extends State<SoundLibrarySheet> {
   static const double _kHeightFraction = 0.7;
   static const double _kEdge = 16;
 
-  SoundEffectsController get _c => widget.controller;
+  SoundLibraryController get _c => widget.controller;
   late final StreamSubscription<SoundSheetNotice> _notices;
   final TextEditingController _search = TextEditingController();
 
@@ -120,39 +124,74 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
         ),
       );
 
-  /// The audio library's search field, full width: there is nothing to
-  /// import here. It narrows what the sheet already holds.
+  /// The search field, and Import beside it where the sheet offers one —
+  /// the field takes the width that is left.
   Widget _searchField() => Padding(
         padding: const EdgeInsets.symmetric(horizontal: _kEdge),
-        child: Container(
-          height: 40,
-          decoration: BoxDecoration(
-            color: Colors.white10,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
-                child: Icon(LucideIcons.search, color: AppColors.textSecondary, size: 18),
+        child: Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Icon(LucideIcons.search, color: AppColors.textSecondary, size: 18),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _search,
+                        onChanged: _c.setQuery,
+                        textInputAction: TextInputAction.search,
+                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                        decoration: const InputDecoration(
+                          hintText: 'Search',
+                          hintStyle: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              Expanded(
-                child: TextField(
-                  controller: _search,
-                  onChanged: _c.setQuery,
-                  textInputAction: TextInputAction.search,
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
-                  decoration: const InputDecoration(
-                    hintText: 'Search',
-                    hintStyle: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
+            ),
+            if (widget.onImport != null) ...[
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: widget.onImport,
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.music, color: AppColors.textPrimary, size: 16),
+                      SizedBox(width: 6),
+                      Text(
+                        'Import',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ],
-          ),
+          ],
         ),
       );
 

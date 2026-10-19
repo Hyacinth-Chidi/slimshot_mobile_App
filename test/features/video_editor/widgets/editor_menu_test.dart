@@ -185,8 +185,14 @@ void main() {
     expect(menuSource('_audioMenu'), contains("id: 'music', label: 'Music'"));
     expect(menuSource('_audioMenu'), isNot(contains("id: 'sounds'")));
     expect(source, contains("tool.id == 'music'"));
-    final music = source.indexOf("tool.id == 'music'");
-    expect(source.indexOf('AudioDrawer()', music), greaterThan(music));
+    // Music is the same library as Effects, pointed at the server's music.
+    expect(source, contains('_showSoundLibrary(kMusicRoot'));
+    expect(source, isNot(contains('AudioDrawer')));
+    expect(
+      File('lib/features/video_editor/widgets/panels/audio_drawer.dart').existsSync(),
+      isFalse,
+      reason: 'its tabs were a mockup; Import moved to the music library',
+    );
   });
 
   test("the audio menu's Effects is the sound library, handled", () {
@@ -197,7 +203,7 @@ void main() {
     expect(audio, isNot(contains("id: 'effects'")));
     final source = screen.readAsStringSync();
     expect(source, contains("tool.id == 'sound_effects'"));
-    expect(source, contains('SoundEffectsSheet('));
+    expect(source, contains('SoundLibrarySheet('));
   });
 
   test('a selected caption offers its list, and the screen handles it', () {

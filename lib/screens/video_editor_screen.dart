@@ -44,7 +44,6 @@ import '../features/video_editor/widgets/timeline/scrollable_timeline.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:path_provider/path_provider.dart';
 import '../features/video_editor/widgets/video_editor_top_bar.dart';
-import '../features/video_editor/widgets/panels/audio_drawer.dart';
 import '../features/video_editor/widgets/panels/effects_panel.dart';
 import '../features/video_editor/widgets/panels/filters_drawer.dart';
 import '../features/video_editor/widgets/panels/stickers_drawer.dart';
@@ -88,9 +87,11 @@ import '../features/video_editor/widgets/panels/apply_to_all_button.dart';
 import '../features/video_editor/widgets/panels/mask_panel.dart';
 import '../features/account/services/account_service.dart';
 import '../features/account/widgets/earn_credits_block.dart';
+import '../features/sound_library/data/catalog_models.dart';
+import '../features/sound_library/import_audio.dart';
 import '../features/sound_library/providers.dart';
-import '../features/sound_library/sound_effects_controller.dart';
-import '../features/video_editor/widgets/panels/sound_effects_sheet.dart';
+import '../features/sound_library/sound_library_controller.dart';
+import '../features/video_editor/widgets/panels/sound_library_sheet.dart';
 
 class EditorTool {
   final String id;
@@ -1925,6 +1926,36 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     notifier.setPlaying(true);
   }
 
+  /// A sound library — effects or music, by its server [library] root. The
+  /// sheet owns the controller it is given and disposes it on close; the
+  /// library and the caches are app-wide, so a download started in one
+  /// opening is not fetched again in the next. Music offers Import too.
+  void _showSoundLibrary(String library, {bool offerImport = false}) {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final controller = SoundLibraryController(
+      root: library,
+      client: ref.read(catalogClientProvider),
+      library: ref.read(soundLibraryProvider),
+      cache: ref.read(catalogCacheProvider(library)),
+      player: JustAudioPreviewPlayer(),
+    );
+    showEditorSheet<void>(
+      context,
+      builder: (sheetContext) => SoundLibrarySheet(
+        controller: controller,
+        onAdd: notifier.addLibrarySound,
+        onImport: offerImport
+            ? () async {
+                final track = await pickAudioTrack();
+                if (track == null || !sheetContext.mounted) return;
+                notifier.addAudioTrack(track);
+                Navigator.of(sheetContext).pop();
+              }
+            : null,
+      ),
+    );
+  }
+
   /// Opens the transform sheet on the selected clip — or, from the root menu,
   /// on the clip under the playhead — and **puts back what it borrowed**.
   ///
@@ -1935,26 +1966,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// keyframe controls — a half state the user never entered. Awaiting the
   /// sheet covers every way it closes, the same reason
   /// [_showTransitionsDrawer] awaits. A selection the user made stays.
-  /// The sound effects library. The sheet owns the controller it is given
-  /// and disposes it on close; the library and the cache are app-wide, so a
-  /// download started in one opening is not fetched again in the next.
-  void _showSoundEffects() {
-    final notifier = ref.read(videoEditorProvider.notifier);
-    final controller = SoundEffectsController(
-      client: ref.read(catalogClientProvider),
-      library: ref.read(soundLibraryProvider),
-      cache: ref.read(catalogCacheProvider),
-      player: JustAudioPreviewPlayer(),
-    );
-    showEditorSheet<void>(
-      context,
-      builder: (_) => SoundEffectsSheet(
-        controller: controller,
-        onAdd: notifier.addLibrarySound,
-      ),
-    );
-  }
-
   Future<void> _showTransformSheet() async {
     final notifier = ref.read(videoEditorProvider.notifier);
     final borrowed = ref.read(videoEditorProvider).selectedSegmentId == null &&
@@ -2201,13 +2212,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   if (!toolEnabled) return;
                   HapticFeedback.selectionClick();
                   if (tool.id == 'music') {
-                    // Audio is a submenu; its Music is the music library.
-                    showEditorSheet<void>(
-                      context,
-                      builder: (context) => const AudioDrawer(),
-                    );
+                    // Audio is a submenu; Music and Effects are one library
+                    // sheet, pointed at the server's two roots.
+                    _showSoundLibrary(kMusicRoot, offerImport: true);
                   } else if (tool.id == 'sound_effects') {
-                    _showSoundEffects();
+                    _showSoundLibrary(kSoundEffectsRoot);
                   } else if (tool.id == 'filters') {
                     // Reached from the clip menu, the tool means "filter this
                     // clip", so the sheet opens in per-clip mode. The switch

@@ -57,4 +57,17 @@ void main() {
     await reopened.load();
     expect(reopened.categories.single.slug, 'x');
   });
+
+  test('each library keeps its own cache', () async {
+    final effects = CatalogCache(root: root, library: kSoundEffectsRoot);
+    final music = CatalogCache(root: root, library: kMusicRoot);
+    await effects.saveCategories(const [CatalogCategory(id: '1', slug: 'impacts', name: 'Impacts')]);
+    await music.saveCategories(const [CatalogCategory(id: '2', slug: 'cinematic', name: 'Cinematic')]);
+    final effectsAgain = CatalogCache(root: root, library: kSoundEffectsRoot);
+    final musicAgain = CatalogCache(root: root, library: kMusicRoot);
+    await effectsAgain.load();
+    await musicAgain.load();
+    expect(effectsAgain.categories.single.slug, 'impacts');
+    expect(musicAgain.categories.single.slug, 'cinematic');
+  });
 }

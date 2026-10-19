@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/sound_library/data/catalog_models.dart';
-import 'package:slimshotai/features/sound_library/sound_effects_controller.dart';
+import 'package:slimshotai/features/sound_library/sound_library_controller.dart';
 
 import 'support.dart';
 
@@ -13,7 +13,7 @@ const _b = CatalogSound(id: 'b', title: 'Sound b', durationMs: 800);
 void main() {
   late Directory root;
   late ControllerHarness h;
-  late SoundEffectsController c;
+  late SoundLibraryController c;
   late List<SoundSheetNotice> notices;
 
   setUp(() async {
@@ -23,7 +23,7 @@ void main() {
 
   tearDown(() => deleteTemp(root));
 
-  Future<SoundEffectsController> opened() async {
+  Future<SoundLibraryController> opened() async {
     c = h.build();
     notices = [];
     c.notices.listen(notices.add);
@@ -236,6 +236,29 @@ void main() {
       await settle();
       expect(h.player.played, isEmpty);
       expect(notices.single.kind, SoundSheetNoticeKind.offline);
+    });
+  });
+
+  group('libraries', () {
+    test("Downloaded shows only this library's sounds", () async {
+      await opened();
+      await c.download(_a);
+      h.server.categories = [
+        {'id': 'm', 'slug': 'cinematic', 'name': 'Cinematic', 'children': []},
+      ];
+      h.server.pages['cinematic'] = [
+        [soundRow('m')],
+      ];
+      final music = h.build(root: kMusicRoot);
+      await music.open();
+      await settle();
+      expect(music.pills, [kDownloadedPill, 'cinematic']);
+      await music.download(const CatalogSound(id: 'm', title: 'Sound m'));
+      await music.select(kDownloadedPill);
+      expect(music.sounds.map((s) => s.id), ['m']);
+      await c.select(kDownloadedPill);
+      expect(c.sounds.map((s) => s.id), ['a']);
+      music.dispose();
     });
   });
 

@@ -6,9 +6,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:slimshotai/core/services/slimshot_api.dart';
 import 'package:slimshotai/features/sound_library/data/catalog_cache.dart';
+import 'package:slimshotai/features/sound_library/data/catalog_models.dart';
 import 'package:slimshotai/features/sound_library/data/catalog_client.dart';
 import 'package:slimshotai/features/sound_library/data/sound_library.dart';
-import 'package:slimshotai/features/sound_library/sound_effects_controller.dart';
+import 'package:slimshotai/features/sound_library/sound_library_controller.dart';
 
 import '../../support/account_fakes.dart';
 
@@ -155,6 +156,7 @@ class ControllerHarness {
       : server = server ?? FakeCatalogServer() {
     library = SoundLibrary(client: this.server.client, root: root);
     cache = CatalogCache(root: root);
+    musicCache = CatalogCache(root: root, library: kMusicRoot);
   }
 
   final Directory root;
@@ -162,10 +164,13 @@ class ControllerHarness {
   final FakePreviewPlayer player = FakePreviewPlayer();
   late final SoundLibrary library;
   late final CatalogCache cache;
+  late final CatalogCache musicCache;
   DateTime clock = DateTime(2026, 10, 19, 12);
   final List<Duration> waits = [];
 
-  SoundEffectsController build() => SoundEffectsController(
+  SoundLibraryController build({String root = kSoundEffectsRoot}) =>
+      SoundLibraryController(
+        root: root,
         client: CatalogClient(SlimshotApi(
           baseUrl: 'https://api.test',
           session: signedInSession(access: 'a', refresh: 'r'),
@@ -173,7 +178,7 @@ class ControllerHarness {
           client: server.client,
         )),
         library: library,
-        cache: cache,
+        cache: root == kMusicRoot ? musicCache : cache,
         player: player,
         now: () => clock,
         wait: (d) async => waits.add(d),

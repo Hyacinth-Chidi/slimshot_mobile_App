@@ -14,10 +14,16 @@ import 'catalog_models.dart';
 /// asks. Cover addresses ride along; offline their images simply
 /// fail and the row draws the app's own cover. In `<app support>`, which no
 /// cache clearing sweeps but which is not the user's work either.
+///
+/// One per library: the sound effects and the music each keep their own file
+/// (`catalog_cache_<library>.json`), or one would overwrite the other's pills.
 class CatalogCache {
-  CatalogCache({Directory? root}) : _root = root;
+  CatalogCache({Directory? root, this.library = kSoundEffectsRoot}) : _root = root;
 
   final Directory? _root;
+
+  /// The root this cache keeps: `sound-effects` or `music`.
+  final String library;
 
   List<CatalogCategory> _categories = const [];
   final Map<String, List<CatalogSound>> _pages = {};
@@ -31,7 +37,7 @@ class CatalogCache {
   Future<File> _file() async {
     final root = _root ?? await getApplicationSupportDirectory();
     if (!await root.exists()) await root.create(recursive: true);
-    return File('${root.path}/catalog_cache.json');
+    return File('${root.path}/catalog_cache_$library.json');
   }
 
   /// Reads what was kept. A file that cannot be read is an empty cache.

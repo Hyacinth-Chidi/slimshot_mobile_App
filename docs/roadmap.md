@@ -105,8 +105,8 @@ groundwork first, then the ports and the sheet, then easing.
    model. Every sound licensed for redistribution inside an app (CC0, or a bought pack that says
    so). **Built 2026-10-19, awaiting device verification**: server catalogue live (no previews —
    a tap downloads and listens, + adds); app spec
-   `docs/superpowers/specs/2026-10-19-sound-effects-library-design.md`. Next on this track:
-   music, on the same code under a `music` root.
+   `docs/superpowers/specs/2026-10-19-sound-effects-library-design.md`. **Music built on the
+   same code under the `music` root**, with Import kept for the user's own files.
 
 ### Stage 4 — blend modes: stingers and video inside text (L)
 

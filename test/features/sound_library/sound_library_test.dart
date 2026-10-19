@@ -201,4 +201,23 @@ void main() {
     expect((await SoundLibrary(client: server(), root: root).load()).single.id,
         'cm2a1');
   });
+
+  test('a download remembers which library it belongs to', () async {
+    final library = SoundLibrary(client: server(), root: root);
+    final entry = await library.download(_sound, _ticket, library: kMusicRoot);
+    expect(entry.library, kMusicRoot);
+    final reopened = SoundLibrary(client: server(), root: root);
+    expect((await reopened.load()).single.library, kMusicRoot);
+  });
+
+  test('an entry saved before libraries had names is a sound effect', () async {
+    folder().createSync(recursive: true);
+    File('${folder().path}/x.mp3').writeAsBytesSync([1]);
+    File('${folder().path}/library.json').writeAsStringSync(
+      '{"version":1,"sounds":[{"id":"x","title":"Old","fileName":"x.mp3",'
+      '"durationMs":100,"downloadedAt":"2026-10-19T00:00:00.000"}]}',
+    );
+    final library = SoundLibrary(client: server(), root: root);
+    expect((await library.load()).single.library, kSoundEffectsRoot);
+  });
 }

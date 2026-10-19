@@ -14,4 +14,7 @@ final catalogClientProvider = Provider<CatalogClient>(
 /// is shared with the next rather than fetched twice.
 final soundLibraryProvider = Provider<SoundLibrary>((ref) => SoundLibrary());
 
-final catalogCacheProvider = Provider<CatalogCache>((ref) => CatalogCache());
+/// One cache per library root, so music and effects keep their own pills.
+final catalogCacheProvider = Provider.family<CatalogCache, String>(
+  (ref, library) => CatalogCache(library: library),
+);

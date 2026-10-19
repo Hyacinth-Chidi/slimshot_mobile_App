@@ -19,6 +19,7 @@ class LibrarySound {
     this.categorySlug,
     this.categoryName,
     this.coverPath,
+    this.library = kSoundEffectsRoot,
   });
 
   final String id;
@@ -32,6 +33,11 @@ class LibrarySound {
   final String? categoryName;
   final String? coverPath;
 
+  /// Which library the sound came from — `sound-effects` or `music` — so
+  /// each sheet's Downloaded shows its own. An entry saved before there were
+  /// two is a sound effect.
+  final String library;
+
   LibrarySound withDuration(int durationMs) => LibrarySound(
         id: id,
         title: title,
@@ -41,6 +47,7 @@ class LibrarySound {
         categorySlug: categorySlug,
         categoryName: categoryName,
         coverPath: coverPath,
+        library: library,
       );
 
   /// As a row: the Downloaded pill lists library sounds like any others.
@@ -62,6 +69,7 @@ class LibrarySound {
         'downloadedAt': downloadedAt.toIso8601String(),
         'categorySlug': ?categorySlug,
         'categoryName': ?categoryName,
+        'library': library,
         if (coverPath != null) 'coverFileName': _name(coverPath!),
       };
 
@@ -84,6 +92,7 @@ class LibrarySound {
       categorySlug: category is String ? category : null,
       categoryName: categoryName is String ? categoryName : null,
       coverPath: cover is String ? '$folder/$cover' : null,
+      library: json['library'] is String ? json['library'] as String : kSoundEffectsRoot,
     );
   }
 
@@ -158,10 +167,11 @@ class SoundLibrary {
     CatalogSound sound,
     DownloadTicket ticket, {
     void Function(double progress)? onProgress,
+    String library = kSoundEffectsRoot,
   }) {
     final existing = _inFlight[sound.id];
     if (existing != null) return existing;
-    final future = _download(sound, ticket, onProgress);
+    final future = _download(sound, ticket, onProgress, library);
     _inFlight[sound.id] = future;
     return future.whenComplete(() => _inFlight.remove(sound.id));
   }
@@ -170,6 +180,7 @@ class SoundLibrary {
     CatalogSound sound,
     DownloadTicket ticket,
     void Function(double progress)? onProgress,
+    String library,
   ) async {
     await load();
     final dir = await _folder();
@@ -217,6 +228,7 @@ class SoundLibrary {
       categorySlug: sound.categorySlug,
       categoryName: sound.categoryName,
       coverPath: await _fetchCover(sound, dir, base),
+      library: library,
     );
     _entries = [entry, ...?_entries?.where((e) => e.id != entry.id)];
     await _writeIndex();

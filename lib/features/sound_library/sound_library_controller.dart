@@ -94,8 +94,8 @@ class SoundSheetNotice {
 /// Requests are numbered: an answer that arrives after the pill changed, or
 /// after a refresh, is dropped. A rate limit stops automatic requests until
 /// its window passes; Retry and pull-to-refresh wait the window out.
-class SoundEffectsController extends ChangeNotifier {
-  SoundEffectsController({
+class SoundLibraryController extends ChangeNotifier {
+  SoundLibraryController({
     required CatalogClient client,
     required SoundLibrary library,
     required CatalogCache cache,
@@ -201,6 +201,11 @@ class SoundEffectsController extends ChangeNotifier {
 
   LibrarySound? librarySound(String id) => _library.find(id);
 
+  /// The library's sounds that belong to this sheet: music in Music,
+  /// effects in Effects.
+  List<LibrarySound> _ours(List<LibrarySound> all) =>
+      [for (final s in all) if (s.library == root) s];
+
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -214,7 +219,7 @@ class SoundEffectsController extends ChangeNotifier {
   Future<void> open() async {
     if (_opened) return;
     _opened = true;
-    _downloaded = await _library.load();
+    _downloaded = _ours(await _library.load());
     await _cache.load();
     if (_disposed) return;
     _categories = _cache.categories;
@@ -467,12 +472,13 @@ class SoundEffectsController extends ChangeNotifier {
       final entry = await _library.download(
         sound,
         ticket,
+        library: root,
         onProgress: (p) {
           _progress[sound.id] = p;
           _notify();
         },
       );
-      _downloaded = await _library.load();
+      _downloaded = _ours(await _library.load());
       return entry;
     } on SlimshotApiException catch (e) {
       if (e.code == 'NOT_FOUND') {

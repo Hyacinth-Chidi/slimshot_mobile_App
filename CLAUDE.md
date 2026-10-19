@@ -3518,7 +3518,7 @@ players hold no video decoder.
 **What it unlocks**: an overlay chroma key and blend modes, each now a shader line rather than an
 impossibility, and an exact feather instead of a hard-edged clip.
 
-### Sound effects library — tap to listen, + to add
+### Sound library — effects and music, tap to listen, + to add
 
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-10-19-sound-effects-library-design.md`,
 plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-api.md` — build
@@ -3540,12 +3540,21 @@ library now opens from the submenu's Music.
   playhead (`addLibrarySound`, an ordinary `AudioTrackModel` through `addAudioTrack`: first free
   lane, selected, one undo step) and closes the sheet. **Accepted cost**: every sound listened
   to counts as a download in the dashboard.
-- **It looks like the Music sheet** (`AudioDrawer`): the search field full width — nothing to
-  import here — over the categories as underlined text tabs. **Search filters what the sheet
+- **Music is the same sheet, pointed at the server's `music` root** (`kMusicRoot`; the user's
+  call, with the categories already in the dashboard). `SoundLibrarySheet` /
+  `SoundLibraryController` serve both, opened by `_showSoundLibrary(root)`. Music adds **Import**
+  beside the search (`onImport`; `pickAudioTrack` in `sound_library/import_audio.dart`, the old
+  sheet's import unchanged — the user's file at 0:00). **The old Music sheet is deleted**
+  (`AudioDrawer`): its "For you / Saved / Trending" tabs were labels over a spinner that never
+  resolved. **Each library keeps its own**: a `LibrarySound` records its `library` (an entry from
+  before there were two is a sound effect), and each sheet's Downloaded shows only its own; the
+  browse cache is one file per root (`catalog_cache_<root>.json`, `catalogCacheProvider(root)`).
+- **The search field and tabs are the old Music sheet's look**: the field over the categories as
+  underlined text tabs, Import beside the field where offered. **Search filters what the sheet
   already holds** (the user's call): the tab's loaded rows or the library, by title, ignoring
   case, underscores and dashes, since titles arrive as file names. The server has no search;
   scrolling a tab loads more of it to search. The audio menu's first tool is **Music** (id
-  `music`), not "Sounds", which read as if effects were not sounds; it opens `AudioDrawer`.
+  `music`), not "Sounds", which read as if effects were not sounds.
 - **The library is `<documents>/sound_library/`** (`SoundLibrary`): not temp, which Clear Cache
   and the OS sweep, and not `drafts/<id>/`, since one sound serves every draft and
   `DraftFiles.deleteAll` must not take it. `<id>.part` renamed when whole; the cover beside it
@@ -3553,13 +3562,13 @@ library now opens from the submenu's Music.
   delete**, so a draft can never point at a sound the app removed.
 - **Offline**: `CatalogCache` keeps the pills and **every row each pill last loaded** — not just
   its first page; a scroll's later pages are saved too (the user's call) — in
-  `<app support>/catalog_cache.json`, shown at once on every opening; the library plays and adds
+  `<app support>/catalog_cache_<root>.json`, shown at once on every opening; the library plays and adds
   with no connection. **Rows are not dimmed or disabled offline** (the user's call): a download or
   a listen on a sound not on the phone is *tried*, and a connection failure says **"No internet
   connection"** (`SoundSheetNoticeKind.offline`, from `SlimshotApiException.network` or a
   `SoundDownloadFailed(offline: true)` mid-file). Tried rather than assumed, because the
   `offline` flag is only what the last request found. The download `url` is never stored.
-- **`SoundEffectsController` holds every rule** apart from the widget (`sound_effects_sheet.dart`
+- **`SoundLibraryController` holds every rule** apart from the widget (`sound_library_sheet.dart`
   is layout). Requests are numbered so a late page for another pill, or one from before a
   refresh, is dropped; pages deduplicate by id; a 404 root leaves Downloaded alone; a vanished
   category falls back to it; a 429 stops automatic requests until `retryAfterSeconds` passes,

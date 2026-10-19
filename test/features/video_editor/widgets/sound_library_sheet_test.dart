@@ -4,16 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/features/sound_library/data/sound_library.dart';
-import 'package:slimshotai/features/sound_library/sound_effects_controller.dart';
+import 'package:slimshotai/features/sound_library/sound_library_controller.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/editor_sheet.dart';
-import 'package:slimshotai/features/video_editor/widgets/panels/sound_effects_sheet.dart';
+import 'package:slimshotai/features/video_editor/widgets/panels/sound_library_sheet.dart';
 
 import '../../sound_library/support.dart';
 
 void main() {
   late Directory root;
   late ControllerHarness h;
-  late SoundEffectsController c;
+  late SoundLibraryController c;
   late List<LibrarySound> added;
 
   setUp(() async {
@@ -48,6 +48,7 @@ void main() {
     WidgetTester tester, {
     Size size = const Size(400, 800),
     double textScale = 1.0,
+    VoidCallback? onImport,
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -67,7 +68,11 @@ void main() {
             child: TextButton(
               onPressed: () => showEditorSheet<void>(
                 context,
-                builder: (_) => SoundEffectsSheet(controller: c, onAdd: added.add),
+                builder: (_) => SoundLibrarySheet(
+                  controller: c,
+                  onAdd: added.add,
+                  onImport: onImport,
+                ),
               ),
               child: const Text('open'),
             ),
@@ -115,7 +120,7 @@ void main() {
         until_: () => added.isNotEmpty);
     await tester.pump(const Duration(milliseconds: 600));
     expect(added.map((s) => s.id), ['a']);
-    expect(find.byType(SoundEffectsSheet), findsNothing);
+    expect(find.byType(SoundLibrarySheet), findsNothing);
   });
 
   testWidgets('tapping a row plays it and shows pause', (tester) async {
@@ -231,5 +236,19 @@ void main() {
     expect(tester.takeException(), isNull);
     await tapAndWork(tester, find.text(long).first);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Import shows only where the sheet offers it', (tester) async {
+    await openSheet(tester);
+    expect(find.text('Import'), findsNothing);
+  });
+
+  testWidgets('Import beside the search calls the import', (tester) async {
+    var imports = 0;
+    await openSheet(tester, onImport: () => imports++);
+    expect(find.text('Import'), findsOneWidget);
+    await tester.tap(find.text('Import'));
+    await tester.pump();
+    expect(imports, 1);
   });
 }

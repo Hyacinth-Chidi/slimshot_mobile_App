@@ -9,6 +9,10 @@ library;
 /// children are the sheet's pills. Everything under it is the dashboard's.
 const String kSoundEffectsRoot = 'sound-effects';
 
+/// The music library's root, beside the sound effects': the same sheet and
+/// endpoints, pointed here.
+const String kMusicRoot = 'music';
+
 String? _string(Object? value) => value is String ? value : null;
 
 int _int(Object? value) => value is num ? value.toInt() : 0;
