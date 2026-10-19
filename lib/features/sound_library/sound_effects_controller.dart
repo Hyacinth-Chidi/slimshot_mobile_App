@@ -16,6 +16,8 @@ const String kDownloadedPill = '__downloaded__';
 /// What plays a sound in the sheet. An interface so the rules can be tested
 /// without a speaker.
 abstract class SoundPreviewPlayer {
+  /// Plays [path]; completes when the sound reaches its end or is stopped
+  /// (another play stops the one before). Throws when the file will not play.
   Future<void> play(String path);
   Future<void> stop();
 
@@ -28,15 +30,33 @@ abstract class SoundPreviewPlayer {
 /// code, exercised on a device.
 class JustAudioPreviewPlayer implements SoundPreviewPlayer {
   final AudioPlayer _player = AudioPlayer();
+  Completer<void>? _playing;
 
-  @override
-  Future<void> play(String path) async {
-    await _player.setFilePath(path);
-    unawaited(_player.play());
+  void _end() {
+    final playing = _playing;
+    _playing = null;
+    if (playing != null && !playing.isCompleted) playing.complete();
   }
 
   @override
-  Future<void> stop() => _player.stop();
+  Future<void> play(String path) async {
+    _end();
+    final playing = _playing = Completer<void>();
+    await _player.stop();
+    await _player.setFilePath(path);
+    final reachedEnd = _player.processingStateStream
+        .firstWhere((s) => s == ProcessingState.completed)
+        .then((_) {}, onError: (_) {});
+    unawaited(_player.play().catchError((_) {}));
+    await Future.any([reachedEnd, playing.future]);
+    if (identical(_playing, playing)) _playing = null;
+  }
+
+  @override
+  Future<void> stop() async {
+    _end();
+    await _player.stop();
+  }
 
   @override
   Future<double?> durationOf(String path) async {
@@ -52,7 +72,10 @@ class JustAudioPreviewPlayer implements SoundPreviewPlayer {
   }
 
   @override
-  Future<void> dispose() => _player.dispose();
+  Future<void> dispose() async {
+    _end();
+    await _player.dispose();
+  }
 }
 
 enum SoundSheetNoticeKind { downloadFailed, unavailable }
@@ -326,9 +349,7 @@ class SoundEffectsController extends ChangeNotifier {
         _notify();
         await _player.stop();
       } else {
-        _playingId = sound.id;
-        _notify();
-        await _player.play(kept.filePath);
+        _startPlaying(sound.id, kept.filePath);
       }
       return;
     }
@@ -342,9 +363,21 @@ class SoundEffectsController extends ChangeNotifier {
     final entry = await _fetch(sound);
     if (_disposed || entry == null || _listenPending != sound.id) return;
     _listenPending = null;
-    _playingId = sound.id;
+    _startPlaying(sound.id, entry.filePath);
+  }
+
+  /// Plays [path] as [id]'s preview, without waiting for it: the row shows
+  /// pause until the sound ends, is stopped, or will not play at all — and
+  /// a sound that ends after another row took over leaves that row alone.
+  void _startPlaying(String id, String path) {
+    _playingId = id;
     _notify();
-    await _player.play(entry.filePath);
+    unawaited(_player.play(path).then((_) {}, onError: (_) {}).whenComplete(() {
+      if (_playingId == id) {
+        _playingId = null;
+        _notify();
+      }
+    }));
   }
 
   /// The + on a row: the sound, on the phone and with a length, ready for

@@ -125,6 +125,19 @@ void main() {
     expect(find.text("You're offline"), findsNothing);
   });
 
+  testWidgets('a pill with a second page loads it without a build error',
+      (tester) async {
+    h.server.pages['impacts'] = [
+      [soundRow('a'), soundRow('b')],
+      [soundRow('c')],
+    ];
+    await openSheet(tester);
+    await tester.runAsync(() => until(() => !c.hasMore));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Sound c'), findsOneWidget);
+  });
+
   testWidgets('an empty pill says so', (tester) async {
     h.server.pages['impacts'] = [[]];
     await openSheet(tester);

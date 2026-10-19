@@ -109,18 +109,38 @@ class FakeCatalogServer {
   }
 }
 
-/// Records what the sheet asked the speaker to do.
+/// Records what the sheet asked the speaker to do. A play lasts until it is
+/// stopped or [finish]ed, like a real sound; [failPlays] makes it throw.
 class FakePreviewPlayer implements SoundPreviewPlayer {
   final List<String> played = [];
   int stops = 0;
   bool disposed = false;
+  bool failPlays = false;
   double? duration = 0.8;
+  Completer<void>? _playing;
 
   @override
-  Future<void> play(String path) async => played.add(path);
+  Future<void> play(String path) {
+    if (failPlays) return Future.error(const FileSystemException('cannot play'));
+    played.add(path);
+    _end();
+    return (_playing = Completer<void>()).future;
+  }
+
+  /// The sound playing reaches its end.
+  void finish() => _end();
+
+  void _end() {
+    final playing = _playing;
+    _playing = null;
+    if (playing != null && !playing.isCompleted) playing.complete();
+  }
 
   @override
-  Future<void> stop() async => stops++;
+  Future<void> stop() async {
+    stops++;
+    _end();
+  }
 
   @override
   Future<double?> durationOf(String path) async => duration;

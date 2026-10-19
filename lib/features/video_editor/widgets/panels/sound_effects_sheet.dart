@@ -204,9 +204,7 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
     } else {
       body = NotificationListener<ScrollNotification>(
         onNotification: (n) {
-          if (n.metrics.extentAfter < n.metrics.viewportDimension) {
-            unawaited(_c.loadMore());
-          }
+          if (n.metrics.extentAfter < n.metrics.viewportDimension) _askForMore();
           return false;
         },
         child: ListView.builder(
@@ -215,7 +213,7 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
           itemBuilder: (context, i) {
             if (i >= sounds.length) {
               // The end of what has loaded: ask for more as it comes in.
-              unawaited(_c.loadMore());
+              _askForMore();
               return const _SkeletonRow();
             }
             return _row(sounds[i]);
@@ -229,6 +227,15 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
       onRefresh: _c.refresh,
       child: body,
     );
+  }
+
+  /// The next page, after this frame: asking marks the list as loading,
+  /// which rebuilds it, and a rebuild cannot be asked for from inside a
+  /// build or a layout.
+  void _askForMore() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_c.loadMore());
+    });
   }
 
   Widget _row(CatalogSound sound) {

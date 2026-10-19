@@ -192,6 +192,24 @@ void main() {
       expect(c.playingId, 'b');
     });
 
+    test('a sound that plays to its end is no longer playing', () async {
+      await opened();
+      await c.tapRow(_a);
+      await settle();
+      expect(c.playingId, 'a');
+      h.player.finish();
+      await settle();
+      expect(c.playingId, isNull);
+    });
+
+    test('a file that will not play is not left playing and throws nothing', () async {
+      await opened();
+      h.player.failPlays = true;
+      await c.tapRow(_a);
+      await settle();
+      expect(c.playingId, isNull);
+    });
+
     test('offline, a row not in the library does nothing', () async {
       h.server.overrides['categories'] = () => throw const SocketException('down');
       await opened();
