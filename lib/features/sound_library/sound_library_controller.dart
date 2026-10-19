@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
@@ -154,10 +155,17 @@ class SoundLibraryController extends ChangeNotifier {
   String get selected => _selected;
 
   /// The rows shown: the tab's sounds, narrowed by the search.
-  List<CatalogSound> get sounds {
-    final all = _selected == kDownloadedPill
+  List<CatalogSound> get sounds => soundsFor(_selected);
+
+  /// What [pill] shows, narrowed by the search: the live list for the tab
+  /// shown, the library for Downloaded, and for any other tab what it last
+  /// loaded — so a neighbour sliding in under a swipe already has its rows.
+  List<CatalogSound> soundsFor(String pill) {
+    final all = pill == kDownloadedPill
         ? [for (final s in _downloaded) s.asCatalogSound]
-        : _sounds;
+        : pill == _selected
+            ? _sounds
+            : _cache.page(pill);
     final query = _searchKey(_query);
     if (query.isEmpty) return all;
     return [for (final s in all) if (_searchKey(s.title).contains(query)) s];
@@ -502,6 +510,11 @@ class SoundLibraryController extends ChangeNotifier {
         e.offline ? SoundSheetNoticeKind.offline : SoundSheetNoticeKind.downloadFailed,
         sound.title,
       );
+      return null;
+    } on FileSystemException {
+      // The phone refused the file itself — storage full, a folder it will
+      // not write. Said, not thrown into a tap nothing awaits.
+      _tell(SoundSheetNoticeKind.downloadFailed, sound.title);
       return null;
     } finally {
       _progress.remove(sound.id);

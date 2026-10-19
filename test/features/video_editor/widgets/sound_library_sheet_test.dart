@@ -251,4 +251,59 @@ void main() {
     await tester.pump();
     expect(imports, 1);
   });
+
+  testWidgets('swiping the list left moves to the next tab', (tester) async {
+    await openSheet(tester);
+    expect(c.selected, 'impacts');
+    await tester.runAsync(() async {
+      await tester.fling(find.text('Sound a'), const Offset(-300, 0), 1000);
+      await until(() => c.selected == 'funny-memes' && !c.loading);
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Sound m'), findsOneWidget);
+    expect(h.server.hitsFor('assets:funny-memes:-'), greaterThan(0));
+  });
+
+  testWidgets('swiping right from the first category reaches Downloaded', (tester) async {
+    await openSheet(tester);
+    await tester.runAsync(() async {
+      await tester.fling(find.text('Sound a'), const Offset(300, 0), 1000);
+      await until(() => c.selected == kDownloadedPill);
+    });
+    await tester.pumpAndSettle();
+    expect(c.selected, kDownloadedPill);
+  });
+
+  testWidgets('tapping a far tab slides there without loading the ones between',
+      (tester) async {
+    h.server.categories = [
+      ...h.server.categories,
+      {'id': '3', 'slug': 'tech-digital', 'name': 'Tech & Digital', 'children': []},
+    ];
+    h.server.pages['tech-digital'] = [
+      [soundRow('t')],
+    ];
+    await openSheet(tester);
+    // The tab row scrolls; bring the far tab into view as a finger would.
+    await tester.scrollUntilVisible(
+      find.text('Tech & Digital'),
+      80,
+      scrollable: find
+          .ancestor(of: find.text('Impacts'), matching: find.byType(Scrollable))
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tech & Digital'));
+    await tester.pump();
+    expect(c.selected, 'tech-digital', reason: 'a tap chooses the tab at once');
+    // Frame by frame, as a phone draws it, so the slide passes the middle tab.
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.runAsync(() => until(() => !c.loading));
+    await tester.pumpAndSettle();
+    expect(find.text('Sound t'), findsOneWidget);
+    expect(h.server.hitsFor('assets:funny-memes:-'), 0,
+        reason: 'passing a tab on the way is not opening it');
+  });
 }

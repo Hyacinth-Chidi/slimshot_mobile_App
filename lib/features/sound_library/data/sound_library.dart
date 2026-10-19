@@ -231,7 +231,13 @@ class SoundLibrary {
       library: library,
     );
     _entries = [entry, ...?_entries?.where((e) => e.id != entry.id)];
-    await _writeIndex();
+    try {
+      await _writeIndex();
+    } on FileSystemException {
+      // The sound is whole and usable now; only remembering it across a
+      // restart failed (a full disk, a file another process holds). The
+      // next download writes the index again with this entry in it.
+    }
     return entry;
   }
 
@@ -287,7 +293,17 @@ class SoundLibrary {
         }),
         flush: true,
       );
-      await temp.rename('${dir.path}/library.json');
+      // A file held for a moment by another process refuses the rename;
+      // a short retry rides that out.
+      for (var attempt = 0;; attempt++) {
+        try {
+          await temp.rename('${dir.path}/library.json');
+          return;
+        } on FileSystemException {
+          if (attempt >= 2) rethrow;
+          await Future<void>.delayed(const Duration(milliseconds: 30));
+        }
+      }
     });
     _writes = next.catchError((_) {});
     return next;

@@ -220,4 +220,14 @@ void main() {
     final library = SoundLibrary(client: server(), root: root);
     expect((await library.load()).single.library, kSoundEffectsRoot);
   });
+
+  test('a download stands even when the index cannot be saved', () async {
+    // A directory where the index goes: every save of it fails, as a full
+    // disk or a file another process holds would.
+    Directory('${folder().path}/library.json').createSync(recursive: true);
+    final library = SoundLibrary(client: server(), root: root);
+    final entry = await library.download(_sound, _ticket);
+    expect(File(entry.filePath).existsSync(), isTrue);
+    expect(library.find('cm2a1'), isNotNull, reason: 'usable for this session');
+  });
 }

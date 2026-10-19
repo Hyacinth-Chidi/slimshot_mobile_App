@@ -3550,7 +3550,17 @@ library now opens from the submenu's Music.
   before there were two is a sound effect), and each sheet's Downloaded shows only its own; the
   browse cache is one file per root (`catalog_cache_<root>.json`, `catalogCacheProvider(root)`).
 - **The search field and tabs are the old Music sheet's look**: the field over the categories as
-  underlined text tabs, Import beside the field where offered. **Search filters what the sheet
+  underlined text tabs, Import beside the field where offered.
+- **A sideways swipe on the list changes tab** (the user's call): one page per tab in a
+  `PageView`, and a neighbour slides in already showing what it last loaded
+  (`controller.soundsFor(pill)` — the live list for the shown tab, the library for Downloaded,
+  the cache for the rest). **A tap on a tab chooses it at once and slides there, and the tabs
+  the slide passes are not opened** (`_sliding` holds `onPageChanged` off until it lands) —
+  passing a tab is not choosing it, and opening each would fetch its first page for nothing. The
+  chosen tab is scrolled into view in the row (`Scrollable.ensureVisible`), and a tab changed
+  without a swipe (the sheet opening on the first category, a vanished one falling back to
+  Downloaded) moves the pages after the frame (`_followSelection`). The test pumps at frame rate:
+  in 100ms steps the slide skips the middle page and the guard goes unproven. **Search filters what the sheet
   already holds** (the user's call): the tab's loaded rows or the library, by title, ignoring
   case, underscores and dashes, since titles arrive as file names. The server has no search;
   scrolling a tab loads more of it to search. The audio menu's first tool is **Music** (id

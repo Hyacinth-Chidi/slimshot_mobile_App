@@ -50,7 +50,7 @@ void main() {
       h.server.gates['categories'] = Completer();
       c = h.build();
       unawaited(c.open());
-      await settle();
+      await until(() => c.selected == 'impacts');
       expect(c.selected, 'impacts');
       expect(c.sounds.map((s) => s.id), ['old']);
       h.server.gates['categories']!.complete();
@@ -458,6 +458,33 @@ void main() {
       await settle();
       expect(h.player.disposed, isTrue);
       expect(h.library.find('b'), isNotNull, reason: 'the file is kept');
+    });
+  });
+
+  group('neighbouring tabs', () {
+    test('a tab not shown offers what was last loaded for it', () async {
+      await h.cache.savePage('funny-memes', const [CatalogSound(id: 'old', title: 'Old')]);
+      await opened();
+      expect(c.selected, 'impacts');
+      expect(c.soundsFor('funny-memes').map((s) => s.id), ['old']);
+      expect(c.soundsFor('impacts').map((s) => s.id), ['a', 'b'],
+          reason: 'the shown tab is the live list');
+    });
+
+    test('Downloaded offers the library', () async {
+      await opened();
+      await c.download(_a);
+      expect(c.soundsFor(kDownloadedPill).map((s) => s.id), ['a']);
+    });
+
+    test('the search narrows a neighbour too', () async {
+      await h.cache.savePage('funny-memes', const [
+        CatalogSound(id: 'x', title: 'Laugh Track'),
+        CatalogSound(id: 'y', title: 'Boing'),
+      ]);
+      await opened();
+      c.setQuery('laugh');
+      expect(c.soundsFor('funny-memes').map((s) => s.id), ['x']);
     });
   });
 }

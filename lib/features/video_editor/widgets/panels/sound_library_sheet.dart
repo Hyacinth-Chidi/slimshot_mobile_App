@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/lucide_icons.dart';
 import '../../../../core/utils/toast_utils.dart';
 import '../../../sound_library/data/catalog_models.dart';
@@ -43,17 +44,32 @@ class _SoundLibrarySheetState extends State<SoundLibrarySheet> {
   late final StreamSubscription<SoundSheetNotice> _notices;
   final TextEditingController _search = TextEditingController();
 
+  /// One page per tab, so a sideways swipe on the list is a change of tab.
+  late final PageController _pages = PageController(
+    initialPage: _c.pills.indexOf(_c.selected).clamp(0, _c.pills.length - 1),
+  );
+
+  /// The tab a tap is sliding the list to. While it is set, the pages the
+  /// slide passes are not opened — passing a tab is not choosing it.
+  String? _sliding;
+
+  /// Keys on the tabs, so the chosen one can be scrolled into view.
+  final Map<String, GlobalKey> _tabKeys = {};
+  String? _shownTab;
+
   @override
   void initState() {
     super.initState();
     _c.addListener(_changed);
     _notices = _c.notices.listen(_tell);
     unawaited(_c.open());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _followSelection());
   }
 
   @override
   void dispose() {
     _search.dispose();
+    _pages.dispose();
     _notices.cancel();
     _c.removeListener(_changed);
     _c.dispose();
@@ -61,7 +77,65 @@ class _SoundLibrarySheetState extends State<SoundLibrarySheet> {
   }
 
   void _changed() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    // The tab can change without a swipe — the sheet opening on the first
+    // category, a category vanishing back to Downloaded — and the pages and
+    // the tab row follow it after this frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _followSelection());
+  }
+
+  void _followSelection() {
+    if (!mounted) return;
+    final selected = _c.selected;
+    final index = _c.pills.indexOf(selected);
+    if (index >= 0 &&
+        _sliding == null &&
+        _pages.hasClients &&
+        !_pages.position.isScrollingNotifier.value &&
+        (_pages.page ?? 0).round() != index) {
+      _pages.jumpToPage(index);
+    }
+    if (selected != _shownTab) {
+      _shownTab = selected;
+      final tab = _tabKeys[selected]?.currentContext;
+      if (tab != null) {
+        unawaited(Scrollable.ensureVisible(
+          tab,
+          alignment: 0.5,
+          duration: AppMotion.enter,
+          curve: AppMotion.enterCurve,
+        ));
+      }
+    }
+  }
+
+  /// A swipe settled on another tab.
+  void _pageChanged(int index) {
+    if (_sliding != null) return;
+    final pills = _c.pills;
+    if (index < 0 || index >= pills.length) return;
+    final pill = pills[index];
+    if (pill != _c.selected) unawaited(_c.select(pill));
+  }
+
+  /// A tap on a tab: choose it at once, then slide the list there.
+  Future<void> _goTo(String pill) async {
+    final index = _c.pills.indexOf(pill);
+    if (index < 0) return;
+    _sliding = pill;
+    unawaited(_c.select(pill));
+    try {
+      if (_pages.hasClients) {
+        await _pages.animateToPage(
+          index,
+          duration: AppMotion.enter,
+          curve: AppMotion.enterCurve,
+        );
+      }
+    } finally {
+      if (_sliding == pill) _sliding = null;
+    }
   }
 
   void _tell(SoundSheetNotice notice) {
@@ -104,7 +178,7 @@ class _SoundLibrarySheetState extends State<SoundLibrarySheet> {
               const Divider(height: 1, color: Colors.white10),
               const SizedBox(height: 4),
               if (_c.offline) _offlineLine(),
-              Expanded(child: _list()),
+              Expanded(child: _pager()),
             ],
           ),
         ),
@@ -209,8 +283,9 @@ class _SoundLibrarySheetState extends State<SoundLibrarySheet> {
           final pill = pills[i];
           final active = pill == _c.selected;
           return GestureDetector(
+            key: _tabKeys.putIfAbsent(pill, GlobalKey.new),
             behavior: HitTestBehavior.opaque,
-            onTap: active ? null : () => unawaited(_c.select(pill)),
+            onTap: active ? null : () => unawaited(_goTo(pill)),
             child: Container(
               margin: const EdgeInsets.only(right: 20),
               padding: const EdgeInsets.only(bottom: 8),
@@ -264,10 +339,23 @@ class _SoundLibrarySheetState extends State<SoundLibrarySheet> {
         ),
       );
 
-  Widget _list() {
-    final sounds = _c.sounds;
+  /// The tabs' lists side by side: a swipe moves to the neighbouring tab,
+  /// which slides in already showing what it last loaded.
+  Widget _pager() {
+    final pills = _c.pills;
+    return PageView.builder(
+      controller: _pages,
+      itemCount: pills.length,
+      onPageChanged: _pageChanged,
+      itemBuilder: (context, i) => _list(pills[i]),
+    );
+  }
+
+  Widget _list(String pill) {
+    final live = pill == _c.selected;
+    final sounds = _c.soundsFor(pill);
     final Widget body;
-    if (_c.loading && sounds.isEmpty) {
+    if (live && _c.loading && sounds.isEmpty) {
       body = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [for (var i = 0; i < 3; i++) const _SkeletonRow()],
@@ -288,14 +376,20 @@ class _SoundLibrarySheetState extends State<SoundLibrarySheet> {
         ],
       );
     } else {
+      final more = live && _c.hasMore;
       body = NotificationListener<ScrollNotification>(
         onNotification: (n) {
-          if (n.metrics.extentAfter < n.metrics.viewportDimension) _askForMore();
+          if (live &&
+              n.metrics.axis == Axis.vertical &&
+              n.metrics.extentAfter < n.metrics.viewportDimension) {
+            _askForMore();
+          }
           return false;
         },
         child: ListView.builder(
+          key: PageStorageKey<String>('sound_list_$pill'),
           physics: const AlwaysScrollableScrollPhysics(),
-          itemCount: sounds.length + (_c.hasMore ? 1 : 0),
+          itemCount: sounds.length + (more ? 1 : 0),
           itemBuilder: (context, i) {
             if (i >= sounds.length) {
               // The end of what has loaded: ask for more as it comes in.
