@@ -174,6 +174,18 @@ void main() {
     expect(screen.readAsStringSync(), isNot(contains("tool.id == 'text' &&")));
   });
 
+  test('Audio opens its submenu, and Sounds opens the audio library', () {
+    // A handler keyed on `audio` used to open the library directly, ahead of
+    // the submenu branch, so the declared submenu — Sounds, Effects, Extract,
+    // Record — could never be reached.
+    final source = screen.readAsStringSync();
+    expect(source, isNot(contains("tool.id == 'audio'")));
+    expect(menuSource('_rootMenu'), contains("id: 'audio'"));
+    expect(source, contains("tool.id == 'sounds'"));
+    final sounds = source.indexOf("tool.id == 'sounds'");
+    expect(source.indexOf('AudioDrawer()', sounds), greaterThan(sounds));
+  });
+
   test("the audio menu's Effects is the sound library, handled", () {
     // Its own id: `effects` is the clip menu's tool, and the handler used to
     // tell the two apart by which menu was open.

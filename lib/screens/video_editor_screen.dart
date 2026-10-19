@@ -2199,7 +2199,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   // A dimmed tool waits for the selection to make it apply.
                   if (!toolEnabled) return;
                   HapticFeedback.selectionClick();
-                  if (tool.id == 'audio') {
+                  if (tool.id == 'sounds') {
+                    // Audio is a submenu; its Sounds is the music library.
                     showEditorSheet<void>(
                       context,
                       builder: (context) => const AudioDrawer(),
