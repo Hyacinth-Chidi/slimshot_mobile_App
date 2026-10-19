@@ -2753,7 +2753,7 @@ Reorder and the cut seam are done.
 
 #### Zoom — pinch the timeline
 
-**Awaiting device verification.** Two fingers on the track zoom it **about the playhead**: the
+**Device-verified 2026-10-19.** Two fingers on the track zoom it **about the playhead**: the
 instant under the playhead when the pinch begins stays under it (`_pinchAnchorSeconds`), from
 `kMaxPixelsPerSecond` (600, ~20px a frame at 30fps) out to where the whole project fills
 `kZoomOutFitFraction` (80%) of the screen — never closer than `kDefaultPixelsPerSecond` (50), the
@@ -3141,8 +3141,8 @@ bars' 1px softening, which are lines, not boxes.
 
 #### Snapping
 
-**One rule for everything on the lanes** (`logic/timeline/timeline_snapping.dart`, **awaiting
-device verification**). Moving a text, photo, video overlay or audio track, and trimming either
+**One rule for everything on the lanes** (`logic/timeline/timeline_snapping.dart`, **device-verified
+2026-10-19**). Moving a text, photo, video overlay or audio track, and trimming either
 edge of one, pulls onto the nearest of: 0:00, the playhead, every cut between clips, and the start
 and end of every other item on any lane (`timelineSnapTargets`). A move snaps whichever of its two
 edges is nearer a target (`snapMovingSpan`). The reach is `kSnapTolerancePx` converted through the
