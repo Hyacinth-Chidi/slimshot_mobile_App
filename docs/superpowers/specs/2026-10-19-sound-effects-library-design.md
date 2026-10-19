@@ -8,14 +8,19 @@ alone; anything it does not promise, do not rely on.
 
 A user editing a short video wants a whoosh, a click or a meme sound on the timeline in one
 tap, from a library that grows without an app update. Success: open **Effects** on the audio
-menu, pick a category, tap a sound's download icon, and it is on the timeline at the playhead,
-playing in the preview and in the export. A sound once downloaded works offline, forever.
+menu, pick a category, tap a sound to hear it, tap its **+**, and it is on the timeline at the
+playhead, playing in the preview and in the export. A sound once downloaded works offline,
+forever.
 
 What the user said, and what is assumed:
 
 - **Said:** categories are made in the dashboard and fetched, never hardcoded; the only fixed
-  name is the `sound-effects` root. Row = cover, title (duration under it), a download icon.
-  Download adds to the timeline in one tap. Everyone, no sign-in. SFX now, music later on the
+  name is the `sound-effects` root. Row = cover, title (duration under it), one icon.
+  **Listen first, CapCut-style** (changed 2026-10-19 at the user's call, after comparing with
+  CapCut): tapping a row downloads the sound and plays it — sound effects are tens of KB, so
+  the download *is* the preview, with no server change — and **+** adds it. **+** on a sound
+  not yet downloaded still downloads and adds in one tap. Accepted cost: every sound listened
+  to counts as a download in the dashboard. Everyone, no sign-in. SFX now, music later on the
   same code. Browsed data is kept for offline; downloaded sounds stay and play offline.
   Empty categories are toggled off in the dashboard, so no server change.
 - **Assumed (approved in the design):** the sheet closes after a sound is added; no delete in
@@ -88,10 +93,10 @@ contract asks. Later pages are kept in memory for the session only.
 ┌─────────────────────────────────────┐
 │ Downloaded │ Funny & Memes │ Impacts │…   ← pills, scroll sideways
 ├─────────────────────────────────────┤
-│ [cover]  Whoosh Fast                ⬇ │
+│ [cover]  Whoosh Fast                + │
 │          0.8s                         │
-│ [cover]  Camera Shutter             ◔ │  ← downloading: progress ring
-│ [cover]  Glass Break                + │  ← in the library
+│ [◔    ]  Camera Shutter             + │  ← tapped: downloading, ring on the cover
+│ [❚❚   ]  Glass Break                + │  ← playing: pause glyph on the cover
 └─────────────────────────────────────┘
 ```
 
@@ -104,12 +109,17 @@ contract asks. Later pages are kept in memory for the session only.
   cover (`assets/images/sound_cover_default.png`, a waveform glyph on the stage colour). Title
   one line, ellipsised, `textPrimary`; duration under it, `textSecondary`:
   `formatSoundDuration` — under 10s one decimal (`0.8s`, `4.0s`), else `m:ss` (`0:12`,
-  `1:05`). The icon: `download` (not in the library), a progress ring (downloading), `plus`
-  (in the library).
-- **Tap the icon:** ⬇ downloads then adds; ＋ adds at once (§4).
-- **Tap a downloaded row:** plays it from the file through one `just_audio` player owned by
-  the sheet; tapping it again, or another row, stops it; closing the sheet disposes it. A row
-  not in the library does nothing on tap (the server has no previews).
+  `1:05`). One trailing icon, always **+** (`plus`); while that sound downloads it becomes a
+  progress ring.
+- **Tap a row — listen.** In the library: plays from the file. Not yet: downloads it into the
+  library (a progress ring over the cover), then plays it — unless the user has tapped another
+  row meanwhile, in which case it is kept and not played. One `just_audio` player owned by the
+  sheet: a playing row shows a pause glyph over its cover; tapping it again, or another row,
+  stops it; closing the sheet disposes it. A download started by listening is an ordinary
+  library download — the sound stays, and later shows in Downloaded.
+- **Tap +** — add (§4). In the library, at once; not yet, it downloads first (the ring moves
+  to the + — one download, shared with a listen already in flight) and then adds. Adding
+  stops any preview.
 - **Paging.** 30 per page; the next page loads when the list is within a screen of its end;
   stops at `nextCursor == null`. Pull to refresh reloads pills and the current pill.
 
@@ -118,7 +128,7 @@ contract asks. Later pages are kept in memory for the session only.
 - **Loading** (nothing cached): three skeleton rows.
 - **Offline / failed:** cached rows stay; a single line above the list, "You're offline",
   with **Retry**. With nothing cached, the line and Retry alone. Rows not in the library show
-  dimmed and their ⬇ is disabled while offline.
+  dimmed while offline, and neither listening nor + acts on them.
 - **Empty pill:** "No sounds here yet."
 - **No `sound-effects` root (404):** only the Downloaded pill; no error.
 - **Category vanished (404 on list):** reload the pills, select Downloaded if it is gone.
@@ -139,8 +149,8 @@ contract asks. Later pages are kept in memory for the session only.
 
 ## 5. Errors the user sees
 
-- A download that fails: `ToastUtils.show(context, "Couldn't download <title>", isError: true)`;
-  the icon returns to ⬇. The `.part` file is deleted.
+- A download that fails, whether a listen or a +: `ToastUtils.show(context, "Couldn't download
+  <title>", isError: true)`; the row returns to rest. The `.part` file is deleted.
 - 404 on download (sound removed): the row is dropped from the current list, and the same toast.
 - 403 on download (reserved for gated sounds): toast "<title> isn't available".
 - Everything else is the offline line in §3.1. No toast for browse failures.
@@ -157,8 +167,11 @@ contract asks. Later pages are kept in memory for the session only.
 - `formatSoundDuration`: 0.4 → `0.4s`, 9.94 → `9.9s`, 9.96 → `0:10` (a value that rounds to
   10.0 takes the long form, never `10.0s`), 65 → `1:05`, 0 → no duration shown.
 - Sheet (widget, fakes for client and library): pills = Downloaded + server order; cached rows
-  shown before the answer; offline line and Retry; ⬇ → ring → closes and calls add; ＋ adds
-  without a request; tapping a non-library row does nothing; 404 root → Downloaded only;
+  shown before the answer; offline line and Retry; tapping a row not in the library downloads
+  it and plays it, tapping it again stops it; tapping another row mid-download keeps the first
+  unplayed; + on a sound not in the library → ring → closes and calls add; + on a library sound
+  adds without a request; a listen then a + on the same sound makes one download; 404 root →
+  Downloaded only;
   no overflow at 320px with text at 1.3×; `panel_theme_test` covers it (it lives under
   `widgets/panels/`).
 - Notifier: `addLibrarySound` places at the playhead on a free lane, one undo step.
@@ -170,6 +183,6 @@ mixed by `AudioExportMixer`.
 
 ## Out of scope
 
-Deleting library sounds; search; favourites; previews before download; music (same code, a
+Deleting library sounds; search; favourites; recently used; streaming without saving; music (same code, a
 later root); sign-in or credits on downloads (the server's `entitlement.canDownload` is the
 hook, and the app already treats 403 as "not available").
