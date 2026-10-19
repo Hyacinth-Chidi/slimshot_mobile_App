@@ -46,7 +46,7 @@ void main() {
       await h.cache.saveCategories(const [
         CatalogCategory(id: '1', slug: 'impacts', name: 'Impacts'),
       ]);
-      await h.cache.saveFirstPage('impacts', const [CatalogSound(id: 'old', title: 'Old')]);
+      await h.cache.savePage('impacts', const [CatalogSound(id: 'old', title: 'Old')]);
       h.server.gates['categories'] = Completer();
       c = h.build();
       unawaited(c.open());
@@ -62,7 +62,7 @@ void main() {
       await h.cache.saveCategories(const [
         CatalogCategory(id: '1', slug: 'impacts', name: 'Impacts'),
       ]);
-      await h.cache.saveFirstPage('impacts', const [CatalogSound(id: 'old', title: 'Old')]);
+      await h.cache.savePage('impacts', const [CatalogSound(id: 'old', title: 'Old')]);
       h.server.overrides['categories'] = () => throw const SocketException('down');
       h.server.overrides['assets:impacts:-'] = () => throw const SocketException('down');
       await opened();
@@ -140,6 +140,24 @@ void main() {
       expect(h.server.hitsFor('assets:impacts:1'), 1);
     });
 
+    test('everything loaded is kept for offline, not just the first page',
+        () async {
+      h.server.pages['impacts'] = [
+        [soundRow('a'), soundRow('b')],
+        [soundRow('c')],
+      ];
+      await opened();
+      await c.loadMore();
+      await settle();
+      final reopened = h.build();
+      h.server.overrides['categories'] = () => throw const SocketException('down');
+      h.server.overrides['assets:impacts:-'] = () => throw const SocketException('down');
+      await reopened.open();
+      await settle();
+      expect(reopened.sounds.map((s) => s.id), ['a', 'b', 'c']);
+      reopened.dispose();
+    });
+
     test('refresh during paging leaves no duplicate ids', () async {
       h.server.pages['impacts'] = [
         [soundRow('a'), soundRow('b')],
@@ -210,13 +228,14 @@ void main() {
       expect(c.playingId, isNull);
     });
 
-    test('offline, a row not in the library does nothing', () async {
-      h.server.overrides['categories'] = () => throw const SocketException('down');
+    test('offline, a tap on a row not on the phone says there is no connection',
+        () async {
       await opened();
+      h.server.overrides['download:a'] = () => throw const SocketException('down');
       await c.tapRow(_a);
       await settle();
-      expect(h.server.hitsFor('download:a'), 0);
       expect(h.player.played, isEmpty);
+      expect(notices.single.kind, SoundSheetNoticeKind.offline);
     });
   });
 
@@ -256,6 +275,31 @@ void main() {
   });
 
   group('downloading', () {
+    test('offline, download says there is no connection', () async {
+      await opened();
+      h.server.overrides['download:a'] = () => throw const SocketException('down');
+      expect(await c.download(_a), isNull);
+      await settle();
+      expect(notices.single.kind, SoundSheetNoticeKind.offline);
+      expect(c.inLibrary('a'), isFalse);
+    });
+
+    test('a connection lost mid-file also says there is no connection', () async {
+      await opened();
+      h.server.overrides['file:a'] = () => throw const SocketException('down');
+      expect(await c.download(_a), isNull);
+      await settle();
+      expect(notices.single.kind, SoundSheetNoticeKind.offline);
+    });
+
+    test('offline earlier is no reason not to try now', () async {
+      h.server.overrides['categories'] = () => throw const SocketException('down');
+      await opened();
+      expect(c.offline, isTrue);
+      expect((await c.download(_a))?.id, 'a',
+          reason: 'the connection may be back; the request is the test');
+    });
+
     test('fetches into the library without playing or adding', () async {
       await opened();
       final entry = await c.download(_a);

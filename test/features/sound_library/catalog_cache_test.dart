@@ -24,7 +24,7 @@ void main() {
         children: [CatalogCategory(id: '3', slug: 'ui-clicks', name: 'UI clicks')],
       ),
     ]);
-    await cache.saveFirstPage('impacts', const [
+    await cache.savePage('impacts', const [
       CatalogSound(id: 'a', title: 'Punch', durationMs: 300, coverUrl: 'https://c/a.png'),
       CatalogSound(id: 'b', title: 'Crash'),
     ]);
@@ -33,15 +33,15 @@ void main() {
     await reopened.load();
     expect(reopened.categories.map((c) => c.slug), ['impacts', 'ui']);
     expect(reopened.categories[1].children.single.slug, 'ui-clicks');
-    expect(reopened.firstPage('impacts').map((s) => s.title), ['Punch', 'Crash']);
-    expect(reopened.firstPage('impacts').first.coverUrl, 'https://c/a.png');
-    expect(reopened.firstPage('impacts').first.durationMs, 300);
+    expect(reopened.page('impacts').map((s) => s.title), ['Punch', 'Crash']);
+    expect(reopened.page('impacts').first.coverUrl, 'https://c/a.png');
+    expect(reopened.page('impacts').first.durationMs, 300);
   });
 
   test('an unknown category has no page', () async {
     final cache = CatalogCache(root: root);
     await cache.load();
-    expect(cache.firstPage('nope'), isEmpty);
+    expect(cache.page('nope'), isEmpty);
     expect(cache.categories, isEmpty);
   });
 
@@ -50,7 +50,7 @@ void main() {
     final cache = CatalogCache(root: root);
     await cache.load();
     expect(cache.categories, isEmpty);
-    expect(cache.firstPage('impacts'), isEmpty);
+    expect(cache.page('impacts'), isEmpty);
     // And it can be written again after.
     await cache.saveCategories(const [CatalogCategory(id: '1', slug: 'x', name: 'X')]);
     final reopened = CatalogCache(root: root);

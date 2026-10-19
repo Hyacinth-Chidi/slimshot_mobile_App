@@ -151,6 +151,31 @@ void main() {
     expect(find.text('Sound c'), findsOneWidget);
   });
 
+  testWidgets('offline, rows stay as they are and download says why it cannot',
+      (tester) async {
+    await openSheet(tester);
+    // The connection drops after the rows were shown.
+    h.server.overrides['categories'] = () => throw const SocketException('down');
+    h.server.overrides['assets:impacts:-'] = () => throw const SocketException('down');
+    h.server.overrides['download:a'] = () => throw const SocketException('down');
+    await tester.runAsync(() async {
+      await c.refresh();
+      await settle();
+    });
+    await tester.pump();
+    expect(c.offline, isTrue);
+    expect(find.text("You're offline"), findsOneWidget);
+    final row = find.ancestor(of: find.text('Sound a'), matching: find.byType(Opacity));
+    for (final o in tester.widgetList<Opacity>(row)) {
+      expect(o.opacity, 1.0, reason: 'not dimmed');
+    }
+    await tapAndWork(tester, find.byKey(const ValueKey('sfx_download_a')),
+        until_: () => h.server.hitsFor('download:a') > 0 && c.progressOf('a') == null);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('No internet connection'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
   testWidgets('an empty pill says so', (tester) async {
     h.server.pages['impacts'] = [[]];
     await openSheet(tester);

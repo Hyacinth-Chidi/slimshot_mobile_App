@@ -8,9 +8,10 @@ import 'catalog_models.dart';
 /// What the sheet last saw of the catalogue, so it opens with something to
 /// show — offline included — before the server answers.
 ///
-/// The pills and the **first page** of each pill only: later pages are the
-/// session's, and the server is asked again on every opening, as its
-/// contract asks. Cover addresses ride along; offline their images simply
+/// The pills and, for each pill, every row it last loaded — the first page
+/// and any it scrolled on to — so offline the sheet shows what was last
+/// seen. The server is still asked again on every opening, as its contract
+/// asks. Cover addresses ride along; offline their images simply
 /// fail and the row draws the app's own cover. In `<app support>`, which no
 /// cache clearing sweeps but which is not the user's work either.
 class CatalogCache {
@@ -24,7 +25,8 @@ class CatalogCache {
 
   List<CatalogCategory> get categories => _categories;
 
-  List<CatalogSound> firstPage(String category) => _pages[category] ?? const [];
+  /// The rows [category] last loaded.
+  List<CatalogSound> page(String category) => _pages[category] ?? const [];
 
   Future<File> _file() async {
     final root = _root ?? await getApplicationSupportDirectory();
@@ -60,7 +62,7 @@ class CatalogCache {
     return _write();
   }
 
-  Future<void> saveFirstPage(String category, List<CatalogSound> sounds) {
+  Future<void> savePage(String category, List<CatalogSound> sounds) {
     _pages[category] = List.unmodifiable(sounds);
     return _write();
   }

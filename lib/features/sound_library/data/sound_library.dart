@@ -92,9 +92,12 @@ class LibrarySound {
 
 /// A download that did not end in a whole file on the phone.
 class SoundDownloadFailed implements Exception {
-  const SoundDownloadFailed(this.message);
+  const SoundDownloadFailed(this.message, {this.offline = false});
 
   final String message;
+
+  /// The connection was the problem, not the file or the server.
+  final bool offline;
 
   @override
   String toString() => 'SoundDownloadFailed($message)';
@@ -197,7 +200,12 @@ class SoundLibrary {
     } catch (e) {
       if (await part.exists()) await part.delete();
       if (e is SoundDownloadFailed) rethrow;
-      throw SoundDownloadFailed('$e');
+      throw SoundDownloadFailed(
+        '$e',
+        offline: e is SocketException ||
+            e is TimeoutException ||
+            e is http.ClientException,
+      );
     }
 
     final entry = LibrarySound(

@@ -67,6 +67,7 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
       switch (notice.kind) {
         SoundSheetNoticeKind.downloadFailed => "Couldn't download ${notice.title}",
         SoundSheetNoticeKind.unavailable => "${notice.title} isn't available",
+        SoundSheetNoticeKind.offline => 'No internet connection',
       },
       isError: true,
     );
@@ -289,9 +290,8 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
     final progress = _c.progressOf(sound.id);
     final listening = progress != null && _c.listeningId == sound.id;
     final duration = formatSoundDuration(sound.durationMs);
-    final unreachable = _c.offline && kept == null;
-    return Opacity(
-      opacity: unreachable ? 0.4 : 1,
+    return Material(
+      type: MaterialType.transparency,
       child: InkWell(
         onTap: () => unawaited(_c.tapRow(sound)),
         child: Padding(
@@ -348,7 +348,7 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
                           )
                         : IconButton(
                             key: ValueKey('sfx_download_${sound.id}'),
-                            onPressed: unreachable || progress != null
+                            onPressed: progress != null
                                 ? null
                                 : () => unawaited(_c.download(sound)),
                             icon: const Icon(LucideIcons.download, size: 20),

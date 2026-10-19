@@ -78,7 +78,7 @@ class JustAudioPreviewPlayer implements SoundPreviewPlayer {
   }
 }
 
-enum SoundSheetNoticeKind { downloadFailed, unavailable }
+enum SoundSheetNoticeKind { downloadFailed, unavailable, offline }
 
 /// Something the sheet tells the user once, as a toast.
 class SoundSheetNotice {
@@ -220,7 +220,7 @@ class SoundEffectsController extends ChangeNotifier {
     _categories = _cache.categories;
     if (_categories.isNotEmpty) {
       _selected = _categories.first.slug;
-      _sounds = _cache.firstPage(_selected);
+      _sounds = _cache.page(_selected);
     }
     _notify();
     await _fetchCategories(opening: true);
@@ -233,7 +233,7 @@ class SoundEffectsController extends ChangeNotifier {
     _request++;
     _cursor = null;
     _loading = false;
-    _sounds = pill == kDownloadedPill ? const [] : _cache.firstPage(pill);
+    _sounds = pill == kDownloadedPill ? const [] : _cache.page(pill);
     _notify();
     if (pill != kDownloadedPill) await _loadFirstPage(automatic: true);
   }
@@ -251,6 +251,8 @@ class SoundEffectsController extends ChangeNotifier {
       _sounds = [..._sounds, ...page.items.where((s) => seen.add(s.id))];
       _cursor = page.nextCursor;
       _offline = false;
+      // Offline, the sheet shows everything last loaded, not just page one.
+      unawaited(_cache.savePage(pill, _sounds).catchError((_) {}));
     } on SlimshotApiException catch (e) {
       if (_disposed || token != _request) return;
       await _failed(e, pill);
@@ -297,7 +299,7 @@ class SoundEffectsController extends ChangeNotifier {
       unawaited(_cache.saveCategories(categories).catchError((_) {}));
       if (opening && _selected == kDownloadedPill && categories.isNotEmpty) {
         _selected = categories.first.slug;
-        _sounds = _cache.firstPage(_selected);
+        _sounds = _cache.page(_selected);
       } else if (!pills.contains(_selected)) {
         _selected = kDownloadedPill;
         _sounds = const [];
@@ -333,7 +335,7 @@ class SoundEffectsController extends ChangeNotifier {
       _sounds = [for (final s in page.items) if (seen.add(s.id)) s];
       _cursor = page.nextCursor;
       _offline = false;
-      unawaited(_cache.saveFirstPage(pill, _sounds).catchError((_) {}));
+      unawaited(_cache.savePage(pill, _sounds).catchError((_) {}));
     } on SlimshotApiException catch (e) {
       if (_disposed || token != _request) return;
       await _failed(e, pill);
@@ -382,7 +384,6 @@ class SoundEffectsController extends ChangeNotifier {
       }
       return;
     }
-    if (_offline) return;
     _listenPending = sound.id;
     if (_playingId != null) {
       _playingId = null;
@@ -414,7 +415,6 @@ class SoundEffectsController extends ChangeNotifier {
   /// download already on its way. Null when it cannot be had.
   Future<LibrarySound?> download(CatalogSound sound) async {
     if (_disposed) return null;
-    if (_library.find(sound.id) == null && _offline) return null;
     return _fetch(sound);
   }
 
@@ -423,7 +423,6 @@ class SoundEffectsController extends ChangeNotifier {
   /// or when the sheet closed before it landed.
   Future<LibrarySound?> add(CatalogSound sound) async {
     if (_disposed || _addingId != null) return null;
-    if (_library.find(sound.id) == null && _offline) return null;
     _addingId = sound.id;
     _listenPending = null;
     if (_playingId != null) {
@@ -481,13 +480,22 @@ class SoundEffectsController extends ChangeNotifier {
         _tell(SoundSheetNoticeKind.downloadFailed, sound.title);
       } else if (e.code == 'FORBIDDEN') {
         _tell(SoundSheetNoticeKind.unavailable, sound.title);
+      } else if (e.code == SlimshotApiException.network) {
+        // Tried, not assumed: the sheet may have been offline when it opened
+        // and the connection back since, or the reverse.
+        _offline = true;
+        _tell(SoundSheetNoticeKind.offline, sound.title);
       } else {
         if (e.code == 'RATE_LIMITED') _classify(e);
         _tell(SoundSheetNoticeKind.downloadFailed, sound.title);
       }
       return null;
-    } on SoundDownloadFailed {
-      _tell(SoundSheetNoticeKind.downloadFailed, sound.title);
+    } on SoundDownloadFailed catch (e) {
+      if (e.offline) _offline = true;
+      _tell(
+        e.offline ? SoundSheetNoticeKind.offline : SoundSheetNoticeKind.downloadFailed,
+        sound.title,
+      );
       return null;
     } finally {
       _progress.remove(sound.id);

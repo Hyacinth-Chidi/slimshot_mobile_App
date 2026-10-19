@@ -3551,9 +3551,14 @@ library now opens from the submenu's Music.
   `DraftFiles.deleteAll` must not take it. `<id>.part` renamed when whole; the cover beside it
   (a failed cover is not a failed download); `library.json` written through a temp file. **No
   delete**, so a draft can never point at a sound the app removed.
-- **Offline**: `CatalogCache` keeps the pills and each pill's **first page** in
+- **Offline**: `CatalogCache` keeps the pills and **every row each pill last loaded** — not just
+  its first page; a scroll's later pages are saved too (the user's call) — in
   `<app support>/catalog_cache.json`, shown at once on every opening; the library plays and adds
-  with no connection; rows not on the phone are dimmed. The download `url` is never stored.
+  with no connection. **Rows are not dimmed or disabled offline** (the user's call): a download or
+  a listen on a sound not on the phone is *tried*, and a connection failure says **"No internet
+  connection"** (`SoundSheetNoticeKind.offline`, from `SlimshotApiException.network` or a
+  `SoundDownloadFailed(offline: true)` mid-file). Tried rather than assumed, because the
+  `offline` flag is only what the last request found. The download `url` is never stored.
 - **`SoundEffectsController` holds every rule** apart from the widget (`sound_effects_sheet.dart`
   is layout). Requests are numbered so a late page for another pill, or one from before a
   refresh, is dropped; pages deduplicate by id; a 404 root leaves Downloaded alone; a vanished
