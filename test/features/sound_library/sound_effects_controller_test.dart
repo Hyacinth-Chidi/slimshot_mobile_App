@@ -220,6 +220,64 @@ void main() {
     });
   });
 
+  group('searching', () {
+    test('filters the rows shown by title, ignoring case and underscores', () async {
+      h.server.pages['impacts'] = [
+        [
+          {...soundRow('a'), 'title': 'Motion_Signal'},
+          {...soundRow('b'), 'title': 'Glass Break'},
+          {...soundRow('c'), 'title': 'Bright_UI_-'},
+        ],
+      ];
+      await opened();
+      c.setQuery('motion sig');
+      expect(c.sounds.map((s) => s.id), ['a']);
+      c.setQuery('  BRIGHT ui ');
+      expect(c.sounds.map((s) => s.id), ['c']);
+      c.setQuery('');
+      expect(c.sounds.map((s) => s.id), ['a', 'b', 'c']);
+    });
+
+    test('on Downloaded, filters the library', () async {
+      await opened();
+      await c.download(_a);
+      await c.download(_b);
+      await c.select(kDownloadedPill);
+      c.setQuery('sound b');
+      expect(c.sounds.map((s) => s.id), ['b']);
+    });
+
+    test('a search finding nothing is not an empty category', () async {
+      await opened();
+      c.setQuery('zzz');
+      expect(c.sounds, isEmpty);
+      expect(c.searching, isTrue);
+    });
+  });
+
+  group('downloading', () {
+    test('fetches into the library without playing or adding', () async {
+      await opened();
+      final entry = await c.download(_a);
+      expect(entry?.id, 'a');
+      expect(c.inLibrary('a'), isTrue);
+      expect(h.player.played, isEmpty);
+      expect(c.playingId, isNull);
+      expect(c.addingId, isNull);
+    });
+
+    test('shares a download with a listen already on its way', () async {
+      await opened();
+      h.server.gates['file:a'] = Completer();
+      unawaited(c.tapRow(_a));
+      await settle();
+      final downloading = c.download(_a);
+      h.server.gates['file:a']!.complete();
+      await downloading;
+      expect(h.server.hitsFor('download:a'), 1);
+    });
+  });
+
   group('adding', () {
     test('+ on a library sound adds without a request', () async {
       await opened();

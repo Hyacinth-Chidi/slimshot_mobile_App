@@ -258,7 +258,8 @@ const EditorMenu _editMenu = EditorMenu(
 const EditorMenu _audioMenu = EditorMenu(
   id: 'audio',
   tools: [
-    EditorTool(id: 'sounds', label: 'Sounds', icon: LucideIcons.music),
+    // Music, beside Effects: "Sounds" read as if effects were not sounds.
+    EditorTool(id: 'music', label: 'Music', icon: LucideIcons.music),
     // The sound effects library. Its own id: `effects` is the clip menu's.
     EditorTool(id: 'sound_effects', label: 'Effects', icon: LucideIcons.sparkles),
     EditorTool(id: 'extract', label: 'Extract', icon: LucideIcons.folderOpen),
@@ -2199,8 +2200,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   // A dimmed tool waits for the selection to make it apply.
                   if (!toolEnabled) return;
                   HapticFeedback.selectionClick();
-                  if (tool.id == 'sounds') {
-                    // Audio is a submenu; its Sounds is the music library.
+                  if (tool.id == 'music') {
+                    // Audio is a submenu; its Music is the music library.
                     showEditorSheet<void>(
                       context,
                       builder: (context) => const AudioDrawer(),

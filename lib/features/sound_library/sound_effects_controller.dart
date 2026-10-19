@@ -153,9 +153,34 @@ class SoundEffectsController extends ChangeNotifier {
 
   String get selected => _selected;
 
-  List<CatalogSound> get sounds => _selected == kDownloadedPill
-      ? [for (final s in _downloaded) s.asCatalogSound]
-      : _sounds;
+  /// The rows shown: the tab's sounds, narrowed by the search.
+  List<CatalogSound> get sounds {
+    final all = _selected == kDownloadedPill
+        ? [for (final s in _downloaded) s.asCatalogSound]
+        : _sounds;
+    final query = _searchKey(_query);
+    if (query.isEmpty) return all;
+    return [for (final s in all) if (_searchKey(s.title).contains(query)) s];
+  }
+
+  String _query = '';
+
+  /// Whether a search is narrowing the rows — so an empty list means "no
+  /// match", not "an empty category".
+  bool get searching => _searchKey(_query).isNotEmpty;
+
+  /// Searches what the sheet already holds — the tab's loaded rows, or the
+  /// library. The server has no search; scrolling a tab loads more of it.
+  void setQuery(String query) {
+    if (query == _query) return;
+    _query = query;
+    _notify();
+  }
+
+  /// Titles arrive as file names (`Motion_Signal`), so a search ignores
+  /// case, underscores and dashes, and runs of spaces.
+  static String _searchKey(String text) =>
+      text.toLowerCase().replaceAll(RegExp(r'[_\-\s]+'), ' ').trim();
 
   bool get loading => _loading;
   bool get offline => _offline;
@@ -165,6 +190,10 @@ class SoundEffectsController extends ChangeNotifier {
   /// 0..1 while [id] downloads; null otherwise.
   double? progressOf(String id) => _progress[id];
   String? get playingId => _playingId;
+
+  /// The row a tap is downloading in order to play — its ring goes on the
+  /// cover; any other download's goes where its download icon was.
+  String? get listeningId => _listenPending;
 
   /// The sound whose + is downloading — the ring goes on the + rather than
   /// on the cover.
@@ -378,6 +407,15 @@ class SoundEffectsController extends ChangeNotifier {
         _notify();
       }
     }));
+  }
+
+  /// The download icon on a row: the sound onto the phone, nothing played
+  /// and nothing added — the row then offers its +. Shares a listen's
+  /// download already on its way. Null when it cannot be had.
+  Future<LibrarySound?> download(CatalogSound sound) async {
+    if (_disposed) return null;
+    if (_library.find(sound.id) == null && _offline) return null;
+    return _fetch(sound);
   }
 
   /// The + on a row: the sound, on the phone and with a length, ready for

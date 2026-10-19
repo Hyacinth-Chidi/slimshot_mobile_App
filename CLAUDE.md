@@ -3524,7 +3524,10 @@ impossibility, and an exact feather instead of a hard-edged clip.
 plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-api.md` — build
 against it alone. **Effects** on the audio menu (id `sound_effects`; `effects` stays the clip
 menu's, which is why the old handler's "which menu is open" gate is gone) opens a 0.7-high sheet,
-hidden without a server address (`isToolbarToolVisible`'s `hasCatalogServer`).
+hidden without a server address (`isToolbarToolVisible`'s `hasCatalogServer`). **The audio menu
+had never been reachable** (device-found): the root Audio tool is declared with a submenu, but a
+handler keyed on `audio` opened the music library directly, ahead of the submenu branch; the
+library now opens from the submenu's Music.
 
 - **The only hardcoded name is the root, `kSoundEffectsRoot` (`sound-effects`).** The pills are
   its children, in the dashboard's order, under a fixed **Downloaded** pill; renaming, reordering,
@@ -3532,10 +3535,17 @@ hidden without a server address (`isToolbarToolVisible`'s `hasCatalogServer`).
   code pointed at `music`. An empty category is hidden from the dashboard, not filtered here.
 - **The server has no previews, so the download is the preview** (the user's call, after
   comparing with CapCut): a tap on a row downloads the sound — they are tens of KB — and plays
-  it; **+** puts it on the timeline at the playhead (`addLibrarySound`, an ordinary
-  `AudioTrackModel` through `addAudioTrack`: first free lane, selected, one undo step) and closes
-  the sheet. + on a sound not yet down downloads and adds in one tap. **Accepted cost**: every
-  sound listened to counts as a download in the dashboard.
+  it. **The icon is download until the sound is on the phone, then +** (the user's call on the
+  device): download fetches only, nothing played or added; **+** puts it on the timeline at the
+  playhead (`addLibrarySound`, an ordinary `AudioTrackModel` through `addAudioTrack`: first free
+  lane, selected, one undo step) and closes the sheet. **Accepted cost**: every sound listened
+  to counts as a download in the dashboard.
+- **It looks like the Music sheet** (`AudioDrawer`): the search field full width — nothing to
+  import here — over the categories as underlined text tabs. **Search filters what the sheet
+  already holds** (the user's call): the tab's loaded rows or the library, by title, ignoring
+  case, underscores and dashes, since titles arrive as file names. The server has no search;
+  scrolling a tab loads more of it to search. The audio menu's first tool is **Music** (id
+  `music`), not "Sounds", which read as if effects were not sounds; it opens `AudioDrawer`.
 - **The library is `<documents>/sound_library/`** (`SoundLibrary`): not temp, which Clear Cache
   and the OS sweep, and not `drafts/<id>/`, since one sound serves every draft and
   `DraftFiles.deleteAll` must not take it. `<id>.part` renamed when whole; the cover beside it

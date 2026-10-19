@@ -37,6 +37,7 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
 
   SoundEffectsController get _c => widget.controller;
   late final StreamSubscription<SoundSheetNotice> _notices;
+  final TextEditingController _search = TextEditingController();
 
   @override
   void initState() {
@@ -48,6 +49,7 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
 
   @override
   void dispose() {
+    _search.dispose();
     _notices.cancel();
     _c.removeListener(_changed);
     _c.dispose();
@@ -91,8 +93,11 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
           child: Column(
             children: [
               _handle(),
-              _pills(),
-              const SizedBox(height: 8),
+              _searchField(),
+              const SizedBox(height: 12),
+              _tabs(),
+              const Divider(height: 1, color: Colors.white10),
+              const SizedBox(height: 4),
               if (_c.offline) _offlineLine(),
               Expanded(child: _list()),
             ],
@@ -114,16 +119,52 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
         ),
       );
 
-  /// The dashboard decides how many pills there are, so they scroll.
-  Widget _pills() {
+  /// The audio library's search field, full width: there is nothing to
+  /// import here. It narrows what the sheet already holds.
+  Widget _searchField() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: _kEdge),
+        child: Container(
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white10,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Icon(LucideIcons.search, color: AppColors.textSecondary, size: 18),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _search,
+                  onChanged: _c.setQuery,
+                  textInputAction: TextInputAction.search,
+                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                  decoration: const InputDecoration(
+                    hintText: 'Search',
+                    hintStyle: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  /// The categories as the audio library's tabs: words, the current one
+  /// underlined. The dashboard decides how many there are, so they scroll.
+  Widget _tabs() {
     final pills = _c.pills;
     return SizedBox(
-      height: 36,
-      child: ListView.separated(
+      height: 40,
+      child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: _kEdge),
         itemCount: pills.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 4),
         itemBuilder: (context, i) {
           final pill = pills[i];
           final active = pill == _c.selected;
@@ -131,19 +172,24 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
             behavior: HitTestBehavior.opaque,
             onTap: active ? null : () => unawaited(_c.select(pill)),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              alignment: Alignment.center,
+              margin: const EdgeInsets.only(right: 20),
+              padding: const EdgeInsets.only(bottom: 8),
+              alignment: Alignment.bottomCenter,
               decoration: BoxDecoration(
-                color: active ? AppColors.highlight : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
+                border: Border(
+                  bottom: BorderSide(
+                    color: active ? AppColors.textPrimary : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
               ),
               child: Text(
                 _c.pillName(pill),
                 maxLines: 1,
                 style: TextStyle(
                   color: active ? AppColors.textPrimary : AppColors.textSecondary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                  fontSize: 15,
                 ),
               ),
             ),
@@ -189,13 +235,13 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
     } else if (sounds.isEmpty) {
       body = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        children: const [
+        children: [
           Padding(
-            padding: EdgeInsets.only(top: 48),
+            padding: const EdgeInsets.only(top: 48),
             child: Center(
               child: Text(
-                'No sounds here yet.',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                _c.searching ? 'No matching sounds.' : 'No sounds here yet.',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
               ),
             ),
           ),
@@ -241,7 +287,7 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
   Widget _row(CatalogSound sound) {
     final kept = _c.librarySound(sound.id);
     final progress = _c.progressOf(sound.id);
-    final adding = _c.addingId == sound.id;
+    final listening = progress != null && _c.listeningId == sound.id;
     final duration = formatSoundDuration(sound.durationMs);
     final unreachable = _c.offline && kept == null;
     return Opacity(
@@ -255,7 +301,7 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
               _SoundCover(
                 coverPath: kept?.coverPath,
                 coverUrl: sound.coverUrl,
-                listening: progress != null && !adding,
+                listening: listening,
                 progress: progress,
                 playing: _c.playingId == sound.id,
               ),
@@ -289,15 +335,26 @@ class _SoundEffectsSheetState extends State<SoundEffectsSheet> {
               SizedBox(
                 width: 48,
                 height: 48,
-                child: adding && progress != null
+                // Download first, then +: a sound goes on the timeline only
+                // once it is on the phone.
+                child: progress != null && !listening
                     ? Center(child: _Ring(progress: progress))
-                    : IconButton(
-                        key: ValueKey('sfx_add_${sound.id}'),
-                        onPressed: unreachable ? null : () => unawaited(_add(sound)),
-                        icon: const Icon(LucideIcons.plus, size: 20),
-                        color: AppColors.textPrimary,
-                        disabledColor: AppColors.textSecondary,
-                      ),
+                    : kept != null
+                        ? IconButton(
+                            key: ValueKey('sfx_add_${sound.id}'),
+                            onPressed: () => unawaited(_add(sound)),
+                            icon: const Icon(LucideIcons.plus, size: 20),
+                            color: AppColors.textPrimary,
+                          )
+                        : IconButton(
+                            key: ValueKey('sfx_download_${sound.id}'),
+                            onPressed: unreachable || progress != null
+                                ? null
+                                : () => unawaited(_c.download(sound)),
+                            icon: const Icon(LucideIcons.download, size: 20),
+                            color: AppColors.textPrimary,
+                            disabledColor: AppColors.textSecondary,
+                          ),
               ),
             ],
           ),

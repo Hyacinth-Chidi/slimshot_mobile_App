@@ -89,15 +89,28 @@ void main() {
     expect(impacts.dx, lessThan(memes.dx));
   });
 
-  testWidgets('a row shows title, duration and a plus', (tester) async {
+  testWidgets('a sound not on the phone shows download, never +', (tester) async {
     await openSheet(tester);
     expect(find.text('Sound a'), findsOneWidget);
     expect(find.text('0.8s'), findsNWidgets(2));
-    expect(find.byIcon(LucideIcons.plus), findsNWidgets(2));
+    expect(find.byIcon(LucideIcons.download), findsNWidgets(2));
+    expect(find.byIcon(LucideIcons.plus), findsNothing);
+  });
+
+  testWidgets('the download icon downloads, then the row offers +', (tester) async {
+    await openSheet(tester);
+    await tapAndWork(tester, find.byKey(const ValueKey('sfx_download_a')),
+        until_: () => c.inLibrary('a'));
+    expect(h.player.played, isEmpty, reason: 'downloading is not listening');
+    expect(added, isEmpty, reason: 'downloading is not adding');
+    expect(find.byKey(const ValueKey('sfx_add_a')), findsOneWidget);
+    expect(find.byKey(const ValueKey('sfx_download_b')), findsOneWidget);
   });
 
   testWidgets('tapping + adds, closes, and calls onAdd once', (tester) async {
     await openSheet(tester);
+    await tapAndWork(tester, find.byKey(const ValueKey('sfx_download_a')),
+        until_: () => c.inLibrary('a'));
     await tapAndWork(tester, find.byKey(const ValueKey('sfx_add_a')),
         until_: () => added.isNotEmpty);
     await tester.pump(const Duration(milliseconds: 600));
@@ -144,11 +157,29 @@ void main() {
     expect(find.text('No sounds here yet.'), findsOneWidget);
   });
 
+  testWidgets('search narrows the rows', (tester) async {
+    await openSheet(tester);
+    expect(find.text('Search'), findsOneWidget, reason: "the old sheet's field");
+    await tester.enterText(find.byType(TextField), 'sound b');
+    await tester.pump();
+    expect(find.text('Sound a'), findsNothing);
+    expect(find.text('Sound b'), findsOneWidget);
+  });
+
+  testWidgets('the categories are tabs, the current one underlined', (tester) async {
+    await openSheet(tester);
+    final tab = tester.widget<Container>(find
+        .ancestor(of: find.text('Impacts'), matching: find.byType(Container))
+        .first);
+    final border = (tab.decoration as BoxDecoration?)?.border as Border?;
+    expect(border?.bottom.width, 2);
+  });
+
   testWidgets('a failed download toasts', (tester) async {
     h.server.overrides['download:a'] = () => FakeCatalogServer.error('INTERNAL', 500);
     await openSheet(tester);
-    await tapAndWork(tester, find.byKey(const ValueKey('sfx_add_a')),
-        until_: () => c.addingId == null && h.server.hitsFor('download:a') > 0);
+    await tapAndWork(tester, find.byKey(const ValueKey('sfx_download_a')),
+        until_: () => c.progressOf('a') == null && h.server.hitsFor('download:a') > 0);
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text("Couldn't download Sound a"), findsOneWidget);
     expect(added, isEmpty);
