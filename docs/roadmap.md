@@ -103,7 +103,10 @@ groundwork first, then the ports and the sheet, then easing.
 9. A catalogue on the SlimShot server (categories, preview, file), browsed in the audio sheet,
    downloaded once and cached, inserted at the playhead as an ordinary audio track — the fonts
    model. Every sound licensed for redistribution inside an app (CC0, or a bought pack that says
-   so).
+   so). **Built 2026-10-19, awaiting device verification**: server catalogue live (no previews —
+   a tap downloads and listens, + adds); app spec
+   `docs/superpowers/specs/2026-10-19-sound-effects-library-design.md`. Next on this track:
+   music, on the same code under a `music` root.
 
 ### Stage 4 — blend modes: stingers and video inside text (L)
 

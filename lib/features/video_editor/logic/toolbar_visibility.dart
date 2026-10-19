@@ -15,6 +15,7 @@ bool isToolbarToolVisible(
   required bool hasImageSelected,
   required bool hasVideoOverlaySelected,
   required bool hasCaptionServer,
+  required bool hasCatalogServer,
   required bool hasCaptionSelected,
 }) {
   switch (toolId) {
@@ -45,6 +46,10 @@ bool isToolbarToolVisible(
       // Not offered before it works: a build without a server address has
       // nowhere to send the audio.
       return hasCaptionServer;
+    case 'sound_effects':
+      // The sound library lives on the server; without one there is nothing
+      // to list or fetch.
+      return hasCatalogServer;
   }
   // Animation used to be hidden for every video overlay — a rule from before
   // overlays were drawn by the engine, which animates them as it does photos.

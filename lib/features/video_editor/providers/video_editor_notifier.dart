@@ -4061,16 +4061,20 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
   /// A sound from the library, at the playhead and its full length, on the
   /// first free lane — an ordinary audio track from here on, one undo step.
+  /// It is selected the way a tap on it selects it, so the toolbar is its
+  /// menu and nothing else stays selected beside it.
   void addLibrarySound(LibrarySound sound) {
     final seconds = sound.durationMs / 1000.0;
+    final id = const Uuid().v4();
     addAudioTrack(AudioTrackModel(
-      id: const Uuid().v4(),
+      id: id,
       filePath: sound.filePath,
       sourceDuration: seconds,
       sourceStart: 0,
       sourceEnd: seconds,
       timelineStart: state.currentPlaybackPosition,
     ));
+    selectAudioTrack(id);
   }
 
   void updateAudioTrack(AudioTrackModel updatedTrack) {

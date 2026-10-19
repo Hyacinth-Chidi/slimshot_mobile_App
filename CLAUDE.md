@@ -3518,6 +3518,43 @@ players hold no video decoder.
 **What it unlocks**: an overlay chroma key and blend modes, each now a shader line rather than an
 impossibility, and an exact feather instead of a hard-edged clip.
 
+### Sound effects library — tap to listen, + to add
+
+**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-10-19-sound-effects-library-design.md`,
+plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-api.md` — build
+against it alone. **Effects** on the audio menu (id `sound_effects`; `effects` stays the clip
+menu's, which is why the old handler's "which menu is open" gate is gone) opens a 0.7-high sheet,
+hidden without a server address (`isToolbarToolVisible`'s `hasCatalogServer`).
+
+- **The only hardcoded name is the root, `kSoundEffectsRoot` (`sound-effects`).** The pills are
+  its children, in the dashboard's order, under a fixed **Downloaded** pill; renaming, reordering,
+  hiding and adding categories are the dashboard's and need no release. Music will be the same
+  code pointed at `music`. An empty category is hidden from the dashboard, not filtered here.
+- **The server has no previews, so the download is the preview** (the user's call, after
+  comparing with CapCut): a tap on a row downloads the sound — they are tens of KB — and plays
+  it; **+** puts it on the timeline at the playhead (`addLibrarySound`, an ordinary
+  `AudioTrackModel` through `addAudioTrack`: first free lane, selected, one undo step) and closes
+  the sheet. + on a sound not yet down downloads and adds in one tap. **Accepted cost**: every
+  sound listened to counts as a download in the dashboard.
+- **The library is `<documents>/sound_library/`** (`SoundLibrary`): not temp, which Clear Cache
+  and the OS sweep, and not `drafts/<id>/`, since one sound serves every draft and
+  `DraftFiles.deleteAll` must not take it. `<id>.part` renamed when whole; the cover beside it
+  (a failed cover is not a failed download); `library.json` written through a temp file. **No
+  delete**, so a draft can never point at a sound the app removed.
+- **Offline**: `CatalogCache` keeps the pills and each pill's **first page** in
+  `<app support>/catalog_cache.json`, shown at once on every opening; the library plays and adds
+  with no connection; rows not on the phone are dimmed. The download `url` is never stored.
+- **`SoundEffectsController` holds every rule** apart from the widget (`sound_effects_sheet.dart`
+  is layout). Requests are numbered so a late page for another pill, or one from before a
+  refresh, is dropped; pages deduplicate by id; a 404 root leaves Downloaded alone; a vanished
+  category falls back to it; a 429 stops automatic requests until `retryAfterSeconds` passes,
+  and Retry or pull-to-refresh wait it out. One add at a time; a listen and a + on one sound
+  share a download (both in the controller and in `SoundLibrary`). A length the server did not
+  know is read from the file. After the sheet closes an add in flight comes back empty while the
+  file still lands.
+- `SlimshotApi.sendPublicEnvelope` reads a public answer whole — the catalogue's `data` is a
+  list and its pages carry `meta` — sharing `_refusal` with `_decode` so the two cannot drift.
+
 ### Draft files — a draft owns its folder
 
 A draft is JSON in preferences that *points at* files, and until now those files were scattered
@@ -4053,8 +4090,8 @@ criteria, not aspirations.
   codebase — the entry itself — so nothing handled it at all, while the real
   tool ships as `animation` on the image- and video-overlay menus and as the
   text editor's Animation tab. An animation also needs a target, and the root
-  menu is the no-selection menu. The **audio** menu's `effects` entry
-  stays: no audio-effect code exists anywhere, so the rule applies to it
-  exactly as written, and `templates` keeps its deliberate "coming soon"
-  panel for the same reason. **Clips still have no in/out animation tool**;
+  menu is the no-selection menu. The **audio** menu's Effects is now
+  built — the sound effects library, under its own id `sound_effects` — and
+  `templates` keeps its deliberate "coming soon" panel, the rule applied as
+  written. **Clips still have no in/out animation tool**;
   if one is built its home is the clip menu, with a handler.

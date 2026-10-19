@@ -174,11 +174,15 @@ void main() {
     expect(screen.readAsStringSync(), isNot(contains("tool.id == 'text' &&")));
   });
 
-  test('the audio menu keeps its unbuilt Effects entry', () {
-    // Genuinely unbuilt — no audio-effect code exists — so the standing rule
-    // applies: keep it visible and implement later. Unlike the root entry,
-    // this one does not promise something that already exists elsewhere.
-    expect(menuSource('_audioMenu'), contains("id: 'effects'"));
+  test("the audio menu's Effects is the sound library, handled", () {
+    // Its own id: `effects` is the clip menu's tool, and the handler used to
+    // tell the two apart by which menu was open.
+    final audio = menuSource('_audioMenu');
+    expect(audio, contains("id: 'sound_effects', label: 'Effects'"));
+    expect(audio, isNot(contains("id: 'effects'")));
+    final source = screen.readAsStringSync();
+    expect(source, contains("tool.id == 'sound_effects'"));
+    expect(source, contains('SoundEffectsSheet('));
   });
 
   test('a selected caption offers its list, and the screen handles it', () {

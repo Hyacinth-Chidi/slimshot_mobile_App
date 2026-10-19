@@ -22,6 +22,7 @@ void main() {
     bool image = false,
     bool video = false,
     bool captionServer = true,
+    bool catalogServer = true,
     bool caption = false,
   }) =>
       isToolbarToolVisible(
@@ -34,6 +35,7 @@ void main() {
         hasImageSelected: image,
         hasVideoOverlaySelected: video,
         hasCaptionServer: captionServer,
+        hasCatalogServer: catalogServer,
         hasCaptionSelected: caption,
       );
 
@@ -55,6 +57,11 @@ void main() {
       () {
     expect(visible('volume', video: true, clipCount: 3), isTrue);
     expect(visible('volume', video: true, clipCount: 1), isTrue);
+  });
+
+  test('the sound library is offered only with a server to fetch it from', () {
+    expect(visible('sound_effects', catalogServer: false), isFalse);
+    expect(visible('sound_effects', catalogServer: true), isTrue);
   });
 
   test('a selected video overlay offers Animation', () {

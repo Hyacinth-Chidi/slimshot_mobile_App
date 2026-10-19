@@ -88,6 +88,9 @@ import '../features/video_editor/widgets/panels/apply_to_all_button.dart';
 import '../features/video_editor/widgets/panels/mask_panel.dart';
 import '../features/account/services/account_service.dart';
 import '../features/account/widgets/earn_credits_block.dart';
+import '../features/sound_library/providers.dart';
+import '../features/sound_library/sound_effects_controller.dart';
+import '../features/video_editor/widgets/panels/sound_effects_sheet.dart';
 
 class EditorTool {
   final String id;
@@ -256,7 +259,8 @@ const EditorMenu _audioMenu = EditorMenu(
   id: 'audio',
   tools: [
     EditorTool(id: 'sounds', label: 'Sounds', icon: LucideIcons.music),
-    EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
+    // The sound effects library. Its own id: `effects` is the clip menu's.
+    EditorTool(id: 'sound_effects', label: 'Effects', icon: LucideIcons.sparkles),
     EditorTool(id: 'extract', label: 'Extract', icon: LucideIcons.folderOpen),
     EditorTool(id: 'record', label: 'Record', icon: LucideIcons.mic),
   ],
@@ -1930,6 +1934,26 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// keyframe controls — a half state the user never entered. Awaiting the
   /// sheet covers every way it closes, the same reason
   /// [_showTransitionsDrawer] awaits. A selection the user made stays.
+  /// The sound effects library. The sheet owns the controller it is given
+  /// and disposes it on close; the library and the cache are app-wide, so a
+  /// download started in one opening is not fetched again in the next.
+  void _showSoundEffects() {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final controller = SoundEffectsController(
+      client: ref.read(catalogClientProvider),
+      library: ref.read(soundLibraryProvider),
+      cache: ref.read(catalogCacheProvider),
+      player: JustAudioPreviewPlayer(),
+    );
+    showEditorSheet<void>(
+      context,
+      builder: (_) => SoundEffectsSheet(
+        controller: controller,
+        onAdd: notifier.addLibrarySound,
+      ),
+    );
+  }
+
   Future<void> _showTransformSheet() async {
     final notifier = ref.read(videoEditorProvider.notifier);
     final borrowed = ref.read(videoEditorProvider).selectedSegmentId == null &&
@@ -2102,6 +2126,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
             hasVideoOverlaySelected:
                 editorState.selectedVideoOverlayId != null,
             hasCaptionServer: SlimshotApi.isConfigured,
+            hasCatalogServer: SlimshotApi.isConfigured,
             hasCaptionSelected: editorState.textOverlays.any(
               (t) => t.id == editorState.selectedTextId && t.isCaption,
             ),
@@ -2179,6 +2204,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       context,
                       builder: (context) => const AudioDrawer(),
                     );
+                  } else if (tool.id == 'sound_effects') {
+                    _showSoundEffects();
                   } else if (tool.id == 'filters') {
                     // Reached from the clip menu, the tool means "filter this
                     // clip", so the sheet opens in per-clip mode. The switch
@@ -2207,12 +2234,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     _showSpeedCurveSheet();
                   } else if (tool.id == 'chroma') {
                     _showChromaKeySheet();
-                  } else if (tool.id == 'effects' &&
-                      editorState.currentMenuId == 'edit') {
-                    // Gated on the clip menu: the audio menu carries an
-                    // `effects` tool of its own (unbuilt, and deliberately
-                    // left visible), and an effect without a clip has no
-                    // target.
+                  } else if (tool.id == 'effects') {
                     showEditorSheet<void>(
                       context,
                       builder: (context) => const EffectsPanel(),
