@@ -195,6 +195,14 @@ void main() {
     );
   });
 
+  test("the audio menu's Extract is handled", () {
+    // Declared since the audio menu existed and handled by nothing, so a tap
+    // did nothing at all.
+    final source = screen.readAsStringSync();
+    expect(source, contains("tool.id == 'extract'"));
+    expect(source, contains('ExtractAudioSheet('));
+  });
+
   test("the audio menu's Effects is the sound library, handled", () {
     // Its own id: `effects` is the clip menu's tool, and the handler used to
     // tell the two apart by which menu was open.

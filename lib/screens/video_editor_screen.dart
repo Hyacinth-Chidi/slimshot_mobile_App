@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -93,6 +94,12 @@ import '../features/sound_library/import_audio.dart';
 import '../features/sound_library/providers.dart';
 import '../features/sound_library/sound_library_controller.dart';
 import '../features/video_editor/widgets/panels/sound_library_sheet.dart';
+import '../features/video_editor/widgets/panels/extract_audio_sheet.dart';
+import '../features/audio_tools/audio_tools_service.dart';
+import '../features/audio_tools/extract_preview_player.dart';
+import '../features/audio_tools/extract_selection.dart';
+import '../core/services/draft_files.dart';
+import '../core/services/media_picker_service.dart';
 
 class EditorTool {
   final String id;
@@ -1966,6 +1973,49 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     );
   }
 
+  /// Extract: a video from the gallery, its sound trimmed in a large sheet,
+  /// then a track at the playhead on the first free lane. The sound is
+  /// written into the draft's own folder, and one the user did not keep is
+  /// deleted again, so the folder holds only what a track points at.
+  Future<void> _showExtractAudio() async {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final picker = MediaPickerService();
+    final picked = await picker.pickVideo();
+    if (picked == null || !mounted) return;
+    notifier.setPlaying(false);
+
+    final tools = AudioToolsService();
+    final draftId = ref.read(videoEditorProvider).draftId ?? 'unsaved';
+    final choice = await showEditorSheet<ExtractChoice>(
+      context,
+      builder: (_) => ExtractAudioSheet(
+        initialVideoPath: picked.path,
+        pickVideo: () async => (await picker.pickVideo())?.path,
+        extract: (videoPath) async {
+          final dir = await DraftFiles.audioDir(draftId);
+          final stamp = DateTime.now().millisecondsSinceEpoch;
+          return tools.extract(
+            videoPath: videoPath,
+            outputPath: '${dir.path}/extract_$stamp.m4a',
+          );
+        },
+        peaks: tools.peaks,
+        discardSound: (path) {
+          try {
+            File(path).deleteSync();
+          } catch (_) {}
+        },
+        player: VideoPlayerExtractPreview(),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    notifier.addAudioTrack(extractedTrack(
+      sound: choice.sound,
+      selection: choice.selection,
+      playhead: ref.read(videoEditorProvider).currentPlaybackPosition,
+    ));
+  }
+
   /// Opens the transform sheet on the selected clip — or, from the root menu,
   /// on the clip under the playhead — and **puts back what it borrowed**.
   ///
@@ -2231,6 +2281,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     _showSoundLibrary(kMusicRoot, offerImport: true);
                   } else if (tool.id == 'sound_effects') {
                     _showSoundLibrary(kSoundEffectsRoot);
+                  } else if (tool.id == 'extract') {
+                    unawaited(_showExtractAudio());
                   } else if (tool.id == 'filters') {
                     // Reached from the clip menu, the tool means "filter this
                     // clip", so the sheet opens in per-clip mode. The switch
