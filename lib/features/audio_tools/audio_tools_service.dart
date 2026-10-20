@@ -1,5 +1,8 @@
 import 'package:flutter/services.dart';
 
+/// What the user is told when the sound could not be taken out or saved.
+const String kExtractFailedMessage = 'The sound could not be taken out of this video.';
+
 /// A video's sound, taken out into a file of its own.
 class ExtractedSound {
   const ExtractedSound({required this.path, required this.durationSeconds});
@@ -38,17 +41,13 @@ class AudioToolsService {
         'outputPath': outputPath,
       });
     } on PlatformException catch (e) {
-      throw AudioToolsException(
-        e.message ?? 'The sound could not be taken out of this video.',
-      );
+      throw AudioToolsException(e.message ?? kExtractFailedMessage);
     }
     if (answer == null || answer['hasSound'] != true) return null;
     final path = answer['path'];
     final ms = answer['durationMs'];
     if (path is! String || ms is! num) {
-      throw const AudioToolsException(
-        'The sound could not be taken out of this video.',
-      );
+      throw const AudioToolsException(kExtractFailedMessage);
     }
     return ExtractedSound(path: path, durationSeconds: ms / 1000.0);
   }

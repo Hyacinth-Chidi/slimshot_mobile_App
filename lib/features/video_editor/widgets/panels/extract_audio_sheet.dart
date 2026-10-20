@@ -8,6 +8,7 @@ import '../../../../core/theme/lucide_icons.dart';
 import '../../../audio_tools/audio_tools_service.dart';
 import '../../../audio_tools/extract_preview_player.dart';
 import '../../../audio_tools/extract_selection.dart';
+import '../../../audio_tools/same_file.dart';
 
 /// What Done hands back: the whole sound, and the part of it the handles
 /// enclose — the track's trim.
@@ -33,6 +34,7 @@ class ExtractAudioSheet extends StatefulWidget {
     required this.peaks,
     required this.player,
     this.discardSound,
+    this.isSameVideo,
   });
 
   final String initialVideoPath;
@@ -46,11 +48,16 @@ class ExtractAudioSheet extends StatefulWidget {
   final ExtractPreviewPlayer player;
   final void Function(String soundPath)? discardSound;
 
+  /// Whether a newly picked video is the one already open; [isSameFile] when
+  /// not given. Picked again, a video keeps its sound and handles.
+  final Future<bool> Function(String a, String b)? isSameVideo;
+
   @override
   State<ExtractAudioSheet> createState() => _ExtractAudioSheetState();
 }
 
 class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
+  late String _videoPath = widget.initialVideoPath;
   ExtractedSound? _sound;
   ExtractSelection? _selection;
   List<double>? _peaks;
@@ -93,6 +100,10 @@ class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
       if (sound == null) problem = 'This video has no sound';
     } on AudioToolsException catch (e) {
       problem = e.message;
+    } catch (_) {
+      // The draft's folder could not be written, or anything else the
+      // channel did not word: said, never a sheet that silently spins.
+      problem = kExtractFailedMessage;
     }
     if (!mounted || generation != _generation) {
       if (sound != null) widget.discardSound?.call(sound.path);
@@ -115,6 +126,11 @@ class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
   Future<void> _changeVideo() async {
     final path = await widget.pickVideo();
     if (path == null || !mounted) return;
+    // The same video again — the gallery's fresh copy of it — keeps the sound
+    // already taken out, and the handles where the user left them.
+    final same = await (widget.isSameVideo ?? isSameFile)(_videoPath, path);
+    if (same || !mounted) return;
+    _videoPath = path;
     await widget.player.pause();
     final old = _sound;
     if (old != null) widget.discardSound?.call(old.path);

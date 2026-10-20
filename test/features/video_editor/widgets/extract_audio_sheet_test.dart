@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/audio_tools/audio_tools_service.dart';
@@ -38,6 +40,8 @@ void main() {
   late List<String> peaksAskedFor;
   late List<String> discarded;
   late List<String?> picks;
+  late List<String> extracted;
+  Future<bool> Function(String a, String b)? sameVideo;
   ExtractChoice? result;
   var closed = false;
 
@@ -47,6 +51,7 @@ void main() {
     player = _FakePreview();
     peaksAskedFor = [];
     discarded = [];
+    extracted = [];
     result = null;
     closed = false;
     await tester.pumpWidget(MaterialApp(
@@ -60,7 +65,14 @@ void main() {
                   builder: (_) => ExtractAudioSheet(
                     initialVideoPath: video,
                     pickVideo: () async => picks.removeAt(0),
-                    extract: (path) async => sounds[path],
+                    extract: (path) async {
+                      if (path == '/broken.mp4') {
+                        throw const FileSystemException('read-only');
+                      }
+                      extracted.add(path);
+                      return sounds[path];
+                    },
+                    isSameVideo: sameVideo,
                     peaks: (path) async {
                       peaksAskedFor.add(path);
                       return List.generate(50, (i) => (i % 10) / 10);
@@ -87,7 +99,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   }
 
-  setUp(() => picks = []);
+  setUp(() {
+    picks = [];
+    // These paths are not files: compared by name, as the real comparison
+    // (file bytes, `same_file_test.dart`) would for one path.
+    sameVideo = (a, b) async => a == b;
+  });
 
   testWidgets('shows the video and the waveform once peaks arrive', (tester) async {
     await openSheet(tester);
@@ -161,6 +178,45 @@ void main() {
     await tester.tap(find.text('Done'));
     await settle(tester);
     expect(result!.sound.path, '/a1.m4a');
+  });
+
+  testWidgets('picking the same video again keeps its sound and handles', (tester) async {
+    await openSheet(tester);
+    final width = tester.getSize(find.byKey(const ValueKey('extract-waveform'))).width;
+    await tester.drag(
+      find.byKey(const ValueKey('extract-handle-end')),
+      Offset(-width / 2, 0),
+    );
+    await settle(tester);
+    picks = ['/v1.mp4'];
+    await tester.tap(find.text('Change video'));
+    await settle(tester);
+    expect(extracted, ['/v1.mp4'], reason: 'not taken out a second time');
+    expect(player.opened, ['/v1.mp4']);
+    expect(discarded, isEmpty);
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+    expect(result!.sound.path, '/a1.m4a');
+    expect(result!.selection.end, closeTo(5.0, 0.3), reason: 'the trim is kept');
+  });
+
+  testWidgets('a fresh copy of the same video is the same video', (tester) async {
+    // The gallery hands back a new copy, under a new name, on every pick.
+    sameVideo = (a, b) async => true;
+    await openSheet(tester);
+    picks = ['/cache/image_picker_42.mp4'];
+    await tester.tap(find.text('Change video'));
+    await settle(tester);
+    expect(extracted, ['/v1.mp4']);
+    expect(discarded, isEmpty);
+  });
+
+  testWidgets('a sound that cannot be saved says so', (tester) async {
+    await openSheet(tester, video: '/broken.mp4');
+    expect(find.text(kExtractFailedMessage), findsOneWidget);
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+    expect(closed, isFalse, reason: 'Done waits for a sound');
   });
 
   testWidgets('a video with no sound says so and returns nothing', (tester) async {

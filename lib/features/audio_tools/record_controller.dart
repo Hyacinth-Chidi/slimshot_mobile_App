@@ -11,6 +11,7 @@ enum MicPermission { granted, denied, permanentlyDenied }
 const String kRecordAtEndMessage = 'Move the playhead back to record over your video';
 const String kMicDeniedMessage = 'Allow microphone access to record a voiceover';
 const String kMicBlockedMessage = 'Microphone access is off. Turn it on in Settings';
+const String kRecordStartFailedMessage = 'The recording could not be started';
 
 /// A take Done hands back: the file, and where on the timeline it began.
 typedef FinishedTake = ({String path, double durationSeconds, double timelineStart});
@@ -134,6 +135,11 @@ class RecordController extends ChangeNotifier {
         await recorder.open(await newTakePath());
       } on VoiceRecorderException catch (e) {
         _say(e.message);
+        return;
+      } catch (_) {
+        // The draft's folder could not be written, or the recorder failed in
+        // a way it did not word: said, and the mode stays usable.
+        _say(kRecordStartFailedMessage);
         return;
       }
       _opened = true;

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/audio_tools/record_controller.dart';
 import 'package:slimshotai/features/audio_tools/voice_recorder_service.dart';
@@ -37,6 +39,7 @@ void main() {
   late double projectEnd;
   late MicPermission permission;
   late List<int> countdownSeen;
+  late Future<String> Function() takePath;
 
   RecordController controller() {
     final c = RecordController(
@@ -45,7 +48,7 @@ void main() {
         log.add('ask mic');
         return permission;
       },
-      newTakePath: () async => '/d/voice.m4a',
+      newTakePath: () => takePath(),
       play: () => log.add('play'),
       pause: () => log.add('pause'),
       setMonitorMuted: (muted) => log.add('monitor muted=$muted'),
@@ -69,6 +72,7 @@ void main() {
     projectEnd = 20.0;
     permission = MicPermission.granted;
     countdownSeen = [];
+    takePath = () async => '/d/voice.m4a';
   });
 
   test('entering mutes the preview, leaving restores it', () async {
@@ -237,6 +241,18 @@ void main() {
     await c.discard();
     expect(log, contains('close keep=false'));
     expect(c.phase, RecordPhase.idle);
+  });
+
+  test('a take that cannot be created says so and stays idle', () async {
+    // The project's folder could not be written: a full or locked storage.
+    takePath = () async => throw const FileSystemException('read-only');
+    final c = controller();
+    await c.enter();
+    await c.toggle();
+    expect(c.phase, RecordPhase.idle);
+    expect(c.takeMessage(), kRecordStartFailedMessage);
+    expect(log, isNot(contains('play')));
+    expect(log.where((l) => l.startsWith('open')), isEmpty);
   });
 
   test('a message is read once', () async {

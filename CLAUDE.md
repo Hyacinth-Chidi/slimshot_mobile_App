@@ -3639,6 +3639,11 @@ waveform with two handles, **Change video** and **Done**; Done puts the sound at
   held whole. Channel `slimshot_ai/audio_tools` (`AudioToolsChannel`).
 - **"This video has no sound" is said in the sheet**, with Change video still offered and Done
   off. A sound extracted and not kept — the sheet closed, another video chosen — is deleted.
+  A sound that cannot be saved (the draft's folder not writable) says `kExtractFailedMessage`
+  the same way, never a sheet that spins.
+- **The same video picked again keeps its sound and handles** (`isSameFile`): the gallery hands
+  back a fresh copy on every pick, often under a new name, so the path cannot tell — the length
+  and the first and last 64 KB can, at no cost next to taking the sound out again.
 - **Known, from the review:** the preview player (`VideoPlayerExtractPreview`) is plugin code with
   no test; its loop is a position listener seeking back at the end handle.
 
@@ -3655,7 +3660,8 @@ run on over a still picture.
   starts, a pause leaves no gap, and capture always starts before playback and stops after it.
   `MediaRecorder`'s start delay cannot be measured. Channel `slimshot_ai/voice_recorder`;
   `RECORD_AUDIO` in the manifest; `permission_handler` asks, with a way to Settings when refused
-  for good.
+  for good. A take that cannot be created (the folder not writable, a recorder failure it did
+  not word) says `kRecordStartFailedMessage` and leaves the mode usable.
 - **The preview is muted while recording, with a speaker toggle** — the phone's speaker would play
   into the microphone, under the voice, for good. **A monitor mute only**: the engine's `setVolume`
   (clips and overlay sound) and `AudioPlayerManager.monitorMuted` (imported music); never the
