@@ -42,6 +42,17 @@ void main() {
     await tester.pump();
   }
 
+  /// Waits, in real time, until [finder] is on screen. A download is in the
+  /// library a moment before the controller tells the sheet to redraw, so
+  /// waiting on the library alone met the row still showing its download
+  /// icon under a loaded suite.
+  Future<void> pumpUntilFound(WidgetTester tester, Finder finder) async {
+    for (var i = 0; i < 100 && finder.evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+  }
+
   /// Opens the sheet over a page, the way the editor does, with the
   /// controller already past its first load.
   Future<void> openSheet(
@@ -106,6 +117,7 @@ void main() {
     await openSheet(tester);
     await tapAndWork(tester, find.byKey(const ValueKey('sfx_download_a')),
         until_: () => c.inLibrary('a'));
+    await pumpUntilFound(tester, find.byKey(const ValueKey('sfx_add_a')));
     expect(h.player.played, isEmpty, reason: 'downloading is not listening');
     expect(added, isEmpty, reason: 'downloading is not adding');
     expect(find.byKey(const ValueKey('sfx_add_a')), findsOneWidget);
@@ -116,6 +128,7 @@ void main() {
     await openSheet(tester);
     await tapAndWork(tester, find.byKey(const ValueKey('sfx_download_a')),
         until_: () => c.inLibrary('a'));
+    await pumpUntilFound(tester, find.byKey(const ValueKey('sfx_add_a')));
     await tapAndWork(tester, find.byKey(const ValueKey('sfx_add_a')),
         until_: () => added.isNotEmpty);
     await tester.pump(const Duration(milliseconds: 600));
