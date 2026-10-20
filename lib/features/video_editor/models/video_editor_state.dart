@@ -68,6 +68,35 @@ double keyframeHitToleranceFor(VideoSegment segment) {
   return (kKeyframeHitSeconds / d).clamp(0.0, 0.5).toDouble();
 }
 
+/// The one property an effect bar's diamond pins.
+enum EffectBarProperty { intensity }
+
+/// An effect bar's keyframable parameters, as the shared keyframe core reads
+/// them.
+KeyframeParams<EffectBarProperty> effectBarParams(EffectBarModel bar) =>
+    {EffectBarProperty.intensity: bar.intensity};
+
+/// [kKeyframeHitSeconds] as progress on [bar] — the overlay rule: capped at
+/// half the bar, and 1.0 for a bar of no length rather than a division by
+/// zero.
+double effectBarKeyframeTolerance(EffectBarModel bar) {
+  final span = bar.duration;
+  if (span <= 0) return 1.0;
+  return (kKeyframeHitSeconds / span).clamp(0.0, 0.5).toDouble();
+}
+
+/// Where [seconds] falls in [bar], 0..1, or null off it — the clock its
+/// diamonds sit on. The edges count as on it, within
+/// [kOnClipToleranceSeconds].
+double? effectBarProgressOn(EffectBarModel bar, double seconds) {
+  if (bar.end <= bar.start) return null;
+  if (seconds < bar.start - kOnClipToleranceSeconds ||
+      seconds > bar.end + kOnClipToleranceSeconds) {
+    return null;
+  }
+  return ((seconds - bar.start) / bar.duration).clamp(0.0, 1.0).toDouble();
+}
+
 /// The kinds of overlay a diamond can sit on.
 enum OverlayKind { text, image, video }
 
@@ -394,6 +423,25 @@ class VideoEditorState {
     return null;
   }
 
+  /// The effect bar the keyframe controls act on: the selected one, when no
+  /// clip or overlay is — selection is exclusive, so this only decides a state
+  /// that should not arise, and decides it the way the overlay does.
+  EffectBarModel? get keyframeEffectBar =>
+      keyframeClipId == null && keyframeOverlay == null ? selectedEffectBar : null;
+
+  /// What the effect slider shows: the base without diamonds or off the bar,
+  /// else the strength the keyframes resolve to at the playhead — which is
+  /// where the slider's write will land. [clipEditValue]'s rule.
+  double get effectBarEditIntensity {
+    final bar = selectedEffectBar;
+    if (bar == null) return 0.0;
+    final param = bar.intensity;
+    if (param.keyframes.isEmpty) return param.baseValue;
+    final progress = effectBarProgressOn(bar, currentPlaybackPosition);
+    if (progress == null) return param.baseValue;
+    return param.resolveAt(progress);
+  }
+
   /// Where the playhead sits inside the selected overlay, 0..1 — the overlay's
   /// [selectedClipProgress].
   ///
@@ -408,16 +456,25 @@ class VideoEditorState {
   /// Whether anything is selected that can carry a diamond — what puts the
   /// keyframe button in the playback bar.
   bool get hasKeyframeTarget =>
-      keyframeClipId != null || keyframeOverlay != null;
+      keyframeClipId != null ||
+      keyframeOverlay != null ||
+      keyframeEffectBar != null;
 
   /// Where the playhead sits in the keyframe target, 0..1, or null when it is
   /// off it — what enables the keyframe button.
-  double? get keyframeTargetProgress =>
-      keyframeOverlay != null ? selectedOverlayProgress : selectedClipProgress;
+  double? get keyframeTargetProgress {
+    final bar = keyframeEffectBar;
+    if (bar != null) return effectBarProgressOn(bar, currentPlaybackPosition);
+    return keyframeOverlay != null
+        ? selectedOverlayProgress
+        : selectedClipProgress;
+  }
 
   /// Every diamond on the keyframe target: the selected overlay's, else the
   /// selected clip's.
   List<double> get keyframeDiamonds {
+    final bar = keyframeEffectBar;
+    if (bar != null) return keyframeProgressesIn(effectBarParams(bar));
     final ref = keyframeOverlay;
     if (ref != null) return keyframeProgressesIn(ref.motion.params);
     return selectedClipKeyframes;
@@ -462,6 +519,16 @@ class VideoEditorState {
   /// the plus/minus flip, the easing sheet and the timeline agree about what
   /// "here" means without a third piece of state that could fall out of step.
   double? get playheadKeyframeProgress {
+    final bar = keyframeEffectBar;
+    if (bar != null) {
+      final progress = effectBarProgressOn(bar, currentPlaybackPosition);
+      if (progress == null) return null;
+      return keyframeProgressNearIn(
+        effectBarParams(bar),
+        progress,
+        effectBarKeyframeTolerance(bar),
+      );
+    }
     final ref = keyframeOverlay;
     if (ref != null) {
       final progress = overlayProgressOn(ref, currentPlaybackPosition);
@@ -487,6 +554,16 @@ class VideoEditorState {
   /// Which segment's curve the curve control edits, or null when there is
   /// nothing to ease at the playhead.
   double? get keyframeCurveTargetProgress {
+    final bar = keyframeEffectBar;
+    if (bar != null) {
+      final progress = effectBarProgressOn(bar, currentPlaybackPosition);
+      if (progress == null) return null;
+      return keyframeCurveTargetIn(
+        effectBarParams(bar),
+        progress,
+        effectBarKeyframeTolerance(bar),
+      );
+    }
     final ref = keyframeOverlay;
     if (ref != null) {
       final progress = overlayProgressOn(ref, currentPlaybackPosition);
@@ -520,6 +597,12 @@ class VideoEditorState {
   /// Linear doubles as "None" in the sheet, which is honest: a segment with no
   /// curve chosen travels in a straight line.
   KeyframeInterpolation get keyframeCurve {
+    final bar = keyframeEffectBar;
+    if (bar != null) {
+      final target = keyframeCurveTargetProgress;
+      if (target == null) return KeyframeInterpolation.linear;
+      return keyframeCurveAtIn(effectBarParams(bar), target);
+    }
     final ref = keyframeOverlay;
     if (ref != null) {
       final target = keyframeCurveTargetProgress;

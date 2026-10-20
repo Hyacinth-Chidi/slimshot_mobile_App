@@ -18,6 +18,7 @@ import '../logic/animation/keyframe_core.dart';
 import '../logic/animation/overlay_keyframes.dart';
 import '../logic/canvas_geometry.dart';
 import '../logic/animation/clip_keyframes.dart' as kf;
+import '../logic/effects/effect_bar_placement.dart';
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
 import '../logic/timeline/lane_layout.dart';
@@ -2436,6 +2437,11 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     if (state.keyframeTargetProgress == null || state.playheadIsOnKeyframe) {
       return;
     }
+    if (_editSelectedEffectBarKeyframes(
+      (params, progress, _) => captureKeyframeIn(params, progress),
+    )) {
+      return;
+    }
     if (_editSelectedOverlayKeyframes(
       (params, progress, _) => captureKeyframeIn(params, progress),
     )) {
@@ -2452,6 +2458,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// undo step.
   void removeKeyframeAtPlayhead() {
     if (!state.playheadIsOnKeyframe) return;
+    if (_editSelectedEffectBarKeyframes(removeKeyframeIn)) return;
     if (_editSelectedOverlayKeyframes(removeKeyframeIn)) return;
     _editSelectedClip(
       (segment, progress) => progress == null
@@ -2472,6 +2479,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// does nothing, and the icon is disabled so it should not be reachable.
   void setKeyframeCurve(KeyframeInterpolation curve) {
     if (!state.canEditKeyframeCurve) return;
+    if (_editSelectedEffectBarKeyframes(
+      (params, progress, tolerance) =>
+          setKeyframeCurveIn(params, progress, tolerance, curve),
+    )) {
+      return;
+    }
     if (_editSelectedOverlayKeyframes(
       (params, progress, tolerance) =>
           setKeyframeCurveIn(params, progress, tolerance, curve),
@@ -2501,6 +2514,20 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// really is.
   double? moveKeyframeLive(double from, double to) {
     final dest = to.clamp(0.0, 1.0).toDouble();
+    final bar = state.keyframeEffectBar;
+    if (bar != null) {
+      final moved = moveKeyframeIn(
+        effectBarParams(bar),
+        from,
+        dest,
+        effectBarKeyframeTolerance(bar),
+      );
+      if (moved == null) return null;
+      _replaceEffectBar(
+          bar.copyWith(intensity: moved[EffectBarProperty.intensity]));
+      seekToKeyframe(dest);
+      return dest;
+    }
     final ref = state.keyframeOverlay;
     if (ref != null) {
       final moved = moveKeyframeIn(
@@ -2533,6 +2560,14 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// plus/minus flip reads the playhead, so the playhead has to actually be on
   /// the diamond. Not an undoable edit: it moves the playhead, nothing else.
   void seekToKeyframe(double progress) {
+    final bar = state.keyframeEffectBar;
+    if (bar != null) {
+      final span = bar.duration > 0 ? bar.duration : 0.0;
+      updatePlaybackPosition(
+        bar.start + progress.clamp(0.0, 1.0).toDouble() * span,
+      );
+      return;
+    }
     final ref = state.keyframeOverlay;
     if (ref != null) {
       final start = ref.start.inMicroseconds / 1e6;
@@ -4150,6 +4185,190 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedAudioId: state.selectedAudioId == id,
     );
     _compactLanes();
+  }
+
+  // -- Effect bars ------------------------------------------------------------
+  //
+  // An effect over a stretch of the timeline, on the lanes. They move and trim
+  // through `moveLaneItem` / `trimLaneItem` like every lane item; these are the
+  // commands only a bar has.
+
+  int _effectBarSerial = 0;
+
+  String _newEffectBarId() =>
+      'effect_${DateTime.now().microsecondsSinceEpoch}_${_effectBarSerial++}';
+
+  /// A fresh intensity for [effect]: its catalog strength and envelope, no
+  /// keyframes — what a bar wears when an effect is first put on it.
+  static AnimatableDouble _freshIntensity(VideoEffect effect) =>
+      AnimatableDouble(
+        baseValue: effect.defaultIntensity,
+        envelope: effect.defaultEnvelope,
+      );
+
+  /// Puts [effectId] on the timeline: at the playhead, three seconds, inside
+  /// the project ([newEffectBarSpan]), on the first free lane there, selected
+  /// as the only selection. One undo step. Null, and nothing done, for an
+  /// effect the catalog does not know.
+  String? addEffectBar(String effectId) {
+    final effect = videoEffectById(effectId);
+    if (effect == null) return null;
+    final span = newEffectBarSpan(
+      playhead: state.currentPlaybackPosition,
+      projectEnd: projectEndSeconds(
+        segments: state.segments,
+        audios: state.audioTracks,
+        texts: state.textOverlays,
+        images: state.imageOverlays,
+        videos: state.videoOverlays,
+        effects: state.effectBars,
+      ),
+    );
+    saveStateForUndo();
+    final bar = EffectBarModel(
+      id: _newEffectBarId(),
+      effectId: effect.id,
+      start: span.start,
+      end: span.end,
+      laneIndex: firstFreeLane(_laneSpans, span.start, span.end),
+      intensity: _freshIntensity(effect),
+    );
+    state = state.copyWith(effectBars: [...state.effectBars, bar]);
+    selectEffectBar(bar.id);
+    return bar.id;
+  }
+
+  /// Puts [effectId] on the selected bar in place of its effect. The old
+  /// intensity curve belonged to the old effect, so it goes and the new one
+  /// starts from its catalog defaults. One undo step; none when the bar
+  /// already wears it or the id is unknown.
+  void setEffectBarEffect(String effectId) {
+    final bar = state.selectedEffectBar;
+    final effect = videoEffectById(effectId);
+    if (bar == null || effect == null || bar.effectId == effect.id) return;
+    saveStateForUndo();
+    _replaceEffectBar(
+      bar.copyWith(effectId: effect.id, intensity: _freshIntensity(effect)),
+    );
+  }
+
+  /// Opens a drag of the effect slider: pauses — a moving playhead would leave
+  /// a trail of diamonds on a keyframed bar — and takes the drag's one undo
+  /// snapshot.
+  void beginEffectBarIntensityEdit() {
+    if (state.selectedEffectBar == null) return;
+    beginLiveEdit();
+  }
+
+  /// One frame of the effect slider, with **no undo snapshot**: through the
+  /// edit rule (the base without diamonds, the diamond under the playhead,
+  /// else a new diamond there), held to 0..1. A value that is not a number is
+  /// dropped — `jsonEncode` refuses NaN, so one bad frame in a keyframe would
+  /// fail every later draft save.
+  void setEffectBarIntensityLive(double value) {
+    final bar = state.selectedEffectBar;
+    if (bar == null || !value.isFinite) return;
+    final params = writeKeyframedValueIn(
+      effectBarParams(bar),
+      EffectBarProperty.intensity,
+      value.clamp(0.0, 1.0).toDouble(),
+      playheadProgress: effectBarProgressOn(bar, state.currentPlaybackPosition),
+      tolerance: effectBarKeyframeTolerance(bar),
+    );
+    _replaceEffectBar(
+        bar.copyWith(intensity: params[EffectBarProperty.intensity]));
+  }
+
+  /// Selects bar [id] as the only selection, on its own menu.
+  void selectEffectBar(String id) {
+    if (!state.effectBars.any((b) => b.id == id)) return;
+    state = state.copyWith(
+      selectedEffectBarId: id,
+      clearSelectedSegmentId: true,
+      clearSelectedTextId: true,
+      clearSelectedImageId: true,
+      clearSelectedVideoOverlayId: true,
+      clearSelectedAudioId: true,
+      clearSelectedTransitionSegmentId: true,
+      clearActiveToolId: true,
+      isClipSelected: false,
+      currentMenuId: 'effect_bar',
+    );
+  }
+
+  /// A copy of the selected bar straight after it, on its own lane when that
+  /// is free there — the effect continuing — or the nearest free lane below at
+  /// the original's time. Selected; one undo step.
+  void duplicateEffectBar() {
+    final bar = state.selectedEffectBar;
+    if (bar == null) return;
+    final spans = _laneSpans;
+    final afterStart = bar.end;
+    final afterEnd = bar.end + bar.duration;
+    final followsOnLane =
+        firstFreeLane(spans, afterStart, afterEnd, fromLane: bar.laneIndex) ==
+            bar.laneIndex;
+    final copy = followsOnLane
+        ? bar.copyWith(id: _newEffectBarId(), start: afterStart, end: afterEnd)
+        : bar.copyWith(
+            id: _newEffectBarId(),
+            laneIndex: firstFreeLane(spans, bar.start, bar.end,
+                fromLane: bar.laneIndex),
+          );
+    saveStateForUndo();
+    state = state.copyWith(effectBars: [...state.effectBars, copy]);
+    selectEffectBar(copy.id);
+  }
+
+  /// Removes the selected bar; its lane closes if it is left empty. One undo
+  /// step.
+  void deleteEffectBar() {
+    final bar = state.selectedEffectBar;
+    if (bar == null) return;
+    saveStateForUndo();
+    state = state.copyWith(
+      effectBars: [
+        for (final b in state.effectBars)
+          if (b.id != bar.id) b,
+      ],
+      clearSelectedEffectBarId: true,
+      clearActiveToolId: true,
+      currentMenuId: 'root',
+    );
+    _compactLanes();
+  }
+
+  void _replaceEffectBar(EffectBarModel bar) {
+    state = state.copyWith(effectBars: [
+      for (final b in state.effectBars) b.id == bar.id ? bar : b,
+    ]);
+  }
+
+  /// The selected bar's keyframe command, if a bar is the keyframe target —
+  /// [_editSelectedOverlayKeyframes]'s shape. Reports "handled" even when
+  /// nothing changed, so a command meant for a bar never falls through onto a
+  /// clip, and takes no undo step for an edit that changes nothing.
+  bool _editSelectedEffectBarKeyframes(
+    KeyframeParams<EffectBarProperty> Function(
+      KeyframeParams<EffectBarProperty> params,
+      double progress,
+      double tolerance,
+    ) edit,
+  ) {
+    final bar = state.keyframeEffectBar;
+    if (bar == null) return false;
+    final progress = effectBarProgressOn(bar, state.currentPlaybackPosition);
+    if (progress == null) return true;
+    final params = effectBarParams(bar);
+    final edited = edit(params, progress, effectBarKeyframeTolerance(bar));
+    if (identical(edited, params) ||
+        edited[EffectBarProperty.intensity] == bar.intensity) {
+      return true;
+    }
+    saveStateForUndo();
+    _replaceEffectBar(
+        bar.copyWith(intensity: edited[EffectBarProperty.intensity]));
+    return true;
   }
 
   void setSelectedAudioId(String? id) {
