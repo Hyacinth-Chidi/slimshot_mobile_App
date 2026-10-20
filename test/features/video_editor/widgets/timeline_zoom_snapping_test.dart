@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/timeline/timeline_zoom.dart';
+import 'package:slimshotai/features/video_editor/models/audio_track_model.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/providers/video_editor_notifier.dart';
@@ -29,6 +30,7 @@ void main() {
     List<TextOverlayModel> texts, {
     double playhead = 3.0,
     String? selectedTextId,
+    List<AudioTrackModel> audio = const [],
   }) async {
     positions.clear();
     moves.clear();
@@ -51,6 +53,7 @@ void main() {
                 trimRange: const RangeValues(0, 20),
                 timelinePositionSeconds: playhead,
                 textOverlays: texts,
+                audioTracks: audio,
                 selectedTextId: selectedTextId,
                 onTimelinePositionChanged: positions.add,
                 onTextTrimChanged: (id, start, end, {newLaneIndex}) =>
@@ -124,6 +127,31 @@ void main() {
     await pinch(tester, track, -60);
     expect(barOf(tester, 'Hi t').width,
         closeTo(4 * kDefaultPixelsPerSecond, 2));
+  });
+
+  testWidgets('a sound added while zoomed in is drawn at the zoom', (tester) async {
+    // Extract, Record and the library all add while the user is zoomed in:
+    // the new bar must take the scale everything else is at, not the default.
+    await pumpTimeline(tester, [text('t', 2, 6)]);
+    final track = Offset(width / 2, tester.getCenter(find.text('Hi t')).dy);
+    await pinch(tester, track, 100);
+    final pps = barOf(tester, 'Hi t').width / 4;
+    expect(pps, greaterThan(1.5 * kDefaultPixelsPerSecond));
+
+    const added = AudioTrackModel(
+      id: 'voice',
+      filePath: '/d/voice.m4a',
+      sourceDuration: 10,
+      sourceStart: 0,
+      sourceEnd: 3,
+      timelineStart: 3,
+      laneIndex: 1,
+    );
+    await pumpTimeline(tester, [text('t', 2, 6)], audio: [added]);
+    final bar = tester.getRect(find.byKey(const ValueKey('audio-clip:voice')));
+    expect(bar.width, closeTo(3 * pps, 3), reason: 'three seconds at the zoom');
+    expect(bar.left - barOf(tester, 'Hi t').left, closeTo(1 * pps, 3),
+        reason: 'it starts a second after the text, at the zoom');
   });
 
   testWidgets('one finger still scrubs', (tester) async {
