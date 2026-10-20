@@ -1,6 +1,7 @@
 package com.techfamz.slimshotai
 
 import androidx.media3.common.util.UnstableApi
+import com.techfamz.slimshotai.audio.AudioToolsChannel
 import com.techfamz.slimshotai.nativepreview.NativeTimelinePreviewManager
 import com.techfamz.slimshotai.privacy.PhotoMetadataReader
 import com.techfamz.slimshotai.thumbnails.VideoThumbnailProvider
@@ -14,6 +15,7 @@ class MainActivity : FlutterActivity() {
 
     private var thumbnailProvider: VideoThumbnailProvider? = null
     private var photoMetadataReader: PhotoMetadataReader? = null
+    private var audioTools: AudioToolsChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -31,6 +33,13 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             PhotoMetadataReader.channelName,
         ).setMethodCallHandler(metadata)
+
+        val tools = AudioToolsChannel()
+        audioTools = tools
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            AudioToolsChannel.channelName,
+        ).setMethodCallHandler(tools)
 
         // The preview renders into a Flutter texture rather than a PlatformView,
         // so the engine's renderer (the TextureRegistry) is what it needs.
@@ -55,6 +64,8 @@ class MainActivity : FlutterActivity() {
         thumbnailProvider = null
         photoMetadataReader?.release()
         photoMetadataReader = null
+        audioTools?.release()
+        audioTools = null
         super.onDestroy()
     }
 }
