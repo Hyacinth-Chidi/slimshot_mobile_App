@@ -3653,14 +3653,22 @@ waveform with two handles, **Change video** and **Done**; Done puts the sound at
   and the first and last 64 KB can, at no cost next to taking the sound out again. Only while
   its sound is held: after a failure the same video is tried again. A waveform that cannot be
   read leaves the strip flat and the sound usable.
+- **The sheet holds the player it opened** (`_player`, read once from the widget), and the
+  editor makes it outside the route builder and disposes it when the sheet closes.
+  Device-reported: closed without being used, the sound played on and looped until the app was
+  closed. A route builder runs again whenever the route rebuilds, so a player made inside it
+  reached the sheet fresh and never opened on every rebuild — closing disposed that one, and the
+  handles steered it too, while the first played and looped for ever. **Anything a sheet must
+  open and close itself belongs outside the builder.**
 - **Known, from the review:** the preview player (`VideoPlayerExtractPreview`) is plugin code with
   no test; its loop is a position listener seeking back at the end handle.
 
 **Record** (`_enterRecording`, `RecordController`, `RecordPanel`; the owner's design): the editor
 turns into **recording mode** — the preview large, the timeline showing only the clips with the
 take growing under them (`ScrollableTimeline.recordingTake`) and taking no touches, the panel one
-round button with a pulsing purple ring. 3-2-1, record, pause, record again: **one take across
-every pause**, starting where the playhead was. Done (✓, Back, the side tap — every keeping
+round button with a pulsing purple ring. Record, pause, record again: **one take across every
+pause**, starting where the playhead was. **No countdown** — built, and removed at the owner's
+call after the first device run: a tap records at once. Done (✓, Back, the side tap — every keeping
 close) puts it there; ✕ throws it away. Both play toggles are the record button while the mode is
 on, and **anything that stops the video stops the take** (`onPlaybackStopped`), or the take would
 run on over a still picture.

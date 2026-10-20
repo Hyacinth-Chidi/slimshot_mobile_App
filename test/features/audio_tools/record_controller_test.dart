@@ -31,14 +31,14 @@ class _FakeRecorder implements VoiceRecorder {
   }
 }
 
-/// Recording mode: countdown, one take across pauses, the monitor mute, and
-/// the ways a take can fail to start.
+/// Recording mode: record at once, one take across pauses, the monitor mute,
+/// and the ways a take can fail to start.
 void main() {
   late _FakeRecorder recorder;
   late double playhead;
   late double projectEnd;
   late MicPermission permission;
-  late List<int> countdownSeen;
+  late List<String> phasesSeen;
   late Future<String> Function() takePath;
 
   RecordController controller() {
@@ -54,12 +54,10 @@ void main() {
       setMonitorMuted: (muted) => log.add('monitor muted=$muted'),
       playhead: () => playhead,
       projectEnd: () => projectEnd,
-      wait: (_) async {},
     );
     c.addListener(() {
-      if (c.phase == RecordPhase.countdown &&
-          (countdownSeen.isEmpty || countdownSeen.last != c.countdown)) {
-        countdownSeen.add(c.countdown);
+      if (phasesSeen.isEmpty || phasesSeen.last != c.phase.name) {
+        phasesSeen.add(c.phase.name);
       }
     });
     return c;
@@ -71,7 +69,7 @@ void main() {
     playhead = 2.0;
     projectEnd = 20.0;
     permission = MicPermission.granted;
-    countdownSeen = [];
+    phasesSeen = [];
     takePath = () async => '/d/voice.m4a';
   });
 
@@ -134,12 +132,14 @@ void main() {
     expect(log, isNot(contains('play')));
   });
 
-  test('countdown runs 3-2-1 before capturing', () async {
+  test('record starts at once, with no countdown', () async {
+    // The owner's call on the device: the 3-2-1 was in the way.
     final c = controller();
     await c.enter();
     await c.toggle();
-    expect(countdownSeen, [3, 2, 1]);
     expect(c.phase, RecordPhase.recording);
+    expect(log, contains('play'));
+    expect(phasesSeen, isNot(contains('countdown')));
   });
 
   List<String> captures() => log.where((l) => l.startsWith('capture true')).toList();

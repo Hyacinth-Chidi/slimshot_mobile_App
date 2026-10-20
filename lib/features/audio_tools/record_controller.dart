@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'voice_recorder_service.dart';
 
-enum RecordPhase { idle, countdown, recording, paused }
+enum RecordPhase { idle, recording, paused }
 
 enum MicPermission { granted, denied, permanentlyDenied }
 
@@ -18,7 +18,8 @@ typedef FinishedTake = ({String path, double durationSeconds, double timelineSta
 
 /// Recording mode's rules, apart from any widget or plugin.
 ///
-/// One round button: record (after a 3-2-1 countdown), pause, record again —
+/// One round button: record — at once, no countdown (the owner's call on the
+/// device) — pause, record again —
 /// one take across every pause, starting where the playhead was. The
 /// microphone is opened once and kept warm; [VoiceRecorder.setCapturing]
 /// decides what is kept.
@@ -47,8 +48,7 @@ class RecordController extends ChangeNotifier {
     required this.setMonitorMuted,
     required this.playhead,
     required this.projectEnd,
-    Future<void> Function(Duration step)? wait,
-  }) : _wait = wait ?? ((step) => Future<void>.delayed(step));
+  });
 
   final VoiceRecorder recorder;
   final Future<MicPermission> Function() requestMic;
@@ -58,18 +58,12 @@ class RecordController extends ChangeNotifier {
   final void Function(bool muted) setMonitorMuted;
   final double Function() playhead;
   final double Function() projectEnd;
-  final Future<void> Function(Duration step) _wait;
-
-  static const Duration _countdownStep = Duration(seconds: 1);
 
   /// Closer to the end than this, there is nothing left to speak over.
   static const double _endSlackSeconds = 0.05;
 
   RecordPhase _phase = RecordPhase.idle;
   RecordPhase get phase => _phase;
-
-  int _countdown = 0;
-  int get countdown => _countdown;
 
   double? _takeStart;
   double? get takeStart => _takeStart;
@@ -97,7 +91,7 @@ class RecordController extends ChangeNotifier {
   bool _opened = false;
   bool _disposed = false;
 
-  /// Bumped to cancel a countdown in flight.
+  /// Bumped to cancel a start still waiting on the microphone.
   int _attempt = 0;
 
   /// Play was asked for at [_parkedAt]; capture waits for the playhead to
@@ -123,8 +117,6 @@ class RecordController extends ChangeNotifier {
   /// The round button.
   Future<void> toggle() async {
     switch (_phase) {
-      case RecordPhase.countdown:
-        return;
       case RecordPhase.recording:
         await _pauseTake();
         return;
@@ -162,14 +154,6 @@ class RecordController extends ChangeNotifier {
     }
     if (attempt != _attempt || _disposed) return;
 
-    _phase = RecordPhase.countdown;
-    for (var n = 3; n >= 1; n--) {
-      _countdown = n;
-      _notify();
-      await _wait(_countdownStep);
-      if (attempt != _attempt || _disposed) return;
-    }
-    _countdown = 0;
     final at = playhead();
     _takeStart ??= at;
     _parkedAt = at;
@@ -254,7 +238,6 @@ class RecordController extends ChangeNotifier {
   void _leave() {
     _opened = false;
     _phase = RecordPhase.idle;
-    _countdown = 0;
     _takeStart = null;
     _takeLength = 0;
     _awaitingMotion = false;

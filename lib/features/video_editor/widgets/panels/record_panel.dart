@@ -7,9 +7,8 @@ import '../../../../core/theme/lucide_icons.dart';
 import '../../../audio_tools/record_controller.dart';
 
 /// Recording mode's panel: one round button — record, and pause while
-/// recording, with a purple ring pulsing round it — the 3-2-1 on it, the
-/// speaker toggle for hearing the video while recording, and the take's
-/// length so far.
+/// recording, with a purple ring pulsing round it — the speaker toggle for
+/// hearing the video while recording, and the take's length so far.
 class RecordPanel extends StatefulWidget {
   const RecordPanel({
     super.key,
@@ -117,16 +116,7 @@ class _RecordPanelState extends State<RecordPanel> with SingleTickerProviderStat
   Widget _button() {
     final phase = _c.phase;
     final Widget glyph;
-    if (phase == RecordPhase.countdown) {
-      glyph = Text(
-        '${_c.countdown}',
-        style: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 24,
-          fontWeight: FontWeight.w700,
-        ),
-      );
-    } else if (phase == RecordPhase.recording) {
+    if (phase == RecordPhase.recording) {
       glyph = const Icon(
         LucideIcons.pause,
         key: ValueKey('record-glyph-pause'),

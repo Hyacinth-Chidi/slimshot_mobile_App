@@ -124,7 +124,8 @@ Audio → **Record** turns the editor into **recording mode**:
 - **First tap asks for the microphone** (`RECORD_AUDIO`, added to the manifest;
   `permission_handler` is already a dependency). Refused → one line saying how to allow it in
   Settings. Refused permanently → the same line with a way to open Settings.
-- **Countdown 3-2-1 (my call, accepted)**, then the video plays from the playhead and the
+- **No countdown (owner, after the first device run)** — a 3-2-1 was built and removed: a
+  tap records at once. The video plays from the playhead and the
   microphone records.
 - **Pause** stops both; **record** again carries on from that exact spot. Pauses do not split
   the take: it is **one** file, one track.
@@ -137,7 +138,7 @@ Audio → **Record** turns the editor into **recording mode**:
   what was recorded. Record with the playhead already at the end says **"Move the playhead back
   to record over your video"** and does not start **(my call)** — a voiceover is spoken over
   something.
-- **The video stays paused through the countdown**, and the monitor mute applies to every sound
+- The monitor mute applies to every sound
   the preview makes — clips, imported music and video overlays' sound alike **(my call)**.
 - **Done** puts the take at the time recording began, on a free lane, selected, one undo step.
   Done with nothing recorded just leaves the mode.
@@ -191,7 +192,7 @@ Test-first, as the project works. Pure Dart carries every rule a test can reach:
   inside the sound); Done builds the track with `sourceStart`/`sourceEnd` from the handles at the
   playhead; ✕/Back adds nothing; "no sound" adds nothing and says so; Change video resets the
   handles. The sheet widget against a fake extractor and a fake player.
-- **Record:** a controller with a fake recorder holds the state machine — idle → countdown →
+- **Record:** a controller with a fake recorder holds the state machine — idle →
   recording ⇄ paused → done / discarded — and is tested for: one take across pauses; the end of
   the project pausing; Done with nothing recorded adding nothing; ✕ adding nothing; the monitor
   mute set on entering and restored on leaving (and never touching `isMuted`); permission refused

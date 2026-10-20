@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/audio_tools/record_controller.dart';
@@ -17,11 +15,10 @@ class _Recorder implements VoiceRecorder {
   Future<RecordedTake?> close({required bool keep}) async => null;
 }
 
-/// The record panel: one round button, the countdown on it, a pulsing ring
-/// while recording, and the speaker toggle.
+/// The record panel: one round button, a pulsing ring while recording, and
+/// the speaker toggle.
 void main() {
   late RecordController controller;
-  Completer<void>? hold;
   MicPermission permission = MicPermission.granted;
   var settingsOpened = 0;
 
@@ -35,7 +32,6 @@ void main() {
       setMonitorMuted: (_) {},
       playhead: () => 1,
       projectEnd: () => 10,
-      wait: (_) => hold?.future ?? Future<void>.value(),
     );
     await controller.enter();
     await tester.pumpWidget(MaterialApp(
@@ -49,7 +45,6 @@ void main() {
   }
 
   setUp(() {
-    hold = null;
     permission = MicPermission.granted;
     settingsOpened = 0;
   });
@@ -70,16 +65,6 @@ void main() {
     expect(find.byKey(const ValueKey('record-pulse')), findsOneWidget);
     await controller.discard();
     await tester.pump();
-  });
-
-  testWidgets('the countdown shows its number', (tester) async {
-    hold = Completer<void>();
-    await pumpPanel(tester);
-    await tester.tap(find.byKey(const ValueKey('record-button')));
-    await tester.pump();
-    await tester.pump();
-    expect(controller.phase, RecordPhase.countdown);
-    expect(find.text('3'), findsOneWidget);
   });
 
   testWidgets('the speaker toggle flips the monitor', (tester) async {
