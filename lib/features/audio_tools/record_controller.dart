@@ -19,10 +19,18 @@ typedef FinishedTake = ({String path, double durationSeconds, double timelineSta
 /// Recording mode's rules, apart from any widget or plugin.
 ///
 /// One round button: record (after a 3-2-1 countdown), pause, record again —
-/// one take across every pause, starting where capture first began. The
+/// one take across every pause, starting where the playhead was. The
 /// microphone is opened once and kept warm; [VoiceRecorder.setCapturing]
-/// decides what is kept, and capture always starts **before** playback and
-/// stops **after** it, so the take holds the picture's whole span.
+/// decides what is kept.
+///
+/// **Capture starts when the video is seen moving, not when play is asked
+/// for.** Before play the editor composes the timeline and seeks — a decoder
+/// flush, up to a few hundred milliseconds on a low-end phone — and every
+/// word kept in that gap would land that much late. The first playhead past
+/// the parked position starts the capture, aligned to that position, and the
+/// recorder pads the take with silence up to it. **Capture stops before the
+/// video does**, or the take would keep the sound of the moment the video
+/// took to stop — sound nothing can take out again.
 ///
 /// While the mode is on the preview is muted by default — the phone's speaker
 /// would otherwise play into the microphone, under the voice, for good — with
@@ -92,6 +100,14 @@ class RecordController extends ChangeNotifier {
   /// Bumped to cancel a countdown in flight.
   int _attempt = 0;
 
+  /// Play was asked for at [_parkedAt]; capture waits for the playhead to
+  /// move past it.
+  bool _awaitingMotion = false;
+  double _parkedAt = 0;
+
+  /// Past this the playhead has moved, rather than reported its own parking.
+  static const double _motionEpsilon = 0.001;
+
   Future<void> enter() async {
     _monitorMuted = true;
     setMonitorMuted(true);
@@ -154,20 +170,25 @@ class RecordController extends ChangeNotifier {
       if (attempt != _attempt || _disposed) return;
     }
     _countdown = 0;
-    _takeStart ??= playhead();
-    await recorder.setCapturing(true);
-    if (attempt != _attempt || _disposed) return;
-    play();
+    final at = playhead();
+    _takeStart ??= at;
+    _parkedAt = at;
+    _awaitingMotion = true;
     _phase = RecordPhase.recording;
     _notify();
+    play();
   }
 
   Future<void> _pauseTake() async {
     if (_phase != RecordPhase.recording) return;
     _phase = RecordPhase.paused;
+    _awaitingMotion = false;
+    // Capture first: the channel delivers in order, so the recorder stops
+    // keeping sound before the video is told to stop.
+    final stopped = recorder.setCapturing(false);
     pause();
     _notify();
-    await recorder.setCapturing(false);
+    await stopped;
   }
 
   /// The video stopped without the button — the project's end, or anything
@@ -176,6 +197,7 @@ class RecordController extends ChangeNotifier {
   void onPlaybackStopped() {
     if (_phase != RecordPhase.recording) return;
     _phase = RecordPhase.paused;
+    _awaitingMotion = false;
     _notify();
     unawaited(recorder.setCapturing(false));
   }
@@ -184,11 +206,16 @@ class RecordController extends ChangeNotifier {
   void onPlayhead(double seconds) {
     if (_phase != RecordPhase.recording) return;
     final start = _takeStart;
-    if (start != null && seconds > start) _takeLength = seconds - start;
     if (seconds >= projectEnd() - _endSlackSeconds) {
       unawaited(_pauseTake());
       return;
     }
+    if (_awaitingMotion) {
+      if (seconds <= _parkedAt + _motionEpsilon || start == null) return;
+      _awaitingMotion = false;
+      unawaited(recorder.setCapturing(true, alignTo: seconds - start));
+    }
+    if (start != null && seconds > start) _takeLength = seconds - start;
     _notify();
   }
 
@@ -230,6 +257,7 @@ class RecordController extends ChangeNotifier {
     _countdown = 0;
     _takeStart = null;
     _takeLength = 0;
+    _awaitingMotion = false;
     _monitorMuted = true;
     setMonitorMuted(false);
     _notify();

@@ -18,8 +18,8 @@ class _FakeRecorder implements VoiceRecorder {
   }
 
   @override
-  Future<void> setCapturing(bool on) async {
-    log.add('capture $on');
+  Future<void> setCapturing(bool on, {double? alignTo}) async {
+    log.add(on ? 'capture true at ${((alignTo ?? -1) * 1000).round()}' : 'capture false');
     if (on) captured = true;
   }
 
@@ -142,32 +142,74 @@ void main() {
     expect(c.phase, RecordPhase.recording);
   });
 
-  test('capture starts before playback', () async {
+  List<String> captures() => log.where((l) => l.startsWith('capture true')).toList();
+
+  test('capture waits for the video to move', () async {
+    // Before play the editor composes the timeline and seeks — a decoder
+    // flush, up to a few hundred milliseconds on a low-end phone. Kept from
+    // the moment play was asked for, every word in that gap would land that
+    // much late against the picture.
     final c = controller();
     await c.enter();
     await c.toggle();
-    final capture = log.indexOf('capture true');
-    final play = log.indexOf('play');
-    expect(capture, greaterThanOrEqualTo(0));
-    expect(play, greaterThan(capture));
+    expect(log, contains('play'));
+    expect(captures(), isEmpty);
+    c.onPlayhead(2.0);
+    expect(captures(), isEmpty, reason: 'parked, not yet moving');
+    c.onPlayhead(2.04);
+    expect(captures(), ['capture true at 40'],
+        reason: 'silence pads the take to the frame the video moved on');
   });
 
-  test('pause stops playback then capture', () async {
+  test('pause stops capture, then the video', () async {
+    // The other way round, the take kept the sound of the moment the video
+    // took to stop — sound nothing can take out again, so everything after
+    // the next resume would land that much late.
+    final c = controller();
+    await c.enter();
+    await c.toggle();
+    c.onPlayhead(2.1);
+    log.clear();
+    await c.toggle();
+    expect(log, ['capture false', 'pause']);
+    expect(c.phase, RecordPhase.paused);
+  });
+
+  test('a resume lines the take up with the picture', () async {
+    final c = controller();
+    await c.enter();
+    await c.toggle();
+    c.onPlayhead(2.04);
+    c.onPlayhead(3.0);
+    await c.toggle();
+    // The video stopped a moment after the capture did.
+    playhead = 3.02;
+    await c.toggle();
+    log.clear();
+    c.onPlayhead(3.02);
+    c.onPlayhead(3.06);
+    expect(log, ['capture true at 1060']);
+  });
+
+  test('pressing pause before the video moves keeps nothing and starts nothing', () async {
     final c = controller();
     await c.enter();
     await c.toggle();
     log.clear();
     await c.toggle();
-    expect(log, ['pause', 'capture false']);
-    expect(c.phase, RecordPhase.paused);
+    expect(log, ['capture false', 'pause']);
+    c.onPlayhead(2.5);
+    expect(captures(), isEmpty, reason: 'a late playhead after a pause starts nothing');
   });
 
   test('one take across pauses', () async {
     final c = controller();
     await c.enter();
     await c.toggle();
+    c.onPlayhead(2.1);
     await c.toggle();
     await c.toggle();
+    c.onPlayhead(2.2);
     await c.toggle();
     final take = await c.finish();
     expect(log.where((l) => l.startsWith('open')).length, 1);
@@ -175,7 +217,7 @@ void main() {
     expect(take, isNotNull);
   });
 
-  test('the take starts where capture first began', () async {
+  test('the take starts where the playhead was', () async {
     final c = controller();
     await c.enter();
     await c.toggle();
@@ -200,7 +242,7 @@ void main() {
     c.onPlayhead(20.0);
     await Future<void>.delayed(Duration.zero);
     expect(c.phase, RecordPhase.paused);
-    expect(log, ['pause', 'capture false']);
+    expect(log, ['capture false', 'pause'], reason: 'nothing is started at the end');
   });
 
   test('playback stopping elsewhere pauses the take', () async {

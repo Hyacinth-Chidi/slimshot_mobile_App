@@ -7,6 +7,7 @@ import android.media.MediaRecorder
 import android.util.Log
 import androidx.media3.common.util.UnstableApi
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * A voiceover take: the microphone, mono, encoded to AAC as it is heard.
@@ -29,20 +30,64 @@ internal class VoiceRecorder private constructor(
     private val gate = CaptureGate()
 
     @Volatile
-    var capturing = false
+    private var capturing = false
+
+    /** Where the next capture starts in the take, in frames; -1 when none is due. */
+    private val alignTarget = AtomicLong(NO_ALIGN)
 
     @Volatile
     private var running = true
 
     private val thread = Thread({ readLoop() }, "slimshot-voice-recorder").apply { start() }
 
+    /**
+     * Starts keeping what the microphone hears, at [alignMs] into the take —
+     * the picture's own position — padding silence up to it; or stops.
+     * The target is published before the flag, so the read loop that sees
+     * the flag sees the target too.
+     */
+    fun setCapturing(on: Boolean, alignMs: Long?) {
+        if (on) {
+            alignTarget.set(alignMs?.let { CaptureGate.framesFor(it, sampleRate) } ?: NO_ALIGN)
+            capturing = true
+        } else {
+            capturing = false
+        }
+    }
+
     private fun readLoop() {
         val buffer = ShortArray(sampleRate / BUFFERS_PER_SECOND)
+        val silence = ShortArray(buffer.size)
         while (running) {
             val read = record.read(buffer, 0, buffer.size)
-            if (read <= 0) continue
-            val keep = gate.accept(read, capturing)
+            if (read < 0) {
+                // The microphone was taken away (another app, a call): stop
+                // reading rather than spin a core on an error until Done.
+                if (read == AudioRecord.ERROR_DEAD_OBJECT) break
+                try {
+                    Thread.sleep(ERROR_BACKOFF_MS)
+                } catch (_: InterruptedException) {
+                    break
+                }
+                continue
+            }
+            if (read == 0) continue
+            val on = capturing
+            if (on) {
+                val target = alignTarget.getAndSet(NO_ALIGN)
+                if (target >= 0) writeSilence(gate.alignTo(target), silence)
+            }
+            val keep = gate.accept(read, on)
             if (keep > 0) encoder.write(buffer, keep)
+        }
+    }
+
+    private fun writeSilence(frames: Long, silence: ShortArray) {
+        var left = frames
+        while (left > 0) {
+            val chunk = minOf(left, silence.size.toLong()).toInt()
+            encoder.write(silence, chunk)
+            left -= chunk
         }
     }
 
@@ -85,6 +130,8 @@ internal class VoiceRecorder private constructor(
         private const val BIT_RATE = 96_000
         private const val BUFFERS_PER_SECOND = 50
         private const val JOIN_MS = 1_000L
+        private const val ERROR_BACKOFF_MS = 10L
+        private const val NO_ALIGN = -1L
 
         /** 44.1 kHz is the only rate Android guarantees; the rest are fallbacks. */
         private val RATES = intArrayOf(44_100, 48_000, 22_050, 16_000)

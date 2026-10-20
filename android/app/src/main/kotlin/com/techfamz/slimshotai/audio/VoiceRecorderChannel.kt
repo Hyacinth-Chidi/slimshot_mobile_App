@@ -50,7 +50,10 @@ class VoiceRecorderChannel : MethodChannel.MethodCallHandler {
 
             "setCapturing" -> {
                 val current = recorder
-                current?.capturing = call.argument<Boolean>("capturing") ?: false
+                current?.setCapturing(
+                    on = call.argument<Boolean>("capturing") ?: false,
+                    alignMs = call.argument<Number>("alignMs")?.toLong(),
+                )
                 result.success(mapOf("capturedMs" to (current?.capturedMs ?: 0L)))
             }
 
@@ -62,7 +65,7 @@ class VoiceRecorderChannel : MethodChannel.MethodCallHandler {
                     result.success(emptyMap<String, Any>())
                     return
                 }
-                current.capturing = false
+                current.setCapturing(on = false, alignMs = null)
                 worker.execute {
                     try {
                         val take = current.close(keep)

@@ -11,7 +11,7 @@ class _Recorder implements VoiceRecorder {
   Future<void> open(String outputPath) async {}
 
   @override
-  Future<void> setCapturing(bool on) async {}
+  Future<void> setCapturing(bool on, {double? alignTo}) async {}
 
   @override
   Future<RecordedTake?> close({required bool keep}) async => null;

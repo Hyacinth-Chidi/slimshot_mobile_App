@@ -35,6 +35,31 @@ class CaptureGateTest {
     }
 
     @Test
+    fun `aligning pads silence up to the picture`() {
+        // Capture starts once the video is seen moving, a little after it
+        // did: silence covers that moment so the take stays on the picture.
+        val gate = CaptureGate()
+        assertEquals(1764L, gate.alignTo(1764))
+        assertEquals(1764L, gate.capturedFrames)
+        gate.accept(100, capturing = true)
+        assertEquals(1864L, gate.capturedFrames)
+    }
+
+    @Test
+    fun `aligning never cuts what was captured`() {
+        val gate = CaptureGate()
+        gate.accept(5000, capturing = true)
+        assertEquals(0L, gate.alignTo(4000))
+        assertEquals(5000L, gate.capturedFrames)
+    }
+
+    @Test
+    fun `an alignment in milliseconds becomes frames`() {
+        assertEquals(1764L, CaptureGate.framesFor(alignMs = 40, sampleRate = 44_100))
+        assertEquals(0L, CaptureGate.framesFor(alignMs = -5, sampleRate = 44_100))
+    }
+
+    @Test
     fun `captured length in milliseconds`() {
         val gate = CaptureGate()
         gate.accept(44_100, capturing = true)

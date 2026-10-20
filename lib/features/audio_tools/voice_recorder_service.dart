@@ -25,7 +25,10 @@ abstract class VoiceRecorder {
   Future<void> open(String outputPath);
 
   /// Keeps what the microphone hears from now ([on]) or stops keeping it.
-  Future<void> setCapturing(bool on);
+  /// Starting, [alignTo] is where in the take — in seconds from its start —
+  /// this capture begins: silence fills the take up to it, so the take stays
+  /// on the picture however late the capture saw the video move.
+  Future<void> setCapturing(bool on, {double? alignTo});
 
   /// Stops the microphone. Kept with anything captured, the take; else null
   /// and the file is gone.
@@ -51,8 +54,11 @@ class ChannelVoiceRecorder implements VoiceRecorder {
   }
 
   @override
-  Future<void> setCapturing(bool on) =>
-      _channel.invokeMethod<Object?>('setCapturing', {'capturing': on});
+  Future<void> setCapturing(bool on, {double? alignTo}) =>
+      _channel.invokeMethod<Object?>('setCapturing', {
+        'capturing': on,
+        if (alignTo != null) 'alignMs': (alignTo * 1000).round(),
+      });
 
   @override
   Future<RecordedTake?> close({required bool keep}) async {
