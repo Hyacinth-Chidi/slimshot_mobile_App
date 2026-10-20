@@ -31,6 +31,14 @@ class ExtractSelection {
     return ExtractSelection._(durationSeconds, seconds.clamp(0.0, upper), end);
   }
 
+  /// The selected part slid to begin at [seconds], keeping its length and
+  /// held inside the sound.
+  ExtractSelection movedTo(double seconds) {
+    final length = end - start;
+    final from = seconds.clamp(0.0, durationSeconds - length);
+    return ExtractSelection._(durationSeconds, from, from + length);
+  }
+
   ExtractSelection withEnd(double seconds) {
     if (_tooShortToTrim) return this;
     final lower = start + kMinClipDurationSeconds;

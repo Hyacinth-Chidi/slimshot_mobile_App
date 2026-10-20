@@ -353,6 +353,30 @@ class _TrimStripState extends State<_TrimStrip> {
                 ),
               ),
             ),
+            // The selected part itself slides along, keeping its length. It
+            // moves the moment the finger does — no press-and-hold wait —
+            // and sits under the handles, which win where they overlap it.
+            Positioned(
+              left: x(selection.start),
+              width: (x(selection.end) - x(selection.start)).clamp(0.0, double.infinity),
+              top: 0,
+              bottom: 0,
+              child: GestureDetector(
+                key: const ValueKey('extract-selection'),
+                behavior: HitTestBehavior.opaque,
+                dragStartBehavior: DragStartBehavior.down,
+                onHorizontalDragStart: (details) {
+                  _anchorValue = widget.selection.start;
+                  _anchorX = details.globalPosition.dx;
+                },
+                onHorizontalDragUpdate: (details) {
+                  if (width <= 0) return;
+                  final moved = (details.globalPosition.dx - _anchorX) / width * duration;
+                  widget.onChanged(widget.selection.movedTo(_anchorValue + moved));
+                },
+                onHorizontalDragEnd: (_) => widget.onSettled(),
+              ),
+            ),
             _handle(
               key: const ValueKey('extract-handle-start'),
               centreX: x(selection.start),

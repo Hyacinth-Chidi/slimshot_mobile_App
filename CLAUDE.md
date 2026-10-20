@@ -3632,6 +3632,12 @@ waveform with two handles, **Change video** and **Done**; Done puts the sound at
 - **The handles are the track's trim, not a cut** (`ExtractSelection`, `extractedTrack`): the whole
   sound is kept, so the track's edges can still be dragged out on the timeline. They never cross
   and never close below `kMinClipDurationSeconds`.
+- **The selected part slides along, keeping its length** (`ExtractSelection.movedTo`, the owner's
+  call): a drag anywhere between the handles moves the window, held inside the sound. It moves
+  the moment the finger does — anchored on pointer-down, no long-press wait, no slop lost — and
+  the handles sit above it and win where they overlap. The preview keeps looping the old part
+  through a drag and seeks once on release: a seek per frame would flush the decoder on every
+  move, which is the stutter.
 - **Copied, not converted, wherever it can be** (`AudioExtractor`, `ExtractPlan.canRemux`): AAC —
   almost every phone video — goes into an `.m4a` unchanged through `ExportMuxer`, near-instant at
   any length; anything else — and an AAC the muxer refuses — is decoded by the export's

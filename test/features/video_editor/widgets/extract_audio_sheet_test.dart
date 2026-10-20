@@ -176,6 +176,48 @@ void main() {
     expect(end, closeTo(5.0, 0.3));
   });
 
+  testWidgets('dragging the selected part slides it along, keeping its length',
+      (tester) async {
+    await openSheet(tester);
+    final width = tester.getSize(find.byKey(const ValueKey('extract-waveform'))).width;
+    await tester.drag(
+      find.byKey(const ValueKey('extract-handle-end')),
+      Offset(-width / 2, 0),
+    );
+    await settle(tester);
+    await tester.drag(
+      find.byKey(const ValueKey('extract-selection')),
+      Offset(width / 4, 0),
+    );
+    await settle(tester);
+    final (start, end) = player.ranges.last;
+    expect(start, closeTo(2.5, 0.3));
+    expect(end - start, closeTo(5.0, 0.3), reason: 'the length is kept');
+  });
+
+  testWidgets('a slide follows the finger the moment it moves', (tester) async {
+    // Anchored on pointer-down: no travel is lost to the touch slop, so the
+    // part moves with the finger from the first pixel.
+    await openSheet(tester);
+    final width = tester.getSize(find.byKey(const ValueKey('extract-waveform'))).width;
+    await tester.drag(
+      find.byKey(const ValueKey('extract-handle-end')),
+      Offset(-width / 2, 0),
+    );
+    await settle(tester);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('extract-selection'))),
+    );
+    for (var i = 0; i < 10; i++) {
+      await gesture.moveBy(Offset(width / 40, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    final readout = tester.widget<Text>(find.textContaining(' – ')).data!;
+    expect(readout, startsWith('0:02.'), reason: 'a quarter of 10s moved, live');
+    await gesture.up();
+    await settle(tester);
+  });
+
   testWidgets('Done returns the sound and the selection', (tester) async {
     await openSheet(tester);
     await tester.tap(find.text('Done'));

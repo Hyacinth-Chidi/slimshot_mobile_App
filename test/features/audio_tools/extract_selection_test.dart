@@ -31,6 +31,26 @@ void main() {
     expect((s.start, s.end), (0.0, 0.1));
   });
 
+  test('the selected part slides along, keeping its length', () {
+    final s = ExtractSelection.whole(12).withStart(2).withEnd(5).movedTo(6);
+    expect((s.start, s.end), (6.0, 9.0));
+  });
+
+  test('a slide stops at the start of the sound', () {
+    final s = ExtractSelection.whole(12).withStart(2).withEnd(5).movedTo(-3);
+    expect((s.start, s.end), (0.0, 3.0));
+  });
+
+  test('a slide stops at the end of the sound', () {
+    final s = ExtractSelection.whole(12).withStart(2).withEnd(5).movedTo(11);
+    expect((s.start, s.end), (9.0, 12.0));
+  });
+
+  test('the whole sound has nowhere to slide', () {
+    final s = ExtractSelection.whole(12).movedTo(3);
+    expect((s.start, s.end), (0.0, 12.0));
+  });
+
   test('lands at the playhead with the selection as its trim', () {
     final track = extractedTrack(
       id: 't1',
