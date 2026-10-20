@@ -118,7 +118,14 @@ class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
     if (sound == null) return;
     unawaited(widget.player.playRange(0, sound.durationSeconds));
 
-    final peaks = await widget.peaks(sound.path);
+    // A waveform that cannot be read leaves the strip flat; the sound is
+    // still the sound.
+    List<double> peaks;
+    try {
+      peaks = await widget.peaks(sound.path);
+    } catch (_) {
+      peaks = const [];
+    }
     if (!mounted || generation != _generation) return;
     setState(() => _peaks = peaks);
   }
@@ -128,8 +135,10 @@ class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
     if (path == null || !mounted) return;
     // The same video again — the gallery's fresh copy of it — keeps the sound
     // already taken out, and the handles where the user left them.
+    // Only when its sound is held: after a failure the same video is tried
+    // again.
     final same = await (widget.isSameVideo ?? isSameFile)(_videoPath, path);
-    if (same || !mounted) return;
+    if (!mounted || (same && _sound != null)) return;
     _videoPath = path;
     await widget.player.pause();
     final old = _sound;

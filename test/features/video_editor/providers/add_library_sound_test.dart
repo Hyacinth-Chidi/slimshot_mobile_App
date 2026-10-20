@@ -78,4 +78,31 @@ void main() {
     final notifier = notifierAt(1)..addLibrarySound(song);
     expect(notifier.state.audioTracks.single.isSoundEffect, isFalse);
   });
+
+  test('a placed track is the only thing selected, one undo step', () {
+    // Extract and Record land their track the way the library does: the
+    // track becomes the selection, so the toolbar is its menu and nothing
+    // selected before stays selected beside it.
+    final notifier = notifierAt(1);
+    notifier.state = notifier.state.copyWith(
+      selectedSegmentId: 'clip',
+      isClipSelected: true,
+      selectedTextId: 'text',
+    );
+    const voice = AudioTrackModel(
+      id: 'voice',
+      filePath: '/d/voice.m4a',
+      sourceDuration: 2,
+      sourceStart: 0,
+      sourceEnd: 2,
+      timelineStart: 1,
+    );
+    notifier.placeAudioTrack(voice);
+    expect(notifier.state.selectedAudioId, 'voice');
+    expect(notifier.state.selectedSegmentId, isNull);
+    expect(notifier.state.selectedTextId, isNull);
+    expect(notifier.state.isClipSelected, isFalse);
+    notifier.undo();
+    expect(notifier.state.audioTracks, isEmpty);
+  });
 }

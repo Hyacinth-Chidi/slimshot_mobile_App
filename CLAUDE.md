@@ -3622,7 +3622,9 @@ existed — a tap did nothing.
 
 **Both write into the draft's own `drafts/<id>/audio/`** (`DraftFiles.audioDir`), so the sound goes
 with the draft and nowhere else — never temp, never a picker's cache — and both land as ordinary
-purple `AudioTrackModel`s through `addAudioTrack`: first free lane, selected, one undo step.
+purple `AudioTrackModel`s through **`placeAudioTrack`** (the library's add too): first free lane,
+one undo step, and **the only selection** — `addAudioTrack` alone left whatever was selected
+before selected beside it, with the toolbar out of step.
 
 **Extract** (`_showExtractAudio`, `ExtractAudioSheet`, the owner's design): the gallery opens on
 videos; a 90% sheet (`kExtractSheetHeightFraction`) plays the video over its sound's **real**
@@ -3632,9 +3634,14 @@ waveform with two handles, **Change video** and **Done**; Done puts the sound at
   and never close below `kMinClipDurationSeconds`.
 - **Copied, not converted, wherever it can be** (`AudioExtractor`, `ExtractPlan.canRemux`): AAC —
   almost every phone video — goes into an `.m4a` unchanged through `ExportMuxer`, near-instant at
-  any length; anything else is decoded by the export's `PcmAudioSource` and encoded by
-  `AacFileEncoder`. **The track never points at the video**: playing a video for its sound would
-  hold a hidden video decoder, the low-end failure fixed for overlays.
+  any length; anything else — and an AAC the muxer refuses — is decoded by the export's
+  `PcmAudioSource` and encoded by `AacFileEncoder`. **The track never points at the video**:
+  playing a video for its sound would hold a hidden video decoder, the low-end failure fixed for
+  overlays. Media3's `Mp4Muxer` keeps the caller's buffer (sample copying is off by default) but,
+  with batching also off by default, writes every pending sample before `writeSampleData`
+  returns — which is why the remux may reuse one buffer, and why the export always could.
+- **Both gallery picks go through `pickVideoPath`**: a refused permission or a picker failure is
+  one line (`kVideoAccessMessage`, `kVideoPickFailedMessage`), never an error nothing catches.
 - The waveform is `WaveformPeaks`, fed a block at a time (`Accumulator`) so a long song is never
   held whole. Channel `slimshot_ai/audio_tools` (`AudioToolsChannel`).
 - **"This video has no sound" is said in the sheet**, with Change video still offered and Done
@@ -3643,7 +3650,9 @@ waveform with two handles, **Change video** and **Done**; Done puts the sound at
   the same way, never a sheet that spins.
 - **The same video picked again keeps its sound and handles** (`isSameFile`): the gallery hands
   back a fresh copy on every pick, often under a new name, so the path cannot tell — the length
-  and the first and last 64 KB can, at no cost next to taking the sound out again.
+  and the first and last 64 KB can, at no cost next to taking the sound out again. Only while
+  its sound is held: after a failure the same video is tried again. A waveform that cannot be
+  read leaves the strip flat and the sound usable.
 - **Known, from the review:** the preview player (`VideoPlayerExtractPreview`) is plugin code with
   no test; its loop is a position listener seeking back at the end handle.
 
@@ -3651,14 +3660,22 @@ waveform with two handles, **Change video** and **Done**; Done puts the sound at
 turns into **recording mode** — the preview large, the timeline showing only the clips with the
 take growing under them (`ScrollableTimeline.recordingTake`) and taking no touches, the panel one
 round button with a pulsing purple ring. 3-2-1, record, pause, record again: **one take across
-every pause**, starting where capture first began. Done (✓, Back, the side tap — every keeping
+every pause**, starting where the playhead was. Done (✓, Back, the side tap — every keeping
 close) puts it there; ✕ throws it away. Both play toggles are the record button while the mode is
 on, and **anything that stops the video stops the take** (`onPlaybackStopped`), or the take would
 run on over a still picture.
 - **Why `AudioRecord` and not `MediaRecorder`** (`VoiceRecorder`, `CaptureGate`): the microphone
   runs from `open`, and only frames heard while capturing are kept — so it is warm before the video
-  starts, a pause leaves no gap, and capture always starts before playback and stops after it.
-  `MediaRecorder`'s start delay cannot be measured. Channel `slimshot_ai/voice_recorder`;
+  starts and a pause leaves no gap. `MediaRecorder`'s start delay cannot be measured.
+- **Capture starts when the video is seen moving, not when play is asked for** (found by the
+  branch review). Before play the editor composes the timeline and seeks — every play is a seek,
+  a decoder flush, up to a few hundred milliseconds on a low-end phone — and a capture started
+  at `play()` put every word that much late. The first playhead past the parked position starts
+  it, aligned to that position (`setCapturing(alignTo:)`), and `CaptureGate.alignTo` pads the
+  take with silence up to it: frame `n` of the file is always timeline `takeStart + n / rate`,
+  through every pause. **Capture stops before the video does**, or the take keeps the sound of
+  the moment the video took to stop, which nothing can take out again. A microphone taken away
+  mid-take (`ERROR_DEAD_OBJECT`) ends the read loop instead of spinning a core. Channel `slimshot_ai/voice_recorder`;
   `RECORD_AUDIO` in the manifest; `permission_handler` asks, with a way to Settings when refused
   for good. A take that cannot be created (the folder not writable, a recorder failure it did
   not word) says `kRecordStartFailedMessage` and leaves the mode usable.
@@ -3667,9 +3684,11 @@ run on over a still picture.
   (clips and overlay sound) and `AudioPlayerManager.monitorMuted` (imported music); never the
   project's `isMuted`, never a clip's volume, lifted when the mode ends, not remembered.
 - **The device check that matters**: a clap on camera, recorded as a voiceover, should land on the
-  clap's frame. The take may come out a few tens of milliseconds late (the capture flag flips at a
-  20ms buffer boundary and the engine's own start follows a sync and a seek); if the check shows
-  it, trim a measured lead off the take's `sourceStart` rather than reordering capture and play.
+  clap's frame. What remains is small and late, never early: the microphone's own input latency,
+  a 20ms read buffer, and the AAC encoder's priming — tens of milliseconds, under a frame or two.
+  If the check shows more, measure it and trim it off the take's `sourceStart`; do not move the
+  capture back ahead of the video. **Known:** a stall mid-take (the video buffering) leaves the
+  rest of the take that much late — sound already kept cannot be taken out.
 
 ### Draft files — a draft owns its folder
 

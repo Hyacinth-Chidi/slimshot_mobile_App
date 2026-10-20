@@ -49,8 +49,18 @@ internal object AudioExtractor {
         part.delete()
         val mime = audio.second.getString(MediaFormat.KEY_MIME).orEmpty()
         try {
-            val durationMs = if (ExtractPlan.canRemux(mime)) {
-                remux(probe, audio.first, audio.second, part)
+            var remuxed = ExtractPlan.canRemux(mime)
+            val durationMs = if (remuxed) {
+                try {
+                    remux(probe, audio.first, audio.second, part)
+                } catch (error: Exception) {
+                    // Copying refused (a variant the muxer will not take):
+                    // converting still gets the sound out, only slower.
+                    Log.w(TAG, "remux failed for $videoPath, converting instead", error)
+                    part.delete()
+                    remuxed = false
+                    transcode(videoPath, part)
+                }
             } else {
                 transcode(videoPath, part)
             }
@@ -62,7 +72,7 @@ internal object AudioExtractor {
             val target = File(outputPath)
             target.delete()
             if (!part.renameTo(target)) throw ExtractFailed("The sound could not be saved.")
-            return Result(target.path, durationMs, ExtractPlan.canRemux(mime))
+            return Result(target.path, durationMs, remuxed)
         } catch (error: Exception) {
             part.delete()
             Log.w(TAG, "extract failed for $videoPath ($mime)", error)

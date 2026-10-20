@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/audio_tools/audio_tools_service.dart';
 import 'package:slimshotai/features/audio_tools/extract_preview_player.dart';
@@ -41,6 +42,8 @@ void main() {
   late List<String> discarded;
   late List<String?> picks;
   late List<String> extracted;
+  late List<String> attempts;
+  var peaksFail = false;
   Future<bool> Function(String a, String b)? sameVideo;
   ExtractChoice? result;
   var closed = false;
@@ -52,6 +55,7 @@ void main() {
     peaksAskedFor = [];
     discarded = [];
     extracted = [];
+    attempts = [];
     result = null;
     closed = false;
     await tester.pumpWidget(MaterialApp(
@@ -66,6 +70,7 @@ void main() {
                     initialVideoPath: video,
                     pickVideo: () async => picks.removeAt(0),
                     extract: (path) async {
+                      attempts.add(path);
                       if (path == '/broken.mp4') {
                         throw const FileSystemException('read-only');
                       }
@@ -75,6 +80,9 @@ void main() {
                     isSameVideo: sameVideo,
                     peaks: (path) async {
                       peaksAskedFor.add(path);
+                      if (peaksFail) {
+                        throw PlatformException(code: 'peaks_failed');
+                      }
                       return List.generate(50, (i) => (i % 10) / 10);
                     },
                     discardSound: discarded.add,
@@ -104,6 +112,7 @@ void main() {
     // These paths are not files: compared by name, as the real comparison
     // (file bytes, `same_file_test.dart`) would for one path.
     sameVideo = (a, b) async => a == b;
+    peaksFail = false;
   });
 
   testWidgets('shows the video and the waveform once peaks arrive', (tester) async {
@@ -209,6 +218,24 @@ void main() {
     await settle(tester);
     expect(extracted, ['/v1.mp4']);
     expect(discarded, isEmpty);
+  });
+
+  testWidgets('after a failure the same video is tried again', (tester) async {
+    await openSheet(tester, video: '/broken.mp4');
+    expect(find.text(kExtractFailedMessage), findsOneWidget);
+    picks = ['/broken.mp4'];
+    await tester.tap(find.text('Change video'));
+    await settle(tester);
+    expect(attempts, ['/broken.mp4', '/broken.mp4']);
+  });
+
+  testWidgets('a waveform that cannot be read leaves the sound usable', (tester) async {
+    peaksFail = true;
+    await openSheet(tester);
+    expect(find.byKey(const ValueKey('extract-waveform')), findsOneWidget);
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+    expect(result!.sound.path, '/a1.m4a');
   });
 
   testWidgets('a sound that cannot be saved says so', (tester) async {

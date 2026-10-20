@@ -98,6 +98,7 @@ import '../features/video_editor/widgets/panels/extract_audio_sheet.dart';
 import '../features/audio_tools/audio_tools_service.dart';
 import '../features/audio_tools/extract_preview_player.dart';
 import '../features/audio_tools/extract_selection.dart';
+import '../features/audio_tools/pick_video.dart';
 import '../features/audio_tools/record_controller.dart';
 import '../features/audio_tools/voice_recorder_service.dart';
 import '../features/video_editor/widgets/panels/record_panel.dart';
@@ -2003,7 +2004,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   Future<void> _showExtractAudio() async {
     final notifier = ref.read(videoEditorProvider.notifier);
     final picker = MediaPickerService();
-    final picked = await picker.pickVideo();
+    void say(String message) {
+      if (mounted) ToastUtils.show(context, message, isError: true);
+    }
+
+    final picked = await pickVideoPath(picker.pickVideo, onError: say);
     if (picked == null || !mounted) return;
     notifier.setPlaying(false);
 
@@ -2012,8 +2017,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final choice = await showEditorSheet<ExtractChoice>(
       context,
       builder: (_) => ExtractAudioSheet(
-        initialVideoPath: picked.path,
-        pickVideo: () async => (await picker.pickVideo())?.path,
+        initialVideoPath: picked,
+        pickVideo: () => pickVideoPath(picker.pickVideo, onError: say),
         extract: (videoPath) async {
           final dir = await DraftFiles.audioDir(draftId);
           final stamp = DateTime.now().millisecondsSinceEpoch;
@@ -2032,7 +2037,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       ),
     );
     if (choice == null || !mounted) return;
-    notifier.addAudioTrack(extractedTrack(
+    notifier.placeAudioTrack(extractedTrack(
       sound: choice.sound,
       selection: choice.selection,
       playhead: ref.read(videoEditorProvider).currentPlaybackPosition,
@@ -2117,7 +2122,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     }
     _leaveRecording(recording);
     if (take == null || !mounted) return;
-    ref.read(videoEditorProvider.notifier).addAudioTrack(AudioTrackModel(
+    ref.read(videoEditorProvider.notifier).placeAudioTrack(AudioTrackModel(
           id: const Uuid().v4(),
           filePath: take.path,
           sourceDuration: take.durationSeconds,

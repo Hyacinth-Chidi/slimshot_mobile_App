@@ -4067,7 +4067,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   void addLibrarySound(LibrarySound sound) {
     final seconds = sound.durationMs / 1000.0;
     final id = const Uuid().v4();
-    addAudioTrack(AudioTrackModel(
+    placeAudioTrack(AudioTrackModel(
       id: id,
       filePath: sound.filePath,
       sourceDuration: seconds,
@@ -4076,7 +4076,15 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       timelineStart: state.currentPlaybackPosition,
       isSoundEffect: sound.library == kSoundEffectsRoot,
     ));
-    selectAudioTrack(id);
+  }
+
+  /// A track the user just made — from the library, a video's sound or a
+  /// voiceover — on the first free lane, and selected the way a tap selects
+  /// it: the only selection, so the toolbar is its menu and nothing selected
+  /// before stays selected beside it. One undo step.
+  void placeAudioTrack(AudioTrackModel track) {
+    addAudioTrack(track);
+    selectAudioTrack(track.id);
   }
 
   void updateAudioTrack(AudioTrackModel updatedTrack) {

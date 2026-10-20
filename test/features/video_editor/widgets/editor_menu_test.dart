@@ -221,6 +221,15 @@ void main() {
     );
   });
 
+  test('Extract and Record land their track selected, and pick without crashing', () {
+    final source = screen.readAsStringSync();
+    expect(source, contains('placeAudioTrack(extractedTrack('));
+    expect(source, contains('placeAudioTrack(AudioTrackModel('));
+    expect(source, isNot(contains('addAudioTrack(extractedTrack(')));
+    // Both the first pick and Change video go through the guarded pick.
+    expect('pickVideoPath('.allMatches(source).length, greaterThanOrEqualTo(2));
+  });
+
   test("the audio menu's Extract is handled", () {
     // Declared since the audio menu existed and handled by nothing, so a tap
     // did nothing at all.
