@@ -42,6 +42,10 @@ class CatalogCache {
 
   /// Reads what was kept. A file that cannot be read is an empty cache.
   Future<void> load() async {
+    // A save still being written goes first: read before it lands, the file
+    // held the older rows, they replaced the newer ones in memory, and the
+    // pending save then wrote the older rows back.
+    await _writes;
     try {
       final file = await _file();
       if (!await file.exists()) return;

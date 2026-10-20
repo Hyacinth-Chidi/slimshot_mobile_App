@@ -12,6 +12,25 @@ void main() {
   setUp(() async => root = await Directory.systemTemp.createTemp('catalog_cache_test'));
   tearDown(() => deleteTemp(root));
 
+  test('a load waits for a save still being written', () async {
+    // Reopening the sheet re-reads the cache from disk. Read while a save is
+    // in flight, it brought back the older rows — and the pending save then
+    // wrote those older rows back over the newer ones.
+    final cache = CatalogCache(root: root);
+    await cache.load();
+    await cache.savePage('impacts', const [CatalogSound(id: 'a', title: 'A')]);
+    final saving = cache.savePage('impacts', const [
+      CatalogSound(id: 'a', title: 'A'),
+      CatalogSound(id: 'b', title: 'B'),
+    ]);
+    await cache.load();
+    expect(cache.page('impacts').map((s) => s.id), ['a', 'b']);
+    await saving;
+    final reopened = CatalogCache(root: root);
+    await reopened.load();
+    expect(reopened.page('impacts').map((s) => s.id), ['a', 'b']);
+  });
+
   test('round-trips categories and first pages', () async {
     final cache = CatalogCache(root: root);
     await cache.load();
