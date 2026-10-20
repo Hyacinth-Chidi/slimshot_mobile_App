@@ -26,10 +26,12 @@ class VideoPlayerExtractPreview implements ExtractPreviewPlayer {
   double _start = 0;
   double _end = double.infinity;
   bool _wantsToPlay = false;
+  bool _disposed = false;
 
   @override
   Future<void> open(String videoPath) async {
     await _release();
+    if (_disposed) return;
     final controller = VideoPlayerController.file(File(videoPath));
     _controller = controller;
     try {
@@ -38,7 +40,9 @@ class VideoPlayerExtractPreview implements ExtractPreviewPlayer {
       // No picture is not a reason to refuse the sound.
       return;
     }
-    if (_controller != controller) return;
+    // Closed, or another video opened, while this one loaded: `_release`
+    // has already disposed it, and the notifier may be gone with the sheet.
+    if (_disposed || _controller != controller) return;
     controller.addListener(_loop);
     _opened.value++;
   }
@@ -79,6 +83,8 @@ class VideoPlayerExtractPreview implements ExtractPreviewPlayer {
 
   @override
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
     await _release();
     _opened.dispose();
   }

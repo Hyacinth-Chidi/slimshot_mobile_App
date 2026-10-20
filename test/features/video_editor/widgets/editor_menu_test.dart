@@ -208,6 +208,19 @@ void main() {
     );
   });
 
+  test('recording mode closed any other way still ends the take', () {
+    // Undo restores a whole earlier state and seven notifier paths clear the
+    // open tool; any of them would close the Record panel and leave its
+    // microphone open and the preview muted. Leaving 'record' by any route
+    // is Done.
+    final source = screen.readAsStringSync();
+    expect(
+      RegExp(r"select\(\(s\) => s\.activeToolId\)[\s\S]{0,400}?prev == 'record'[\s\S]{0,200}?_finishRecording\(\)")
+          .hasMatch(source),
+      isTrue,
+    );
+  });
+
   test("the audio menu's Extract is handled", () {
     // Declared since the audio menu existed and handled by nothing, so a tap
     // did nothing at all.

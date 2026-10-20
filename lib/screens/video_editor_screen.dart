@@ -520,6 +520,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// Recording mode's rules while the mode is on; null otherwise.
   RecordController? _recordController;
 
+  /// Set while the mode is ending, so ✓ and an outside close arriving
+  /// together end it once — not two closes and two disposes.
+  bool _endingRecording = false;
+
   String _getToolLabel(String id) {
     for (final menu in _menus.values) {
       for (final tool in menu.tools) {
@@ -2103,8 +2107,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// one undo step; with nothing recorded the mode just ends.
   Future<void> _finishRecording() async {
     final recording = _recordController;
-    if (recording == null) return;
-    final take = await recording.finish();
+    if (recording == null || _endingRecording) return;
+    _endingRecording = true;
+    final FinishedTake? take;
+    try {
+      take = await recording.finish();
+    } finally {
+      _endingRecording = false;
+    }
     _leaveRecording(recording);
     if (take == null || !mounted) return;
     ref.read(videoEditorProvider.notifier).addAudioTrack(AudioTrackModel(
@@ -2120,8 +2130,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// ✕: the take is thrown away.
   Future<void> _discardRecording() async {
     final recording = _recordController;
-    if (recording == null) return;
-    await recording.discard();
+    if (recording == null || _endingRecording) return;
+    _endingRecording = true;
+    try {
+      await recording.discard();
+    } finally {
+      _endingRecording = false;
+    }
     _leaveRecording(recording);
   }
 
@@ -3273,6 +3288,17 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       videoEditorProvider.select((s) => s.isPlaying),
       (prev, playing) {
         if (!playing) _recordController?.onPlaybackStopped();
+      },
+    );
+    // Undo restores a whole earlier state, and several paths clear the open
+    // tool: however the Record panel closes, the mode ends as Done would, or
+    // the microphone stays open and the preview muted behind a closed panel.
+    ref.listen<String?>(
+      videoEditorProvider.select((s) => s.activeToolId),
+      (prev, next) {
+        if (prev == 'record' && next != 'record' && _recordController != null) {
+          unawaited(_finishRecording());
+        }
       },
     );
 
