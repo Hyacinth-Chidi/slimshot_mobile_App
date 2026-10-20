@@ -35,6 +35,15 @@ class DraftFiles {
     return dir;
   }
 
+  /// Where the draft's own sound lives: audio taken out of a video and
+  /// voiceovers recorded for it. Never temp, never a picker's cache — the
+  /// track points here for as long as the draft exists.
+  static Future<Directory> audioDir(String draftId, {Directory? root}) async {
+    final dir = Directory('${(await draftDir(draftId, root: root)).path}/audio');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
   /// Root-level files named for a draft: the cover, frozen frames and the
   /// background photo, which predate the folder and are named
   /// `<kind>_<draftId>_<stamp>.<ext>`.

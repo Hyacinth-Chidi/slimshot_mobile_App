@@ -15,6 +15,19 @@ void main() {
     expect(dir.path.replaceAll('\\', '/'), endsWith('/drafts/d1/proxies'));
   });
 
+  test("audioDir lives in the draft's folder", () async {
+    final dir = await DraftFiles.audioDir('d1', root: root);
+    expect(dir.existsSync(), isTrue);
+    expect(dir.path.replaceAll('\\', '/'), endsWith('/drafts/d1/audio'));
+  });
+
+  test('deleteAll takes the audio folder with the draft', () async {
+    final audio = await DraftFiles.audioDir('d1', root: root);
+    final take = File('${audio.path}/take.m4a')..writeAsBytesSync([1, 2, 3]);
+    await DraftFiles.deleteAll('d1', root: root);
+    expect(take.existsSync(), isFalse);
+  });
+
   test('deleteAll removes the folder and the files named for the draft, nothing else',
       () async {
     final proxies = await DraftFiles.proxiesDir('d1', root: root);
