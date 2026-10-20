@@ -5,6 +5,7 @@ import 'package:slimshotai/features/video_editor/logic/animation/animatable_doub
 import 'package:slimshotai/features/video_editor/logic/effects/effect_catalog.dart';
 import 'package:slimshotai/features/video_editor/logic/timeline/video_editor_timeline_composer.dart';
 import 'package:slimshotai/features/video_editor/models/audio_track_model.dart';
+import 'package:slimshotai/features/video_editor/models/effect_bar_model.dart';
 import 'package:slimshotai/features/video_editor/models/image_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/models/media_asset.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
@@ -507,89 +508,80 @@ void main() {
       expect(timeline.videoClips.single.colorMatrix, isNull);
     });
 
-    test('the grade and the effect are independent per clip', () {
-      // They apply at different moments — the grade per lane before the blend,
-      // the effect whole-frame after compositing — so carrying one must never
-      // cost the other.
-      final timeline = composer.compose(
-        stateWith([
-          VideoSegment(
-            id: 'a',
-            sourceStart: 0,
-            sourceEnd: 4,
-            filterId: 'neon',
-            effectId: 'vignette',
-          ),
-        ]),
-      );
+    test('a clip carries no effect any more', () {
+      // Effects are bars on the lanes now; a clip that once owned one sends
+      // nothing for it, so the engine has one place to look.
+      final json = composer
+          .compose(stateWith([VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4)]))
+          .videoClips
+          .single
+          .toJson();
+      expect(json.containsKey('effectId'), isFalse);
+      expect(json.containsKey('effectIntensity'), isFalse);
+      expect(json.containsKey('effectIntroSeconds'), isFalse);
+    });
+  });
 
-      final clip = timeline.videoClips.single;
-      expect(clip.colorMatrix, isNotNull);
-      expect(clip.effectId, 'vignette');
+  group('effect bars on the wire', () {
+    VideoEditorState withBars(List<EffectBarModel> bars) =>
+        stateWith([VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4)])
+            .copyWith(effectBars: bars);
+
+    test('a bar travels with its window from the catalog', () {
+      final effects = composer.composeEffects(withBars(const [
+        EffectBarModel(id: 'z', effectId: 'cinema_zoom', start: 1, end: 3),
+        EffectBarModel(id: 'v', effectId: 'vignette', start: 0, end: 2, laneIndex: 1),
+      ]));
+      final zoom = effects.firstWhere((e) => e.id == 'z');
+      expect(zoom.introSeconds, videoEffectById('cinema_zoom')!.introSeconds);
+      expect(zoom.toJson(), {
+        'id': 'z',
+        'effectId': 'cinema_zoom',
+        'start': 1.0,
+        'end': 3.0,
+        'lane': 0,
+        'intensity': 1.0,
+        'introSeconds': videoEffectById('cinema_zoom')!.introSeconds,
+      });
+      final vignette = effects.firstWhere((e) => e.id == 'v');
+      expect(vignette.introSeconds, isNull);
+      expect(vignette.toJson().containsKey('introSeconds'), isFalse);
     });
 
-    test('a static effect carries no animation window', () {
-      // Null is what tells the renderer to measure progress across the whole
-      // clip and expect the shader to ignore it — which is every effect
-      // written before the clock existed.
-      final timeline = composer.compose(
-        stateWith([
-          VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4,
-              effectId: 'vignette'),
-        ]),
-      );
-      expect(timeline.videoClips.single.effectIntroSeconds, isNull);
+    test('bars are sent in lane order', () {
+      final effects = composer.composeEffects(withBars(const [
+        EffectBarModel(id: 'high', effectId: 'grain', start: 0, end: 2, laneIndex: 2),
+        EffectBarModel(id: 'low', effectId: 'vignette', start: 0, end: 2),
+      ]));
+      expect(effects.map((e) => e.id), ['low', 'high']);
     });
 
-    test('an intro carries the catalog window, not a stored one', () {
-      // Read from the catalog at compose time so retuning an intro's length
-      // reaches saved projects without a draft migration.
-      final timeline = composer.compose(
-        stateWith([
-          VideoSegment(id: 'a', sourceStart: 0, sourceEnd: 4,
-              effectId: 'fade_in'),
-        ]),
-      );
-
-      final clip = timeline.videoClips.single;
-      expect(clip.effectId, 'fade_in');
-      expect(clip.effectIntroSeconds, videoEffectById('fade_in')!.introSeconds);
-      expect(clip.toJson()['effectIntroSeconds'], clip.effectIntroSeconds);
+    test('a bar this build does not know is not sent', () {
+      final effects = composer.composeEffects(withBars(const [
+        EffectBarModel(id: 'x', effectId: 'from_the_future', start: 0, end: 2),
+      ]));
+      expect(effects, isEmpty);
     });
 
-    test('two clips carrying the same intro are never merged', () {
-      // The id and intensity guards both pass here — the effects are
-      // identical — and merging would still be wrong: progress is measured
-      // from the merged clip's start, so the second clip's fade would never
-      // play and the cut the user put an intro on would run straight through.
-      final timeline = composer.compose(
-        stateWith([
-          VideoSegment(id: 'left', sourceStart: 0, sourceEnd: 2,
-              effectId: 'fade_in'),
-          VideoSegment(id: 'right', sourceStart: 2, sourceEnd: 5,
-              effectId: 'fade_in'),
-        ]),
-      );
-
-      expect(timeline.videoClips, hasLength(2));
-      expect(timeline.playbackClips, hasLength(2),
-          reason: 'a merged item would swallow the second intro');
+    test('the timeline carries its bars, and a bar past the clips moves the end', () {
+      final timeline = composer.compose(withBars(const [
+        EffectBarModel(id: 'v', effectId: 'vignette', start: 3, end: 9),
+      ]));
+      expect(timeline.effects.single.id, 'v');
+      expect(timeline.toJson()['effects'], [timeline.effects.single.toJson()]);
+      expect(timeline.durationSeconds, 9.0);
     });
 
-    test('two clips carrying the same static effect still merge', () {
-      // The counterpart of the test above: the refusal must be about the
-      // *clock*, not about effects in general, or every effected project
-      // would lose gapless playback across a plain split.
-      final timeline = composer.compose(
-        stateWith([
-          VideoSegment(id: 'left', sourceStart: 0, sourceEnd: 2,
-              effectId: 'vignette'),
-          VideoSegment(id: 'right', sourceStart: 2, sourceEnd: 5,
-              effectId: 'vignette'),
-        ]),
-      );
-
-      expect(timeline.playbackClips, hasLength(1));
+    test('a keyframed intensity crosses in the shape the engine reads', () {
+      const intensity = AnimatableDouble(baseValue: 0.5, keyframes: [
+        Keyframe(progress: 0, value: 0),
+        Keyframe(progress: 1, value: 1),
+      ]);
+      final effects = composer.composeEffects(withBars(const [
+        EffectBarModel(
+            id: 'k', effectId: 'vignette', start: 0, end: 2, intensity: intensity),
+      ]));
+      expect(effects.single.toJson()['intensity'], intensity.toJson());
     });
   });
 

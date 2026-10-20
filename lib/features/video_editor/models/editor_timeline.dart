@@ -27,6 +27,7 @@ class EditorTimeline {
     required this.transitions,
     required this.audioClips,
     this.overlays = const [],
+    this.effects = const [],
     this.isMuted = false,
   });
 
@@ -41,6 +42,10 @@ class EditorTimeline {
 
   /// Photo and video overlays, sorted so lower lanes paint first.
   final List<EditorTimelineOverlay> overlays;
+
+  /// The project's effect bars, by lane — the order they apply in. See
+  /// [EditorTimelineEffect].
+  final List<EditorTimelineEffect> effects;
 
   /// Whether the project's own audio is silenced.
   ///
@@ -68,6 +73,7 @@ class EditorTimeline {
           transitions.map((transition) => transition.toJson()).toList(),
       'audioTracks': audioClips.map((clip) => clip.toJson()).toList(),
       'overlays': overlays.map((overlay) => overlay.toJson()).toList(),
+      'effects': effects.map((effect) => effect.toJson()).toList(),
       'needsReverseProxy': needsReverseProxy,
       'isMuted': isMuted,
     };
@@ -238,9 +244,6 @@ class EditorTimelineVideoClip {
     this.transitionDuration,
     this.overrideVideoPath,
     this.colorMatrix,
-    this.effectId,
-    this.effectIntensity = const AnimatableDouble(baseValue: 1.0),
-    this.effectIntroSeconds,
     this.canvasScale = const AnimatableDouble(baseValue: 1.0),
     this.canvasOffsetX = const AnimatableDouble(baseValue: 0.0),
     this.canvasOffsetY = const AnimatableDouble(baseValue: 0.0),
@@ -313,48 +316,6 @@ class EditorTimelineVideoClip {
   /// finished frame.
   final List<double>? colorMatrix;
 
-  /// The shader effect this clip is drawn through, as a catalog id, or null
-  /// when the clip is unaffected.
-  ///
-  /// Already resolved against the catalog by the composer: an id this build
-  /// does not know arrives here as null rather than as a string the renderer
-  /// has no shader for. A clip's effect is applied per lane, like
-  /// [colorMatrix], so two clips carrying different effects cross-fade between
-  /// them rather than the blend being drawn through one of the two.
-  final String? effectId;
-
-  /// How strongly [effectId] is applied, **normalised 0..1, never pixels** —
-  /// preview and export draw the same clip at different resolutions and a
-  /// pixel parameter would give them different pictures.
-  ///
-  /// An [AnimatableDouble], so the strength may vary across the clip. **Both
-  /// renderers resolve it themselves, per frame, against the same progress
-  /// they already pass to the shader** — there is no second animation path and
-  /// no new uniform. A parameter with no envelope and no keyframes resolves
-  /// flat at every progress, which is byte for byte what the scalar did.
-  ///
-  /// Crosses the channel as [AnimatableDouble.toJson] writes it: a **bare
-  /// number** while nothing animates it, a map of `baseValue` / `envelope` /
-  /// `keyframes` once something does. Kotlin's `AnimatableDouble.fromWire`
-  /// reads both shapes and falls back rather than throwing on anything else,
-  /// so an older engine build still sees the number it expects.
-  final AnimatableDouble effectIntensity;
-
-  /// The window [effectId]'s animation plays across, in **seconds from this
-  /// clip's first frame**, or null when the effect is a static look.
-  ///
-  /// Resolved by the composer from the catalog rather than stored on the clip:
-  /// it is a property of the *effect*, not of the user's edit, so a retuned
-  /// intro length reaches every existing project on the next compose instead of
-  /// needing a draft migration. That also keeps the renderer from holding a
-  /// second copy of the catalog — it is told the window and never has to know
-  /// which ids are intros.
-  ///
-  /// Null means the shader receives progress across the whole clip and is
-  /// expected to ignore it, which is every effect written before the clock
-  /// existed.
-  final double? effectIntroSeconds;
-
   /// The user's pinch scale on top of the contain fit (1.0 = plain fit), and
   /// where the clip's centre is dragged to, in canvas fractions.
   final AnimatableDouble canvasScale;
@@ -394,9 +355,7 @@ class EditorTimelineVideoClip {
   /// This clip's 0..1 position at a timeline instant.
   ///
   /// **Whole-clip, and the same for every keyframable property** — a diamond is
-  /// one instant of the clip. Distinct from the effect clock, which runs over
-  /// [effectIntroSeconds] when an effect declares one. A zero-length clip is 0,
-  /// not a division by zero.
+  /// one instant of the clip. A zero-length clip is 0, not a division by zero.
   double clipProgressAt(double timelineSeconds) {
     final d = timelineDuration;
     if (d <= 0) return 0.0;
@@ -418,7 +377,6 @@ class EditorTimelineVideoClip {
       canvasOffsetY.keyframes.isNotEmpty ||
       canvasRotation.keyframes.isNotEmpty ||
       volume.keyframes.isNotEmpty ||
-      effectIntensity.keyframes.isNotEmpty ||
       opacity.keyframes.isNotEmpty;
 
   bool get needsReverseProxy {
@@ -468,11 +426,6 @@ class EditorTimelineVideoClip {
       'transitionDuration': transitionDuration,
       'overrideVideoPath': overrideVideoPath,
       'colorMatrix': colorMatrix,
-      'effectId': effectId,
-      // A bare number while flat, a map once animated — the shape
-      // `AnimatableDouble.fromWire` reads on the Kotlin side.
-      'effectIntensity': effectIntensity.toJson(),
-      'effectIntroSeconds': effectIntroSeconds,
       'canvasScale': canvasScale.toJson(),
       'canvasOffsetX': canvasOffsetX.toJson(),
       'canvasOffsetY': canvasOffsetY.toJson(),
@@ -918,4 +871,47 @@ class EditorTimelineAudioClip {
       'laneIndex': laneIndex,
     };
   }
+}
+
+/// One effect bar as the engine receives it: an effect over
+/// [start]–[end] of the timeline, applied to the main video.
+///
+/// Both engines read these through one rule (`EffectStack.drawnAt`): bars
+/// under the instant, by [lane], within the frame's pass budget. Only bars
+/// whose effect the catalog knows are composed, so the renderer never meets a
+/// name it has no shader for.
+class EditorTimelineEffect {
+  const EditorTimelineEffect({
+    required this.id,
+    required this.effectId,
+    required this.start,
+    required this.end,
+    required this.lane,
+    required this.intensity,
+    this.introSeconds,
+  });
+
+  final String id;
+  final String effectId;
+  final double start;
+  final double end;
+  final int lane;
+
+  /// Resolved by the engine at the bar's own progress. A bare number while
+  /// flat, a map once animated — the shapes `AnimatableDouble.fromWire` reads.
+  final AnimatableDouble intensity;
+
+  /// The window a timed effect's shader progress runs across from [start],
+  /// read from the catalog at compose time; null for a static look.
+  final double? introSeconds;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'effectId': effectId,
+        'start': start,
+        'end': end,
+        'lane': lane,
+        'intensity': intensity.toJson(),
+        if (introSeconds != null) 'introSeconds': introSeconds,
+      };
 }

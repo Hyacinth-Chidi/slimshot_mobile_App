@@ -10,6 +10,7 @@ import '../../models/video_segment.dart';
 import '../animation/animatable_double.dart';
 import '../animation/overlay_keyframes.dart';
 import '../canvas_geometry.dart';
+import '../effects/effect_catalog.dart';
 import 'project_end.dart';
 import 'timeline_geometry.dart';
 import '../color/color_adjustments.dart';
@@ -157,6 +158,7 @@ class VideoEditorTimelineComposer {
           .map(_composeAudioClip)
           .toList(growable: false),
       overlays: _composeOverlays(state, previewCanvasSize, extraOverlays),
+      effects: composeEffects(state),
       isMuted: state.isMuted,
     );
   }
@@ -225,6 +227,26 @@ class VideoEditorTimelineComposer {
   /// own light channel, and this is what it sends. It calls the same private
   /// builder [compose] does, so there is one definition of an overlay's
   /// geometry and a test holds the two equal.
+  /// The project's effect bars as the engine receives them, by lane. A bar
+  /// whose effect the catalog does not know is left out: unknown degrades to
+  /// no effect, and the draft keeps the bar as written.
+  List<EditorTimelineEffect> composeEffects(VideoEditorState state) {
+    final bars = [
+      for (final bar in state.effectBars)
+        if (videoEffectById(bar.effectId) case final effect?)
+          EditorTimelineEffect(
+            id: bar.id,
+            effectId: effect.id,
+            start: bar.start,
+            end: bar.end,
+            lane: bar.laneIndex,
+            intensity: bar.intensity,
+            introSeconds: effect.introSeconds,
+          ),
+    ]..sort((a, b) => a.lane.compareTo(b.lane));
+    return bars;
+  }
+
   List<EditorTimelineOverlay> composeOverlays(
     VideoEditorState state, {
     Size? previewCanvasSize,
@@ -444,9 +466,6 @@ class VideoEditorTimelineComposer {
       transitionDuration: next.transitionDuration,
       overrideVideoPath: previous.overrideVideoPath,
       colorMatrix: previous.colorMatrix,
-      effectId: previous.effectId,
-      effectIntensity: previous.effectIntensity,
-      effectIntroSeconds: previous.effectIntroSeconds,
       canvasScale: previous.canvasScale,
       canvasOffsetX: previous.canvasOffsetX,
       canvasOffsetY: previous.canvasOffsetY,
@@ -477,48 +496,6 @@ class VideoEditorTimelineComposer {
     // Two clips graded differently must stay separate media items, or the
     // merged one would take the first clip's look for both.
     if (!_sameMatrix(previous.colorMatrix, next.colorMatrix)) return false;
-
-    // Same for an effect, for the same reason: the merged item is drawn
-    // through one shader chain at one strength, so it would run the first
-    // clip's effect over both. Intensity counts as much as the id — the same
-    // effect at two strengths is two looks.
-    const intensityEpsilon = 0.001;
-    if (previous.effectId != next.effectId) return false;
-
-    // **An animated intensity can never merge, even with an identical one.**
-    // This is the same rule `effectIntroSeconds` follows two checks down, and
-    // for the same reason: an envelope and a keyframe row are both measured
-    // across *a clip*, so a merged item resolves one curve over the pair. The
-    // second clip's pulse would never land where the user put it, and a
-    // `ramp_in` would build across both clips instead of arriving twice.
-    // Unlike the intensity comparison below, this is not about the two values
-    // disagreeing — two clips carrying byte-identical parameters still must
-    // not merge, because it is the *span* the curve runs over that the merge
-    // destroys.
-    if (previous.effectIntensity.isAnimated || next.effectIntensity.isAnimated) {
-      return false;
-    }
-
-    // Neither animates, so comparing the base values is comparing the whole
-    // parameter.
-    if ((previous.effectIntensity.baseValue - next.effectIntensity.baseValue)
-            .abs() >
-        intensityEpsilon) {
-      return false;
-    }
-
-    // **A timed effect can never merge, even with an identical one.** The
-    // checks above pass when both clips carry the same intro at the same
-    // strength — and merging them is exactly wrong: progress is measured from
-    // the *merged* clip's start, so the second clip's intro would never play.
-    // The picture would open with one fade and then run straight through a cut
-    // the user put an intro on. Unlike the checks above this is not about the
-    // two looks disagreeing; it is that an intro belongs to a clip's opening
-    // and a merge destroys the opening.
-    if (previous.effectIntroSeconds != null ||
-        next.effectIntroSeconds != null) {
-      return false;
-    }
 
     // **A keyframed clip never merges**, and this is the same rule the
     // animated-intensity check above follows, for the same reason: a keyframe's
@@ -665,18 +642,6 @@ class VideoEditorTimelineComposer {
       // It was once added in its place, and every clip silently lost its
       // filter.
       //
-      // Resolved through the catalog, not copied raw: an id this build does
-      // not know (a newer draft, an unmigrated rename) must reach the renderer
-      // as "no effect" rather than as a name it has no shader for. The draft
-      // keeps the original string either way.
-      effectId: segment.effect?.id,
-      effectIntensity: segment.effectIntensity,
-      // The window the effect's progress is measured across, read from the
-      // catalog at compose time rather than stored on the segment: an intro's
-      // length is a property of the effect, so retuning it must reach every
-      // saved project without a draft migration. Null for a static look, which
-      // is every effect that existed before the clock.
-      effectIntroSeconds: segment.effect?.introSeconds,
       // Plain under the crop handles: identity, so the fit alone places the
       // picture and the canvas can invert it. See [_clipContentRect].
       canvasScale: unplaced ? kUnitParameter : segment.canvasScale,
