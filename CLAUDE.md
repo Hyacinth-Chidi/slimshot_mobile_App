@@ -3613,6 +3613,58 @@ library now opens from the submenu's Music.
 - `SlimshotApi.sendPublicEnvelope` reads a public answer whole — the catalogue's `data` is a
   list and its pages carry `meta` — sharing `_refusal` with `_decode` so the two cannot drift.
 
+### Audio — Extract and Record
+
+**Awaiting device verification** (the capture, the remux and the playback alignment only run on a
+device). Spec: `docs/superpowers/specs/2026-10-20-audio-extract-and-record-design.md`, plan beside
+it in `plans/`. The audio menu's last two tools had been declared with no handler since the menu
+existed — a tap did nothing.
+
+**Both write into the draft's own `drafts/<id>/audio/`** (`DraftFiles.audioDir`), so the sound goes
+with the draft and nowhere else — never temp, never a picker's cache — and both land as ordinary
+purple `AudioTrackModel`s through `addAudioTrack`: first free lane, selected, one undo step.
+
+**Extract** (`_showExtractAudio`, `ExtractAudioSheet`, the owner's design): the gallery opens on
+videos; a 90% sheet (`kExtractSheetHeightFraction`) plays the video over its sound's **real**
+waveform with two handles, **Change video** and **Done**; Done puts the sound at the playhead.
+- **The handles are the track's trim, not a cut** (`ExtractSelection`, `extractedTrack`): the whole
+  sound is kept, so the track's edges can still be dragged out on the timeline. They never cross
+  and never close below `kMinClipDurationSeconds`.
+- **Copied, not converted, wherever it can be** (`AudioExtractor`, `ExtractPlan.canRemux`): AAC —
+  almost every phone video — goes into an `.m4a` unchanged through `ExportMuxer`, near-instant at
+  any length; anything else is decoded by the export's `PcmAudioSource` and encoded by
+  `AacFileEncoder`. **The track never points at the video**: playing a video for its sound would
+  hold a hidden video decoder, the low-end failure fixed for overlays.
+- The waveform is `WaveformPeaks`, fed a block at a time (`Accumulator`) so a long song is never
+  held whole. Channel `slimshot_ai/audio_tools` (`AudioToolsChannel`).
+- **"This video has no sound" is said in the sheet**, with Change video still offered and Done
+  off. A sound extracted and not kept — the sheet closed, another video chosen — is deleted.
+- **Known, from the review:** the preview player (`VideoPlayerExtractPreview`) is plugin code with
+  no test; its loop is a position listener seeking back at the end handle.
+
+**Record** (`_enterRecording`, `RecordController`, `RecordPanel`; the owner's design): the editor
+turns into **recording mode** — the preview large, the timeline showing only the clips with the
+take growing under them (`ScrollableTimeline.recordingTake`) and taking no touches, the panel one
+round button with a pulsing purple ring. 3-2-1, record, pause, record again: **one take across
+every pause**, starting where capture first began. Done (✓, Back, the side tap — every keeping
+close) puts it there; ✕ throws it away. Both play toggles are the record button while the mode is
+on, and **anything that stops the video stops the take** (`onPlaybackStopped`), or the take would
+run on over a still picture.
+- **Why `AudioRecord` and not `MediaRecorder`** (`VoiceRecorder`, `CaptureGate`): the microphone
+  runs from `open`, and only frames heard while capturing are kept — so it is warm before the video
+  starts, a pause leaves no gap, and capture always starts before playback and stops after it.
+  `MediaRecorder`'s start delay cannot be measured. Channel `slimshot_ai/voice_recorder`;
+  `RECORD_AUDIO` in the manifest; `permission_handler` asks, with a way to Settings when refused
+  for good.
+- **The preview is muted while recording, with a speaker toggle** — the phone's speaker would play
+  into the microphone, under the voice, for good. **A monitor mute only**: the engine's `setVolume`
+  (clips and overlay sound) and `AudioPlayerManager.monitorMuted` (imported music); never the
+  project's `isMuted`, never a clip's volume, lifted when the mode ends, not remembered.
+- **The device check that matters**: a clap on camera, recorded as a voiceover, should land on the
+  clap's frame. The take may come out a few tens of milliseconds late (the capture flag flips at a
+  20ms buffer boundary and the engine's own start follows a sync and a seek); if the check shows
+  it, trim a measured lead off the take's `sourceStart` rather than reordering capture and play.
+
 ### Draft files — a draft owns its folder
 
 A draft is JSON in preferences that *points at* files, and until now those files were scattered
