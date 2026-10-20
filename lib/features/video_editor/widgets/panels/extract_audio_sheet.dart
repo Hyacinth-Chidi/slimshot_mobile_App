@@ -58,6 +58,12 @@ class ExtractAudioSheet extends StatefulWidget {
 
 class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
   late String _videoPath = widget.initialVideoPath;
+
+  /// The player this sheet opened, held for its whole life. The sheet is
+  /// built inside a route builder that runs again whenever the route
+  /// rebuilds; reading `widget.player` each time reached a fresh, never-opened
+  /// player, so closing disposed that one while the first played on.
+  late final ExtractPreviewPlayer _player = widget.player;
   ExtractedSound? _sound;
   ExtractSelection? _selection;
   List<double>? _peaks;
@@ -76,7 +82,7 @@ class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
 
   @override
   void dispose() {
-    unawaited(widget.player.dispose());
+    unawaited(_player.dispose());
     final sound = _sound;
     if (!_kept && sound != null) widget.discardSound?.call(sound.path);
     super.dispose();
@@ -91,7 +97,7 @@ class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
       _selection = null;
       _peaks = null;
     });
-    await widget.player.open(videoPath);
+    await _player.open(videoPath);
 
     ExtractedSound? sound;
     String? problem;
@@ -116,7 +122,7 @@ class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
       _selection = sound == null ? null : ExtractSelection.whole(sound.durationSeconds);
     });
     if (sound == null) return;
-    unawaited(widget.player.playRange(0, sound.durationSeconds));
+    unawaited(_player.playRange(0, sound.durationSeconds));
 
     // A waveform that cannot be read leaves the strip flat; the sound is
     // still the sound.
@@ -140,7 +146,7 @@ class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
     final same = await (widget.isSameVideo ?? isSameFile)(_videoPath, path);
     if (!mounted || (same && _sound != null)) return;
     _videoPath = path;
-    await widget.player.pause();
+    await _player.pause();
     final old = _sound;
     if (old != null) widget.discardSound?.call(old.path);
     _sound = null;
@@ -160,7 +166,7 @@ class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
   void _selectionSettled() {
     final selection = _selection;
     if (selection == null) return;
-    unawaited(widget.player.playRange(selection.start, selection.end));
+    unawaited(_player.playRange(selection.start, selection.end));
   }
 
   @override
@@ -195,7 +201,7 @@ class _ExtractAudioSheetState extends State<ExtractAudioSheet> {
                   child: Center(
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: widget.player.view(),
+                      child: _player.view(),
                     ),
                   ),
                 ),

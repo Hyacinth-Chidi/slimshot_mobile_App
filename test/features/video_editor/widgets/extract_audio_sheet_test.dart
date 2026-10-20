@@ -115,6 +115,45 @@ void main() {
     peaksFail = false;
   });
 
+  testWidgets('the player it opened is the one it closes, however often it is rebuilt',
+      (tester) async {
+    // Device-reported: closed without using it, the sound played on and
+    // looped until the app was closed. The editor builds the sheet inside a
+    // route builder, which runs again whenever the route rebuilds — handing
+    // the sheet a fresh, never-opened player each time. Closing disposed the
+    // fresh one, and the one playing looped for ever.
+    final first = _FakePreview();
+    final second = _FakePreview();
+    Widget sheet(ExtractPreviewPlayer player) => MaterialApp(
+          home: Scaffold(
+            body: ExtractAudioSheet(
+              initialVideoPath: '/v1.mp4',
+              pickVideo: () async => null,
+              extract: (path) async => sounds[path],
+              peaks: (_) async => const [],
+              player: player,
+            ),
+          ),
+        );
+    await tester.pumpWidget(sheet(first));
+    await tester.pump();
+    await tester.pumpWidget(sheet(second));
+    await tester.pump();
+    final width = tester.getSize(find.byKey(const ValueKey('extract-waveform'))).width;
+    await tester.drag(
+      find.byKey(const ValueKey('extract-handle-end')),
+      Offset(-width / 2, 0),
+    );
+    await tester.pump();
+    expect(first.ranges.last.$2, closeTo(5.0, 0.3),
+        reason: 'the handles still steer the player that is playing');
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(first.opened, ['/v1.mp4']);
+    expect(first.disposed, isTrue);
+    expect(second.opened, isEmpty);
+  });
+
   testWidgets('shows the video and the waveform once peaks arrive', (tester) async {
     await openSheet(tester);
     expect(find.byKey(const ValueKey('fake-video')), findsOneWidget);

@@ -2014,6 +2014,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
     final tools = AudioToolsService();
     final draftId = ref.read(videoEditorProvider).draftId ?? 'unsaved';
+    // Made once, outside the route builder, which runs again on every
+    // rebuild of the route; disposed whichever way the sheet closes.
+    final player = VideoPlayerExtractPreview();
     final choice = await showEditorSheet<ExtractChoice>(
       context,
       builder: (_) => ExtractAudioSheet(
@@ -2033,9 +2036,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
             File(path).deleteSync();
           } catch (_) {}
         },
-        player: VideoPlayerExtractPreview(),
+        player: player,
       ),
     );
+    unawaited(player.dispose());
     if (choice == null || !mounted) return;
     notifier.placeAudioTrack(extractedTrack(
       sound: choice.sound,
