@@ -40,5 +40,457 @@
     "handheld": 1,
     "super_shake": 1
   },
-  "cases": []
+  "cases": [
+    {
+      "name": "lane order",
+      "bars": [
+        {
+          "id": "high",
+          "effectId": "grain",
+          "start": 0.0,
+          "end": 5.0,
+          "lane": 2,
+          "intensity": 0.7
+        },
+        {
+          "id": "low",
+          "effectId": "vignette",
+          "start": 0.0,
+          "end": 5.0,
+          "lane": 0,
+          "intensity": 0.7
+        }
+      ],
+      "samples": [
+        {
+          "seconds": 2.0,
+          "drawn": [
+            {
+              "id": "low",
+              "intensity": 0.7,
+              "progress": 0.4
+            },
+            {
+              "id": "high",
+              "intensity": 0.7,
+              "progress": 0.4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "half-open at a seam",
+      "bars": [
+        {
+          "id": "a",
+          "effectId": "grain",
+          "start": 0.0,
+          "end": 2.0,
+          "lane": 0,
+          "intensity": 0.7
+        },
+        {
+          "id": "b",
+          "effectId": "vignette",
+          "start": 2.0,
+          "end": 4.0,
+          "lane": 0,
+          "intensity": 0.7
+        }
+      ],
+      "samples": [
+        {
+          "seconds": 1.999,
+          "drawn": [
+            {
+              "id": "a",
+              "intensity": 0.7,
+              "progress": 0.9995
+            }
+          ]
+        },
+        {
+          "seconds": 2.0,
+          "drawn": [
+            {
+              "id": "b",
+              "intensity": 0.7,
+              "progress": 0.0
+            }
+          ]
+        },
+        {
+          "seconds": 4.0,
+          "drawn": []
+        }
+      ]
+    },
+    {
+      "name": "glow is the whole budget",
+      "bars": [
+        {
+          "id": "g",
+          "effectId": "glow",
+          "start": 0.0,
+          "end": 5.0,
+          "lane": 0,
+          "intensity": 0.7
+        },
+        {
+          "id": "v",
+          "effectId": "vignette",
+          "start": 0.0,
+          "end": 5.0,
+          "lane": 1,
+          "intensity": 0.7
+        }
+      ],
+      "samples": [
+        {
+          "seconds": 1.0,
+          "drawn": [
+            {
+              "id": "g",
+              "intensity": 0.7,
+              "progress": 0.2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a skipped bar does not stop a later one",
+      "bars": [
+        {
+          "id": "b",
+          "effectId": "blur",
+          "start": 0.0,
+          "end": 5.0,
+          "lane": 0,
+          "intensity": 0.7
+        },
+        {
+          "id": "g",
+          "effectId": "glow",
+          "start": 0.0,
+          "end": 5.0,
+          "lane": 1,
+          "intensity": 0.7
+        },
+        {
+          "id": "v",
+          "effectId": "vignette",
+          "start": 0.0,
+          "end": 5.0,
+          "lane": 2,
+          "intensity": 0.7
+        }
+      ],
+      "samples": [
+        {
+          "seconds": 1.0,
+          "drawn": [
+            {
+              "id": "b",
+              "intensity": 0.7,
+              "progress": 0.2
+            },
+            {
+              "id": "v",
+              "intensity": 0.7,
+              "progress": 0.2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an unknown effect costs nothing",
+      "bars": [
+        {
+          "id": "x",
+          "effectId": "from_the_future",
+          "start": 0.0,
+          "end": 5.0,
+          "lane": 0,
+          "intensity": 0.7
+        },
+        {
+          "id": "g",
+          "effectId": "glow",
+          "start": 0.0,
+          "end": 5.0,
+          "lane": 1,
+          "intensity": 0.7
+        }
+      ],
+      "samples": [
+        {
+          "seconds": 1.0,
+          "drawn": [
+            {
+              "id": "g",
+              "intensity": 0.7,
+              "progress": 0.2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "keyframed intensity on the bar's clock",
+      "bars": [
+        {
+          "id": "k",
+          "effectId": "vignette",
+          "start": 4.0,
+          "end": 8.0,
+          "lane": 0,
+          "intensity": {
+            "baseValue": 0.5,
+            "keyframes": [
+              {
+                "progress": 0.0,
+                "value": 0.0,
+                "interpolation": "linear"
+              },
+              {
+                "progress": 1.0,
+                "value": 1.0,
+                "interpolation": "linear"
+              }
+            ]
+          }
+        }
+      ],
+      "samples": [
+        {
+          "seconds": 4.0,
+          "drawn": [
+            {
+              "id": "k",
+              "intensity": 0.0,
+              "progress": 0.0
+            }
+          ]
+        },
+        {
+          "seconds": 6.0,
+          "drawn": [
+            {
+              "id": "k",
+              "intensity": 0.5,
+              "progress": 0.5
+            }
+          ]
+        },
+        {
+          "seconds": 7.5,
+          "drawn": [
+            {
+              "id": "k",
+              "intensity": 0.875,
+              "progress": 0.875
+            }
+          ]
+        },
+        {
+          "seconds": 8.0,
+          "drawn": []
+        }
+      ]
+    },
+    {
+      "name": "an envelope across the bar",
+      "bars": [
+        {
+          "id": "e",
+          "effectId": "blur",
+          "start": 2.0,
+          "end": 6.0,
+          "lane": 0,
+          "intensity": {
+            "baseValue": 0.8,
+            "envelope": "ramp_out"
+          }
+        }
+      ],
+      "samples": [
+        {
+          "seconds": 2.0,
+          "drawn": [
+            {
+              "id": "e",
+              "intensity": 0.8,
+              "progress": 0.0
+            }
+          ]
+        },
+        {
+          "seconds": 3.0,
+          "drawn": [
+            {
+              "id": "e",
+              "intensity": 0.05,
+              "progress": 0.25
+            }
+          ]
+        },
+        {
+          "seconds": 5.9,
+          "drawn": [
+            {
+              "id": "e",
+              "intensity": 0.7851851851851853,
+              "progress": 0.9750000000000001
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a keyframed intro",
+      "bars": [
+        {
+          "id": "z",
+          "effectId": "cinema_zoom",
+          "start": 0.0,
+          "end": 10.0,
+          "lane": 0,
+          "intensity": {
+            "baseValue": 0.5,
+            "keyframes": [
+              {
+                "progress": 0.0,
+                "value": 0.0,
+                "interpolation": "linear"
+              },
+              {
+                "progress": 1.0,
+                "value": 1.0,
+                "interpolation": "linear"
+              }
+            ]
+          },
+          "introSeconds": 1.2
+        }
+      ],
+      "samples": [
+        {
+          "seconds": 0.0,
+          "drawn": [
+            {
+              "id": "z",
+              "intensity": 0.0,
+              "progress": 0.0
+            }
+          ]
+        },
+        {
+          "seconds": 0.6,
+          "drawn": [
+            {
+              "id": "z",
+              "intensity": 0.06,
+              "progress": 0.5
+            }
+          ]
+        },
+        {
+          "seconds": 1.2,
+          "drawn": [
+            {
+              "id": "z",
+              "intensity": 0.12,
+              "progress": 1.0
+            }
+          ]
+        },
+        {
+          "seconds": 9.0,
+          "drawn": [
+            {
+              "id": "z",
+              "intensity": 0.9,
+              "progress": 1.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "intensity clamped",
+      "bars": [
+        {
+          "id": "c",
+          "effectId": "vignette",
+          "start": 0.0,
+          "end": 4.0,
+          "lane": 0,
+          "intensity": 1.7
+        }
+      ],
+      "samples": [
+        {
+          "seconds": 1.0,
+          "drawn": [
+            {
+              "id": "c",
+              "intensity": 1.0,
+              "progress": 0.25
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the same effect twice",
+      "bars": [
+        {
+          "id": "v1",
+          "effectId": "vignette",
+          "start": 0.0,
+          "end": 5.0,
+          "lane": 0,
+          "intensity": 0.7
+        },
+        {
+          "id": "v2",
+          "effectId": "vignette",
+          "start": 1.0,
+          "end": 6.0,
+          "lane": 1,
+          "intensity": 0.7
+        }
+      ],
+      "samples": [
+        {
+          "seconds": 0.5,
+          "drawn": [
+            {
+              "id": "v1",
+              "intensity": 0.7,
+              "progress": 0.1
+            }
+          ]
+        },
+        {
+          "seconds": 3.0,
+          "drawn": [
+            {
+              "id": "v1",
+              "intensity": 0.7,
+              "progress": 0.6
+            },
+            {
+              "id": "v2",
+              "intensity": 0.7,
+              "progress": 0.4
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
