@@ -137,11 +137,13 @@ class VideoEffect {
   /// footage — a first application should read as a choice, not as damage.
   final double defaultIntensity;
 
-  /// How many render passes the chain runs for this effect.
+  /// How many render passes the chain runs for this effect — its cost out of
+  /// a frame's [kMaxEffectPasses] when bars stack.
   ///
-  /// Must never exceed 4: `MAX_EFFECT_PASSES` in the Kotlin pass chain
-  /// truncates and warns past it, so a fifth pass would silently render a
-  /// different picture than the one declared here.
+  /// Must be the number `EffectShaders.passesFor` actually builds:
+  /// `effect_stack_fixture.json` pins it to the Kotlin `EffectPassCosts`, and
+  /// the two sides decide which stacked bars fit by it, so a wrong count here
+  /// is a bar drawn on one side and skipped on the other.
   final int passCount;
 
   /// How long this effect's animation runs from the clip's first frame, in
@@ -257,6 +259,12 @@ class VideoEffect {
 /// `blur` and `glow` are the two that survive all three: both read no clock of
 /// their own, both are a *strength* rather than a shape, and both are the
 /// examples the feature was described by.
+/// The most render passes one frame runs — `EffectPassChain.MAX_EFFECT_PASSES`.
+///
+/// Stacked effect bars share it: each bar costs its [VideoEffect.passCount],
+/// and a bar that does not fit is skipped whole.
+const int kMaxEffectPasses = 4;
+
 const List<VideoEffect> kVideoEffects = [
   // -- grade ---------------------------------------------------------------
   VideoEffect(
@@ -350,9 +358,11 @@ const List<VideoEffect> kVideoEffects = [
     id: 'glow',
     label: 'Dreamy',
     category: EffectCategory.light,
-    // Bright-pass, blur, composite. Three passes is the most expensive entry
-    // in the catalog and the reason the chain exists at all.
-    passCount: 3,
+    // Bright-pass, the blur's two halves, composite — the four draws
+    // `EffectShaders.glowPasses` builds, the whole of a frame's budget. It
+    // used to say 3 here while the engine ran 4, which nothing caught until
+    // the effect stack started spending the budget by this number.
+    passCount: 4,
     defaultIntensity: 0.5,
     // **A bloom that breathes**, which is what the label already promises — a
     // dreamy look that sits at one fixed weight reads as a lens filter left on

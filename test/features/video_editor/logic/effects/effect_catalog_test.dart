@@ -183,7 +183,7 @@ void main() {
 
     test('blur and glow declare the pass counts the chain will run', () {
       expect(videoEffectById('blur')!.passCount, 2);
-      expect(videoEffectById('glow')!.passCount, 3);
+      expect(videoEffectById('glow')!.passCount, 4);
     });
 
     test('ids are lower_snake_case', () {
