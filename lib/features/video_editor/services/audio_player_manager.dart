@@ -6,6 +6,28 @@ class AudioPlayerManager {
   final Map<String, bool> _isSeeking = {};
   final Map<String, double> _lastSeekTarget = {};
 
+  /// Each player's own volume, so a lifted monitor mute can put it back.
+  final Map<String, double> _volumes = {};
+
+  bool _monitorMuted = false;
+
+  /// Silences every track while a voiceover is recorded — the phone's
+  /// speaker would otherwise play into the microphone. Only what is heard:
+  /// no track's own volume changes.
+  set monitorMuted(bool muted) {
+    if (_monitorMuted == muted) return;
+    _monitorMuted = muted;
+    for (final entry in _players.entries) {
+      entry.value.setVolume(muted ? 0.0 : (_volumes[entry.key] ?? 1.0));
+    }
+  }
+
+  bool get monitorMuted => _monitorMuted;
+
+  /// What a track's player plays at: its volume, or nothing while the
+  /// monitor is muted.
+  double effectiveVolume(AudioTrackModel track) => _monitorMuted ? 0.0 : track.volume;
+
   Future<void> syncTracks(List<AudioTrackModel> tracks) async {
     final currentIds = tracks.map((t) => t.id).toSet();
     
@@ -16,6 +38,7 @@ class AudioPlayerManager {
       _players.remove(id);
       _isSeeking.remove(id);
       _lastSeekTarget.remove(id);
+      _volumes.remove(id);
     }
 
     // Add new players
@@ -26,12 +49,14 @@ class AudioPlayerManager {
         _players[track.id] = player;
       }
       // Update volume
-      _players[track.id]?.setVolume(track.volume);
+      _volumes[track.id] = track.volume;
+      _players[track.id]?.setVolume(effectiveVolume(track));
     }
   }
 
   void setVolumeSync(String id, double volume) {
-    _players[id]?.setVolume(volume);
+    _volumes[id] = volume;
+    _players[id]?.setVolume(_monitorMuted ? 0.0 : volume);
   }
 
   void seekAndPlaySync(double globalPosition, List<AudioTrackModel> tracks, bool isPlaying) {

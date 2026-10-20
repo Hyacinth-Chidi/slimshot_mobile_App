@@ -195,6 +195,19 @@ void main() {
     );
   });
 
+  test("the audio menu's Record is handled, and every keeping close keeps the take", () {
+    final source = screen.readAsStringSync();
+    expect(source, contains("tool.id == 'record'"));
+    expect(source, contains('RecordPanel('));
+    // ✓, Back and the side tap all close through _commitAndCloseActiveTool;
+    // for Record that is Done, never a discard.
+    expect(
+      RegExp(r"void _commitAndCloseActiveTool\(\) \{[^}]*activeToolId == 'record'[^}]*_finishRecording\(\)")
+          .hasMatch(source),
+      isTrue,
+    );
+  });
+
   test("the audio menu's Extract is handled", () {
     // Declared since the audio menu existed and handled by nothing, so a tap
     // did nothing at all.

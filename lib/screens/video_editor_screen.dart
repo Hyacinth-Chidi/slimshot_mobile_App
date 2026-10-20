@@ -98,6 +98,11 @@ import '../features/video_editor/widgets/panels/extract_audio_sheet.dart';
 import '../features/audio_tools/audio_tools_service.dart';
 import '../features/audio_tools/extract_preview_player.dart';
 import '../features/audio_tools/extract_selection.dart';
+import '../features/audio_tools/record_controller.dart';
+import '../features/audio_tools/voice_recorder_service.dart';
+import '../features/video_editor/widgets/panels/record_panel.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:uuid/uuid.dart';
 import '../core/services/draft_files.dart';
 import '../core/services/media_picker_service.dart';
 
@@ -512,6 +517,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     );
   }
 
+  /// Recording mode's rules while the mode is on; null otherwise.
+  RecordController? _recordController;
+
   String _getToolLabel(String id) {
     for (final menu in _menus.values) {
       for (final tool in menu.tools) {
@@ -624,6 +632,12 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       ref.read(videoEditorProvider.notifier).saveDraft();
     });
 
+    final recording = _recordController;
+    _recordController = null;
+    if (recording != null) {
+      unawaited(recording.recorder.close(keep: false).catchError((_) => null));
+      recording.dispose();
+    }
     _ticker.dispose();
     _audioPlayerManager.dispose();
     unawaited(_nativePreviewSubscription?.cancel() ?? Future<void>.value());
@@ -698,6 +712,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   }
 
   void _togglePreview() {
+    final recording = _recordController;
+    if (recording != null) {
+      unawaited(recording.toggle());
+      return;
+    }
     ref.read(videoEditorProvider.notifier).togglePreview();
   }
 
@@ -2016,6 +2035,106 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     ));
   }
 
+  /// Record: the editor turns into recording mode — the preview large, the
+  /// timeline showing only the clips, one round button in the panel. The
+  /// preview is muted while the mode is on (the speaker would play into the
+  /// microphone), with a toggle; that is a monitor mute on the engine and
+  /// the music players, never the project's own mute.
+  Future<void> _enterRecording() async {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final state = ref.read(videoEditorProvider);
+    if (state.currentPlaybackPosition >=
+        ref.read(totalEditedDurationProvider) - 0.05) {
+      ToastUtils.show(context, kRecordAtEndMessage);
+      return;
+    }
+    notifier.setPlaying(false);
+    final draftId = state.draftId ?? 'unsaved';
+    final controller = RecordController(
+      recorder: ChannelVoiceRecorder(),
+      requestMic: _requestMicrophone,
+      newTakePath: () async {
+        final dir = await DraftFiles.audioDir(draftId);
+        return '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      },
+      play: () => notifier.setPlaying(true),
+      pause: () => notifier.setPlaying(false),
+      setMonitorMuted: (muted) {
+        unawaited(_nativePreviewService.setVolume(muted ? 0.0 : 1.0));
+        _audioPlayerManager.monitorMuted = muted;
+      },
+      playhead: () => ref.read(videoEditorProvider).currentPlaybackPosition,
+      projectEnd: () => ref.read(totalEditedDurationProvider),
+    );
+    controller.addListener(_onRecordingChanged);
+    setState(() => _recordController = controller);
+    await controller.enter();
+    notifier.setActiveTool('record');
+  }
+
+  Future<MicPermission> _requestMicrophone() async {
+    final status = await Permission.microphone.request();
+    if (status.isGranted) return MicPermission.granted;
+    if (status.isPermanentlyDenied || status.isRestricted) {
+      return MicPermission.permanentlyDenied;
+    }
+    return MicPermission.denied;
+  }
+
+  void _onRecordingChanged() {
+    if (!mounted) return;
+    final message = _recordController?.takeMessage();
+    if (message != null) ToastUtils.show(context, message);
+    setState(() {});
+  }
+
+  /// The take as the timeline draws it while the mode is on: from where it
+  /// began (or the playhead, before it has), for as long as it has run.
+  ({double start, double length})? _recordingTake(VideoEditorState state) {
+    final recording = _recordController;
+    if (recording == null || state.activeToolId != 'record') return null;
+    return (
+      start: recording.takeStart ?? state.currentPlaybackPosition,
+      length: recording.takeStart == null ? 0.0 : recording.takeLength,
+    );
+  }
+
+  /// Done: the take lands where recording began, on a free lane, selected,
+  /// one undo step; with nothing recorded the mode just ends.
+  Future<void> _finishRecording() async {
+    final recording = _recordController;
+    if (recording == null) return;
+    final take = await recording.finish();
+    _leaveRecording(recording);
+    if (take == null || !mounted) return;
+    ref.read(videoEditorProvider.notifier).addAudioTrack(AudioTrackModel(
+          id: const Uuid().v4(),
+          filePath: take.path,
+          sourceDuration: take.durationSeconds,
+          sourceStart: 0,
+          sourceEnd: take.durationSeconds,
+          timelineStart: take.timelineStart,
+        ));
+  }
+
+  /// ✕: the take is thrown away.
+  Future<void> _discardRecording() async {
+    final recording = _recordController;
+    if (recording == null) return;
+    await recording.discard();
+    _leaveRecording(recording);
+  }
+
+  void _leaveRecording(RecordController recording) {
+    recording.removeListener(_onRecordingChanged);
+    final message = recording.takeMessage();
+    recording.dispose();
+    if (!mounted) return;
+    if (message != null) ToastUtils.show(context, message);
+    setState(() => _recordController = null);
+    ref.read(videoEditorProvider.notifier).closeActiveTool();
+  }
+
   /// Opens the transform sheet on the selected clip — or, from the root menu,
   /// on the clip under the playhead — and **puts back what it borrowed**.
   ///
@@ -2283,6 +2402,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     _showSoundLibrary(kSoundEffectsRoot);
                   } else if (tool.id == 'extract') {
                     unawaited(_showExtractAudio());
+                  } else if (tool.id == 'record') {
+                    unawaited(_enterRecording());
                   } else if (tool.id == 'filters') {
                     // Reached from the clip menu, the tool means "filter this
                     // clip", so the sheet opens in per-clip mode. The switch
@@ -2534,6 +2655,15 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       case 'opacity':
         content = _buildOpacityPanel();
         break;
+      case 'record':
+        final recording = _recordController;
+        content = recording == null
+            ? const SizedBox.shrink()
+            : RecordPanel(
+                controller: recording,
+                onOpenSettings: () => unawaited(openAppSettings()),
+              );
+        break;
       default:
         content = _buildPlaceholderPanel(_getToolLabel(activeToolId));
         break;
@@ -2565,6 +2695,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                 GestureDetector(
                   onTap: () {
                     HapticFeedback.lightImpact();
+                    if (activeToolId == 'record') {
+                      unawaited(_discardRecording());
+                      return;
+                    }
                     // Discarding a preview needs no player call for speed, but
                     // the live volume override has to be lifted explicitly: the
                     // engine holds it until a timeline push, and a discard pushes
@@ -2640,6 +2774,12 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final notifier = ref.read(videoEditorProvider.notifier);
     final activeToolId = editorState.activeToolId;
     if (activeToolId == null) return;
+
+    // Back, the side tap and ✓ all keep what was made: for Record, Done.
+    if (activeToolId == 'record') {
+      unawaited(_finishRecording());
+      return;
+    }
 
     if (activeToolId == 'volume' && editorState.previewVolume != null) {
       if (editorState.selectedAudioId != null) {
@@ -2970,6 +3110,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       // While a tool panel is open the track area releases its idle slack,
       // so the panel's extra height comes out of empty rows, not the canvas.
       compact: editorState.activeToolId != null,
+      recordingTake: _recordingTake(editorState),
       onPausePlayback: () {
         if (ref.read(videoEditorProvider).isPlaying) {
           ref.read(videoEditorProvider.notifier).setPlaying(false);
@@ -3122,6 +3263,19 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       }
     });
 
+    // Recording mode follows the playhead (the take grows, the end pauses)
+    // and stops its take when the video stops for any reason.
+    ref.listen<double>(
+      videoEditorProvider.select((s) => s.currentPlaybackPosition),
+      (prev, position) => _recordController?.onPlayhead(position),
+    );
+    ref.listen<bool>(
+      videoEditorProvider.select((s) => s.isPlaying),
+      (prev, playing) {
+        if (!playing) _recordController?.onPlaybackStopped();
+      },
+    );
+
     // Sync audio players when scrubbing the timeline (while paused)
     ref.listen<double>(
       videoEditorProvider.select((s) => s.currentPlaybackPosition),
@@ -3187,9 +3341,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                               videoSurface: NativeTimelinePreviewView(
                                 service: _nativePreviewService,
                               ),
-                              onTogglePreview: () => ref
-                                  .read(videoEditorProvider.notifier)
-                                  .togglePreview(),
+                              onTogglePreview: _togglePreview,
                               // The space beside the picture is "done here",
                               // one level per tap: an open panel closes
                               // keeping its edits (✓'s and Back's own close)

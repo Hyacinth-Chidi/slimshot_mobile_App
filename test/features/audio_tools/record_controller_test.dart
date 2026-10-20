@@ -199,6 +199,20 @@ void main() {
     expect(log, ['pause', 'capture false']);
   });
 
+  test('playback stopping elsewhere pauses the take', () async {
+    // The end of the project, or anything else that stops the video, must
+    // stop the take with it — a take that ran on over a still picture would
+    // no longer line up with what was on screen.
+    final c = controller();
+    await c.enter();
+    await c.toggle();
+    log.clear();
+    c.onPlaybackStopped();
+    await Future<void>.delayed(Duration.zero);
+    expect(c.phase, RecordPhase.paused);
+    expect(log, ['capture false']);
+  });
+
   test('at the end already it says to move back and does not start', () async {
     playhead = 20.0;
     final c = controller();

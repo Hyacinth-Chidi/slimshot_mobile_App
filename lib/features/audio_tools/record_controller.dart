@@ -164,6 +164,16 @@ class RecordController extends ChangeNotifier {
     await recorder.setCapturing(false);
   }
 
+  /// The video stopped without the button — the project's end, or anything
+  /// else that paused it. The take stops with it, or it would run on over a
+  /// still picture and no longer line up with what was on screen.
+  void onPlaybackStopped() {
+    if (_phase != RecordPhase.recording) return;
+    _phase = RecordPhase.paused;
+    _notify();
+    unawaited(recorder.setCapturing(false));
+  }
+
   /// Fed from the editor's playhead while the mode is on.
   void onPlayhead(double seconds) {
     if (_phase != RecordPhase.recording) return;

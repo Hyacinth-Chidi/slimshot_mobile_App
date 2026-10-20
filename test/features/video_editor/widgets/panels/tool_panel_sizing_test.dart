@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
+import 'package:slimshotai/features/audio_tools/record_controller.dart';
+import 'package:slimshotai/features/audio_tools/voice_recorder_service.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/crop_panel.dart';
+import 'package:slimshotai/features/video_editor/widgets/panels/record_panel.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/speed_panel.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/zoom_panel.dart';
 
@@ -61,6 +64,25 @@ void main() {
     }
   });
 
+  testWidgets('the record panel lays out unbounded', (tester) async {
+    final controller = RecordController(
+      recorder: _SilentRecorder(),
+      requestMic: () async => MicPermission.granted,
+      newTakePath: () async => '/d/voice.m4a',
+      play: () {},
+      pause: () {},
+      setMonitorMuted: (_) {},
+      playhead: () => 0,
+      projectEnd: () => 10,
+    );
+    final size = await pumpUnbounded(
+      tester,
+      RecordPanel(controller: controller, onOpenSettings: () {}),
+    );
+    expect(size.height, greaterThan(0));
+    expect(size.height, lessThan(300));
+  });
+
   testWidgets('the speed panel lays out unbounded', (tester) async {
     // It carries a ValueRuler now rather than a slider, and the ruler draws
     // its ticks in a sized box — exactly the shape that throws if a panel
@@ -89,4 +111,15 @@ void main() {
     expect(zoomed.height, greaterThan(0));
     expect(zoomed.height, lessThan(300));
   });
+}
+
+class _SilentRecorder implements VoiceRecorder {
+  @override
+  Future<void> open(String outputPath) async {}
+
+  @override
+  Future<void> setCapturing(bool on) async {}
+
+  @override
+  Future<RecordedTake?> close({required bool keep}) async => null;
 }

@@ -122,6 +122,12 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
   /// rows first and out of the canvas only if there are none to give. See
   /// [timelineTrackHeight].
   final bool compact;
+
+  /// Non-null while a voiceover is being recorded: only the clips are drawn,
+  /// with the take growing under them from [start] for [length] seconds, and
+  /// the timeline takes no touches — a scrub mid-take would leave the take's
+  /// pieces not following on.
+  final ({double start, double length})? recordingTake;
   final String inputPath;
   final double durationSeconds;
   final double timelinePositionSeconds;
@@ -228,6 +234,7 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
     this.onVideoTapped,
     this.onVideoTrimChanged,
     this.audioTracks = const [],
+    this.recordingTake,
     this.selectedAudioId,
     this.onAudioTapped,
     this.onAudioDragChanged,
@@ -2120,7 +2127,9 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
           // A Listener, not a gesture recogniser: it sees every finger without
           // entering the arena, so one-finger scrubs, trims and drags are
           // exactly what they were and a pinch only begins at the second.
-          Listener(
+          IgnorePointer(
+            ignoring: widget.recordingTake != null,
+            child: Listener(
             onPointerDown: _onTrackPointerDown,
             onPointerMove: _onTrackPointerMove,
             onPointerUp: _onTrackPointerEnd,
@@ -2211,6 +2220,25 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                               ),
                             ),
 
+                          if (widget.recordingTake case final take?)
+                            // Recording: the lanes step aside and the take
+                            // grows where they were.
+                            if (take.length > 0)
+                              Positioned(
+                                key: const ValueKey('recording-take'),
+                                top: lanesTop + 4,
+                                left: take.start * _pixelsPerSecond,
+                                width: take.length * _pixelsPerSecond,
+                                height: _laneHeight - 8,
+                                child: const DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryStart,
+                                  ),
+                                ),
+                              )
+                            else
+                              const SizedBox.shrink()
+                          else ...[
                           ..._buildAudioTracks(lanesTop),
 
                           // 5. Text overlays track
@@ -2233,6 +2261,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                             maxLane: maxLane,
                             totalHeight: totalHeight,
                           ),
+                          ],
 
                           // The snap guide: through the filmstrip and every
                           // lane, so the cut or edge it lines up with is in
@@ -2326,6 +2355,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 ),
               ),
             ),
+          ),
           ),
           ),
 
