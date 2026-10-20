@@ -1,4 +1,5 @@
 import '../../models/audio_track_model.dart';
+import '../../models/effect_bar_model.dart';
 import '../../models/image_overlay_model.dart';
 import '../../models/text_overlay_model.dart';
 import '../../models/video_overlay_model.dart';
@@ -44,6 +45,7 @@ List<LaneSpan> laneSpansOf({
   required List<ImageOverlayModel> images,
   required List<VideoOverlayModel> videos,
   required List<AudioTrackModel> audios,
+  required List<EffectBarModel> effects,
 }) {
   double s(Duration d) => d.inMicroseconds / 1e6;
   return [
@@ -75,6 +77,8 @@ List<LaneSpan> laneSpansOf({
         start: a.timelineStart,
         end: a.timelineEnd,
       ),
+    for (final e in effects)
+      LaneSpan(id: e.id, lane: e.laneIndex, start: e.start, end: e.end),
   ];
 }
 

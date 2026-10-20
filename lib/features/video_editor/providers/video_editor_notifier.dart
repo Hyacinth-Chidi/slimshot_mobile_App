@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -29,6 +28,8 @@ import '../models/text_overlay_model.dart';
 import '../models/image_overlay_model.dart';
 import '../models/video_overlay_model.dart';
 import '../models/audio_track_model.dart';
+import '../models/effect_bar_model.dart';
+import '../logic/timeline/project_end.dart';
 import '../models/media_asset.dart';
 import '../models/video_editor_state.dart';
 import '../models/video_segment.dart';
@@ -142,6 +143,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       trimRange: RangeValues(segments.first.sourceStart, segments.first.sourceEnd),
       segments: segments,
       clearSelectedSegmentId: true,
+      clearSelectedEffectBarId: true,
       isClipSelected: false,
       isPlaying: false,
       isExporting: false,
@@ -318,6 +320,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         imageOverlays: state.imageOverlays.map((e) => e.toJson()).toList(),
         videoOverlays: state.videoOverlays.map((e) => e.toJson()).toList(),
         audioTracks: state.audioTracks.map((e) => e.toJson()).toList(),
+        effectBars: state.effectBars.map((e) => e.toJson()).toList(),
         selectedRatioName: state.selectedRatio.name,
         customCropRect: [
           state.customCropRect.left,
@@ -511,6 +514,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       audioTracks: draft.audioTracks
           .map((e) => AudioTrackModel.fromJson(e))
           .toList(),
+      effectBars: draft.effectBars.map(EffectBarModel.fromJson).toList(),
       selectedRatio: _ratioFromDraft(draft),
       customCropRect: draft.customCropRect.length == 4
           ? Rect.fromLTWH(
@@ -547,6 +551,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       currentMenuId: 'root',
       clearActiveToolId: true,
       clearSelectedSegmentId: true,
+      clearSelectedEffectBarId: true,
       clearSelectedTextId: true,
       clearSelectedImageId: true,
       clearSelectedVideoOverlayId: true,
@@ -804,6 +809,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   void deselectAll() {
     state = state.copyWith(
       clearSelectedSegmentId: true,
+      clearSelectedEffectBarId: true,
       clearSelectedTextId: true,
       clearSelectedImageId: true,
       clearSelectedVideoOverlayId: true,
@@ -836,6 +842,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       selectedSegmentId: id,
       isClipSelected: true,
       clearSelectedTextId: true,
+      clearSelectedEffectBarId: true,
       clearSelectedImageId: true,
       clearSelectedVideoOverlayId: true,
       clearSelectedAudioId: true,
@@ -1678,6 +1685,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         imageOverlays: [...state.imageOverlays, placed],
         selectedImageId: placed.id,
         clearSelectedSegmentId: true,
+        clearSelectedEffectBarId: true,
         clearSelectedTextId: true,
         clearSelectedVideoOverlayId: true,
         isClipSelected: false,
@@ -1691,6 +1699,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         videoOverlays: [...state.videoOverlays, placed],
         selectedVideoOverlayId: placed.id,
         clearSelectedSegmentId: true,
+        clearSelectedEffectBarId: true,
         clearSelectedTextId: true,
         clearSelectedImageId: true,
         isClipSelected: false,
@@ -2594,6 +2603,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       state = state.copyWith(
         selectedAudioId: id,
         clearSelectedSegmentId: true,
+        clearSelectedEffectBarId: true,
         clearSelectedTextId: true,
         clearSelectedImageId: true,
         clearSelectedVideoOverlayId: true,
@@ -2602,7 +2612,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         isClipSelected: false,
       );
     } else {
-      state = state.copyWith(clearSelectedAudioId: true);
+      state = state.copyWith(clearSelectedAudioId: true, clearSelectedEffectBarId: true);
       // Close volume/speed panels if they were open for audio
       if (state.activeToolId == 'volume' || state.activeToolId == 'speed') {
         state = state.copyWith(clearActiveToolId: true);
@@ -2614,6 +2624,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     state = state.copyWith(
       selectedTransitionSegmentId: segmentId,
       clearSelectedSegmentId: true,
+      clearSelectedEffectBarId: true,
       clearSelectedTextId: true,
       clearSelectedImageId: true,
       clearSelectedVideoOverlayId: true,
@@ -2821,6 +2832,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         images: state.imageOverlays,
         videos: state.videoOverlays,
         audios: state.audioTracks,
+        effects: state.effectBars,
       );
 
   static Duration _duration(double seconds) =>
@@ -2837,6 +2849,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     final images = state.imageOverlays;
     final videos = state.videoOverlays;
     final audios = state.audioTracks;
+    final effects = state.effectBars;
     state = state.copyWith(
       textOverlays: texts.any((x) => changes(x.id, x.laneIndex))
           ? [
@@ -2865,6 +2878,14 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       audioTracks: audios.any((x) => changes(x.id, x.laneIndex))
           ? [
               for (final x in audios)
+                lanes.containsKey(x.id)
+                    ? x.copyWith(laneIndex: lanes[x.id])
+                    : x,
+            ]
+          : null,
+      effectBars: effects.any((x) => changes(x.id, x.laneIndex))
+          ? [
+              for (final x in effects)
                 lanes.containsKey(x.id)
                     ? x.copyWith(laneIndex: lanes[x.id])
                     : x,
@@ -2972,6 +2993,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
                 x.id == id ? x.copyWith(timelineStart: from) : x,
             ]
           : null,
+      effectBars: state.effectBars.any((x) => x.id == id)
+          ? [
+              for (final x in state.effectBars)
+                x.id == id ? x.copyWith(start: from, end: to) : x,
+            ]
+          : null,
     );
     _applyLanes(lanes);
   }
@@ -3042,6 +3069,11 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       state = state.copyWith(imageOverlays: [
         for (final x in state.imageOverlays)
           x.id == id ? x.copyWith(startTime: begin, endTime: finish) : x,
+      ]);
+    } else if (state.effectBars.any((x) => x.id == id)) {
+      state = state.copyWith(effectBars: [
+        for (final x in state.effectBars)
+          x.id == id ? x.copyWith(start: from, end: to) : x,
       ]);
     }
   }
@@ -3124,6 +3156,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       textOverlays: [...state.textOverlays, placedOverlay],
       selectedTextId: placedOverlay.id,
       clearSelectedImageId: true,
+      clearSelectedEffectBarId: true,
       clearSelectedVideoOverlayId: true,
       clearSelectedSegmentId: true,
       isClipSelected: false,
@@ -3156,6 +3189,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
         images: state.imageOverlays,
         videos: state.videoOverlays,
         audios: state.audioTracks,
+        effects: state.effectBars,
       ),
       seconds(drafts.first.start),
       seconds(drafts.last.end),
@@ -3175,6 +3209,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       ],
       captionSettings: settings,
       clearSelectedTextId: true,
+      clearSelectedEffectBarId: true,
       currentMenuId: 'root',
     );
     _compactLanes();
@@ -3382,6 +3417,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
           images: state.imageOverlays,
           videos: state.videoOverlays,
           audios: state.audioTracks,
+          effects: state.effectBars,
         ),
         seconds(ordered.first.startTime),
         seconds(ordered.last.endTime),
@@ -3415,6 +3451,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedImageId: overlayId != null,
       clearSelectedVideoOverlayId: overlayId != null,
       clearSelectedSegmentId: overlayId != null,
+      clearSelectedEffectBarId: overlayId != null,
       isClipSelected: overlayId == null ? state.isClipSelected : false,
       currentMenuId: overlayId != null ? 'text_overlay' : 'root',
     );
@@ -3543,6 +3580,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       textOverlays: [...state.textOverlays, duplicated],
       selectedTextId: duplicated.id,
       clearSelectedImageId: true,
+      clearSelectedEffectBarId: true,
       clearSelectedVideoOverlayId: true,
       clearSelectedSegmentId: true,
       isClipSelected: false,
@@ -3558,6 +3596,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       imageOverlays: [...state.imageOverlays, placedOverlay],
       selectedImageId: placedOverlay.id,
       clearSelectedTextId: true,
+      clearSelectedEffectBarId: true,
       clearSelectedVideoOverlayId: true,
       clearSelectedSegmentId: true,
       isClipSelected: false,
@@ -3572,6 +3611,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedTextId: overlayId != null,
       clearSelectedVideoOverlayId: overlayId != null,
       clearSelectedSegmentId: overlayId != null,
+      clearSelectedEffectBarId: overlayId != null,
       isClipSelected: overlayId == null ? state.isClipSelected : false,
       currentMenuId: overlayId != null ? 'image_overlay' : 'root',
     );
@@ -3635,6 +3675,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       imageOverlays: [...state.imageOverlays, duplicated],
       selectedImageId: duplicated.id,
       clearSelectedTextId: true,
+      clearSelectedEffectBarId: true,
       clearSelectedVideoOverlayId: true,
       clearSelectedSegmentId: true,
       isClipSelected: false,
@@ -3650,6 +3691,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       videoOverlays: [...state.videoOverlays, placedOverlay],
       selectedVideoOverlayId: placedOverlay.id,
       clearSelectedTextId: true,
+      clearSelectedEffectBarId: true,
       clearSelectedImageId: true,
       clearSelectedSegmentId: true,
       isClipSelected: false,
@@ -3664,6 +3706,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       clearSelectedTextId: overlayId != null,
       clearSelectedImageId: overlayId != null,
       clearSelectedSegmentId: overlayId != null,
+      clearSelectedEffectBarId: overlayId != null,
       isClipSelected: overlayId == null ? state.isClipSelected : false,
       currentMenuId: overlayId != null ? 'video_overlay' : 'root',
     );
@@ -3721,6 +3764,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       videoOverlays: [...state.videoOverlays, duplicated],
       selectedVideoOverlayId: duplicated.id,
       clearSelectedTextId: true,
+      clearSelectedEffectBarId: true,
       clearSelectedImageId: true,
       clearSelectedSegmentId: true,
       isClipSelected: false,
@@ -4112,6 +4156,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     state = state.copyWith(
       selectedAudioId: id,
       clearSelectedAudioId: id == null,
+      clearSelectedEffectBarId: id != null,
     );
   }
 }
@@ -4123,27 +4168,16 @@ final videoEditorProvider =
 
 final totalEditedDurationProvider = Provider.autoDispose<double>((ref) {
   final state = ref.watch(videoEditorProvider);
-  // Transitions overlap their clips, so the timeline is shorter than the sum
-  // of the clip durations.
-  final videoDuration = videoTimelineDuration(state.segments);
-
-  // Audio and overlays may all outlast the video: playback then continues
-  // over the background colour until the last of them ends, instead of the
-  // timeline pretending they were cut off where the video stopped.
-  var lastEnd = state.audioTracks.fold(
-    videoDuration,
-    (maxEnd, track) => max(maxEnd, track.timelineEnd),
+  // Audio, overlays and effect bars may all outlast the video: playback then
+  // continues over the background until the last of them ends.
+  return projectEndSeconds(
+    segments: state.segments,
+    audios: state.audioTracks,
+    texts: state.textOverlays,
+    images: state.imageOverlays,
+    videos: state.videoOverlays,
+    effects: state.effectBars,
   );
-  for (final text in state.textOverlays) {
-    lastEnd = max(lastEnd, text.endTime.inMilliseconds / 1000.0);
-  }
-  for (final image in state.imageOverlays) {
-    lastEnd = max(lastEnd, image.endTime.inMilliseconds / 1000.0);
-  }
-  for (final video in state.videoOverlays) {
-    lastEnd = max(lastEnd, video.timelineEnd.inMilliseconds / 1000.0);
-  }
-  return lastEnd;
 });
 
 final activeSegmentProvider = Provider.autoDispose<VideoSegment?>((ref) {

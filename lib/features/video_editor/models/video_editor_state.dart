@@ -15,6 +15,7 @@ import 'text_overlay_model.dart';
 import 'video_overlay_model.dart';
 import 'video_segment.dart';
 import 'audio_track_model.dart';
+import 'effect_bar_model.dart';
 import '../logic/captions/caption_settings.dart';
 import '../logic/color/color_adjustments.dart';
 
@@ -148,6 +149,8 @@ class VideoEditorState {
     this.selectedVideoOverlayId,
     this.audioTracks = const [],
     this.selectedAudioId,
+    this.effectBars = const [],
+    this.selectedEffectBarId,
     this.currentPlaybackPosition = 0.0,
     this.backgroundType = EditorBackgroundType.black,
     this.backgroundColor = Colors.black,
@@ -223,6 +226,14 @@ class VideoEditorState {
   final String? selectedVideoOverlayId;
   final List<AudioTrackModel> audioTracks;
   final String? selectedAudioId;
+
+  /// Effects over stretches of the timeline, on the lanes. See
+  /// [EffectBarModel].
+  final List<EffectBarModel> effectBars;
+
+  /// The selected effect bar. Selection is exclusive: selecting anything else
+  /// clears it, and selecting a bar clears everything else.
+  final String? selectedEffectBarId;
   final double currentPlaybackPosition;
   final EditorBackgroundType backgroundType;
   final Color backgroundColor;
@@ -264,6 +275,17 @@ class VideoEditorState {
   }
 
   /// The clip the tool panels act on, or null if nothing is selected.
+  /// The selected effect bar, or null — also null when the id names a bar
+  /// that is not there (an undo can take the bar away from under it).
+  EffectBarModel? get selectedEffectBar {
+    final id = selectedEffectBarId;
+    if (id == null) return null;
+    for (final bar in effectBars) {
+      if (bar.id == id) return bar;
+    }
+    return null;
+  }
+
   VideoSegment? get selectedSegment {
     final id = selectedSegmentId;
     if (id == null) return null;
@@ -686,6 +708,9 @@ class VideoEditorState {
     bool clearSelectedVideoOverlayId = false,
     List<AudioTrackModel>? audioTracks,
     String? selectedAudioId,
+    List<EffectBarModel>? effectBars,
+    String? selectedEffectBarId,
+    bool clearSelectedEffectBarId = false,
     bool clearSelectedAudioId = false,
     double? currentPlaybackPosition,
     EditorBackgroundType? backgroundType,
@@ -757,6 +782,10 @@ class VideoEditorState {
       audioTracks: audioTracks ?? this.audioTracks,
       selectedAudioId:
           clearSelectedAudioId ? null : selectedAudioId ?? this.selectedAudioId,
+      effectBars: effectBars ?? this.effectBars,
+      selectedEffectBarId: clearSelectedEffectBarId
+          ? null
+          : selectedEffectBarId ?? this.selectedEffectBarId,
       currentPlaybackPosition:
           currentPlaybackPosition ?? this.currentPlaybackPosition,
       backgroundType: backgroundType ?? this.backgroundType,

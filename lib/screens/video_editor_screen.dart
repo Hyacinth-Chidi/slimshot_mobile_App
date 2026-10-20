@@ -3189,6 +3189,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       onVideoTrimChanged: (id, start, end, {newLaneIndex}) =>
           _placeLaneItem(id, start, end, newLaneIndex),
       audioTracks: editorState.audioTracks,
+      effectBars: editorState.effectBars,
       selectedAudioId: editorState.selectedAudioId,
       onAudioTapped: (id) => notifier.selectAudioTrack(id),
       onAudioDragChanged: (id, newStart, {newLaneIndex}) {

@@ -21,6 +21,8 @@ import '../../models/text_overlay_model.dart';
 import '../../models/image_overlay_model.dart';
 import '../../models/video_overlay_model.dart';
 import '../../models/audio_track_model.dart';
+import '../../models/effect_bar_model.dart';
+import '../../logic/timeline/project_end.dart';
 import '../../models/video_editor_state.dart';
 import '../../providers/video_editor_notifier.dart';
 import '../../services/video_thumbnail_service.dart';
@@ -172,6 +174,10 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
   onVideoTrimChanged;
 
   final List<AudioTrackModel> audioTracks;
+
+  /// Effect bars on the lanes. They count toward the timeline's width and
+  /// its snapping like every other lane item.
+  final List<EffectBarModel> effectBars;
   final String? selectedAudioId;
   final ValueChanged<String>? onAudioTapped;
   final void Function(String id, double newTimelineStart, {int? newLaneIndex})?
@@ -234,6 +240,7 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
     this.onVideoTapped,
     this.onVideoTrimChanged,
     this.audioTracks = const [],
+    this.effectBars = const [],
     this.recordingTake,
     this.selectedAudioId,
     this.onAudioTapped,
@@ -418,26 +425,15 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   int _dragStartLaneIndex = 0;
   int _dragStartMaxLane = 0;
 
-  double get _totalEditedDuration {
-    // Through the shared geometry, never a sum: transitions overlap their
-    // clips, so summing durations draws a timeline longer than playback.
-    var lastEnd = videoTimelineDuration(widget.segments);
-    for (final track in widget.audioTracks) {
-      lastEnd = max(lastEnd, track.timelineEnd);
-    }
-    // Overlays count too: any of them may outlast the video, and the timeline
-    // has to be scrollable out to wherever the last thing ends.
-    for (final text in widget.textOverlays) {
-      lastEnd = max(lastEnd, text.endTime.inMilliseconds / 1000.0);
-    }
-    for (final image in widget.imageOverlays) {
-      lastEnd = max(lastEnd, image.endTime.inMilliseconds / 1000.0);
-    }
-    for (final video in widget.videoOverlays) {
-      lastEnd = max(lastEnd, video.timelineEnd.inMilliseconds / 1000.0);
-    }
-    return lastEnd;
-  }
+  double get _totalEditedDuration => projectEndSeconds(
+        segments: widget.segments,
+        audios: widget.audioTracks,
+        texts: widget.textOverlays,
+        images: widget.imageOverlays,
+        videos: widget.videoOverlays,
+        effects: widget.effectBars,
+      );
+
 
   /// The deepest lane [id] may be dragged to — one below the last lane
   /// anything else is on, never further ([maxMoveLane]).
@@ -447,6 +443,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
           images: widget.imageOverlays,
           videos: widget.videoOverlays,
           audios: widget.audioTracks,
+          effects: widget.effectBars,
         ),
         id,
       );
@@ -809,6 +806,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         images: widget.imageOverlays,
         videos: widget.videoOverlays,
         audios: widget.audioTracks,
+        effects: widget.effectBars,
       )) ...[item.start, item.end],
     ];
     final result = snapEdge(
@@ -1041,6 +1039,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         images: widget.imageOverlays,
         videos: widget.videoOverlays,
         audios: widget.audioTracks,
+        effects: widget.effectBars,
       ),
       excludeId: id,
     );

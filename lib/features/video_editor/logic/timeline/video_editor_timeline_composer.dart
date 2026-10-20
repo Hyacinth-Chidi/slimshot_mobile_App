@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../overlay_box_fit.dart';
 import 'dart:ui';
 
@@ -8,6 +10,7 @@ import '../../models/video_segment.dart';
 import '../animation/animatable_double.dart';
 import '../animation/overlay_keyframes.dart';
 import '../canvas_geometry.dart';
+import 'project_end.dart';
 import 'timeline_geometry.dart';
 import '../color/color_adjustments.dart';
 import '../chroma/chroma_key.dart';
@@ -711,31 +714,17 @@ class VideoEditorTimelineComposer {
   /// the bare project background, so it must agree with
   /// `totalEditedDurationProvider` — a consumer that stopped at the video's
   /// end would cut a long music track off mid-note.
-  double _projectEndSeconds(double videoDuration, VideoEditorState state) {
-    var end = videoDuration;
-    for (final track in state.audioTracks) {
-      if (track.timelineEnd > end) {
-        end = track.timelineEnd;
-      }
-    }
-    for (final text in state.textOverlays) {
-      final t = text.endTime.inMilliseconds / 1000.0;
-      if (t > end) {
-        end = t;
-      }
-    }
-    for (final image in state.imageOverlays) {
-      final t = image.endTime.inMilliseconds / 1000.0;
-      if (t > end) {
-        end = t;
-      }
-    }
-    for (final video in state.videoOverlays) {
-      final t = video.timelineEnd.inMilliseconds / 1000.0;
-      if (t > end) {
-        end = t;
-      }
-    }
-    return end;
-  }
+  double _projectEndSeconds(double videoDuration, VideoEditorState state) =>
+      math.max(
+        videoDuration,
+        projectEndSeconds(
+          segments: state.segments,
+          audios: state.audioTracks,
+          texts: state.textOverlays,
+          images: state.imageOverlays,
+          videos: state.videoOverlays,
+          effects: state.effectBars,
+        ),
+      );
+
 }

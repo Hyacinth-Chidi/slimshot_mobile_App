@@ -71,6 +71,7 @@ void main() {
         images: n.state.imageOverlays,
         videos: n.state.videoOverlays,
         audios: n.state.audioTracks,
+        effects: n.state.effectBars,
       );
 
   bool anyOverlap(VideoEditorNotifier n) {

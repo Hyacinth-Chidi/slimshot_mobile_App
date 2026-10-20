@@ -21,6 +21,10 @@ class DraftProject {
   final List<Map<String, dynamic>> imageOverlays;
   final List<Map<String, dynamic>> videoOverlays;
   final List<Map<String, dynamic>> audioTracks;
+
+  /// The project's effect bars, `EffectBarModel.toJson` each. Omitted from
+  /// the JSON when empty, so a draft without effects is what it always was.
+  final List<Map<String, dynamic>> effectBars;
   
   // Crop & filter
   final String selectedRatioName;
@@ -60,6 +64,7 @@ class DraftProject {
     required this.imageOverlays,
     required this.videoOverlays,
     required this.audioTracks,
+    this.effectBars = const [],
     required this.selectedRatioName,
     required this.customCropRect,
     required this.videoScale,
@@ -90,6 +95,7 @@ class DraftProject {
       'imageOverlays': imageOverlays,
       'videoOverlays': videoOverlays,
       'audioTracks': audioTracks,
+      if (effectBars.isNotEmpty) 'effectBars': effectBars,
       'selectedRatioName': selectedRatioName,
       'customCropRect': customCropRect,
       'videoScale': videoScale,
@@ -121,6 +127,10 @@ class DraftProject {
       imageOverlays: List<Map<String, dynamic>>.from(json['imageOverlays'] as List? ?? []),
       videoOverlays: List<Map<String, dynamic>>.from(json['videoOverlays'] as List? ?? []),
       audioTracks: List<Map<String, dynamic>>.from(json['audioTracks'] as List? ?? []),
+      effectBars: [
+        for (final entry in json['effectBars'] is List ? json['effectBars'] as List : const [])
+          if (entry is Map) Map<String, dynamic>.from(entry),
+      ],
       // A draft predating the ratio feature never had a crop, so it reopens on
       // the 9:16 default rather than the freeform custom path.
       selectedRatioName: json['selectedRatioName'] as String? ?? 'ratio9x16',
