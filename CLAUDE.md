@@ -1738,7 +1738,7 @@ intensity 0 is the untouched picture; `highp` where the GPU has it (seconds outg
 within a minute); a sine-free hash (`packHash`, Hoskins' "Hash without Sine"); no reversed
 `smoothstep` edges; sizes in frame units. **Every shader was compiled and linked against the shared
 vertex shader with `glslangValidator` (Khronos 16.6.0, `#version 100`)** —
-`DrawnPackShadersTest` writes each to `android/app/build/shader-dump/`; not a device, but it is
+`DrawnPackShadersTest` writes each to `<java.io.tmpdir>/slimshot-shader-dump/`; not a device, but it is
 what the runtime compiler would refuse. The thunder strikes once per 1.6s window, early in it, so
 a short bar and the sheet's tile both see a bolt. **Still to come, needing more than a shader**:
 real-footage effects from the server (blended video loops) and face-tracked effects (on-device

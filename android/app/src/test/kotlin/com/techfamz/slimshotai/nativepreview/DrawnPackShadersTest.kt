@@ -17,7 +17,7 @@ import org.junit.Test
  * high precision where the GPU has it (a clock in seconds outgrows `mediump`
  * within a minute), and never uses the sin-fract hash that overflows `mediump`.
  *
- * Each source is also written to `build/shader-dump/` as a `#version 100`
+ * Each source is also written to `<java.io.tmpdir>/slimshot-shader-dump/` as a `#version 100`
  * fragment, so `glslangValidator -S frag` can compile-check every one of them
  * off the device — the step the transitions shipped behind.
  */
@@ -77,7 +77,10 @@ class DrawnPackShadersTest {
 
     @Test
     fun `every shader is written out for glslang`() {
-        val dir = File("build/shader-dump").apply { mkdirs() }
+        // The system temp folder, not the module's `build/`: Gradle redirects
+        // the build dir to the root `build/`, so `android/app/build` would be
+        // a stray untracked folder in the repo.
+        val dir = File(System.getProperty("java.io.tmpdir"), "slimshot-shader-dump").apply { mkdirs() }
         for (id in ids) {
             File(dir, "$id.frag").writeText("#version 100\n" + DrawnPack.fragmentFor(id)!!)
         }
