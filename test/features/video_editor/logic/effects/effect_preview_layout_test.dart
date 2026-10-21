@@ -81,10 +81,10 @@ void main() {
   });
 
   test('a fresh intensity is the catalog strength and envelope', () {
-    final blur = videoEffectById('blur')!;
-    final fresh = freshEffectIntensity(blur);
-    expect(fresh.baseValue, blur.defaultIntensity);
-    expect(fresh.envelope, 'ramp_out');
+    final glow = videoEffectById('glow')!;
+    final fresh = freshEffectIntensity(glow);
+    expect(fresh.baseValue, glow.defaultIntensity);
+    expect(fresh.envelope, 'throb');
     expect(fresh.keyframes, isEmpty);
   });
 }

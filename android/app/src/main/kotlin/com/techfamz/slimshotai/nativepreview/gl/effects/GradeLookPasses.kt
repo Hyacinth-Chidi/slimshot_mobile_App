@@ -1,6 +1,8 @@
 package com.techfamz.slimshotai.nativepreview.gl.effects
 
 import android.opengl.GLES20
+import kotlin.math.max
+import kotlin.math.min
 
 /*
  * The static grades: looks that change a pixel's colour without moving it, and
@@ -130,13 +132,12 @@ void main() {
  * both channel displacement and would be indistinguishable if written the same
  * way, so they are deliberately built on different geometry:
  *
- * * Here the displacement is **radial and scales with distance from the
- *   centre** — red pushed outward, blue pulled inward, both by an amount
- *   proportional to `r²`. The middle of the picture is left perfectly registered
- *   and the corners fringe most, which is exactly what a real lens does, because
- *   the refractive index varies with wavelength and the ray bends more the
- *   further off-axis it enters. A subject centred in a short-form frame stays
- *   sharp, and the effect reads as *glass*.
+ * * Here the displacement is **radial and in proportion to the distance from
+ *   the centre** — red magnified slightly, blue shrunk slightly, about the
+ *   centre. That is lateral colour, what a real lens does: the refractive index
+ *   varies with wavelength, so each colour is imaged at a slightly different
+ *   magnification. The centre stays registered and the fringe widens steadily
+ *   outward, and the effect reads as *glass*.
  * * `RgbSplitPass` displaces every pixel by the **same horizontal offset**
  *   whatever it is — a uniform translation of two channels, which is a signal
  *   fault, not an optical one. It reads as *damage*.
@@ -150,69 +151,56 @@ internal class ChromaticPass(program: FullFrameProgram) :
 
     internal companion object {
         /**
-         * Peak channel separation at the frame's corner at intensity 1, as a
-         * fraction of the frame's short side.
+         * How much larger red is imaged than green — and blue smaller — at
+         * intensity 1: the shift at a point is this times its distance from
+         * the centre.
          *
-         * Small on purpose. Fringing is an artefact the eye is extremely
-         * sensitive to at edges — a couple of pixels of it at 1080 is plainly
-         * visible as colour on a hard contrast boundary — so the whole usable
-         * range lives under 1% of the frame. The catalog's 0.35 default lands
-         * around a third of this, which is the "expensive vintage lens" amount
-         * rather than the "broken render" amount.
+         * **Linear, and larger than it was.** The first version grew with the
+         * cube of the distance and peaked at 0.008, so the middle of the frame,
+         * where the subject is, moved by a third of a pixel even at 100% and
+         * only the top and bottom edges showed anything (device-reported: only
+         * noticeable at 100%). At the catalog's 0.5 a point halfway from the
+         * centre to a 1080-wide frame's side now shifts ~4px and a corner
+         * ~16px — a fringe on every edge in the picture, not just the rim.
          */
-        const val MAX_SHIFT = 0.008f
+        const val MAX_SPREAD = 0.03f
 
         /**
-         * The aberration: three samples at three radii.
+         * The channel shift, as a fraction of the short side, at [radius] —
+         * a distance from the centre in the same units — and [intensity].
+         * The shader's arithmetic, for tests.
+         */
+        fun shiftAt(radius: Float, intensity: Float): Float = MAX_SPREAD * intensity * radius
+
+        /**
+         * The aberration: three samples, green at the pixel and red and blue
+         * scaled about the centre.
          *
-         * Green is sampled **unshifted** and is the reference the other two
-         * fringe around. That is not an arbitrary pick — green carries ~72% of
-         * the luminance, so displacing it would soften the whole picture rather
-         * than colour its edges, and the result would read as being out of
-         * focus instead of as fringing.
+         * Green is the reference because it carries ~72% of the luminance:
+         * displacing it would soften the whole picture rather than colour its
+         * edges. A uniform scale about the centre is the same in pixels on any
+         * frame shape, so no aspect correction is needed — the shift points
+         * straight out from the centre and is the same number of pixels per
+         * pixel of distance across and down.
          *
-         * Three `texture2D` calls at coordinates the shader computes, no loop —
-         * so no constant-bound question arises.
-         *
-         * Alpha comes from the green (undisplaced) sample: it is the one read at
-         * the pixel's own position, so the letterbox bars keep the opacity the
-         * composite gave them even where the fringe would sample past an edge.
+         * Clamped rather than backgrounded at the border: a fringe reaching
+         * past the edge smears the border texel, as a lens does at its rim —
+         * black there would draw a dark outline round the frame. Alpha comes
+         * from the green sample, read at the pixel itself, so the letterbox
+         * keeps the opacity the composite gave it.
          */
         val FRAGMENT = """
 precision mediump float;
 varying vec2 vTexCoord;
 uniform sampler2D uTexture;
 uniform float uIntensity;
-uniform float uAspect;
-${EffectShaderLib.COMMON}
 void main() {
-    vec2 scale = aspectScale(uAspect);
-    // Into the square space, so the fringe is radially symmetric rather than as
-    // oblong as the frame: on 9:16 an uncorrected radius would fringe the top
-    // and bottom edges several times harder than the sides.
-    vec2 centred = (vTexCoord - vec2(0.5)) * scale;
+    vec2 centred = vTexCoord - vec2(0.5);
+    float spread = $MAX_SPREAD * uIntensity;
 
-    // Normalised so the short half-axis is 1.0 and a corner is beyond it. The
-    // squared radius is what makes this a *lens*: separation grows with the
-    // square of the off-axis distance, so the centre is registered and the
-    // corners carry all of it.
-    float r2 = dot(centred * 2.0, centred * 2.0);
-    float amount = ${MAX_SHIFT} * uIntensity * r2;
-
-    // Outward for red, inward for blue — the long wavelength focuses further
-    // out. A direction vector rather than a normalise, so the centre pixel
-    // (where the radius is zero) cannot divide by zero; at r == 0 the offset is
-    // zero anyway, which is the registered centre.
-    vec2 dir = centred * 2.0;
-
-    vec2 redUv = (centred + dir * amount) / scale + vec2(0.5);
-    vec2 blueUv = (centred - dir * amount) / scale + vec2(0.5);
-
-    // Clamped rather than backgrounded: a fringe reaching past the edge should
-    // smear the border texel's colour, which is what a lens does at the rim —
-    // returning black there would draw a dark outline around the whole frame.
-    redUv = clamp(redUv, vec2(0.0), vec2(1.0));
-    blueUv = clamp(blueUv, vec2(0.0), vec2(1.0));
+    // The long wavelength is imaged larger: red out, blue in.
+    vec2 redUv = clamp(vec2(0.5) + centred * (1.0 + spread), vec2(0.0), vec2(1.0));
+    vec2 blueUv = clamp(vec2(0.5) + centred * (1.0 - spread), vec2(0.0), vec2(1.0));
 
     vec4 green = texture2D(uTexture, vTexCoord);
     float red = texture2D(uTexture, redUv).r;
@@ -225,108 +213,112 @@ void main() {
 }
 
 /**
- * An unsharp mask: a 3x3 convolution that raises local contrast.
+ * An unsharp mask on brightness: local contrast raised around a ring a fixed
+ * fraction of the frame out.
  *
- * **The only pass in this batch that reads a neighbouring texel**, which makes
- * it the only one that needs to know how big a texel is. ES 2.0 has no
- * `textureSize()`, so the step arrives as a uniform — the same arrangement
- * [BlurPass] uses, and for the same reason. It is computed from the viewport
- * actually being drawn, so one stored intensity sharpens the ~400px preview and
- * the 1080p export by the same *visible* amount rather than by the same pixel
- * count.
+ * **The ring is measured in the frame, not in texels.** This used to be the
+ * one-texel laplacian, and on the device it showed nothing even at 100%: the
+ * preview's texture is drawn on screen smaller than it is, and shrinking a
+ * picture averages a one-texel halo away — light ring and dark ring land in
+ * the same screen pixel. [SAMPLE_RADIUS] puts the ring at the same fraction of
+ * the short side on the ~720px preview, a 1080 export and a 2K one, so the
+ * canvas and the file sharpen alike, and far enough out to survive the
+ * shrink. ES 2.0 has no `textureSize()`, so the step arrives as a uniform
+ * ([sampleStep]), worked out from the viewport actually being drawn.
  *
- * **Four neighbours, not eight.** The classic sharpen kernel is the 4-connected
- * laplacian (`-1` on each of N/S/E/W, `+5` at the centre), and the 8-connected
- * variant costs four more texture reads to produce a halo that is slightly
- * rounder and, at the amounts anyone would actually leave on, indistinguishable.
- * On the low-end target four reads is the right trade.
+ * **Eight taps round the ring**, four on the axes and four on the diagonals,
+ * so the halo is round rather than a plus sign — at a radius of a few texels
+ * the four-tap cross showed its shape.
+ *
+ * **Brightness only, past a noise floor, with the halo limited**, because a
+ * strong unsharp mask amplifies whatever phone footage carries: sharpening the
+ * colour channels separately breeds colour speckle and coloured fringes, the
+ * faint grain below the floor is sensor noise and encoder blocking rather than
+ * detail, and an unlimited lift across a hard edge rings into a white or black
+ * outline. Those three are what let the amount go well past where the old
+ * kernel had to stop.
  */
 internal class SharpenPass(program: FullFrameProgram) :
     SingleFramePass("sharpen", program) {
 
-    /**
-     * Where the texel step lands in the linked program.
-     *
-     * Looked up once at construction, like [GlowCompositePass] does with its two
-     * samplers — `glGetUniformLocation` is a string lookup into the driver's
-     * table and doing it per frame is work in the render path for a value that
-     * cannot change.
-     */
-    private val uTexelStep = program.location("uTexelStep")
+    /** Looked up once — a string lookup per frame is work for a constant. */
+    private val uSampleStep = program.location("uSampleStep")
 
-    /**
-     * Supplies the step for the frame being drawn.
-     *
-     * **The denominator is the output viewport**, which is also the size of the
-     * texture being sampled: the chain's ping-pong targets are allocated at
-     * exactly the output size, so one texel of the source is one pixel of the
-     * destination. That identity is what makes this correct without the pass
-     * being told the source texture's dimensions, which it has no way to query.
-     */
     override fun bindExtraUniforms(viewportWidth: Int, viewportHeight: Int) {
-        GLES20.glUniform2f(
-            uTexelStep,
-            1f / viewportWidth.toFloat(),
-            1f / viewportHeight.toFloat(),
-        )
+        val (stepX, stepY) = sampleStep(viewportWidth, viewportHeight)
+        GLES20.glUniform2f(uSampleStep, stepX, stepY)
     }
 
     internal companion object {
         /**
-         * Kernel strength at intensity 1.
-         *
-         * An unsharp mask amplifies whatever the source already has, **including
-         * its noise and its compression artefacts** — and the footage this app
-         * edits is phone video, which has plenty of both. Past about 1.0 a
-         * clip's mosquito noise around hard edges sharpens into visible
-         * speckle and the block boundaries of the encoder start to show, which
-         * is damage rather than detail. 0.9 keeps the ceiling just inside that.
+         * The ring's radius as a fraction of the frame's short side: ~2.5
+         * texels on the 720-wide preview, ~4px in a 1080 export.
          */
-        const val MAX_AMOUNT = 0.9f
+        const val SAMPLE_RADIUS = 0.0035f
+
+        /**
+         * Lift at intensity 1, as a multiple of the detail. The noise floor
+         * and the halo limit in the shader are what make 3 usable: without
+         * them past about 1 the footage's own noise sharpened into speckle.
+         */
+        const val MAX_AMOUNT = 3.0f
+
+        /**
+         * The ring's offset in texture coordinates for a [width] x [height]
+         * viewport, per axis.
+         *
+         * **Never under one texel**: on a frame too small for the radius — a
+         * tile cell — half a texel out samples the pixel itself and sharpens
+         * nothing.
+         */
+        fun sampleStep(width: Int, height: Int): Pair<Float, Float> {
+            val radiusPx = max(1f, SAMPLE_RADIUS * min(width, height))
+            return Pair(radiusPx / width, radiusPx / height)
+        }
 
         /**
          * The unsharp mask.
          *
-         * `centre * (1 + 4k) - (n + s + e + w) * k` is the 4-connected laplacian
-         * sharpen with `k` the strength: the kernel sums to exactly 1 at every
-         * `k`, which is what keeps the frame's overall brightness unchanged. A
-         * kernel that did not sum to 1 would lighten or darken the picture in
-         * proportion to the slider, and that reads as an exposure bug rather
-         * than as sharpening.
-         *
-         * **Clamped to 0..1 at the end**, which a blur never needs: sharpening
-         * overshoots by construction — that overshoot *is* the crisp edge — so
-         * a bright pixel beside a dark one produces a value above 1. The render
-         * target is an 8-bit texture and would clamp anyway, but doing it here
-         * means the result is the same on a driver that gives an intermediate
-         * float more range, and it keeps a negative from wrapping.
-         *
-         * Alpha is the centre sample's, untouched. Sharpening alpha would put a
-         * halo of translucency along the letterbox seam.
+         * The detail is the centre's brightness against the ring's mean, and
+         * the lift is added to all three channels alike — a grey change, so no
+         * colour is invented. Clamped to 0..1 at the end, since a lift
+         * overshoots by construction; alpha is the centre's, untouched, or the
+         * letterbox seam would take a halo of translucency.
          */
         val FRAGMENT = """
 precision mediump float;
 varying vec2 vTexCoord;
 uniform sampler2D uTexture;
 uniform float uIntensity;
-uniform vec2 uTexelStep;
+uniform vec2 uSampleStep;
+
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+// Detail fainter than this is mostly noise; it fades in across the floor
+// rather than switching on, so no edge of a gradient is visible.
+const float NOISE_FLOOR = 0.015;
+// The most a pixel is lifted or lowered, so a hard edge gains a crisp line
+// rather than a white or black outline.
+const float HALO_LIMIT = 0.25;
+
 void main() {
     vec4 centre = texture2D(uTexture, vTexCoord);
 
-    // Four neighbours, one texel out on each axis. No loop — four named reads
-    // are clearer here and sidestep the constant-bound question entirely.
-    vec3 north = texture2D(uTexture, vTexCoord + vec2(0.0, uTexelStep.y)).rgb;
-    vec3 south = texture2D(uTexture, vTexCoord - vec2(0.0, uTexelStep.y)).rgb;
-    vec3 east = texture2D(uTexture, vTexCoord + vec2(uTexelStep.x, 0.0)).rgb;
-    vec3 west = texture2D(uTexture, vTexCoord - vec2(uTexelStep.x, 0.0)).rgb;
+    vec2 axis = uSampleStep;
+    vec2 diag = uSampleStep * 0.7071;
+    vec3 ring = texture2D(uTexture, vTexCoord + vec2(axis.x, 0.0)).rgb
+        + texture2D(uTexture, vTexCoord - vec2(axis.x, 0.0)).rgb
+        + texture2D(uTexture, vTexCoord + vec2(0.0, axis.y)).rgb
+        + texture2D(uTexture, vTexCoord - vec2(0.0, axis.y)).rgb
+        + texture2D(uTexture, vTexCoord + diag).rgb
+        + texture2D(uTexture, vTexCoord - diag).rgb
+        + texture2D(uTexture, vTexCoord + vec2(diag.x, -diag.y)).rgb
+        + texture2D(uTexture, vTexCoord + vec2(-diag.x, diag.y)).rgb;
 
-    float k = uIntensity * $MAX_AMOUNT;
+    float detail = dot(centre.rgb - ring * 0.125, LUMA);
+    float kept = detail * smoothstep(0.0, NOISE_FLOOR, abs(detail));
+    float lift = clamp(kept * uIntensity * $MAX_AMOUNT, -HALO_LIMIT, HALO_LIMIT);
 
-    // Sums to 1 at every k: (1 + 4k) - 4k. The picture's average brightness is
-    // therefore unchanged whatever the slider is doing.
-    vec3 sharp = centre.rgb * (1.0 + 4.0 * k) - (north + south + east + west) * k;
-
-    gl_FragColor = vec4(clamp(sharp, vec3(0.0), vec3(1.0)), centre.a);
+    gl_FragColor = vec4(clamp(centre.rgb + vec3(lift), 0.0, 1.0), centre.a);
 }
 """
     }

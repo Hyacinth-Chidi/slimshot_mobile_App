@@ -4,6 +4,7 @@ import android.opengl.GLES20
 import com.techfamz.slimshotai.nativepreview.gl.EffectPass
 import com.techfamz.slimshotai.nativepreview.gl.GlUtil
 import com.techfamz.slimshotai.nativepreview.gl.RenderTarget
+import com.techfamz.slimshotai.nativepreview.gl.createRenderTarget
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -42,6 +43,15 @@ internal class BlurPass private constructor(
     private val axisX: Float,
     private val axisY: Float,
     override val id: String,
+    /**
+     * The largest [radiusFraction] this instance accepts.
+     *
+     * [MAX_RADIUS_FRACTION] — the full-resolution kernel's density cap — for
+     * every caller that draws at the frame's own size. Soft Blur raises it,
+     * because it draws a large radius into a reduced copy where the taps cover
+     * it at the same density ([StandaloneBlurPass]).
+     */
+    private val maxRadiusFraction: Double = MAX_RADIUS_FRACTION,
 ) : EffectPass {
 
     /**
@@ -62,7 +72,7 @@ internal class BlurPass private constructor(
     @Volatile
     var radiusFraction: Double = DEFAULT_RADIUS_FRACTION
         set(value) {
-            field = value.coerceIn(0.0, MAX_RADIUS_FRACTION)
+            field = value.coerceIn(0.0, maxRadiusFraction)
         }
 
     override fun render(
@@ -187,9 +197,14 @@ internal class BlurPass private constructor(
          * The stride in [render] means the taps never truncate the radius, so
          * what this guards is sampling density: past roughly this much the 16
          * taps are far enough apart that the gaussian starts to band, and a
-         * blur that large wants a downsampled pass rather than a wider stride.
-         * 0.014 is ~15px at 1080 on the short side, comfortably inside the
-         * unstrided kernel.
+         * blur that large wants a downsampled pass rather than a wider stride —
+         * which is what Soft Blur does ([StandaloneBlurPass]), raising its own
+         * instances' cap through [chain]. 0.014 is ~15px at 1080 on the short
+         * side, comfortably inside the unstrided kernel.
+         *
+         * **A fraction of whatever viewport the pass is handed**, so drawing
+         * into a half-size target with the half-size viewport blurs the same
+         * share of the picture: the reduction buys sampling density, not reach.
          */
         const val MAX_RADIUS_FRACTION = 0.014
 
@@ -274,10 +289,13 @@ internal class BlurPass private constructor(
          *
          * **Call on the GL thread**: it links a program.
          */
-        fun chain(radiusFraction: Double = DEFAULT_RADIUS_FRACTION): List<BlurPass> {
+        fun chain(
+            radiusFraction: Double = DEFAULT_RADIUS_FRACTION,
+            maxRadiusFraction: Double = MAX_RADIUS_FRACTION,
+        ): List<BlurPass> {
             val program = BlurProgram()
-            val horizontal = BlurPass(program, 1f, 0f, "blur.h")
-            val vertical = BlurPass(program, 0f, 1f, "blur.v")
+            val horizontal = BlurPass(program, 1f, 0f, "blur.h", maxRadiusFraction)
+            val vertical = BlurPass(program, 0f, 1f, "blur.v", maxRadiusFraction)
             horizontal.radiusFraction = radiusFraction
             vertical.radiusFraction = radiusFraction
             return listOf(horizontal, vertical)
@@ -289,53 +307,172 @@ internal class BlurPass private constructor(
  * The `blur` catalog entry: a plain gaussian softening of the whole frame.
  *
  * A wrapper around [BlurPass] for the same reason [GlowBlurPass] is one — the
- * intensity has to reach the radius without a rebuild — but with a **different
- * mapping**, which is why the two cannot be one class. Here the blur *is* the
- * effect, so intensity 1 means as soft as the kernel will honestly go; in a
- * bloom the radius is a supporting parameter and tops out lower. One class
- * holding both mappings would need a mode flag deciding which is in force.
+ * intensity has to reach the radius without a rebuild — with its own mapping,
+ * because here the blur *is* the effect.
  *
- * Unlike glow's halves this runs at **full resolution**. A bloom is by
- * definition the low-frequency part of the picture and is screened back over a
- * sharp scene, so nobody can see it computed small; a foreground blur is the
- * picture itself, and a half-resolution one would read as the upsample's
- * softness rather than as the gaussian's. If `blur` ever wants a radius past
- * the cap, that is the moment to reconsider — not before.
+ * ### Drawn small once it is wide
+ *
+ * It used to stop at [BlurPass.MAX_RADIUS_FRACTION], ~15px at 1080, and on a
+ * phone that read as barely soft (device-reported, alongside a `ramp_out`
+ * envelope that held the middle of every bar at the floor). The 16-tap kernel
+ * cannot reach further at full resolution without banding, so a wide blur is
+ * drawn into a **reduced copy**: the horizontal half writes it, the vertical
+ * half reads it back up into the chain's full-size target — the arrangement
+ * [GlowBlurPass] uses for the bloom. The radius is a fraction of the viewport
+ * each draw is handed, so the reduction changes the sampling grid, not the
+ * size of the blur.
+ *
+ * **The reduction is chosen per frame from the radius in pixels**
+ * ([downscaleFor]): the least power of two that brings the radius inside the
+ * taps. So a light blur stays at full resolution, exactly as it always drew,
+ * and the copy only shrinks once the gaussian is wide enough — two and a half
+ * reduced texels of sigma or more — that neither the cheap downsample nor the
+ * bilinear upsample can show. The choice follows the frame being drawn, so the
+ * ~720px preview and a 1080 export blur the same share of the picture, each
+ * on the finest grid its taps can cover.
+ *
+ * Copies are kept per scale once made — a slider dragged across a threshold,
+ * or a keyframed blur crossing one, never allocates per frame — and dropped
+ * when the frame's size changes. A device that refuses a copy gets the
+ * full-resolution blur, coarser past the cap but still a blur.
+ *
+ * Like glow's halves, this relies on `EffectPassChain.run` giving every pass a
+ * target: the vertical half sets the viewport by binding it.
  */
 internal class StandaloneBlurPass(
     private val blur: BlurPass,
-) : EffectPass by blur, IntensityControlled {
+    /** True for the half that draws into the reduced copy — the horizontal one. */
+    private val ownsDownscale: Boolean,
+) : EffectPass, IntensityControlled {
+
+    override val id: String = blur.id
+
+    /** The reduced copies made so far, by scale, at [copiesWidth] x [copiesHeight]. */
+    private val copies = HashMap<Int, RenderTarget>()
+
+    /** Scales the device refused at this size; not asked for again until it changes. */
+    private val refused = HashSet<Int>()
+    private var copiesWidth = 0
+    private var copiesHeight = 0
+
+    /**
+     * The copy the horizontal half drew into this frame, or null for full
+     * resolution. Set on every draw, so the vertical half — drawn straight
+     * after it in the same chain — always reads this frame's choice.
+     */
+    private var drawnInto: RenderTarget? = null
+
+    /** The horizontal half, for the vertical one. */
+    private var owner: StandaloneBlurPass? = null
 
     override fun applyIntensity(intensity: Float) {
-        val clamped = intensity.coerceIn(0f, 1f)
-        blur.radiusFraction = (
-            MIN_RADIUS_FRACTION + (MAX_RADIUS_FRACTION - MIN_RADIUS_FRACTION) * clamped
-            ).toDouble()
+        blur.radiusFraction = radiusFractionFor(intensity)
     }
 
-    /** Deletes the shared program. Idempotent — both halves hold the same one. */
+    override fun render(
+        sourceTextureId: Int,
+        target: RenderTarget?,
+        viewportWidth: Int,
+        viewportHeight: Int,
+        passIndex: Int,
+    ) {
+        if (viewportWidth <= 0 || viewportHeight <= 0) return
+
+        if (ownsDownscale) {
+            val radiusPx = blur.radiusFraction * min(viewportWidth, viewportHeight)
+            val small = copyFor(viewportWidth, viewportHeight, downscaleFor(radiusPx))
+            drawnInto = small
+            if (small == null) {
+                blur.render(sourceTextureId, target, viewportWidth, viewportHeight, passIndex)
+            } else {
+                // Down: the viewport handed on is the copy's, so the radius and
+                // the step are measured against the texture being written.
+                blur.render(sourceTextureId, small, small.width, small.height, passIndex)
+            }
+        } else {
+            val small = owner?.drawnInto
+            if (small == null) {
+                blur.render(sourceTextureId, target, viewportWidth, viewportHeight, passIndex)
+            } else {
+                // Up: the step divides by the copy being sampled, and binding
+                // the full-size target sets the real viewport. The chain's
+                // source here is the horizontal half's untouched target.
+                blur.render(small.textureId, target, small.width, small.height, passIndex)
+            }
+        }
+    }
+
+    /** The reduced copy at [scale] for a [width] x [height] frame; null for none. */
+    private fun copyFor(width: Int, height: Int, scale: Int): RenderTarget? {
+        if (width != copiesWidth || height != copiesHeight) {
+            releaseCopies()
+            copiesWidth = width
+            copiesHeight = height
+        }
+        if (scale <= 1 || scale in refused) return null
+        copies[scale]?.let { return it }
+
+        val created = createRenderTarget(max(1, width / scale), max(1, height / scale))
+        if (created == null) {
+            refused += scale
+            return null
+        }
+        copies[scale] = created
+        return created
+    }
+
+    private fun releaseCopies() {
+        for (copy in copies.values) copy.release()
+        copies.clear()
+        refused.clear()
+        drawnInto = null
+    }
+
+    /** Pairs this horizontal half with its vertical half. */
+    fun shareDownscaleWith(other: StandaloneBlurPass) {
+        other.owner = this
+    }
+
+    /** Deletes the shared program and any copies. Idempotent. GL thread only. */
     fun release() {
         blur.release()
+        releaseCopies()
     }
 
     internal companion object {
         /**
-         * Radius at intensity 0.
-         *
-         * Not zero: an effect the user has applied must visibly do something at
-         * every slider position, or the bottom of the range reads as the effect
-         * being broken. A touch of softening is the honest floor.
+         * Radius at intensity 0, as a fraction of the short side: a touch of
+         * softening, because an applied effect must do something at every
+         * slider position.
          */
-        const val MIN_RADIUS_FRACTION = 0.002f
+        const val MIN_RADIUS_FRACTION = 0.002
 
         /**
-         * Radius at intensity 1 — the full kernel, right at the density cap.
-         *
-         * [BlurPass.MAX_RADIUS_FRACTION] is where 16 taps begin to band as the
-         * stride widens, and a blur is exactly the effect where banding would be
-         * obvious, so this sits on the cap rather than past it.
+         * Radius at intensity 1: four times the full-resolution kernel's cap,
+         * ~60px at 1080 — a sigma of about 2% of the frame, which reads as the
+         * picture blurred rather than as the picture soft. The default 0.4
+         * lands near 0.024, already past the old maximum.
          */
-        const val MAX_RADIUS_FRACTION = BlurPass.MAX_RADIUS_FRACTION.toFloat()
+        const val MAX_RADIUS_FRACTION = BlurPass.MAX_RADIUS_FRACTION * 4
+
+        /** The most a copy is reduced: a 2K export's strongest blur fits at 1/8. */
+        const val MAX_DOWNSCALE = 8
+
+        fun radiusFractionFor(intensity: Float): Double {
+            val clamped = intensity.coerceIn(0f, 1f).toDouble()
+            return MIN_RADIUS_FRACTION + (MAX_RADIUS_FRACTION - MIN_RADIUS_FRACTION) * clamped
+        }
+
+        /**
+         * How much smaller to draw a blur of [radiusPx] full-resolution
+         * pixels: 1 while the taps cover it, else the least power of two that
+         * brings it inside them, up to [MAX_DOWNSCALE].
+         */
+        fun downscaleFor(radiusPx: Double): Int {
+            var scale = 1
+            while (scale < MAX_DOWNSCALE && radiusPx / scale > BlurPass.MAX_TAPS) scale *= 2
+            return scale
+        }
     }
 }
 

@@ -188,12 +188,11 @@ internal class RgbSplitPass(program: FullFrameProgram) :
         /**
          * Peak separation at intensity 1, as a fraction of the frame's width.
          *
-         * Larger than [ChromaticPass.MAX_SHIFT] because it has to be: a uniform
-         * offset has no corner where it concentrates, so the same amount that
-         * reads as heavy fringing at a corner is barely visible spread flat
-         * across the frame. 1.8% of the width is ~19px at 1080, which is the
-         * unmistakable-but-still-watchable amount the catalog's 0.35 default
-         * lands at about a third of.
+         * A uniform offset has no corner where it concentrates, so it needs
+         * more than a lens fringe ([ChromaticPass]) reaches across most of the
+         * frame to read at all. 1.8% of the width is ~19px at 1080, which is
+         * the unmistakable-but-still-watchable amount the catalog's 0.35
+         * default lands at about a third of.
          */
         const val MAX_SHIFT = 0.018f
 

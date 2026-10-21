@@ -51,13 +51,13 @@ void main() {
   group('adding', () {
     test('lands at the playhead, three seconds, selected, one undo step', () {
       final n = notifier();
-      final id = n.addEffectBar('blur');
+      final id = n.addEffectBar('glow');
       final added = n.state.effectBars.single;
       expect(added.id, id);
       expect((added.start, added.end, added.laneIndex), (2.0, 5.0, 0));
       expect(added.intensity.baseValue,
-          videoEffectById('blur')!.defaultIntensity);
-      expect(added.intensity.envelope, 'ramp_out');
+          videoEffectById('glow')!.defaultIntensity);
+      expect(added.intensity.envelope, 'throb');
       expect(n.state.selectedEffectBarId, id);
       expect(n.state.currentMenuId, 'effect_bar');
       n.undo();

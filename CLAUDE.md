@@ -1684,7 +1684,8 @@ is unaffected, and tiles asked during an export keep icons and fill in afterward
 ### Effects — the multi-pass framework and 47 effects
 
 **Awaiting device verification** beyond the four already checked (`fisheye` perfect, `vignette`
-working after a reshape, `glow` and `blur` fixed but unseen). Spec:
+working after a reshape, `glow` fixed but unseen; `sharpen`, `blur` and `chromatic` reworked
+after device reports that they barely showed, below). Spec:
 `docs/superpowers/specs/2026-09-12-clip-effects-design.md`.
 
 Effects were built per clip — one per clip, from the clip's menu — and live on the timeline as
@@ -1766,15 +1767,42 @@ frame's effect, which hopped to the GL thread *again* — posting a block behind
 for it. The thread blocked on itself at the first frame whose clip carried an effect. A deadlock
 is not a failure anything can report, which is why it presented as a frozen progress bar.
 
-**Two device-found shader lessons worth not repeating:**
+**Device-found shader lessons worth not repeating:**
 
 - **A vignette must not correct for aspect.** Correcting put the farthest points on the long
   *edges*, so on a 9:16 clip the darkening read as a band across the top. A lens darkens toward
   its own corners: plain UV distance normalised to the half-diagonal gives corner 1.0 and edge
   midpoint 0.707 on any canvas shape.
-- **A bloom must be blurred at reduced resolution.** Glow was invisible because the halo was ~8px
-  at 1080p. The fix is a half-res bloom — the same 16 taps reaching twice as far — **not** a
-  raised radius cap, which trades invisibility for visible banding.
+- **A reduced copy buys sampling density, not reach.** Glow was invisible because the halo was
+  ~8px at 1080p, and its fix blurs a half-res copy believing the same 16 taps then reach twice
+  as far. They do not: `BlurPass`'s radius is a fraction of the viewport it is *handed*, and the
+  half-size draw is handed the half-size viewport, so it blurs the same share of the picture.
+  What the copy buys is room — a radius past the full-res cap (0.014 of the short side) that
+  the taps still cover without banding — and the cap has to be raised to use it, as Soft Blur
+  now does (`BlurPass.chain(maxRadiusFraction:)`). **Glow's halo is therefore still ~15px at
+  1080**, its comments to the contrary; found while fixing Soft Blur, not changed, since the
+  device has not judged it yet.
+- **Strength is measured in the frame, never in texels** (`EffectStrengthTest`,
+  **awaiting device verification**). Sharpen was a one-texel laplacian and showed nothing even
+  at 100%: the preview's texture is drawn on screen smaller than it is, and shrinking averages
+  a one-texel halo away. It is now an eight-tap ring `SharpenPass.SAMPLE_RADIUS` (0.0035) of the
+  short side out — ~2.5 texels on the preview, ~4px at 1080, never under one texel — on
+  brightness only, past a noise floor, with the lift capped (`HALO_LIMIT`), which is what lets
+  the amount reach 3× where the old kernel had to stop at 0.9. Default 0.5.
+- **A fringe grows with the distance, not with its cube.** Fringe moved red out and blue in by
+  `r²` along a direction that itself grew with `r` — cubic — so the middle of the frame moved a
+  third of a pixel at 100% and only the top and bottom edges showed anything. It is now what a
+  lens's lateral colour is, a magnification difference about the centre
+  (`ChromaticPass.MAX_SPREAD` 0.03 × intensity × distance): ~4px halfway to a 1080 frame's side
+  at the new 0.5 default, ~16px at a corner. A uniform scale needs no aspect correction.
+- **A wide blur is drawn into a reduced copy chosen per frame** (`StandaloneBlurPass`). Soft
+  Blur stopped at the full-res cap, ~15px at 1080 — barely soft on a phone — and its `ramp_out`
+  envelope held the middle of every bar at the radius floor. It now reaches 4× the cap (a sigma
+  of ~2% of the frame) at intensity 1, with no envelope. `downscaleFor` picks the least power of
+  two (≤ 8) that brings the radius in pixels inside the 16 taps, so a light blur draws at full
+  resolution exactly as before and a copy is used only where the gaussian hides it (≥ 2.5
+  reduced texels of sigma). Copies are kept per scale and dropped on a size change; a refused
+  copy falls back to the full-res blur. Blur In is unchanged.
 
 **Randomness in a shader must be a deterministic hash**, of UV and of `uProgress` where it should
 move. Never `Random()`, never a frame counter. And **`mediump` overflows around n≈515** in
@@ -1814,7 +1842,9 @@ with no envelope, so the handover is continuous by construction.
 **A flat parameter serialises as the bare number it replaced** (`toJson` returns `baseValue` when
 `!isAnimated`), which is how introducing this changed nothing for the 37 effects carrying no
 envelope, and how drafts written before it still load. `fromJson` takes `dynamic` for the same
-reason. Only `blur` (`ramp_out`) and `glow` (`throb`) carry a default envelope; static grades
+reason. Only `glow` (`throb`) carries a default envelope — Soft Blur's `ramp_out` went once
+effects became bars, since on a bar stretched over a moment it left the middle unblurred, and
+a bar saved with it keeps it; static grades
 declare none, because a pulsing vignette is a gimmick, and timed intros declare none because they
 already animate through `uProgress` and an envelope on top would fight it.
 

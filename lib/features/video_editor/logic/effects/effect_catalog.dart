@@ -294,7 +294,7 @@ const List<VideoEffect> kVideoEffects = [
     id: 'chromatic',
     label: 'Fringe',
     category: EffectCategory.grade,
-    defaultIntensity: 0.35,
+    defaultIntensity: 0.5,
   ),
 
   // -- retro ---------------------------------------------------------------
@@ -418,7 +418,7 @@ const List<VideoEffect> kVideoEffects = [
     id: 'sharpen',
     label: 'Sharpen',
     category: EffectCategory.motion,
-    defaultIntensity: 0.4,
+    defaultIntensity: 0.5,
   ),
   VideoEffect(
     id: 'blur',
@@ -428,16 +428,12 @@ const List<VideoEffect> kVideoEffects = [
     // be O(n²) samples per pixel for the same picture.
     passCount: 2,
     defaultIntensity: 0.4,
-    // **The picture resolves.** A blur that clears is the one envelope this
-    // whole model was described by, and it is the safest possible case: the
-    // shader reads no clock of its own, so there is nothing for the curve to
-    // fight, and a blur radius is a quantity whose *strength* is obviously
-    // meaningful to vary — unlike a fold or a threshold.
-    //
-    // `ramp_out` rather than `ramp_in`: the shot arriving out of focus and
-    // settling is what a viewer reads as a camera finding its subject. The
-    // reverse reads as the clip being taken away.
-    defaultEnvelope: 'ramp_out',
+    // **Flat: the bar is the blur.** It used to carry `ramp_out` — blurred
+    // at the bar's edges, clear between — from when an effect belonged to a
+    // clip and "arriving out of focus" meant the clip's opening. On a bar the
+    // user stretches over a moment, that left the middle at the radius floor
+    // and the effect read as broken (device-reported). Arriving out of focus
+    // and settling is Blur In; a focus pull is two keyframes.
   ),
 
   // -- intro ---------------------------------------------------------------

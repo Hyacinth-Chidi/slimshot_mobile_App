@@ -337,7 +337,7 @@ void main() {
           .where((e) => e.defaultEnvelope != null)
           .map((e) => e.id)
           .toSet();
-      expect(enveloped, {'blur', 'glow'});
+      expect(enveloped, {'glow'});
     });
 
     test('an effect with no envelope resolves flat at its default intensity',
@@ -422,6 +422,22 @@ void main() {
     test('Sparkle starts at 95%', () {
       // The user's call: glints that read at once on any footage.
       expect(videoEffectById('sparkle')!.defaultIntensity, 0.95);
+    });
+  });
+
+  group('effects that were too faint to see', () {
+    // Device-reported: Sharpen showed nothing even at 100%, Soft Blur barely
+    // anything, Fringe only at 100%.
+    test('Soft Blur holds its strength for the whole bar', () {
+      // `ramp_out` dropped it to its floor for the middle of every bar, so a
+      // bar stretched over a shot blurred only its first and last moments.
+      // Blur In is the effect that arrives blurred and settles.
+      expect(videoEffectById('blur')!.defaultEnvelope, isNull);
+    });
+
+    test('Sharpen and Fringe start at half strength', () {
+      expect(videoEffectById('sharpen')!.defaultIntensity, 0.5);
+      expect(videoEffectById('chromatic')!.defaultIntensity, 0.5);
     });
   });
 }

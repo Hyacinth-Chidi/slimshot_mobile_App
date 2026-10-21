@@ -272,10 +272,11 @@ internal class BlurInPass(
         /**
          * How blurred it opens, at intensity 1.
          *
-         * At [BlurPass.MAX_RADIUS_FRACTION] — the density cap, where 16 taps
-         * begin to band. An intro that opened blurrier than the `blur` effect
-         * can honestly render would band on its first frames, which is the one
-         * place a viewer is looking hardest.
+         * At [BlurPass.MAX_RADIUS_FRACTION] — the full-resolution density
+         * cap, where 16 taps begin to band. An intro that opened blurrier than
+         * that would band on its first frames, which is the one place a viewer
+         * is looking hardest; Soft Blur reaches further only by drawing into a
+         * reduced copy ([StandaloneBlurPass]).
          */
         const val MAX_RADIUS_FRACTION = BlurPass.MAX_RADIUS_FRACTION.toFloat()
     }

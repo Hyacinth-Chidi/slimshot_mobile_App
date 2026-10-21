@@ -144,7 +144,7 @@ internal object EffectShaders {
             //
             // The wiring is due regardless — `blur` is in the Dart catalog and
             // was falling to the "no shader yet" branch.
-            "blur" -> BlurPass.chain().map { StandaloneBlurPass(it) }
+            "blur" -> softBlurPasses()
 
             "glow" -> glowPasses()
 
@@ -322,6 +322,21 @@ internal object EffectShaders {
      * Each half is wrapped in a [GlowBlurPass] so the intensity reaches its
      * radius without a rebuild.
      */
+    /**
+     * Soft Blur's pair: the kernel allowed [StandaloneBlurPass]'s wider cap,
+     * and the horizontal half owning the reduced copy the vertical half reads.
+     */
+    private fun softBlurPasses(): List<EffectPass> {
+        val halves = BlurPass.chain(
+            radiusFraction = StandaloneBlurPass.radiusFractionFor(0f),
+            maxRadiusFraction = StandaloneBlurPass.MAX_RADIUS_FRACTION,
+        )
+        val horizontal = StandaloneBlurPass(halves[0], ownsDownscale = true)
+        val vertical = StandaloneBlurPass(halves[1], ownsDownscale = false)
+        horizontal.shareDownscaleWith(vertical)
+        return listOf(horizontal, vertical)
+    }
+
     private fun glowPasses(): List<EffectPass> {
         val source = GlowSource()
 
