@@ -46,21 +46,29 @@ class EffectsPanel extends ConsumerStatefulWidget {
   ConsumerState<EffectsPanel> createState() => _EffectsPanelState();
 }
 
-/// The categories the panel shelves, **fullest first**.
+/// The categories the panel shelves: **the lasting looks first, fullest
+/// first, then the timed shelves** (Intro, Reveal) after them.
 ///
-/// The sheet opens on the first tab, and opening on a shelf of two or three
-/// tiles reads as "this is all there is" while Intro alone holds fourteen.
-/// Counted from the catalog, so a new entry can reorder the tabs with no edit
-/// here; equal shelves keep the enum's order.
+/// A timed effect plays its opening once and then rests, so it is not what
+/// the sheet leads with (the user's call: Retro first, Intro and Reveal
+/// neither first nor second). Within each group the fullest shelf leads,
+/// because the sheet opens on the first tab and a shelf of two or three tiles
+/// reads as "this is all there is". All of it is counted from the catalog,
+/// so a new entry can reorder the tabs with no edit here; equal shelves keep
+/// the enum's order.
 ///
 /// [EffectCategory.none] is skipped on purpose: it names the *absence* of an
 /// effect and holds no catalog entries, so a tab for it would be an empty
 /// shelf.
 final List<EffectCategory> kEffectPanelCategories = () {
+  bool timed(EffectCategory c) =>
+      effectsInCategory(c).any((e) => e.introSeconds != null);
   final categories =
       EffectCategory.values.where((c) => c != EffectCategory.none).toList();
   // List.sort is not stable, so ties fall back to the enum's own order.
   categories.sort((a, b) {
+    final byKind = (timed(a) ? 1 : 0).compareTo(timed(b) ? 1 : 0);
+    if (byKind != 0) return byKind;
     final bySize =
         effectsInCategory(b).length.compareTo(effectsInCategory(a).length);
     return bySize != 0 ? bySize : a.index.compareTo(b.index);

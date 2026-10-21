@@ -124,18 +124,42 @@ void main() {
         find.ancestor(of: find.text(label), matching: find.byType(EffectTile)),
       );
 
-  test('the fullest shelves come first', () {
-    // The sheet opens on the first category, and opening on a shelf of two
-    // or three tiles reads as "this is all there is" — Intro alone holds 14.
-    final counts =
-        kEffectPanelCategories.map((c) => effectsInCategory(c).length).toList();
-    for (var i = 1; i < counts.length; i++) {
-      expect(counts[i], lessThanOrEqualTo(counts[i - 1]),
-          reason: 'category ${kEffectPanelCategories[i]} outranks its left');
-    }
-    expect(effectsInCategory(kEffectPanelCategories.first).length,
-        kEffectPanelCategories.map((c) => effectsInCategory(c).length).reduce(
-            (a, b) => a > b ? a : b));
+  group('the order of the shelves', () {
+    // A shelf is timed when its effects open over a fixed window — Intro and
+    // Reveal. They play once and then rest, so they are not what the sheet
+    // leads with: the lasting looks come first, fullest first, and the timed
+    // shelves after them (the user's call).
+    bool timed(EffectCategory c) =>
+        effectsInCategory(c).any((e) => e.introSeconds != null);
+
+    test('Retro comes first', () {
+      expect(kEffectPanelCategories.first, EffectCategory.retro);
+    });
+
+    test('Intro and Reveal are neither first nor second', () {
+      final firstTwo = kEffectPanelCategories.take(2);
+      expect(firstTwo, isNot(contains(EffectCategory.intro)));
+      expect(firstTwo, isNot(contains(EffectCategory.reveal)));
+    });
+
+    test('every lasting shelf comes before every timed one', () {
+      final firstTimed = kEffectPanelCategories.indexWhere(timed);
+      expect(firstTimed, greaterThan(0));
+      expect(kEffectPanelCategories.skip(firstTimed).every(timed), isTrue);
+    });
+
+    test('within each group the fullest shelf leads', () {
+      for (final group in [
+        kEffectPanelCategories.where((c) => !timed(c)).toList(),
+        kEffectPanelCategories.where(timed).toList(),
+      ]) {
+        final counts = group.map((c) => effectsInCategory(c).length).toList();
+        for (var i = 1; i < counts.length; i++) {
+          expect(counts[i], lessThanOrEqualTo(counts[i - 1]),
+              reason: '${group[i]} outranks its left');
+        }
+      }
+    });
   });
 
   testWidgets('offers every category except none', (tester) async {
@@ -398,7 +422,8 @@ void main() {
         await pumpPlaying(tester);
         expect(created, isNotEmpty);
         final before = List.of(created);
-        await openCategory(tester, EffectCategory.retro);
+        // Any tab but the one the sheet opened on.
+        await openCategory(tester, kEffectPanelCategories[1]);
         for (var i = 0; i < 12; i++) {
           await tester.pump(const Duration(milliseconds: 10));
         }

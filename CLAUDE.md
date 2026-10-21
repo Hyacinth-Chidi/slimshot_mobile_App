@@ -1654,10 +1654,15 @@ what `addEffectBar` + `composeEffects` produce for every catalog effect
   stack's passes are untouched; JPEG encoding runs on a single encoder thread, never the GL one.
   **Answered exactly once on every path** — `release()` abandons live jobs, since `quitSafely`
   drops what they would post and an unanswered call leaves Dart's queue waiting forever.
-- **The tabs run fullest first** (`kEffectPanelCategories`, counted from the catalog, ties in
-  enum order): the sheet opens on the first tab, and opening on Colour's three tiles read as
-  "this is all there is" beside Intro's fourteen (the user's call). A new catalog entry can
-  reorder the tabs with no edit to the panel.
+- **The tabs run lasting looks first, then the timed ones** (`kEffectPanelCategories`, the
+  user's call): Retro leads, the other lasting shelves follow fullest first, and Intro and Reveal
+  — whose effects play a fixed 0.5–1.2 s opening and then rest, however long the bar — come last.
+  Fullest first within each group because the sheet opens on the first tab and two or three tiles
+  read as "this is all there is". Worked out from the catalog (a shelf is timed when its effects
+  carry `introSeconds`), so a new entry reorders the tabs with no edit to the panel. **Whether the
+  timed effects belong under Effects at all is open**: they behave as clip In animations
+  (roadmap item 17) or as stretchable "Intro" bars — talked through with the user, left as they
+  are for now.
 - **The stage falls back to the icon** while an effect has no atlas or could not be drawn; cached
   bytes decoding show the empty stage, so a scroll back never flickers icon-to-picture. The clock
   is made in the panel's `initState`, not `late final` — nothing reads the controller until a
