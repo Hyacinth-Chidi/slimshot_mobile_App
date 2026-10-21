@@ -18,11 +18,11 @@ package com.techfamz.slimshotai.nativepreview.gl.effects
  * a `@Volatile Float` written by whichever thread drives the timeline and read
  * by the GL thread at its next draw.
  *
- * **The value is always the clip's own position through its effect's window**,
+ * **The value is always the effect bar's own position through its window**,
  * 0 at the first frame and 1 at the last, never a frame count and never wall
  * clock time. Export renders faster than realtime, so a self-timed effect draws
- * a different picture in the file than on the canvas. `NativeTimelineClip.
- * effectProgressAt` is the one place it is computed.
+ * a different picture in the file than on the canvas. `EffectStack.
+ * shaderProgress` is the one place it is computed.
  *
  * Every pass gets this whether it uses it or not, through [SingleFramePass] and
  * [FullFrameProgram]. A shader that declares no `uProgress` has the uniform

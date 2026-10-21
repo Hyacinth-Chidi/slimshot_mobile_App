@@ -41,9 +41,6 @@ class ClipFlipTest {
         contentRect = floatArrayOf(0f, 0f, 1f, 1f),
         flipHorizontal = h,
         flipVertical = v,
-        effectId = null,
-        effectIntensity = AnimatableDouble(baseValue = 1.0),
-        effectIntroSeconds = null,
     )
 
     @Test

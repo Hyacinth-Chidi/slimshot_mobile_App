@@ -9,7 +9,9 @@ import com.techfamz.slimshotai.nativepreview.NativeTimelineTransitionIntent
 import com.techfamz.slimshotai.nativepreview.gl.OverlayDrawBuilder
 import com.techfamz.slimshotai.nativepreview.gl.TransitionDraw
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
-import com.techfamz.slimshotai.nativepreview.gl.effects.ClipEffectController
+import com.techfamz.slimshotai.nativepreview.EffectStack
+import com.techfamz.slimshotai.nativepreview.NativeTimelineEffect
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectStackController
 import com.techfamz.slimshotai.thumbnails.StillImageDecoder
 import java.io.File
 
@@ -39,6 +41,8 @@ internal class VideoExportEngine(
         val clips: List<NativeTimelineClip>,
         val transitions: List<NativeTimelineTransitionIntent>,
         val overlays: List<NativeTimelineOverlay>,
+        /** The effect bars, drawn by [EffectStack] on the export clock. */
+        val effects: List<NativeTimelineEffect> = emptyList(),
         val audioTracks: List<AudioExportMixer.TimelineAudioTrack>,
         val masterVolume: Double,
         /**
@@ -329,9 +333,13 @@ internal class VideoExportEngine(
         // programs have to be deleted and the pass list emptied explicitly, or
         // the last exported frame's effect stays on the canvas when playback
         // comes back.
-        val clipEffects = ClipEffectController(renderer)
+        val effectStack = EffectStackController(renderer)
 
         try {
+            // Every pass the bars will need, built before the first frame —
+            // inline, since this already runs on the GL thread — so the loop
+            // below only chooses among them.
+            effectStack.setBars(request.effects)
             encoder = VideoFrameEncoder(
                 encodeWidth,
                 encodeHeight,
@@ -358,51 +366,12 @@ internal class VideoExportEngine(
                 val outgoing = window?.let { request.clips.getOrNull(it.leftClipIndex) }
                 val incoming = window?.let { request.clips.getOrNull(it.rightClipIndex) }
 
-                // Which clip's effect is drawn on this frame.
-                //
-                // **In a transition the outgoing clip wins for the whole
-                // window.** The two overlapping clips may carry different
-                // effects, but a pass runs on the *finished composited frame* —
-                // one frame, two answers — and the outgoing clip is already the
-                // window's master everywhere else: its clock drives the blend
-                // and mastership hands over at the window's end. Effecting each
-                // lane into its own target before the blend would be more
-                // correct and doubles the offscreen targets and the pass count
-                // on exactly the hardware two live decoders already strain. It
-                // is a decision, not an oversight, and the preview engine makes
-                // the same one so the two still agree.
-                //
-                // Past the video end there is no clip at all, and no effect: the
-                // tail is bare background plus live overlays, and overlays are
-                // deliberately painted outside the effect chain.
-                // The conditions mirror the draw branches below exactly, so the
-                // effect always follows the clip actually on the frame — a
-                // half-resolved window (one of the two clips missing) draws
-                // through the plain path, and so must its effect.
-                val effectClip = when {
-                    t >= videoEndSeconds - EDGE_EPSILON -> null
-                    window != null && outgoing != null && incoming != null -> outgoing
-                    else -> clipAt(request.clips, t) ?: request.clips.firstOrNull()
-                }
-                // **The effect clock is `t`, the export's own timeline
-                // position** — never the frame index and never wall clock
-                // time. This loop runs as fast as the codecs allow, so a
-                // self-timed effect would play at the export's speed rather
-                // than the project's and the file would not match the canvas.
-                // `t` is the same quantity the preview engine's ticker passes,
-                // so both reach the identical progress at the identical instant
-                // of a clip whatever rate either is running at.
-                // One progress, used for both the shader's clock and the
-                // strength it is drawn at, so an envelope or a keyframe row can
-                // never be a frame out of step with the picture it shapes. A
-                // flat parameter resolves to its base value at every progress —
-                // exactly the scalar this replaced.
-                val effectProgress = effectClip?.effectProgressAt(t) ?: 0.0
-                clipEffects.apply(
-                    effectClip?.effectId,
-                    effectClip?.effectIntensityAt(effectProgress) ?: 0.0,
-                    effectProgress,
-                )
+                // The effect bars drawn at `t` — **every frame, the tail
+                // included**, where Main video is the background. The clock is
+                // `t`, the export's own timeline position, never a frame count
+                // or wall time: the loop runs as fast as the codecs allow, and
+                // `t` is the quantity the preview's ticker passes too.
+                effectStack.apply(EffectStack.drawnAt(request.effects, t))
 
                 if (t >= videoEndSeconds - EDGE_EPSILON) {
                     // The audio/overlay tail: no lane is drawn, so the frame is
@@ -476,7 +445,8 @@ internal class VideoExportEngine(
             // this deletes the effect programs and empties the renderer's pass
             // list, so playback resumes on its single-pass path instead of
             // inheriting whatever the last exported frame carried.
-            clipEffects.apply(null, 0.0)
+            effectStack.clear()
+            effectStack.release()
             renderer.endExport()
             encoder?.release()
         }

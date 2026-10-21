@@ -51,6 +51,7 @@ class NativeTimelinePreviewManager(
      * reopened draft's overlays invisible until one of them was edited.
      */
     private var pendingOverlays: List<NativeTimelineOverlay>? = null
+    private var pendingEffects: List<NativeTimelineEffect>? = null
 
     private var canvasWidth = 0
     private var canvasHeight = 0
@@ -188,6 +189,7 @@ class NativeTimelinePreviewManager(
                         clips = clips,
                         transitions = transitions,
                         overlays = overlays,
+                        effects = NativeTimelineEffect.listFrom(timeline),
                         audioTracks = audioTracks,
                         masterVolume = masterVolume,
                         totalDurationSeconds = totalDurationSeconds,
@@ -452,6 +454,19 @@ class NativeTimelinePreviewManager(
                 result.success(null)
             }
 
+            "setEffects" -> {
+                // Its own channel, like the overlays: a bar's drag, trim or
+                // strength must reach the canvas live, and `setTimeline`
+                // re-prepares the players and is skipped during gestures.
+                val raw = call.argument<List<*>>("effects") ?: emptyList<Any?>()
+                val parsed = raw.mapNotNull { entry ->
+                    (entry as? Map<*, *>)?.let { NativeTimelineEffect.fromMap(it) }
+                }
+                val active = engine
+                if (active == null) pendingEffects = parsed else active.setEffects(parsed)
+                result.success(null)
+            }
+
             // A transition tile's frames, drawn by the transition's own shader
             // between two sample pictures. Null when the renderer is not up or
             // could not draw it; the sheet then shows the transition's icon.
@@ -591,6 +606,10 @@ class NativeTimelinePreviewManager(
         pendingOverlays?.let {
             activeEngine.setOverlays(it)
             pendingOverlays = null
+        }
+        pendingEffects?.let {
+            activeEngine.setEffects(it)
+            pendingEffects = null
         }
 
         return entry.id()

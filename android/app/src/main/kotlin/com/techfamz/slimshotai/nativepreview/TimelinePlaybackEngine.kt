@@ -18,7 +18,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.image.ImageOutput
 import com.techfamz.slimshotai.nativepreview.gl.TransitionDraw
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
-import com.techfamz.slimshotai.nativepreview.gl.effects.ClipEffectController
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectStackController
 import java.io.File
 import kotlin.math.PI
 import kotlin.math.abs
@@ -137,13 +137,12 @@ internal class TimelinePlaybackEngine(
     private var transitions: List<NativeTimelineTransitionIntent> = emptyList()
 
     /**
-     * The renderer's effect passes, kept matched to the clip on screen.
-     *
-     * Change-guarded inside: the ticker runs at ~60Hz and building a pass list
-     * links a GL program, so an unguarded call would link and leak one per
-     * frame. See [applyClipEffect] for which clip is resolved and why.
+     * The effect bars, and the renderer's passes kept matched to the ones
+     * drawn at the overlays' clock. Every pass a timeline needs is built when
+     * the bars arrive ([setEffects]); the ticker only chooses among them.
      */
-    private val clipEffects = ClipEffectController(renderer)
+    private val effectStack = EffectStackController(renderer)
+    private var effects: List<NativeTimelineEffect> = emptyList()
 
     /**
      * Shape of the output frame, chosen in Dart from the tallest imported clip.
@@ -894,6 +893,11 @@ internal class TimelinePlaybackEngine(
         }
         // The decoders were left wherever export finished with them.
         seek(timelinePositionSeconds())
+        // Export ran its own effect passes through the same renderer, and any
+        // bars that changed meanwhile were only recorded ([setEffects]).
+        effectStack.setBars(effects)
+        effectStack.reassert()
+        applyEffects()
     }
 
     fun stopAll() {
@@ -907,7 +911,7 @@ internal class TimelinePlaybackEngine(
         // `tick` returns early on an empty clip list, so an effect left set here
         // would outlive the timeline that asked for it and be drawn over
         // whatever loads next.
-        clipEffects.apply(null, 0.0)
+        effectStack.clear()
         for (lane in lanes) {
             lane.player?.stop()
             lane.player?.clearMediaItems()
@@ -923,7 +927,7 @@ internal class TimelinePlaybackEngine(
         // with it the EGL context — down immediately after this, which takes
         // every effect program with it. Holding the objects past that would
         // leave passes naming program ids in a context that no longer exists.
-        clipEffects.forget()
+        effectStack.forget()
         overlayAudio.release()
         for (lane in lanes) {
             lane.player?.setVideoSurface(null)
@@ -971,6 +975,34 @@ internal class TimelinePlaybackEngine(
      */
     private var overlayClockOverride = Double.NaN
 
+    /**
+     * Replaces the effect bars. Builds any pass the new list needs that is not
+     * built yet — a GL hop only when there is one to build or free, so a bar
+     * dragged across the timeline costs a list swap per frame — and draws them
+     * at the overlays' clock at once, so a paused edit shows.
+     */
+    fun setEffects(list: List<NativeTimelineEffect>) {
+        effects = list
+        // **Not while an export holds the renderer.** Building passes hops to
+        // the GL thread, which the export loop occupies — the editor would
+        // freeze until the export ended — and freeing one would take it off
+        // the renderer mid-file. The list is kept and adopted on reattach.
+        if (exportOwnsRenderer) return
+        effectStack.setBars(list)
+        applyEffects()
+    }
+
+    /**
+     * The bars drawn at [overlayClockNow] — the instant the picture is drawn
+     * at, which in the tail is the editor's playhead rather than the parked
+     * engine's. **Not while an export holds the renderer**: the renderer's
+     * effect passes have one writer at a time, as its lanes do.
+     */
+    private fun applyEffects() {
+        if (exportOwnsRenderer) return
+        effectStack.apply(EffectStack.drawnAt(effects, overlayClockNow))
+    }
+
     /** Replaces the overlay list. Cheap: no player is touched. */
     fun setOverlays(list: List<NativeTimelineOverlay>) {
         overlays = list
@@ -1017,6 +1049,7 @@ internal class TimelinePlaybackEngine(
         overlayClockOverride = seconds
         lastTailClockMs = SystemClock.elapsedRealtime()
         applyOverlays(timelinePositionSeconds())
+        applyEffects()
     }
 
     /**
@@ -1101,10 +1134,10 @@ internal class TimelinePlaybackEngine(
         driveTransitions(position)
         applyLaneFits(position)
         applyLaneGrades(position)
-        applyClipEffect(position)
         applyClipSpeeds()
         applyAudio(position)
         applyOverlays(position)
+        applyEffects()
         applyOverlayAudio()
         sendPositionEventIfDue(position)
         logPlaybackIfDue(position)
@@ -1164,61 +1197,6 @@ internal class TimelinePlaybackEngine(
         }
     }
 
-    /**
-     * Keeps the renderer's effect passes matched to the clip on screen.
-     *
-     * Resolved from the **timeline clock** through [laneClipFor], exactly as
-     * [applyLaneGrades] does: `lane.currentClip()` reads the player's media item
-     * index, which trails the boundary by a beat and by much more mid-seek, so
-     * every cut would draw a frame or two of the previous clip's effect. The
-     * timeline is the authority on what is on screen (dead-ends entry 19).
-     *
-     * ### During a transition, the outgoing clip's effect owns the whole window
-     *
-     * Two overlapping clips may carry different effects, but a pass runs on the
-     * **finished composited frame** — one frame, and two answers to what should
-     * be drawn on it. The outgoing clip wins, which matches the rule the rest of
-     * the window already follows: the outgoing lane is the transition master,
-     * its clock drives the blend and it hands over at the window's end.
-     *
-     * The more correct alternative — render each lane into its own target and
-     * effect them separately before the blend, the way per-clip *grades* are
-     * applied — was rejected on cost, not on taste: it doubles the offscreen
-     * targets and the pass count on exactly the hardware two live decoders
-     * already strain. This looks like an oversight otherwise, so: it is a
-     * decision, and the seam is where the effect changes, not where the picture
-     * does.
-     */
-    private fun applyClipEffect(position: Double) {
-        // Inside a window the outgoing clip is the one whose effect is drawn,
-        // whichever lane happens to be master or active.
-        val window = transitions.firstOrNull { it.contains(position) }
-        val clip = if (window != null) {
-            clips.getOrNull(window.leftClipIndex)
-        } else {
-            // Outside a window the master lane is the one on screen, so its clip
-            // is the one whose effect applies.
-            lanes.getOrNull(masterLane)?.let { laneClipFor(it, position) }
-        } ?: return
-
-        // **The effect clock is the timeline clock.** `position` is the same
-        // value that drove the clip resolution two lines up, so the shader's
-        // progress and the picture it is drawn over can never disagree — and
-        // because it is a position rather than a frame count, the export loop
-        // running faster than realtime reaches the identical value at the
-        // identical instant of the clip. A counter or `System.nanoTime` here
-        // would make the file differ from the canvas, which is the failure the
-        // shared `composite` exists to prevent.
-        // The intensity is resolved against that same progress, so an envelope
-        // or a keyframe row shapes the strength on exactly the clock the shader
-        // is drawn on. A flat parameter returns its base value, unchanged.
-        val progress = clip.effectProgressAt(position)
-        clipEffects.apply(
-            clip.effectId,
-            clip.effectIntensityAt(progress),
-            progress,
-        )
-    }
 
     /**
      * What to hand the player for [clip] at [position]: the flat speed as is,

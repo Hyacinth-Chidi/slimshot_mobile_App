@@ -68,7 +68,7 @@ internal class TransitionRenderer(
      * rendered the plain picture with nothing telling the user why.
      */
     private val onWarning: (String) -> Unit = {},
-) {
+) : com.techfamz.slimshotai.nativepreview.gl.effects.EffectPassSink {
 
     /** One decoder's output: an external texture plus its surface plumbing. */
     private class Lane(val index: Int) {
@@ -612,7 +612,7 @@ internal class TransitionRenderer(
      * The export loop has to run here: the EGL context belongs to this thread,
      * and export composites through exactly the same code the preview does.
      */
-    fun <T> callOnGlThread(block: () -> T): T {
+    override fun <T> callOnGlThread(block: () -> T): T {
         // Already on the GL thread: run it here. Posting would queue the block
         // behind the very call that is waiting for it, and the thread would
         // block on itself forever.
@@ -898,13 +898,20 @@ internal class TransitionRenderer(
      * back on its single-pass path: no scene target, no chain, the same draw
      * straight to the output.
      */
-    fun setEffectPasses(passes: List<EffectPass>) {
+    override fun setEffectPasses(passes: List<EffectPass>) {
         if (released) return
         // Copied because the caller may keep mutating its own list, and the GL
         // thread reads this one between frames.
         effectPasses = passes.toList()
         requestRender()
     }
+
+    /**
+     * A frame for effect uniforms that moved while the pass list did not — a
+     * timed effect over a photo, or a paused bar whose strength was dragged.
+     * Coalesced like every other request.
+     */
+    override fun redrawEffects() = requestRender()
 
     fun setTransition(draw: TransitionDraw) {
         if (released) return

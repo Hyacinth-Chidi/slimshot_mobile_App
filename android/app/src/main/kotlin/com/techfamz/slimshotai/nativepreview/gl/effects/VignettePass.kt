@@ -6,7 +6,7 @@ package com.techfamz.slimshotai.nativepreview.gl.effects
  * The simplest shape in the catalog: one sample, one multiply, no coordinate
  * perturbation and no second texture. It is deliberately the first effect
  * written, because a picture that is plainly the footage with darker corners
- * proves the whole path — the clip's `effectId` parsed, the registry resolved,
+ * proves the whole path — the bar's `effectId` parsed, the registry resolved,
  * the scene rendered into an offscreen target, one pass run over it, the result
  * presented — in a way no more elaborate effect could, where a bug and a
  * correct render look alike.

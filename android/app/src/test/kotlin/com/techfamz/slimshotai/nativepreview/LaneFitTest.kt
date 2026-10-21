@@ -84,9 +84,6 @@ class LaneFitTest {
             canvasOffsetY = AnimatableDouble(baseValue = 0.0),
             canvasRotation = AnimatableDouble(baseValue = 0.0),
             contentRect = floatArrayOf(0f, 0f, 0.5f, 1f),
-            effectId = null,
-            effectIntensity = AnimatableDouble(baseValue = 1.0),
-            effectIntroSeconds = null,
         )
         assertEquals(16.0 / 9.0, clip.sourceAspect, 1e-9)
         assertEquals(8.0 / 9.0, clip.contentAspect, 1e-6)
