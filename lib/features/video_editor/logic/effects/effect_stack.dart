@@ -126,3 +126,8 @@ EffectBarModel? newlySkippedEffectBar(
   }
   return null;
 }
+
+/// The one line an edit that leaves [bar] skipped is told.
+String effectSkippedMessage(EffectBarModel bar) =>
+    '${videoEffectById(bar.effectId)?.label ?? 'Effect'} is skipped: '
+    'too many effects at once';

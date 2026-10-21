@@ -134,6 +134,23 @@ class NativeTimelinePreviewService {
     return [for (final o in overlays) o.toJson()];
   }
 
+  /// The effect bars as the preview receives them — the composer's
+  /// [VideoEditorTimelineComposer.composeEffects], the same list the export's
+  /// timeline carries.
+  List<Map<String, dynamic>> effectPayload(VideoEditorState state) => [
+        for (final effect in _timelineComposer.composeEffects(state))
+          effect.toJson(),
+      ];
+
+  /// Sends the effect bars on their own light channel: a bar's drag, trim or
+  /// strength must reach the canvas live, and `setTimeline` re-prepares the
+  /// players and is skipped during gestures.
+  Future<void> sendEffectPayload(List<Map<String, dynamic>> payload) {
+    return _methodChannel.invokeMethod<void>('setEffects', {
+      'effects': payload,
+    });
+  }
+
   Future<void> sendOverlayPayload(List<Map<String, dynamic>> payload) {
     return _methodChannel.invokeMethod<void>('setOverlays', {
       'overlays': payload,

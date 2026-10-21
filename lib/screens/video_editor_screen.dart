@@ -20,11 +20,13 @@ import '../core/widgets/permission_dialog.dart';
 import '../core/services/ad_service.dart';
 import 'export_video_screen.dart';
 import '../features/video_editor/widgets/panels/transitions_drawer.dart';
+import '../features/video_editor/models/effect_bar_model.dart';
 import '../features/video_editor/models/text_overlay_model.dart';
 import '../features/video_editor/models/image_overlay_model.dart';
 import '../features/video_editor/models/video_segment.dart';
 import '../features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_overlay_model.dart';
+import '../features/video_editor/logic/effects/effect_stack.dart';
 import '../features/video_editor/logic/text_overlay_geometry.dart';
 import '../features/video_editor/logic/text_template_catalog.dart';
 import '../features/video_editor/widgets/panels/text_templates_sheet.dart';
@@ -35,6 +37,7 @@ import '../features/video_editor/widgets/panels/move_to_overlay_dialog.dart';
 import '../features/video_editor/logic/timeline/timeline_geometry.dart';
 import '../features/video_editor/providers/video_editor_notifier.dart';
 import '../features/video_editor/services/media_import_service.dart';
+import '../features/video_editor/services/effect_bars_sync.dart';
 import '../features/video_editor/services/native_timeline_preview_service.dart';
 import '../core/models/draft_project.dart';
 import '../features/video_editor/logic/animation/clip_keyframes.dart';
@@ -672,9 +675,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       if (notice != null && mounted) ToastUtils.show(context, notice);
       await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
       // `ref.listen` fires only on a change, so a project that opens with
-      // overlays already on it would never push them — they would show their
-      // handles and no picture until one of them was edited.
+      // overlays or effect bars already on it would never push them — they
+      // would show on the timeline and not on the canvas until one was edited.
       await _syncNativeOverlays(ref.read(videoEditorProvider));
+      await _syncNativeEffects(ref.read(videoEditorProvider));
     } catch (e) {
       if (!mounted) return;
       ToastUtils.show(context, 'Error loading draft: $e', isError: true);
@@ -701,9 +705,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       await notifier.loadProject(assets: assets);
       await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
       // `ref.listen` fires only on a change, so a project that opens with
-      // overlays already on it would never push them — they would show their
-      // handles and no picture until one of them was edited.
+      // overlays or effect bars already on it would never push them — they
+      // would show on the timeline and not on the canvas until one was edited.
       await _syncNativeOverlays(ref.read(videoEditorProvider));
+      await _syncNativeEffects(ref.read(videoEditorProvider));
     } catch (e) {
       if (!mounted) return;
       ToastUtils.show(context, 'Error loading media: $e', isError: true);
@@ -720,9 +725,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       notifier.addAssets(assets);
       await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
       // `ref.listen` fires only on a change, so a project that opens with
-      // overlays already on it would never push them — they would show their
-      // handles and no picture until one of them was edited.
+      // overlays or effect bars already on it would never push them — they
+      // would show on the timeline and not on the canvas until one was edited.
       await _syncNativeOverlays(ref.read(videoEditorProvider));
+      await _syncNativeEffects(ref.read(videoEditorProvider));
       if (mounted) HapticFeedback.selectionClick();
     } catch (e) {
       if (!mounted) return;
@@ -841,6 +847,29 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       // An overlay that cannot be pushed is not worth interrupting an edit
       // for; the engine warns for itself when it cannot draw one.
       _nativeOverlaySignature = null;
+    }
+  }
+
+  /// What the engine was last told the effect bars are.
+  final EffectBarsSync _effectBarsSync = EffectBarsSync();
+
+  /// Pushes the effect bars when they change — and only then — on their own
+  /// channel, for the reason [_syncNativeOverlays] gives: a bar dragged,
+  /// trimmed or retuned must show while the finger is down, and a timeline
+  /// push would re-prepare the players.
+  Future<void> _syncNativeEffects(VideoEditorState state) async {
+    if (!_canUseNativeTimelinePreview(state) || state.sourceVideo == null) {
+      _effectBarsSync.reset();
+      return;
+    }
+    final payload =
+        _effectBarsSync.payloadFor(state, _nativePreviewService.effectPayload);
+    if (payload == null) return;
+    try {
+      await _nativePreviewService.sendEffectPayload(payload);
+    } catch (_) {
+      // Sent again with the next change; the engine keeps the last bars.
+      _effectBarsSync.reset();
     }
   }
 
@@ -1012,9 +1041,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       notifier.replaceClipAsset(assets.first);
       await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
       // `ref.listen` fires only on a change, so a project that opens with
-      // overlays already on it would never push them — they would show their
-      // handles and no picture until one of them was edited.
+      // overlays or effect bars already on it would never push them — they
+      // would show on the timeline and not on the canvas until one was edited.
       await _syncNativeOverlays(ref.read(videoEditorProvider));
+      await _syncNativeEffects(ref.read(videoEditorProvider));
       if (mounted) HapticFeedback.selectionClick();
     } catch (e) {
       if (!mounted) return;
@@ -3283,6 +3313,22 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       }
     });
 
+    // An edit that leaves a bar skipped by the pass budget says so once, by
+    // name: the bar stays on the timeline and is drawn nowhere, so without a
+    // word it would read as an effect that does not work. A list arriving
+    // into an empty one is a draft opening (or an undo back to one) — one bar
+    // added alone always fits — so it is not told again.
+    ref.listen<List<EffectBarModel>>(
+      videoEditorProvider.select((s) => s.effectBars),
+      (prev, bars) {
+        if (prev == null || prev.isEmpty) return;
+        final skipped = newlySkippedEffectBar(prev, bars);
+        if (skipped != null && mounted) {
+          ToastUtils.show(context, effectSkippedMessage(skipped));
+        }
+      },
+    );
+
     // Sync audio player instances whenever the track list changes (import, delete, etc.)
     ref.listen<List<AudioTrackModel>>(
       videoEditorProvider.select((s) => s.audioTracks),
@@ -3300,10 +3346,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         ref.read(videoEditorProvider.notifier).setPlaying(false);
         return;
       }
-      // Overlays go on their own light channel, so unlike the timeline they
-      // are pushed while playing and mid-drag too — an overlay moved under the
-      // finger has to move on the canvas.
+      // Overlays and effect bars go on their own light channels, so unlike
+      // the timeline they are pushed while playing and mid-drag too — an
+      // overlay or a bar moved under the finger has to move on the canvas.
       unawaited(_syncNativeOverlays(state));
+      unawaited(_syncNativeEffects(state));
       if (_canUseNativeTimelinePreview(state) && !state.isPlaying) {
         // Adding or retuning a transition costs nothing now — it is a shader
         // uniform, not a render — so there is no cache to schedule here.
