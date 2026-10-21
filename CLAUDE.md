@@ -1654,6 +1654,10 @@ what `addEffectBar` + `composeEffects` produce for every catalog effect
   stack's passes are untouched; JPEG encoding runs on a single encoder thread, never the GL one.
   **Answered exactly once on every path** — `release()` abandons live jobs, since `quitSafely`
   drops what they would post and an unanswered call leaves Dart's queue waiting forever.
+- **The tabs run fullest first** (`kEffectPanelCategories`, counted from the catalog, ties in
+  enum order): the sheet opens on the first tab, and opening on Colour's three tiles read as
+  "this is all there is" beside Intro's fourteen (the user's call). A new catalog entry can
+  reorder the tabs with no edit to the panel.
 - **The stage falls back to the icon** while an effect has no atlas or could not be drawn; cached
   bytes decoding show the empty stage, so a scroll back never flickers icon-to-picture. The clock
   is made in the panel's `initState`, not `late final` — nothing reads the controller until a

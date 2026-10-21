@@ -46,15 +46,27 @@ class EffectsPanel extends ConsumerStatefulWidget {
   ConsumerState<EffectsPanel> createState() => _EffectsPanelState();
 }
 
-/// The categories the panel actually shelves, in enum order.
+/// The categories the panel shelves, **fullest first**.
+///
+/// The sheet opens on the first tab, and opening on a shelf of two or three
+/// tiles reads as "this is all there is" while Intro alone holds fourteen.
+/// Counted from the catalog, so a new entry can reorder the tabs with no edit
+/// here; equal shelves keep the enum's order.
 ///
 /// [EffectCategory.none] is skipped on purpose: it names the *absence* of an
 /// effect and holds no catalog entries, so a tab for it would be an empty
-/// shelf. The absence is reachable from every category through the leading
-/// None tile instead.
-final List<EffectCategory> kEffectPanelCategories = EffectCategory.values
-    .where((c) => c != EffectCategory.none)
-    .toList(growable: false);
+/// shelf.
+final List<EffectCategory> kEffectPanelCategories = () {
+  final categories =
+      EffectCategory.values.where((c) => c != EffectCategory.none).toList();
+  // List.sort is not stable, so ties fall back to the enum's own order.
+  categories.sort((a, b) {
+    final bySize =
+        effectsInCategory(b).length.compareTo(effectsInCategory(a).length);
+    return bySize != 0 ? bySize : a.index.compareTo(b.index);
+  });
+  return List<EffectCategory>.unmodifiable(categories);
+}();
 
 /// What each category's tab is called.
 ///

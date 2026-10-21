@@ -124,6 +124,20 @@ void main() {
         find.ancestor(of: find.text(label), matching: find.byType(EffectTile)),
       );
 
+  test('the fullest shelves come first', () {
+    // The sheet opens on the first category, and opening on a shelf of two
+    // or three tiles reads as "this is all there is" — Intro alone holds 14.
+    final counts =
+        kEffectPanelCategories.map((c) => effectsInCategory(c).length).toList();
+    for (var i = 1; i < counts.length; i++) {
+      expect(counts[i], lessThanOrEqualTo(counts[i - 1]),
+          reason: 'category ${kEffectPanelCategories[i]} outranks its left');
+    }
+    expect(effectsInCategory(kEffectPanelCategories.first).length,
+        kEffectPanelCategories.map((c) => effectsInCategory(c).length).reduce(
+            (a, b) => a > b ? a : b));
+  });
+
   testWidgets('offers every category except none', (tester) async {
     await pumpPanel(tester, notifierWith());
     expect(kEffectPanelCategories, isNot(contains(EffectCategory.none)));
@@ -177,6 +191,7 @@ void main() {
     await pumpPanel(tester, notifier);
     expect(find.byType(Slider), findsNothing, reason: 'nothing to set yet');
 
+    await openCategory(tester, EffectCategory.grade);
     await tester.tap(find.text('Vignette'));
     await tester.pump();
 
@@ -191,6 +206,7 @@ void main() {
       (tester) async {
     final notifier = notifierWith();
     await pumpPanel(tester, notifier);
+    await openCategory(tester, EffectCategory.grade);
     await tester.tap(find.text('Vignette'));
     await tester.pump();
     await tester.tap(find.text('Duotone'));
@@ -283,11 +299,15 @@ void main() {
 
     testWidgets('every tile has a stage for its effect', (tester) async {
       await pumpPanel(tester, notifierWith());
+      // Only the tiles on screen are built (the grid keeps none off it), so
+      // the stages are the opening shelf's first tiles, in order.
       final stages = tester
           .widgetList<EffectPreviewStage>(find.byType(EffectPreviewStage))
           .toList();
       final effects = effectsInCategory(kEffectPanelCategories.first);
-      expect(stages.map((s) => s.effectId), effects.map((e) => e.id));
+      expect(stages, isNotEmpty);
+      expect(stages.map((s) => s.effectId),
+          effects.take(stages.length).map((e) => e.id));
     });
 
     testWidgets('the grid keeps no tiles off screen', (tester) async {
