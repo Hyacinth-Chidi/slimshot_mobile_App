@@ -4092,14 +4092,6 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   String _newEffectBarId() =>
       'effect_${DateTime.now().microsecondsSinceEpoch}_${_effectBarSerial++}';
 
-  /// A fresh intensity for [effect]: its catalog strength and envelope, no
-  /// keyframes — what a bar wears when an effect is first put on it.
-  static AnimatableDouble _freshIntensity(VideoEffect effect) =>
-      AnimatableDouble(
-        baseValue: effect.defaultIntensity,
-        envelope: effect.defaultEnvelope,
-      );
-
   /// Puts [effectId] on the timeline: at the playhead, three seconds, inside
   /// the project ([newEffectBarSpan]), on the first free lane there, selected
   /// as the only selection. One undo step. Null, and nothing done, for an
@@ -4125,7 +4117,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       start: span.start,
       end: span.end,
       laneIndex: firstFreeLane(_laneSpans, span.start, span.end),
-      intensity: _freshIntensity(effect),
+      intensity: freshEffectIntensity(effect),
     );
     state = state.copyWith(effectBars: [...state.effectBars, bar]);
     selectEffectBar(bar.id);
@@ -4142,7 +4134,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     if (bar == null || effect == null || bar.effectId == effect.id) return;
     saveStateForUndo();
     _replaceEffectBar(
-      bar.copyWith(effectId: effect.id, intensity: _freshIntensity(effect)),
+      bar.copyWith(effectId: effect.id, intensity: freshEffectIntensity(effect)),
     );
   }
 

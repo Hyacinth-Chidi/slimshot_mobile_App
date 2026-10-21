@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import '../../models/media_asset.dart';
+import '../animation/animatable_double.dart';
+import 'effect_catalog.dart';
 
 /// How long a new effect bar is — the length a new text gets.
 const double kDefaultEffectBarSeconds = 3.0;
@@ -22,3 +24,11 @@ const double kDefaultEffectBarSeconds = 3.0;
   if (end - start < kMinClipDurationSeconds) end = start + kMinClipDurationSeconds;
   return (start: start, end: end);
 }
+
+/// What a bar wears when [effect] is first put on it: the catalog's strength
+/// and envelope, no keyframes. A new bar and an effect tile's sample bar both
+/// start here, so the tile shows the strength a tap gives.
+AnimatableDouble freshEffectIntensity(VideoEffect effect) => AnimatableDouble(
+      baseValue: effect.defaultIntensity,
+      envelope: effect.defaultEnvelope,
+    );
