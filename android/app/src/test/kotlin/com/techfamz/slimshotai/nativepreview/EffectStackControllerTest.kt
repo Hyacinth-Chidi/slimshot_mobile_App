@@ -66,6 +66,22 @@ class EffectStackControllerTest {
 
     private fun at(bars: List<NativeTimelineEffect>, t: Double) = EffectStack.drawnAt(bars, t)
 
+    /**
+     * The export's controller is a second one on the preview's renderer, which
+     * may still hold the preview's passes — a bar under the paused playhead.
+     * A fresh controller does not know what the renderer holds, so its first
+     * frame must say, even with nothing to draw; otherwise every exported
+     * frame before the first bar is drawn with the preview's effect.
+     */
+    @Test
+    fun `a fresh controller's first apply hands its passes over even when there are none`() {
+        controller.setBars(listOf(bar("a", "blur", 3.0, 8.0)))
+        controller.apply(emptyList())
+        assertEquals(listOf(emptyList<EffectPass>()), sink.handed)
+        controller.apply(emptyList())
+        assertEquals("only the first frame needs to say it", 1, sink.handed.size)
+    }
+
     @Test
     fun `two hundred bars of one effect that never meet build it once`() {
         val bars = (0 until 200).map { bar("b$it", "blur", it * 2.0, it * 2.0 + 1.0) }

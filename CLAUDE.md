@@ -1583,6 +1583,10 @@ is there: the background.
   **before its first frame**, `apply` on every frame including the tail, and `clear` + `release`
   in `finally`. That first `setBars` has no JVM test (the export engine needs GL); it was found
   missing by reading the diff, and an export with no effects in it is the symptom if it goes.
+  **A fresh controller's first `apply` always hands its list over, empty included**: the export's
+  controller is a second one on the preview's renderer, which may still hold the preview's passes
+  — a bar under the paused playhead — and "nothing changed" from its own empty start left them
+  there, so every exported frame before the first bar wore that effect.
 - `composite` is unchanged: lanes and background into the scene, the stack's passes over it, then
   overlays.
 

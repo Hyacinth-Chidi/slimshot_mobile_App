@@ -54,6 +54,15 @@ internal class EffectStackController(
     /** The instances handed to the renderer, in order. */
     private var applied: List<List<EffectPass>> = emptyList()
 
+    /**
+     * Whether [applied] is what the renderer holds. Not at first: the export's
+     * controller is a second one on the preview's renderer, which may still
+     * hold the preview's passes, so its first frame must hand its own list
+     * over even when that list is empty — or the file's opening frames take
+     * the effect under the paused playhead.
+     */
+    private var rendererKnown = false
+
     private val lastIntensity = IdentityHashMap<List<EffectPass>, Double>()
     private val lastProgress = IdentityHashMap<List<EffectPass>, Double>()
 
@@ -80,6 +89,7 @@ internal class EffectStackController(
         if (applied.any { instance -> toRelease.any { it === instance } }) {
             applied = emptyList()
             sink.setEffectPasses(emptyList())
+            rendererKnown = true
         }
         sink.callOnGlThread {
             for (instance in toRelease) release(instance)
@@ -128,9 +138,10 @@ internal class EffectStackController(
                 uniformsMoved = true
             }
         }
-        if (!sameInstances(chosen, applied)) {
+        if (!rendererKnown || !sameInstances(chosen, applied)) {
             applied = chosen
             sink.setEffectPasses(chosen.flatten())
+            rendererKnown = true
         } else if (uniformsMoved && chosen.isNotEmpty()) {
             sink.redrawEffects()
         }
@@ -148,6 +159,7 @@ internal class EffectStackController(
     fun release() {
         applied = emptyList()
         sink.setEffectPasses(emptyList())
+        rendererKnown = true
         val all = pools.values.flatten()
         if (all.isNotEmpty()) sink.callOnGlThread { all.forEach(release) }
         forget()
@@ -160,6 +172,7 @@ internal class EffectStackController(
     fun forget() {
         pools.clear()
         applied = emptyList()
+        rendererKnown = false
         lastIntensity.clear()
         lastProgress.clear()
     }
