@@ -25,6 +25,8 @@ internal object EffectPassCosts {
         "zoom_in", "super_zoom", "pulse_zoom", "bounce", "spin", "roll", "tilt", "pixel_in",
         "hue_shift", "bw_fade", "steady_in", "shutter", "horizontal_open", "circle_in", "grid",
         "grid_collage", "roulette", "camera_pan", "handheld", "super_shake",
+        // The drawn pack (`DrawnPack`): one shader each.
+        "thunder", "rain", "snow", "embers", "light_rays", "lens_flare", "sparkle", "neon_edge",
     )
 
     fun costOf(effectId: String?): Int {

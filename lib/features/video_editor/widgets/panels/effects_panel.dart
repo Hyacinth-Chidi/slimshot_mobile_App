@@ -46,12 +46,14 @@ class EffectsPanel extends ConsumerStatefulWidget {
   ConsumerState<EffectsPanel> createState() => _EffectsPanelState();
 }
 
-/// The categories the panel shelves: **the lasting looks first, fullest
-/// first, then the timed shelves** (Intro, Reveal) after them.
+/// The categories the panel shelves: **Retro, then the other lasting looks
+/// fullest first, then the timed shelves** (Intro, Reveal) after them.
 ///
-/// A timed effect plays its opening once and then rests, so it is not what
-/// the sheet leads with (the user's call: Retro first, Intro and Reveal
-/// neither first nor second). Within each group the fullest shelf leads,
+/// Retro leads by name — the user's call, "Retro comes first then others" —
+/// not by size, so a fuller shelf (Light, since the drawn pack) cannot push
+/// it down. A timed effect plays its opening once and then rests, so it is
+/// not what the sheet leads with either. Within each group the fullest shelf
+/// leads,
 /// because the sheet opens on the first tab and a shelf of two or three tiles
 /// reads as "this is all there is". All of it is counted from the catalog,
 /// so a new entry can reorder the tabs with no edit here; equal shelves keep
@@ -66,8 +68,13 @@ final List<EffectCategory> kEffectPanelCategories = () {
   final categories =
       EffectCategory.values.where((c) => c != EffectCategory.none).toList();
   // List.sort is not stable, so ties fall back to the enum's own order.
+  int rank(EffectCategory c) => c == EffectCategory.retro
+      ? 0
+      : timed(c)
+          ? 2
+          : 1;
   categories.sort((a, b) {
-    final byKind = (timed(a) ? 1 : 0).compareTo(timed(b) ? 1 : 0);
+    final byKind = rank(a).compareTo(rank(b));
     if (byKind != 0) return byKind;
     final bySize =
         effectsInCategory(b).length.compareTo(effectsInCategory(a).length);
@@ -90,6 +97,7 @@ String effectCategoryLabel(EffectCategory category) => switch (category) {
       EffectCategory.intro => 'Intro',
       EffectCategory.reveal => 'Reveal',
       EffectCategory.motionLoop => 'Motion',
+      EffectCategory.nature => 'Nature',
     };
 
 /// A tile's glyph.
@@ -143,6 +151,15 @@ const Map<String, IconData> _kEffectIcons = {
   'camera_pan': LucideIcons.moveHorizontal,
   'handheld': LucideIcons.hand,
   'super_shake': LucideIcons.vibrate,
+  // -- the drawn pack --------------------------------------------------------
+  'light_rays': LucideIcons.sunDim,
+  'lens_flare': LucideIcons.sunMedium,
+  'sparkle': LucideIcons.sparkles,
+  'neon_edge': LucideIcons.zap,
+  'thunder': LucideIcons.cloudLightning,
+  'rain': LucideIcons.cloudRain,
+  'snow': LucideIcons.snowflake,
+  'embers': LucideIcons.flame,
 };
 
 IconData _iconForCategory(EffectCategory category) => switch (category) {
@@ -155,6 +172,7 @@ IconData _iconForCategory(EffectCategory category) => switch (category) {
       EffectCategory.intro => LucideIcons.play,
       EffectCategory.reveal => LucideIcons.eye,
       EffectCategory.motionLoop => LucideIcons.move,
+      EffectCategory.nature => LucideIcons.cloudSun,
     };
 
 /// The glyph for [effect], falling back to its category's.

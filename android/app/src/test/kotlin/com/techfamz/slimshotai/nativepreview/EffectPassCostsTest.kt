@@ -22,7 +22,8 @@ class EffectPassCostsTest {
     @Test
     fun `every effect costs what the catalog says`() {
         val costs = fixtureCosts()
-        assertEquals(39, costs.size)
+        // 39 effects, then the drawn pack's eight.
+        assertEquals(47, costs.size)
         for ((id, cost) in costs) {
             assertEquals(id, cost, EffectPassCosts.costOf(id))
         }

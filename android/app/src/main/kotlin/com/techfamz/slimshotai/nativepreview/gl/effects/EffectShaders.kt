@@ -238,6 +238,9 @@ internal object EffectShaders {
 
             "super_shake" -> listOf(SuperShakePass(FullFrameProgram(SuperShakePass.FRAGMENT)))
 
+            // The drawn pack: one pass each, keeping time in seconds.
+            in DrawnPack.IDS -> listOfNotNull(DrawnPack.passFor(id))
+
             else -> {
                 // Two cases land here and both are correct as no effect: an id
                 // this build has never heard of, and a catalog id whose shader

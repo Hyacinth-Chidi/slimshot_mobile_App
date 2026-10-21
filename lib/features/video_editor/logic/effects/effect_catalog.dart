@@ -79,6 +79,17 @@ enum EffectCategory {
   /// motion is still going at the last frame. A continuous look that settled
   /// would be an intro.
   motionLoop,
+
+  /// Weather drawn over the picture — a thunderstorm, rain, snow, embers.
+  ///
+  /// Drawn by a shader alone, like every other entry here: no footage to
+  /// download, nothing to track. They move at a real speed, so they keep time
+  /// in seconds since their bar began (`uSeconds`) rather than across the
+  /// bar's 0..1 — rain must not fall slower on a longer bar.
+  ///
+  /// **Appended, never inserted**: the enum's order is not the sheet's (that
+  /// is `kEffectPanelCategories`), but nothing gains by renumbering the rest.
+  nature,
 }
 
 /// What a clip's effect intensity reads as when nothing has set one.
@@ -375,6 +386,32 @@ const List<VideoEffect> kVideoEffects = [
     defaultEnvelope: 'throb',
   ),
 
+  // The drawn light pack: light added over the picture and moving at a real
+  // speed (`uSeconds`), CapCut's most used looks of this kind.
+  VideoEffect(
+    id: 'light_rays',
+    label: 'Light Rays',
+    category: EffectCategory.light,
+    defaultIntensity: 0.6,
+  ),
+  VideoEffect(
+    id: 'lens_flare',
+    label: 'Lens Flare',
+    category: EffectCategory.light,
+    defaultIntensity: 0.7,
+  ),
+  VideoEffect(
+    id: 'sparkle',
+    label: 'Sparkle',
+    category: EffectCategory.light,
+    defaultIntensity: 0.7,
+  ),
+  VideoEffect(
+    id: 'neon_edge',
+    label: 'Neon',
+    category: EffectCategory.light,
+    defaultIntensity: 0.8,
+  ),
   // -- motion --------------------------------------------------------------
   VideoEffect(
     id: 'sharpen',
@@ -596,6 +633,31 @@ const List<VideoEffect> kVideoEffects = [
     label: 'Super Shake',
     category: EffectCategory.motionLoop,
     defaultIntensity: 0.5,
+  ),
+  // -- nature ---------------------------------------------------------------
+  VideoEffect(
+    id: 'thunder',
+    label: 'Thunder',
+    category: EffectCategory.nature,
+    defaultIntensity: 0.8,
+  ),
+  VideoEffect(
+    id: 'rain',
+    label: 'Rain',
+    category: EffectCategory.nature,
+    defaultIntensity: 0.7,
+  ),
+  VideoEffect(
+    id: 'snow',
+    label: 'Snow',
+    category: EffectCategory.nature,
+    defaultIntensity: 0.7,
+  ),
+  VideoEffect(
+    id: 'embers',
+    label: 'Embers',
+    category: EffectCategory.nature,
+    defaultIntensity: 0.7,
   ),
 ];
 

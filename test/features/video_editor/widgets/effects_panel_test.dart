@@ -101,6 +101,10 @@ void main() {
   Future<void> openCategory(WidgetTester tester, EffectCategory c) async {
     final tab = find.text(effectCategoryLabel(c));
     final row = find.byType(Scrollable).first;
+    // From the row's start, so a tab left of the one last opened is reached
+    // too — the walk below only ever moves forward.
+    await tester.drag(row, const Offset(2000, 0));
+    await tester.pump();
     for (var i = 0; i < 12; i++) {
       final rowRect = tester.getRect(row);
       if (tab.evaluate().isNotEmpty) {
@@ -148,9 +152,11 @@ void main() {
       expect(kEffectPanelCategories.skip(firstTimed).every(timed), isTrue);
     });
 
-    test('within each group the fullest shelf leads', () {
+    test('after Retro, within each group the fullest shelf leads', () {
       for (final group in [
-        kEffectPanelCategories.where((c) => !timed(c)).toList(),
+        kEffectPanelCategories
+            .where((c) => !timed(c) && c != EffectCategory.retro)
+            .toList(),
         kEffectPanelCategories.where(timed).toList(),
       ]) {
         final counts = group.map((c) => effectsInCategory(c).length).toList();

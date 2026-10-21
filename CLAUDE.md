@@ -1655,7 +1655,8 @@ what `addEffectBar` + `composeEffects` produce for every catalog effect
   **Answered exactly once on every path** — `release()` abandons live jobs, since `quitSafely`
   drops what they would post and an unanswered call leaves Dart's queue waiting forever.
 - **The tabs run lasting looks first, then the timed ones** (`kEffectPanelCategories`, the
-  user's call): Retro leads, the other lasting shelves follow fullest first, and Intro and Reveal
+  user's call): **Retro leads by name**, so a fuller shelf (Light, since the drawn pack) cannot
+  push it down; the other lasting shelves follow fullest first, and Intro and Reveal
   — whose effects play a fixed 0.5–1.2 s opening and then rest, however long the bar — come last.
   Fullest first within each group because the sheet opens on the first tab and two or three tiles
   read as "this is all there is". Worked out from the catalog (a shelf is timed when its effects
@@ -1674,7 +1675,7 @@ within ~28 MB of decoded tiles while browsing every category and falls when the 
 atlas JPEGs measure ≤ 150 KB (tune `PREVIEW_JPEG_QUALITY` if over); an export run after browsing
 is unaffected, and tiles asked during an export keep icons and fill in afterwards.
 
-### Effects — the multi-pass framework and 39 effects
+### Effects — the multi-pass framework and 47 effects
 
 **Awaiting device verification** beyond the four already checked (`fisheye` perfect, `vignette`
 working after a reshape, `glow` and `blur` fixed but unseen). Spec:
@@ -1703,7 +1704,7 @@ bars in lane order, a bar that does not fit skipped and named.
 `MAX_EFFECT_PASSES` is a **correctness bound, not a performance one** — enough for a separable
 blur plus a composite, and a hard stop on a future catalog entry quietly asking for twelve.
 Whether a given device sustains four is a different question, and the answer is the standing rule:
-**probe at runtime and degrade loudly**, never assume from one handset. 36 of the 39 effects are
+**probe at runtime and degrade loudly**, never assume from one handset. 44 of the 47 effects are
 single-pass, so the cap is reached by stacking blur-class effects, not ordinary ones.
 
 **The chain runs inside `composite`, before overlays.** That is what keeps text or a sticker on a
@@ -1724,6 +1725,24 @@ anything self-timed renders differently in the file than on the canvas. `VideoEf
 makes an effect *timed* — progress runs over that opening window from the bar's start and then
 sits at 1 — while a static look gets whole-bar progress and ignores it. A zero-length window
 returns 1.0, not a division by zero, or a `fade_in` would park on black.
+
+**The drawn pack — Thunder, Rain, Snow, Embers (a new Nature tab), Light Rays, Lens Flare,
+Sparkle, Neon (Light)** — is CapCut's most used looks of the kind a shader alone can draw
+(`gl/effects/DrawnPack.kt`, **awaiting device verification**; the user asked for "the ones you
+can"): no footage, nothing downloaded, nothing tracked, so no app size and the file matches the
+canvas by construction. **They keep time in seconds** — `uSeconds`, the bar's own
+`barSeconds` (`EffectStack`, Dart's `ActiveEffectBar`, pinned by the stack fixture), uploaded
+through `TimeControlled` — because the bar's 0..1 would make rain on a ten-second bar fall at a
+third of the speed it falls on three. Timeline seconds, never wall clock. The pack's rules:
+intensity 0 is the untouched picture; `highp` where the GPU has it (seconds outgrow `mediump`
+within a minute); a sine-free hash (`packHash`, Hoskins' "Hash without Sine"); no reversed
+`smoothstep` edges; sizes in frame units. **Every shader was compiled and linked against the shared
+vertex shader with `glslangValidator` (Khronos 16.6.0, `#version 100`)** —
+`DrawnPackShadersTest` writes each to `android/app/build/shader-dump/`; not a device, but it is
+what the runtime compiler would refuse. The thunder strikes once per 1.6s window, early in it, so
+a short bar and the sheet's tile both see a bolt. **Still to come, needing more than a shader**:
+real-footage effects from the server (blended video loops) and face-tracked effects (on-device
+landmarks, analysed once per clip) — talked through with the user, not started.
 
 **Intensity and progress are `@Volatile` uniforms uploaded per draw, never constructor
 arguments.** Baking intensity into a pass meant `passesFor` rebuilt and re-linked the programs on

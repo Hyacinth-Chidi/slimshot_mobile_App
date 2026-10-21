@@ -391,4 +391,32 @@ void main() {
       }
     });
   });
+
+  group('the drawn pack', () {
+    // CapCut-style looks drawn by a shader alone — no footage, nothing
+    // downloaded, nothing tracked — so they cost the app no size and the file
+    // matches the canvas by construction.
+    const nature = ['thunder', 'rain', 'snow', 'embers'];
+    const light = ['light_rays', 'lens_flare', 'sparkle', 'neon_edge'];
+
+    test('Nature holds the weather', () {
+      expect(effectsInCategory(EffectCategory.nature).map((e) => e.id),
+          nature);
+    });
+
+    test('Light gains the rays, the flare, the sparkle and the neon', () {
+      final ids = effectsInCategory(EffectCategory.light).map((e) => e.id);
+      expect(ids, containsAllInOrder(light));
+    });
+
+    test('they last as long as their bar: no intro, no envelope, one pass', () {
+      for (final id in [...nature, ...light]) {
+        final effect = videoEffectById(id)!;
+        expect(effect.introSeconds, isNull, reason: id);
+        expect(effect.defaultEnvelope, isNull, reason: id);
+        expect(effect.passCount, 1, reason: id);
+        expect(effect.defaultIntensity, inInclusiveRange(0.5, 0.9), reason: id);
+      }
+    });
+  });
 }
