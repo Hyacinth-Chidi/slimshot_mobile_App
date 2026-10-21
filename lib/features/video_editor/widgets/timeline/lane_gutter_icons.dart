@@ -3,12 +3,13 @@ import 'package:flutter/widgets.dart';
 import '../../../../core/theme/lucide_icons.dart';
 import '../../../../core/theme/sound_effect_icon.dart';
 import '../../models/audio_track_model.dart';
+import '../../models/effect_bar_model.dart';
 import '../../models/image_overlay_model.dart';
 import '../../models/text_overlay_model.dart';
 import '../../models/video_overlay_model.dart';
 
 /// A kind of thing a lane can hold, as the gutter before 00:00 marks it.
-enum LaneGutterKind { music, soundEffect, text, caption, image, video }
+enum LaneGutterKind { music, soundEffect, text, caption, image, video, effect }
 
 /// One mark per kind of thing [lane] holds, for the gutter before 00:00.
 /// Captions are text, but a lane of them reads as captions; sound effects
@@ -19,6 +20,7 @@ List<LaneGutterKind> laneGutterKinds({
   required List<TextOverlayModel> texts,
   required List<ImageOverlayModel> images,
   required List<VideoOverlayModel> videos,
+  required List<EffectBarModel> effects,
 }) {
   return [
     if (audios.any((a) => a.laneIndex == lane && !a.isSoundEffect))
@@ -31,6 +33,7 @@ List<LaneGutterKind> laneGutterKinds({
       LaneGutterKind.caption,
     if (images.any((i) => i.laneIndex == lane)) LaneGutterKind.image,
     if (videos.any((v) => v.laneIndex == lane)) LaneGutterKind.video,
+    if (effects.any((e) => e.laneIndex == lane)) LaneGutterKind.effect,
   ];
 }
 
@@ -54,6 +57,8 @@ Widget laneGutterGlyph(
       icon = LucideIcons.image;
     case LaneGutterKind.video:
       icon = LucideIcons.video;
+    case LaneGutterKind.effect:
+      icon = LucideIcons.sparkles;
   }
   return Icon(icon, size: size, color: color);
 }

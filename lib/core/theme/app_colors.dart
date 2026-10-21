@@ -38,6 +38,10 @@ class AppColors {
   /// A sound effect's clip on the timeline, apart from music's purple.
   static const Color soundEffect = Color(0xFFF97316); // Orange 500
 
+  /// An effect bar on the timeline: a hue no other lane wears — text and
+  /// music are purple, sound effects orange, photos teal, video overlays pink.
+  static const Color effectTrack = Color(0xFF3B82F6); // Blue 500
+
   /// Accent text on purple glass: white running into lilac.
   static const LinearGradient lightAccentGradient = LinearGradient(
     colors: [textPrimary, lilac],

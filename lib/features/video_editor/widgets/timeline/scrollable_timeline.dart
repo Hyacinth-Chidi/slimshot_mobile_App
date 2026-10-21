@@ -33,6 +33,8 @@ import 'clip_keyframe_diamonds.dart';
 import 'lane_gutter_icons.dart';
 import 'transition_marker.dart';
 import '../panels/editor_sheet.dart';
+import '../panels/effects_panel.dart' show effectIcon;
+import '../../logic/effects/effect_catalog.dart';
 
 class _WaveformPainter extends CustomPainter {
   final Color color;
@@ -178,6 +180,18 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
   /// Effect bars on the lanes. They count toward the timeline's width and
   /// its snapping like every other lane item.
   final List<EffectBarModel> effectBars;
+  final String? selectedEffectBarId;
+  final ValueChanged<String>? onEffectBarTapped;
+
+  /// A bar moved ([newLaneIndex] given) or trimmed (null) — the shape the
+  /// overlays report in, so the screen places all of them one way.
+  final void Function(
+    String id,
+    Duration start,
+    Duration end, {
+    int? newLaneIndex,
+  })?
+  onEffectBarChanged;
   final String? selectedAudioId;
   final ValueChanged<String>? onAudioTapped;
   final void Function(String id, double newTimelineStart, {int? newLaneIndex})?
@@ -241,6 +255,9 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
     this.onVideoTrimChanged,
     this.audioTracks = const [],
     this.effectBars = const [],
+    this.selectedEffectBarId,
+    this.onEffectBarTapped,
+    this.onEffectBarChanged,
     this.recordingTake,
     this.selectedAudioId,
     this.onAudioTapped,
@@ -394,6 +411,13 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   double _textTrimAccumulatedDelta = 0.0;
 
   bool _isDraggingImageClip = false;
+  bool _isDraggingEffectBar = false;
+  String? _draggingEffectId;
+  Duration? _effectDragInitialStart;
+  Duration? _effectDragInitialEnd;
+  String? _trimmingEffectId;
+  Duration? _effectTrimInitialTime;
+  double _effectTrimAccumulatedDelta = 0.0;
   String? _draggingImageId;
   Duration? _imageDragInitialStart;
   Duration? _imageDragInitialEnd;
@@ -462,6 +486,9 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     for (final o in widget.audioTracks) {
       if (o.laneIndex > m) m = o.laneIndex;
     }
+    for (final o in widget.effectBars) {
+      if (o.laneIndex > m) m = o.laneIndex;
+    }
     return m;
   }
 
@@ -493,12 +520,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       _isDraggingTrimHandle ||
       _isDraggingTextClip ||
       _isDraggingImageClip ||
+      _isDraggingEffectBar ||
       _isDraggingAudioClip ||
       _isDraggingVideoClip ||
       _isReorderingClip ||
       _trimmingTextId != null ||
       _trimmingAudioId != null ||
       _trimmingImageId != null ||
+      _trimmingEffectId != null ||
       _trimmingVideoId != null;
 
   /// The furthest this project may zoom out.
@@ -1908,6 +1937,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         texts: widget.textOverlays,
         images: widget.imageOverlays,
         videos: widget.videoOverlays,
+        effects: widget.effectBars,
       );
       if (kinds.isEmpty) continue;
 
@@ -2248,6 +2278,9 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
 
                           // 7. Video overlays track
                           ..._buildVideoTracks(lanesTop),
+
+                          // Effect bars
+                          ..._buildEffectTracks(lanesTop),
 
                           // 8. Lane gutter: the start line and per-lane
                           // identity icons in the run-in before 00:00.
@@ -3068,6 +3101,261 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
           ),
         );
       }
+    }
+    return widgets;
+  }
+
+  void _beginEffectBarDrag(EffectBarModel bar) {
+    widget.onDragStart?.call();
+    setState(() {
+      _isDraggingEffectBar = true;
+      _draggingEffectId = bar.id;
+      _effectDragInitialStart = _durationOf(bar.start);
+      _effectDragInitialEnd = _durationOf(bar.end);
+      _dragStartLaneIndex = bar.laneIndex;
+      _dragStartMaxLane = _maxMoveLaneFor(bar.id);
+    });
+    widget.onPausePlayback();
+    widget.onEffectBarTapped?.call(bar.id);
+  }
+
+  void _moveEffectBar(LongPressMoveUpdateDetails details) {
+    if (!_isDraggingEffectBar ||
+        _draggingEffectId == null ||
+        _effectDragInitialStart == null ||
+        _effectDragInitialEnd == null) {
+      return;
+    }
+    final deltaMs =
+        (details.offsetFromOrigin.dx / _pixelsPerSecond * 1000).round();
+    final lengthMs = _effectDragInitialEnd!.inMilliseconds -
+        _effectDragInitialStart!.inMilliseconds;
+    final proposedStartMs = (_effectDragInitialStart!.inMilliseconds + deltaMs)
+        .clamp(0, _kUnboundedMs)
+        .toInt();
+    final snappedStartMs = (_snapMove(
+              _draggingEffectId!,
+              proposedStartMs / 1000.0,
+              lengthMs / 1000.0,
+            ) *
+            1000)
+        .round();
+    // Lanes stack downward, as for every other lane item.
+    final lanesMoved = (details.offsetFromOrigin.dy / _laneHeight).round();
+    final newLaneIndex = max(
+      0,
+      min(_dragStartMaxLane, _dragStartLaneIndex + lanesMoved),
+    );
+    final nextStart = Duration(milliseconds: snappedStartMs);
+    widget.onEffectBarChanged?.call(
+      _draggingEffectId!,
+      nextStart,
+      Duration(milliseconds: snappedStartMs + lengthMs),
+      newLaneIndex: newLaneIndex,
+    );
+    _previewTrimPosition(nextStart.inMilliseconds / 1000.0);
+  }
+
+  void _endEffectBarDrag() {
+    setState(() {
+      _isDraggingEffectBar = false;
+      _draggingEffectId = null;
+      _effectDragInitialStart = null;
+      _effectDragInitialEnd = null;
+    });
+    _clearSnap();
+    widget.onDragEnd?.call();
+  }
+
+  static Duration _durationOf(double seconds) =>
+      Duration(microseconds: (seconds * 1e6).round());
+
+  /// The effect bars: square, in [AppColors.effectTrack], the effect's icon
+  /// and name on each — an id this build does not know reads "Effect" and
+  /// can still be selected and deleted. Moved by a long-press, trimmed by
+  /// the overlay handles, snapped like every lane item; the selected bar's
+  /// intensity diamonds sit on it.
+  List<Widget> _buildEffectTracks(double lanesTop) {
+    final widgets = <Widget>[];
+
+    for (final bar in widget.effectBars) {
+      final double top = lanesTop + bar.laneIndex * _laneHeight + 4;
+      final startPx = bar.start * _pixelsPerSecond;
+      final endPx = bar.end * _pixelsPerSecond;
+      final widthPx = (endPx - startPx).clamp(0.0, double.infinity).toDouble();
+      final effect = videoEffectById(bar.effectId);
+
+      final isSelected = bar.id == widget.selectedEffectBarId;
+      final isBeingDragged =
+          _isDraggingEffectBar && _draggingEffectId == bar.id;
+
+      widgets.add(
+        Positioned(
+          top: isBeingDragged ? top - 3 : top,
+          left: startPx,
+          width: widthPx,
+          height: isBeingDragged ? _laneHeight - 2 : _laneHeight - 8,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => widget.onEffectBarTapped?.call(bar.id),
+            onLongPressStart: (_) => _beginEffectBarDrag(bar),
+            onLongPressMoveUpdate: _moveEffectBar,
+            onLongPressEnd: (_) => _endEffectBarDrag(),
+            child: Container(
+              key: ValueKey('effect-bar:${bar.id}'),
+              decoration: BoxDecoration(
+                color: isBeingDragged || isSelected
+                    ? AppColors.effectTrack
+                    : AppColors.effectTrack.withValues(alpha: 0.5),
+                border: Border.all(
+                  color: isBeingDragged || isSelected
+                      ? AppColors.textPrimary
+                      : Colors.transparent,
+                  width: isBeingDragged ? 2 : 1.5,
+                ),
+                boxShadow: isBeingDragged
+                    ? [
+                        BoxShadow(
+                          color: AppColors.effectTrack.withValues(alpha: 0.45),
+                          blurRadius: 12,
+                          spreadRadius: 1,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      effect == null ? LucideIcons.sparkles : effectIcon(effect),
+                      color: AppColors.textPrimary,
+                      size: 12,
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        effect?.label ?? 'Effect',
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      if (!isSelected) continue;
+
+      if (!isBeingDragged) {
+        widgets.add(
+          _overlayKeyframeDiamonds(
+            id: bar.id,
+            top: top,
+            left: startPx,
+            width: widthPx,
+          ),
+        );
+      }
+
+      void beginTrim(Duration from) {
+        widget.onDragStart?.call();
+        setState(() {
+          _trimmingEffectId = bar.id;
+          _effectTrimInitialTime = from;
+          _effectTrimAccumulatedDelta = 0.0;
+        });
+      }
+
+      void endTrim() {
+        _clearSnap();
+        widget.onDragEnd?.call();
+        setState(() {
+          _trimmingEffectId = null;
+          _effectTrimInitialTime = null;
+        });
+      }
+
+      Duration? dragged(DragUpdateDetails details) {
+        if (_trimmingEffectId != bar.id || _effectTrimInitialTime == null) {
+          return null;
+        }
+        _effectTrimAccumulatedDelta += details.delta.dx;
+        final deltaMs =
+            (_effectTrimAccumulatedDelta / _pixelsPerSecond * 1000).round();
+        return _snapEdgeDuration(
+          bar.id,
+          Duration(
+            milliseconds: _effectTrimInitialTime!.inMilliseconds + deltaMs,
+          ),
+        );
+      }
+
+      final barStart = _durationOf(bar.start);
+      final barEnd = _durationOf(bar.end);
+
+      widgets.add(
+        Positioned(
+          top: top,
+          left: startPx - (_handleTouchWidth / 2),
+          width: _handleTouchWidth,
+          height: _laneHeight - 8,
+          child: _laneTrimHandle(
+            handleKey: 'effect:${bar.id}:start',
+            onStart: (_) => beginTrim(barStart),
+            onUpdate: (details) {
+              var next = dragged(details);
+              if (next == null) return;
+              if (next < Duration.zero) next = Duration.zero;
+              if (next > barEnd - _kMinTrimDuration) {
+                next = barEnd - _kMinTrimDuration;
+              }
+              widget.onEffectBarChanged?.call(bar.id, next, barEnd);
+              _previewTrimPosition(next.inMilliseconds / 1000.0);
+            },
+            onEnd: endTrim,
+            visual: _overlayHandleVisual(
+              'effect:${bar.id}:start',
+              inside: _atTimelineStart(startPx),
+            ),
+          ),
+        ),
+      );
+
+      widgets.add(
+        Positioned(
+          top: top,
+          left: startPx + widthPx - (_handleTouchWidth / 2),
+          width: _handleTouchWidth,
+          height: _laneHeight - 8,
+          child: _laneTrimHandle(
+            handleKey: 'effect:${bar.id}:end',
+            onStart: (_) => beginTrim(barEnd),
+            onUpdate: (details) {
+              var next = dragged(details);
+              if (next == null) return;
+              const maxEnd = Duration(milliseconds: _kUnboundedMs);
+              if (next > maxEnd) next = maxEnd;
+              if (next < barStart + _kMinTrimDuration) {
+                next = barStart + _kMinTrimDuration;
+              }
+              widget.onEffectBarChanged?.call(bar.id, barStart, next);
+              _previewTrimPosition(next.inMilliseconds / 1000.0);
+            },
+            onEnd: endTrim,
+            visual: _overlayHandleVisual('effect:${bar.id}:end'),
+          ),
+        ),
+      );
     }
     return widgets;
   }

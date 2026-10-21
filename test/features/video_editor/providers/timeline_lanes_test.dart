@@ -361,8 +361,9 @@ void main() {
     ).readAsStringSync();
     final starts = 'widget.onDragStart?.call()'.allMatches(timeline).length;
     final ends = 'widget.onDragEnd?.call()'.allMatches(timeline).length;
-    // Clip trim, four lane moves, audio trim and six overlay trim handles.
-    expect(starts, 12);
+    // Clip trim, four lane moves, audio trim, six overlay trim handles, and
+    // an effect bar's move and trim.
+    expect(starts, 14);
     expect(ends, starts, reason: 'every gesture that begins must end');
   });
 

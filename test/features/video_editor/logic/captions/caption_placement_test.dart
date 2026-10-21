@@ -272,6 +272,7 @@ void main() {
           texts: texts,
           images: const [],
           videos: const [],
+          effects: const [],
         );
     expect(icons(1, [caption, plain]), [LaneGutterKind.caption]);
     expect(icons(0, [caption, plain]), [LaneGutterKind.text]);

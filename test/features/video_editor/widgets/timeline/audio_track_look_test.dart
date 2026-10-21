@@ -38,6 +38,7 @@ void main() {
           texts: const [],
           images: const [],
           videos: const [],
+          effects: const [],
         );
     expect(icons(0, [music, effect]), [LaneGutterKind.music]);
     expect(icons(1, [music, effect]), [LaneGutterKind.soundEffect]);
