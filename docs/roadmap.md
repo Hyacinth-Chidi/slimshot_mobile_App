@@ -141,7 +141,13 @@ text on black laid over the clip with a blend mode.
 
 16. **Effects track** (L). Effects as bars on a lane of their own — placed at the playhead, about a
     second long, trimmable, stackable, applying to the main video, one overlay or the whole frame —
-    instead of one effect owned by each clip. Today's 39 effects move onto it.
+    instead of one effect owned by each clip. Today's 39 effects move onto it. **Main video built
+    2026-10-21, awaiting device verification** (spec
+    `docs/superpowers/specs/2026-10-20-effects-track-design.md`): bars on the shared lanes,
+    stacking by lane within the four-pass budget, a skipped bar named, old projects' clip effects
+    converted to bars. **Next: Whole frame** — it needs the preview to draw text in the engine,
+    since Flutter paints text above the picture where no effect can reach it — **then one
+    overlay.**
 17. **Clip In / Out / Combo animations** (M–L). Presets on the transform and opacity keyframe
     model; their home is the clip menu, with a handler. Include a one-frame white **Flash** in —
     the travel edit's panels arrive with one.

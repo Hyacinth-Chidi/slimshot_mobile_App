@@ -1,6 +1,6 @@
 # Effects track — design
 
-**Date:** 2026-10-20 · **Branch:** `effects-track` · **Status:** awaiting the owner's review
+**Date:** 2026-10-20 · **Branch:** `effects-track` · **Status:** built 2026-10-21, awaiting device verification
 
 Roadmap Stage 6, item 16. Today every clip carries at most one effect (`VideoSegment.effectId`).
 This moves effects onto the timeline as **bars on the lanes**, the way text and audio already

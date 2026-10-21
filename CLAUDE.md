@@ -1476,18 +1476,151 @@ dispute between Dart and Kotlin shows up in one `SlimshotExport` line.
     metadata with the bitmap delivery would need mapping `presentationTimeUs` to a clip, which is
     unverified API territory and not worth the risk.
 
-### Per-clip effects — the multi-pass framework and 39 effects
+### Effects track — bars on the lanes, over the main video
+
+**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-10-20-effects-track-design.md`,
+plan beside it in `plans/`. Roadmap item 16, its first part: a bar applies to the **main video**
+(the clips and the background, under every overlay, text and emoji, which stay sharp on top).
+Whole frame and one overlay are next; Whole frame waits on the preview drawing text in the engine,
+since Flutter paints text above the engine's picture where no effect can reach it.
+
+An effect is something that happens *at a moment of the video*, not a property of whichever clip
+is there. A clip-owned effect could not span a cut, could not stack, could not start mid-clip, and
+through a transition showed only the outgoing clip's. So an effect is a **bar on the shared
+lanes** (`EffectBarModel`: effect id, start, end, lane, intensity), beside text, photos, video
+overlays and audio. `laneSpansOf` includes bars, so moving, trimming, snapping, copying, deleting
+and closing empty lanes are the lane rules already there (`lane_layout.dart`), each gesture one
+undo step through `beginTimelineGesture` / `endTimelineGesture`.
+
+- **Effects is on the main menu** (id `effects`, after Overlay) and opens the effects sheet.
+  **The sheet acts on the selected bar**: with none, a tap adds one; with one, a tap changes its
+  effect — so browsing while the sheet is open does not litter the timeline, and closing before a
+  tap adds nothing. No None tile (Delete removes a bar, Undo backs out an add), no title, no
+  Apply to all. A tap on the effect the bar already wears takes no undo step. A new or changed
+  effect starts at the catalog's `defaultIntensity` and `defaultEnvelope`, and a change drops the
+  intensity's keyframes — that curve belonged to the old effect.
+- **A new bar** (`newEffectBarSpan`) lands at the playhead, `kDefaultEffectBarSeconds` (3) long,
+  on the first free lane there, and **fits inside the project**: near the end it ends at the end,
+  starting earlier only to keep `kMinClipDurationSeconds`. Adding one never makes the project
+  longer.
+- **A selected bar's menu is Edit · Copy · Delete** (`_effectBarMenu`, registered as
+  `effect_bar`). Copy goes straight after the original on its lane where there is room, else to
+  the nearest free lane below — the audio rule: an effect continuing.
+- **Selection is exclusive**: selecting a bar clears every other selection, every other select
+  clears the bar's; playing does not.
+- **Drawn in `AppColors.effectTrack`** (Blue 500 — photo bars were already teal), with the
+  effect's icon and name, the sparkles glyph in the lane gutter, and its intensity diamonds under
+  its handles. Hidden in recording mode with every other lane.
+
+**Bars live in timeline time.** Trimming, moving or deleting a clip does not move a bar —
+CapCut's behaviour, and the reason a bar can span a cut. **They count toward the project's end**
+like every lane item, through `projectEndSeconds` (`logic/timeline/project_end.dart`), the one
+function the composer, `totalEditedDurationProvider` and `ScrollableTimeline._totalEditedDuration`
+all read — so a bar past the last clip extends the project over the background instead of being
+drawn where taps do not land.
+
+**One keyframable property, intensity**, with the clips' and overlays' diamonds, plus button,
+easing sheet and edit rule — `keyframe_core.dart` through a one-parameter adapter; the selected
+bar is the third kind of keyframe target (`keyframeEffectBar`) beside a clip and an overlay.
+**Progress is the bar's own 0..1**, so trimming a bar stretches its curve — the overlay rule. The
+slider shows the value its write lands on (`effectBarEditIntensity`, `clipEditValue`'s rule), and
+a drag pauses and is one undo step (`beginEffectBarIntensityEdit`).
+
+**Which bars draw at an instant is one rule, written twice and pinned once**: `effectBarsDrawnAt`
+(`logic/effects/effect_stack.dart`) and Kotlin's `EffectStack.drawnAt`, pinned by
+`test/fixtures/effect_stack_fixture.json` — regenerate with `UPDATE_EFFECT_FIXTURE=1 flutter test
+test/features/video_editor/logic/effects/effect_stack_fixture_test.dart`, which writes the copy
+under `android/app/src/test/resources/` too, then re-run the Kotlin suite. The usual caveat: it
+catches divergence tomorrow, never a wrong rule today.
+
+- A bar draws on `start <= t < end`, **half-open**, so two bars meeting at a seam never both draw
+  there.
+- **In lane order**, the bar nearest the clips first, each later one over the result.
+- **Within `kMaxEffectPasses` (4), whole bars only.** Each costs its catalog `passCount` — blur
+  and blur_in 2, glow 4 (`EffectShaders.glowPasses` builds four; the catalog had said 3),
+  everything else 1, with `EffectPassCosts.kt` holding Kotlin's copy. A bar that does not fit is
+  skipped **whole** — a blur is never cut in half — and the walk goes on, so a later bar that fits
+  still draws. An effect id the catalog does not know draws nothing and costs nothing.
+- **Intensity resolves at whole-bar progress** (the diamonds' clock), clamped 0..1. **The
+  shader's progress runs over `introSeconds` from the bar's start** for a timed effect and rests
+  at 1; across the whole bar otherwise. That ended a latent mismatch: Dart placed a clip's
+  intensity diamonds on whole-clip progress while Kotlin resolved them on the intro window, so a
+  keyframed intro drew a different strength from the one the slider showed.
+
+**A skipped bar is said once, by name** (`newlySkippedEffectBar`, `effectSkippedMessage` —
+"Dreamy is skipped: too many effects at once"). The drawn set changes only at bar edges, so the
+check runs once between each pair of edges, before and after an edit, and only a bar skipped now
+that was not before is named: a bar already skipped is not announced again on every later edit,
+and a list arriving into an empty one — a draft opening — says nothing, since one bar alone always
+fits. It is a toast although preview and file agree, because a bar on the timeline drawn nowhere
+reads as an effect that does not work.
+
+**Through a transition a bar applies to the blended frame**; the old "outgoing clip's effect owns
+the window" rule is gone, with nothing to replace it. **In the tail** it applies to what Main video
+is there: the background.
+
+**The engine** (`NativeTimelineEffect`, `EffectStack`, `gl/effects/EffectStackController.kt`):
+
+- **Bars travel on their own channel, `setEffects`** — the `setOverlays` pattern — sent from every
+  place overlays are sent: draft load, import, Add, Replace, and the state listener, which runs
+  mid-drag, so a bar dragged, trimmed or retuned moves on the canvas under the finger.
+  `EffectBarsSync` answers a position event by the list's identity and an equal rebuilt list by
+  its payload text, so playback composes nothing. The export reads the bars from the timeline
+  (`EditorTimeline.effects`, which carries `introSeconds` from the catalog and leaves out an id the
+  catalog does not know).
+- **No program is linked in the render path.** `EffectStackController.setBars` builds — in one GL
+  hop, when the list arrives — as many instances of each effect's passes as the most bars of that
+  effect ever drawn at once (`EffectStack.peakInstances`), and frees what the new list no longer
+  needs. `apply` only chooses among built passes and pushes intensity and progress as uniforms,
+  so crossing a bar's edge costs a list swap. Uniforms are pushed before the pass list; when only
+  uniforms moved, `redrawEffects` asks for the frame.
+- **The preview draws at `overlayClockNow`**, the instant the overlays are drawn at, so a bar in
+  the tail follows the tail's playhead. `applyEffects` runs after `applyOverlays`, in the tick and
+  on a tail clock update.
+- **One writer at a time.** While an export holds the renderer, `setEffects` only records the list
+  — a GL hop then would block the main thread until the export ended — and
+  `reattachSurfacesAfterExport` builds, re-asserts and draws it. The export calls `setBars`
+  **before its first frame**, `apply` on every frame including the tail, and `clear` + `release`
+  in `finally`. That first `setBars` has no JVM test (the export engine needs GL); it was found
+  missing by reading the diff, and an export with no effects in it is the symptom if it goes.
+- `composite` is unchanged: lanes and background into the scene, the stack's passes over it, then
+  overlays.
+
+**Old projects are converted on load** (`migrateClipEffects`, before `normalizeLanes`). Each
+clip's effect becomes a bar `effect_<clipId>` covering exactly where it showed — from the end of
+its incoming transition window (the outgoing clip owned the window), or the clip's start, to the
+clip's end — with the same effect, base value and envelope, and its keyframes re-placed on the
+same timeline instants: rescaled to bar progress, any before the bar's start dropped, one pinned
+at the start carrying the value there, **linear**, since the rest of an eased segment is not the
+same easing shape. **One accepted difference**: a timed effect on a clip entered through a
+transition used to join its intro part-way; its bar plays the intro whole from the window's end.
+A clip carries no effect any more — not on the model, in the draft or on the wire — and the draft
+is saved in the new form, `effectBars` omitted when empty.
+
+**What went with the clip's effect**: the clip menu's Effects, `setClipEffect`,
+`applyEffectToAllClips` and the sheet's Apply to all, `ClipProperty.effectIntensity` (clips keep
+six keyframable properties), the effect checks in `_canMergeForPlayback`, the effect in
+`clipToOverlayLosses`, freeze frame's effect copy, `ClipEffectController`, `applyClipEffect` and
+the export's per-frame effect clip.
+
+**Device checks** (GLSL and timing only run there): a bar starts and stops on the right frame in
+the preview and in the export; two stacked bars; a bar across a transition; an intro plays from
+the bar's start; playback crossing a bar's edge does not hitch; an old project with effects looks
+the same; a bar in the tail; a bar dragged or trimmed updates the canvas live; a glow stacked on a
+blur toasts once.
+
+### Effects — the multi-pass framework and 39 effects
 
 **Awaiting device verification** beyond the four already checked (`fisheye` perfect, `vignette`
 working after a reshape, `glow` and `blur` fixed but unseen). Spec:
 `docs/superpowers/specs/2026-09-12-clip-effects-design.md`.
 
-A clip carries **one** effect (`VideoSegment.effectId` + `effectIntensity`), chosen from the
-**clip's contextual menu** beside Filters, travelling the same route a per-clip filter does:
-`VideoSegment` → composer → clip JSON → `NativeTimelineClip` → `EffectShaders` → the pass chain.
-`logic/effects/effect_catalog.dart` is the single source of truth and the panel reads it — there
-is no second list, and a test counts the grid's `itemCount` against the catalog so a new entry
-cannot silently miss the UI.
+Effects were built per clip — one per clip, from the clip's menu — and live on the timeline as
+bars since the effects track (the section above), which owns where an effect applies and when.
+This section is the drawing underneath, unchanged by the move: bar → `EditorTimeline.effects` →
+`NativeTimelineEffect` → `EffectShaders` → the pass chain. `logic/effects/effect_catalog.dart`
+is the single source of truth and the panel reads it — there is no second list, and a test counts
+the grid's `itemCount` against the catalog so a new entry cannot silently miss the UI.
 
 **The renderer was single-pass, and that is why blur never existed.** `composite()` bound
 framebuffer 0 and drew straight to the output, so any effect needing the frame *back* — blur,
@@ -1497,13 +1630,10 @@ chain (`MAX_EFFECT_PASSES` 4, two targets allocated per size change and reused).
 passes the frame takes exactly the old path** — the diff that introduced this removed two lines
 and both reappear in the no-passes branch.
 
-**The pass budget is per *frame*, and a frame draws one clip.** `applyClipEffect` resolves a
-single clip from the timeline position — the outgoing one inside a transition window, the master
-lane's otherwise — and applies only that clip's effect. So a project of any length with a
-different effect on every clip costs nothing extra: clip 4's blur is never drawn while clip 1 is
-on screen, and even a transition draws **one** effect because the outgoing clip owns the window.
-The budget binds only when a *single* clip stacks several effects, which is what makes stacking
-the feature that has to reckon with it.
+**The pass budget is per *frame*.** Only the bars under the playhead draw, so a project of any
+length with an effect every few seconds costs nothing extra: a blur at 0:40 is never drawn at
+0:05. The budget binds only where bars **stack**, and the effects track's rule spends it — whole
+bars in lane order, a bar that does not fit skipped and named.
 
 `MAX_EFFECT_PASSES` is a **correctness bound, not a performance one** — enough for a separable
 blur plus a composite, and a hard stop on a future catalog entry quietly asking for twelve.
@@ -1515,33 +1645,30 @@ single-pass, so the cap is reached by stacking blur-class effects, not ordinary 
 blurred clip **sharp**: effects treat the clip picture, overlays sit above it. Do not move the
 chain out or the overlay draw in.
 
-**A grade is per-lane, an effect is whole-frame, and that asymmetry decides transitions.**
-`applyLaneGrades` sets a colour matrix per lane *before* the blend, so two clips can cross-fade
-between different looks. An effect pass runs *after* compositing, on the finished frame — so a
-transition between two differently-effected clips has one frame and two answers. **The outgoing
-clip's effect owns the whole window**, matching the existing rule that the outgoing lane is
-transition master. Rendering each lane into its own target would be more correct and doubles both
-targets and passes on exactly the hardware transitions already strain. Documented at the
-resolution site in both engines, because it reads as an oversight otherwise.
+**A grade is per-lane, an effect is whole-frame.** `applyLaneGrades` sets a colour matrix per
+lane *before* the blend, so two clips can cross-fade between different looks. An effect pass runs
+*after* compositing, on the finished frame — which used to force a rule, the outgoing clip's
+effect owning a transition's window, since a frame between two differently-effected clips had two
+answers. A bar is not a clip's, so it simply applies to the blended frame and the rule is gone.
 
-**`uProgress` is the clip's own 0..1 position, from the timeline clock.** Effects began with no
+**`uProgress` is the bar's own 0..1 position, from the timeline clock.** Effects began with no
 notion of time, which made every *intro* effect impossible — a cinema zoom or a shutter reveal is
-nothing but a function of time. It is resolved through `NativeTimelineClip.effectProgressAt` in
-both engines, never a frame counter or `System.nanoTime`: export runs faster than realtime, so
+nothing but a function of time. It is resolved through `EffectStack.shaderProgress` in both
+engines, never a frame counter or `System.nanoTime`: export runs faster than realtime, so
 anything self-timed renders differently in the file than on the canvas. `VideoEffect.introSeconds`
-makes an effect *timed* — progress runs over that opening window and then sits at 1 — while a
-static look gets whole-clip progress and ignores it. A zero-length window returns 1.0, not a
-division by zero, or a `fade_in` would park on black.
+makes an effect *timed* — progress runs over that opening window from the bar's start and then
+sits at 1 — while a static look gets whole-bar progress and ignores it. A zero-length window
+returns 1.0, not a division by zero, or a `fade_in` would park on black.
 
 **Intensity and progress are `@Volatile` uniforms uploaded per draw, never constructor
 arguments.** Baking intensity into a pass meant `passesFor` rebuilt and re-linked the programs on
 every change, so dragging the slider would have linked a program per frame. `IntensityControlled`
 and `ProgressControlled` are the interfaces; a pass that forgets one ships a slider that silently
-does nothing. `ClipEffectController` rebuilds on **id** change only.
+does nothing. `EffectStackController` builds when the bars arrive, never when one starts.
 
 **`callOnGlThread` runs inline when already on the GL thread.** Export froze at ~15% with no
 error: `runVideo` already runs inside `callOnGlThread`, and per output frame it resolved the
-clip's effect, which hopped to the GL thread *again* — posting a block behind the call waiting
+frame's effect, which hopped to the GL thread *again* — posting a block behind the call waiting
 for it. The thread blocked on itself at the first frame whose clip carried an effect. A deadlock
 is not a failure anything can report, which is why it presented as a frozen progress bar.
 
@@ -1567,7 +1694,7 @@ unchanged footage on a device, that loop is the first suspect and the fallback i
 
 ### Animatable parameters — envelopes and keyframes
 
-**Awaiting device verification.** An effect's intensity is an `AnimatableDouble`
+**Awaiting device verification.** An effect bar's intensity is an `AnimatableDouble`
 (`logic/animation/animatable_double.dart`): a base value, an optional named **envelope**, an
 optional **keyframe** list, and one `resolveAt(progress)` that answers what the value is now.
 A Kotlin port (`nativepreview/AnimatableDouble.kt`) is pinned to the Dart by
@@ -1609,8 +1736,9 @@ break.
 
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-09-15-clip-keyframes-design.md`.
 
-A clip carries seven keyframable properties, all `AnimatableDouble`: `canvasScale`,
-`canvasOffsetX`, `canvasOffsetY`, `canvasRotation`, `volume`, `effectIntensity` and `opacity`. **`speed` cannot join them, and
+A clip carries six keyframable properties, all `AnimatableDouble`: `canvasScale`,
+`canvasOffsetX`, `canvasOffsetY`, `canvasRotation`, `volume` and `opacity` (a seventh,
+`effectIntensity`, went to the effect bars with the effect itself). **`speed` cannot join them, and
 the reason is structural**: every other property is read *at* a progress, while speed decides what
 progress means — `duration` is `(sourceEnd - sourceStart) / speed` and `clipProgressAt` divides by
 that duration, so a keyframed speed makes progress a function of itself and every diamond slides
@@ -1666,11 +1794,10 @@ diamond sits at the destination, and the widget keeps dragging from where the di
 different number of frames on a 1s clip and a 30s one, so a fixed progress window would make
 diamonds unhittable on long clips and impossible to step off on short ones.
 
-**Progress is whole-clip for every property** (`clipProgressAt`), including `effectIntensity`,
-which previously measured against the effect's intro window. The shader's `uProgress` keeps that
-window — it is the *effect's* clock, a different quantity that happens to share a range — but a
-diamond is an instant of the **clip**, and resolving one against the intro window would put it
-somewhere the timeline never drew it.
+**Progress is whole-clip for every property** (`clipProgressAt`). The same rule holds on an
+effect bar, whose diamonds run on whole-bar progress while the shader's `uProgress` keeps the
+intro window — that is the *effect's* clock, a different quantity that happens to share a range,
+and resolving a diamond against it would put it somewhere the timeline never drew it.
 
 **A control shows what its write will target** (`clipEditValue`). With no diamonds an edit writes
 the base, so the base is shown; with diamonds it writes the keyframe at the playhead, so the value
@@ -1751,11 +1878,7 @@ Three engine-side subtleties worth not rediscovering:
   because a keyframe moves the value after `fromWire` has run — the same move the effect
   intensity clamp already made.
 
-**Keyframes are the clip's, not the effect's.** Changing an effect drops the *intensity's*
-keyframes (that parameter belongs to the effect) and leaves transform and volume keyframes
-standing.
-
-**Opacity is the seventh keyframable property** (`VideoSegment.opacity`, `ClipProperty.opacity`,
+**Opacity is the sixth keyframable property** (`VideoSegment.opacity`, `ClipProperty.opacity`,
 **awaiting device verification**). **It is a mix toward the letterbox fill, never alpha**: the clip
 pass has no GL blending, `glClear` uses an opaque background, and the sampling helpers already
 return `backgroundAt()` for letterbox pixels rather than transparency — so an alpha would be a
@@ -1995,8 +2118,8 @@ as it was until Circle is chosen again.
 
 `replaceClipAsset` puts a picked file under the selected clip. Everything the user did to the clip
 is about the *slot* on the timeline, not the file — speed, placement and its keyframes (clip-relative,
-so they still mean the same instants), crop, mirror, opacity, adjustments, filter, effect,
-transition — and survives. The trim survives where it fits: a shorter file pulls the end in and
+so they still mean the same instants), crop, mirror, opacity, adjustments, filter, transition —
+and survives. (An effect is a bar on the timeline, not the clip's, so it stays where it was.) The trim survives where it fits: a shorter file pulls the end in and
 slides the start back to keep as much of the clip's length as the file allows; a photo has no
 source length and is given the clip's on-screen length at 1×. **What cannot survive is what
 belonged to the old file**: the proxy rendered from it, and a reversal that depended on that
@@ -2022,7 +2145,7 @@ its turn the clip's degrees in radians. Each is a fixed change of units, applied
 included; keyframe progress is clip-relative and the overlay's is overlay-relative over the same
 span. A test fails when the fit ratio is dropped.
 
-**What cannot come along is named first** (`clipToOverlayLosses`): filter, Adjust, effect, crop,
+**What cannot come along is named first** (`clipToOverlayLosses`): filter, Adjust, crop,
 flip, speed curve, reverse, volume keyframes — what a clip carries and an overlay cannot hold yet.
 **Only when there is any**, one dialog says so in a line ("Filter and speed curve won't carry
 over.", `confirmMoveToOverlay`) with Cancel and Move; a clip that loses nothing just moves. Trim,
@@ -2504,13 +2627,14 @@ exactly. A new emoji is still made without a Size (it draws as it always has). `
 
 ### Apply to all — a copy, not a mode
 
-Transform, the clip crop and Effects each carry an `ApplyToAllButton`: one tap copies the selected
-clip's placement (scale, position, rotation with their keyframes, and the mirror), its crop rect, or
-its effect and intensity onto every other clip, as one undo step, and says how many it reached.
+Transform and the clip crop each carry an `ApplyToAllButton`: one tap copies the selected clip's
+placement (scale, position, rotation with their keyframes, and the mirror) or its crop rect onto
+every other clip, as one undo step, and says how many it reached. (Effects had one too, until an
+effect became a bar: a bar already spans as many clips as it is long.)
 **Deliberately not the `ApplyToAllToggle` Filters and Transitions use.** Those edits are single
 choices that can sensibly write everywhere live; a placement is a ruler drag, and a live all-clips
 mode would write a keyframe into every clip at the same *relative* instant on every frame of the
-drag — which nobody means. Set one clip up, then copy it. All three go through
+drag — which nobody means. Set one clip up, then copy it. Both go through
 `_copyToOtherClips`, which snapshots once and does nothing — no snapshot either — with nothing
 selected or nothing else to write, because an undo entry that undoes nothing is a lie. Disabled and
 dimmed, not hidden, in a one-clip project.
@@ -2524,7 +2648,8 @@ written into the project folder like a cover (`freeze_<draftId>_<ts>.jpg`, decod
 on the long side — no export renders a still larger), added as an image asset, and inserted as a
 `kDefaultPhotoDurationSeconds` photo clip. **The still wears the clip's state at that instant as
 flat values**: a keyframed zoom mid-flight freezes at the size it had, with no keyframes, because a
-still has no travel; filter, effect, crop, flip and adjustments copy across. Where the playhead is
+still has no travel; filter, crop, flip and adjustments copy across, and an effect bar over the
+instant goes on applying where it is. Where the playhead is
 at least `kMinClipDurationSeconds` from both ends the clip is cut and the still goes between the
 halves — **one undo step** for cut and insert; nearer an end it goes before or after, uncut, rather
 than forcing a sliver the blade would refuse. A photo throws ("already a still"), as does a frame
@@ -4230,11 +4355,12 @@ criteria, not aspirations.
 - Applying or retuning a transition must not force unrelated clips to reload.
 - Don't remove unfinished tools â€” keep them visible and implement later.
   **The exception is a tool that is not unfinished but misplaced.** The root
-  menu carried an `effects` entry whose handler is gated on the clip menu, so
-  it fell through to "Effects controls coming soon" for a feature that is
-  built and ships one tap away on the clip's own menu. That is a wrong
-  signpost, not a promise of future work, and it is gone
-  (`editor_menu_test.dart` pins it). The root menu's **`animate`** entry went
+  menu once carried an `effects` entry whose handler was gated on the clip
+  menu, so it fell through to "Effects controls coming soon" for a feature
+  built and shipping one tap away on the clip's own menu — a wrong signpost,
+  removed. It is back since the effects track, now with a handler: Effects
+  adds a bar, and the clip menu's entry is the one that went
+  (`editor_menu_test.dart` pins both). The root menu's **`animate`** entry went
   the same way and was worse: the string appeared *once* in the whole
   codebase — the entry itself — so nothing handled it at all, while the real
   tool ships as `animation` on the image- and video-overlay menus and as the
