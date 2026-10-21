@@ -17,10 +17,16 @@ bool isToolbarToolVisible(
   required bool hasCaptionServer,
   required bool hasCatalogServer,
   required bool hasCaptionSelected,
+  bool hasEffectBarSelected = false,
 }) {
   switch (toolId) {
     case 'delete':
-      if (hasTextSelected || hasImageSelected || hasVideoOverlaySelected) {
+      // An effect bar is deletable whatever the clips are doing — selecting
+      // it deselects the clip, so the clip rule alone hid the bar's Delete.
+      if (hasTextSelected ||
+          hasImageSelected ||
+          hasVideoOverlaySelected ||
+          hasEffectBarSelected) {
         return true;
       }
       return canDeleteSegment;

@@ -2393,6 +2393,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
             hasCaptionSelected: editorState.textOverlays.any(
               (t) => t.id == editorState.selectedTextId && t.isCaption,
             ),
+            hasEffectBarSelected: editorState.selectedEffectBarId != null,
           ),
         )
         .toList();

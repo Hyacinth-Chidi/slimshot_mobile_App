@@ -24,6 +24,7 @@ void main() {
     bool captionServer = true,
     bool catalogServer = true,
     bool caption = false,
+    bool effectBar = false,
   }) =>
       isToolbarToolVisible(
         id,
@@ -37,6 +38,7 @@ void main() {
         hasCaptionServer: captionServer,
         hasCatalogServer: catalogServer,
         hasCaptionSelected: caption,
+        hasEffectBarSelected: effectBar,
       );
 
   /// The tool ids a `const EditorMenu` declares, without the menu's own id.
@@ -52,6 +54,19 @@ void main() {
         .toList();
     return ids.skip(1).toList();
   }
+
+  test("a selected effect bar's menu shows every tool it declares", () {
+    // Device-reported: no way to delete an effect. The bar's menu declared
+    // Delete, and the visibility rule — which knew clips, text and overlays —
+    // hid it, since an effect bar is none of those and no clip is selected.
+    for (final id in declaredTools('_effectBarMenu')) {
+      expect(
+        visible(id, effectBar: true, canDeleteSegment: false, clipCount: 3),
+        isTrue,
+        reason: id,
+      );
+    }
+  });
 
   test('a selected video overlay offers Volume, however many clips there are',
       () {
