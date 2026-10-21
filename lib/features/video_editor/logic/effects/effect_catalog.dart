@@ -404,7 +404,8 @@ const List<VideoEffect> kVideoEffects = [
     id: 'sparkle',
     label: 'Sparkle',
     category: EffectCategory.light,
-    defaultIntensity: 0.7,
+    // The user's call: glints that read at once on any footage.
+    defaultIntensity: 0.95,
   ),
   VideoEffect(
     id: 'neon_edge',

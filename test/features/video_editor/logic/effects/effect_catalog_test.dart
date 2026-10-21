@@ -415,8 +415,13 @@ void main() {
         expect(effect.introSeconds, isNull, reason: id);
         expect(effect.defaultEnvelope, isNull, reason: id);
         expect(effect.passCount, 1, reason: id);
-        expect(effect.defaultIntensity, inInclusiveRange(0.5, 0.9), reason: id);
+        expect(effect.defaultIntensity, inInclusiveRange(0.5, 0.95), reason: id);
       }
+    });
+
+    test('Sparkle starts at 95%', () {
+      // The user's call: glints that read at once on any footage.
+      expect(videoEffectById('sparkle')!.defaultIntensity, 0.95);
     });
   });
 }

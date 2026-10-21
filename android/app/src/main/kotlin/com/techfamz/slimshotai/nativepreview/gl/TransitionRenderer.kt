@@ -2130,7 +2130,7 @@ internal class TransitionRenderer(
 
         override fun setUp(): Boolean {
             val spec = request.spec
-            val bitmap = TransitionPreviewSamples.still(spec.cellWidth, spec.cellHeight)
+            val bitmap = EffectPreviewSample.city(spec.cellWidth, spec.cellHeight)
             sampleTexture = uploadStill(bitmap)
             bitmap.recycle()
             atlas = createRenderTarget(spec.atlasWidth, spec.atlasHeight) ?: return false

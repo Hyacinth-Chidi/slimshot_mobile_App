@@ -323,8 +323,15 @@ void main() {
 """
 
     /**
-     * Sparkle: four-pointed glints twinkling on their own rhythms, caught more
-     * on the bright parts of the picture, as glitter catches the light.
+     * Sparkle: large four-pointed glints with shorter diagonal rays and a soft
+     * glow, twinkling on their own rhythms, a little stronger on the bright
+     * parts of the picture as glitter catches the light.
+     *
+     * **Sized to be seen** (the user's call — the first version was all but
+     * invisible: a glint's core was under a pixel in a tile and its twinkle
+     * was dark most of the time). Two layers of cells, 4.5 and 8.5 to the
+     * frame's height; each glint stays inside its own cell, its rays faded to
+     * nothing at the cell's edge, so no cell boundary ever cuts one off.
      */
     private val SPARKLE = HEADER + """
 float sparkleLayer(vec2 q, float scale, float seed, float t) {
@@ -332,14 +339,20 @@ float sparkleLayer(vec2 q, float scale, float seed, float t) {
     vec2 cell = floor(grid);
     vec2 f = fract(grid);
     float rnd = packHash(cell + seed);
-    float present = step(0.55, rnd);
-    vec2 d = f - vec2(0.3 + 0.4 * packHash(cell + seed + 1.1), 0.3 + 0.4 * packHash(cell + seed + 2.9));
-    float rate = 1.5 + 2.5 * packHash(cell + seed + 6.4);
-    float twinkle = pow(max(sin(t * rate + rnd * 6.2831), 0.0), 8.0);
-    float cross = exp(-abs(d.x) * 70.0) * exp(-abs(d.y) * 12.0)
-        + exp(-abs(d.y) * 70.0) * exp(-abs(d.x) * 12.0);
-    float core = exp(-dot(d, d) * 500.0);
-    return (cross * 0.7 + core) * twinkle * present;
+    float present = step(0.5, rnd);
+    vec2 d = f - vec2(0.38 + 0.24 * packHash(cell + seed + 1.1), 0.38 + 0.24 * packHash(cell + seed + 2.9));
+    float rate = 1.2 + 2.0 * packHash(cell + seed + 6.4);
+    float twinkle = pow(0.5 + 0.5 * sin(t * rate + rnd * 6.2831), 2.5);
+    float r2 = dot(d, d);
+    float cross = exp(-abs(d.x) * 22.0) * exp(-abs(d.y) * 6.5)
+        + exp(-abs(d.y) * 22.0) * exp(-abs(d.x) * 6.5);
+    vec2 r = vec2(d.x + d.y, d.x - d.y) * 0.7071;
+    float diag = (exp(-abs(r.x) * 30.0) * exp(-abs(r.y) * 11.0)
+        + exp(-abs(r.y) * 30.0) * exp(-abs(r.x) * 11.0)) * 0.5;
+    float core = exp(-r2 * 140.0) * 1.3;
+    float halo = exp(-r2 * 28.0) * 0.4;
+    vec2 inside = smoothstep(vec2(0.0), vec2(0.25), f) * smoothstep(vec2(0.0), vec2(0.25), 1.0 - f);
+    return (cross * 0.95 + diag + core + halo) * twinkle * present * inside.x * inside.y;
 }
 
 void main() {
@@ -348,9 +361,10 @@ void main() {
     vec2 q = packScreen(uv);
     float t = uSeconds;
     float luma = dot(src.rgb, vec3(0.2126, 0.7152, 0.0722));
-    float catchLight = 0.35 + 0.65 * smoothstep(0.35, 0.85, luma);
-    float stars = sparkleLayer(q, 9.0, 4.0, t) + sparkleLayer(q, 17.0, 29.0, t) * 0.7;
-    gl_FragColor = vec4(packScreenBlend(src.rgb, vec3(1.0, 0.97, 0.9) * stars * catchLight * uIntensity), src.a);
+    float catchLight = 0.6 + 0.4 * smoothstep(0.3, 0.8, luma);
+    float stars = sparkleLayer(q, 4.5, 4.0, t) + sparkleLayer(q, 8.5, 29.0, t) * 0.7;
+    vec3 glint = vec3(1.0, 0.97, 0.9) * stars * catchLight * 1.4;
+    gl_FragColor = vec4(packScreenBlend(src.rgb, glint * uIntensity), src.a);
 }
 """
 

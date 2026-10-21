@@ -1619,7 +1619,13 @@ blur toasts once.
 `docs/superpowers/specs/2026-10-21-effect-tile-previews-design.md`, plan beside it in `plans/`.
 Twenty of the 39 effects are intros or reveals whose whole point is motion, and a tap adds a bar
 at the paused playhead — the canvas shows only the effect's first instant, black for a fade-in. So
-each tile plays **a new bar's opening on the sample picture** (the transition tiles' sunset),
+each tile plays **a new bar's opening on the sample picture** — **a city at dusk**
+(`gl/EffectPreviewSample.kt`), not the transition tiles' sunset, which the user found showed the
+effects poorly: an effect is judged by what it does *to* a picture, so the scene carries what every
+kind needs — highlights (moon, stars, lit windows), edges (the skyline), a full tonal range,
+saturated colour (two neon signs) and a regular grid (the windows) that a distortion visibly bends.
+Designed by rendering a pure-Python port of the scene and the Sparkle maths first and looking at
+the result; drawn in code, upside down like the transitions' samples,
 drawn by the engine's own shaders: 0.4 s plain, then the bar's first 1.6 s **in real time** at
 15 fps, on one shared clock that holds while the grid scrolls. The sample bar is pinned equal to
 what `addEffectBar` + `composeEffects` produce for every catalog effect
@@ -1740,7 +1746,11 @@ within a minute); a sine-free hash (`packHash`, Hoskins' "Hash without Sine"); n
 vertex shader with `glslangValidator` (Khronos 16.6.0, `#version 100`)** —
 `DrawnPackShadersTest` writes each to `<java.io.tmpdir>/slimshot-shader-dump/`; not a device, but it is
 what the runtime compiler would refuse. The thunder strikes once per 1.6s window, early in it, so
-a short bar and the sheet's tile both see a bolt. **Still to come, needing more than a shader**:
+a short bar and the sheet's tile both see a bolt. **Sparkle was all but invisible at first**
+(device-reported via the tiles: a glint's core was under a pixel in a tile, and its twinkle was dark
+most of the time); it is now large four-point glints with diagonal rays and a glow, two layers of
+cells at 4.5 and 8.5 to the frame's height, each glint faded out before its cell's edge so no
+boundary cuts one, and it **starts at 95%** (the user's call). **Still to come, needing more than a shader**:
 real-footage effects from the server (blended video loops) and face-tracked effects (on-device
 landmarks, analysed once per clip) — talked through with the user, not started.
 
