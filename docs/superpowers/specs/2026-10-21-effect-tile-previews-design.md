@@ -1,6 +1,6 @@
 # Effect tile previews — design
 
-**Date:** 2026-10-21 · **Branch:** `effect-tile-previews` (off `effects-track`) · **Status:** awaiting the owner's review
+**Date:** 2026-10-21 · **Branch:** `effect-tile-previews` (off `effects-track`) · **Status:** built 2026-10-21, awaiting device verification
 
 Marked **(owner)** where the owner decided, **(my call)** where I decided and the owner has not
 yet ruled, and **(builder's call)** where the detail is left to whoever implements it.

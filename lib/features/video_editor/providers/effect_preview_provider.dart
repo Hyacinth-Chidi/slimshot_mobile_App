@@ -32,3 +32,8 @@ class _MemoryPressure with WidgetsBindingObserver {
   @override
   void didHaveMemoryPressure() => _onPressure();
 }
+
+/// How a tile turns its atlas bytes into the picture it owns. A test
+/// overrides it with a decoder whose images it can watch being disposed.
+final effectAtlasDecoderProvider =
+    Provider<EffectAtlasDecoder>((ref) => decodeEffectAtlas);

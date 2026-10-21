@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/effects/effect_preview_layout.dart';
 import '../../logic/effects/effect_catalog.dart';
+import '../../providers/effect_preview_provider.dart';
+import '../text_overlay/text_preview_tile.dart';
+import 'effect_preview_stage.dart';
 import '../../providers/video_editor_notifier.dart';
 import 'editor_sheet.dart';
 
@@ -26,12 +31,14 @@ import 'editor_sheet.dart';
 /// entry reaches the UI with no edit in this file — and a test counts the
 /// grid's `itemCount` against the catalog so the wiring cannot rot quietly.
 ///
-/// **Tiles are a label and an icon, not a preview.** A text animation tile can
-/// paint itself with the same painter the canvas uses; an effect tile cannot —
-/// each one would need a full GL render of the clip through its shader, and a
-/// shelf of them would need a dozen at once. The canvas behind the sheet is the
-/// preview instead: a tap applies the effect immediately and the user sees the
-/// real thing on their own footage, which is a truer preview than any tile.
+/// **A tile plays its effect, drawn by the engine** ([EffectPreviewStage]):
+/// a new bar's opening on the sample picture, through the effect's own
+/// shaders, as one atlas drawn a few frames per GL turn and kept for the
+/// session — so a tile cannot promise a look a bar does not have, and the
+/// canvas never waits on a shelf of tiles. Until an effect's atlas arrives,
+/// or where this phone could not draw it, its tile keeps the icon. The grid
+/// keeps no tiles off screen (`cacheExtent: 0`): each visible tile owns one
+/// ~2.3 MB decoded picture, and tiles scrolled out give theirs back.
 class EffectsPanel extends ConsumerStatefulWidget {
   const EffectsPanel({super.key});
 
@@ -134,12 +141,39 @@ IconData _iconForCategory(EffectCategory category) => switch (category) {
 IconData effectIcon(VideoEffect effect) =>
     _kEffectIcons[effect.id] ?? _iconForCategory(effect.category);
 
-class _EffectsPanelState extends ConsumerState<EffectsPanel> {
+class _EffectsPanelState extends ConsumerState<EffectsPanel>
+    with SingleTickerProviderStateMixin {
   EffectCategory _category = kEffectPanelCategories.first;
+
+  /// One clock for every tile — a ticker per tile would be a grid of tickers
+  /// — reduced to the frame to show, told to the tiles only when it changes,
+  /// so a tile repaints at the atlas's 15 fps rather than on every vsync.
+  ///
+  /// Made in [initState], not `late final`: nothing reads the controller
+  /// until a scroll notification, and a lazily made clock never starts.
+  late final AnimationController _clock;
+
+  final ValueNotifier<int> _frameIndex = ValueNotifier<int>(0);
+
+
+  void _onClockTick() {
+    final frame = effectPreviewFrameAt(_clock.value);
+    if (frame != _frameIndex.value) _frameIndex.value = frame;
+  }
+
+  @override
+  void dispose() {
+    _clock.dispose();
+    _frameIndex.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
+    _clock = AnimationController(vsync: this, duration: kEffectPreviewLoop)
+      ..addListener(_onClockTick)
+      ..repeat();
     // Opened on a bar, the sheet opens on that bar's shelf with its tile lit.
     final bar = ref.read(videoEditorProvider).selectedEffectBar;
     final selected = videoEffectById(bar?.effectId);
@@ -175,10 +209,16 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                 ),
               const SizedBox(height: 8),
               Expanded(
-                child: GridView.builder(
+                child: NotificationListener<ScrollNotification>(
+                  // Still while it scrolls — see [holdPreviewClockWhileScrolling].
+                  onNotification: (notification) =>
+                      mounted && holdPreviewClockWhileScrolling(notification, _clock),
+                  child: GridView.builder(
                   key: ValueKey(_category),
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   physics: const BouncingScrollPhysics(),
+                  // Only what is visible holds a decoded atlas.
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(0),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 4,
                     childAspectRatio: 0.85,
@@ -191,7 +231,14 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                     return EffectTile(
                       key: ValueKey(effect.id),
                       label: effect.label,
-                      icon: effectIcon(effect),
+                      stage: EffectPreviewStage(
+                        effectId: effect.id,
+                        icon: effectIcon(effect),
+                        isSelected: selected?.id == effect.id,
+                        atlases: ref.watch(effectPreviewAtlasesProvider),
+                        frameIndex: _frameIndex,
+                        decode: ref.watch(effectAtlasDecoderProvider),
+                      ),
                       isSelected: selected?.id == effect.id,
                       onTap: () {
                         HapticFeedback.selectionClick();
@@ -204,6 +251,7 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                       },
                     );
                   },
+                  ),
                 ),
               ),
             ],
@@ -357,13 +405,16 @@ class EffectTile extends StatelessWidget {
   const EffectTile({
     super.key,
     required this.label,
-    required this.icon,
+    required this.stage,
     required this.isSelected,
     required this.onTap,
   });
 
   final String label;
-  final IconData icon;
+
+  /// What plays above the label: an [EffectPreviewStage], which falls back to
+  /// the effect's icon while there is nothing to play.
+  final Widget stage;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -389,14 +440,14 @@ class EffectTile extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Expanded(
-                child: Center(
-                  child: Icon(
-                    icon,
-                    color: isSelected
-                        ? AppColors.textPrimary
-                        : AppColors.textSecondary,
-                    size: 22,
+                child: Container(
+                  margin: const EdgeInsets.fromLTRB(4, 4, 4, 2),
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: AppColors.previewStage,
+                    borderRadius: BorderRadius.circular(6),
                   ),
+                  child: stage,
                 ),
               ),
               Padding(

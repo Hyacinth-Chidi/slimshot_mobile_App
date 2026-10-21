@@ -145,7 +145,9 @@ text on black laid over the clip with a blend mode.
     2026-10-21, awaiting device verification** (spec
     `docs/superpowers/specs/2026-10-20-effects-track-design.md`): bars on the shared lanes,
     stacking by lane within the four-pass budget, a skipped bar named, old projects' clip effects
-    converted to bars. **Next: Whole frame** — it needs the preview to draw text in the engine,
+    converted to bars. **Effect tiles play their effects** (engine-drawn atlases, built
+    2026-10-21, awaiting device verification; spec
+    `docs/superpowers/specs/2026-10-21-effect-tile-previews-design.md`). **Next: Whole frame** — it needs the preview to draw text in the engine,
     since Flutter paints text above the picture where no effect can reach it — **then one
     overlay.**
 17. **Clip In / Out / Combo animations** (M–L). Presets on the transform and opacity keyframe

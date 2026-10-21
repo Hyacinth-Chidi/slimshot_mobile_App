@@ -7,24 +7,6 @@ import '../../../../core/theme/app_colors.dart';
 import '../../logic/effects/effect_preview_atlases.dart';
 import '../../logic/effects/effect_preview_layout.dart';
 
-/// Decodes an effect's atlas into a picture the tile owns.
-///
-/// Deliberately not `Image.memory`, which puts every decoded picture into
-/// Flutter's shared image cache — up to 100 MB held until something evicts
-/// it. A `ui.Image` decoded here has one owner, the stage, and one `dispose`.
-typedef EffectAtlasDecoder = Future<ui.Image> Function(Uint8List bytes);
-
-/// The default decoder: the bytes, whole, no resize — an atlas is already
-/// drawn at its final size.
-Future<ui.Image> decodeEffectAtlas(Uint8List bytes) async {
-  final codec = await ui.instantiateImageCodec(bytes);
-  try {
-    return (await codec.getNextFrame()).image;
-  } finally {
-    codec.dispose();
-  }
-}
-
 /// An effect tile's stage: the effect playing on the sample picture, or the
 /// effect's icon while there is nothing to play.
 ///

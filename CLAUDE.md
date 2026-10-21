@@ -1613,6 +1613,58 @@ the bar's start; playback crossing a bar's edge does not hitch; an old project w
 the same; a bar in the tail; a bar dragged or trimmed updates the canvas live; a glow stacked on a
 blur toasts once.
 
+### Effect tile previews — each tile plays its effect
+
+**Awaiting device verification.** Spec:
+`docs/superpowers/specs/2026-10-21-effect-tile-previews-design.md`, plan beside it in `plans/`.
+Twenty of the 39 effects are intros or reveals whose whole point is motion, and a tap adds a bar
+at the paused playhead — the canvas shows only the effect's first instant, black for a fade-in. So
+each tile plays **a new bar's opening on the sample picture** (the transition tiles' sunset),
+drawn by the engine's own shaders: 0.4 s plain, then the bar's first 1.6 s **in real time** at
+15 fps, on one shared clock that holds while the grid scrolls. The sample bar is pinned equal to
+what `addEffectBar` + `composeEffects` produce for every catalog effect
+(`effectPreviewSampleBar`), so a tile cannot promise a look a tap does not give.
+
+- **One image per effect, never a frame list.** An atlas of 25 cells
+  (`effect_preview_layout.dart`: 160×144 on 16-px JPEG block boundaries, 5×5, inset a pixel so
+  filtering cannot bleed a neighbour) is drawn once per session and decoded by the tile into a
+  `ui.Image` **it owns** — deliberately not `Image.memory`, whose decoded frames pile into
+  Flutter's shared `ImageCache` (up to 100 MB, evicted on its own schedule; the transition tiles
+  still do this, below). `EffectPreviewPainter` paints one cell per tick of the sheet's frame
+  index (`super(repaint:)`), not per vsync.
+- **Bounded memory.** The grid keeps no tiles off screen (`cacheExtent: 0`), so decoded pictures
+  are only what is visible (~2.3 MB each, ≈28 MB worst case, zero when the sheet closes); every
+  async step in `EffectPreviewStage` checks a generation bumped on dispose and on a change of
+  effect, and **a decode that lands stale disposes the image it got** — tests pin it with
+  `debugDisposed`. The encoded JPEGs (`EffectPreviewAtlases`, a non-autoDispose provider) are the
+  session's and are dropped on `didHaveMemoryPressure`.
+- **No wedged queue, no work for nobody.** The cache draws one effect at a time; a tile's ask is
+  a ticket withdrawn on dispose, so closing the sheet or flicking through a category drops asks
+  that have not started; a drawing that does not answer in 10 s counts as busy. **Failed is
+  remembered, busy is not**: the engine answers bytes, null (this phone cannot draw it — the tile
+  keeps its icon for the session) or `error("busy")` (no renderer, an export, the editor closing —
+  retried on the next ask). A drawing future is re-wrapped to the result type before `.timeout`,
+  because a renderer answering `Future<Never>` made the fallback a type error that let the error
+  escape.
+- **The GL side never stalls the canvas.** `TransitionRenderer.renderEffectPreview` runs
+  `EffectPreviewJob`: at most 4 cells per GL turn, each slice posted behind the live preview's
+  queue, re-checking the host (released / exporting) and making the context current again (an
+  export may have run between slices). Everything it draws with is its own — the sample texture,
+  the atlas target, a private `EffectPassChain`, its own pass instances — so the live effect
+  stack's passes are untouched; JPEG encoding runs on a single encoder thread, never the GL one.
+  **Answered exactly once on every path** — `release()` abandons live jobs, since `quitSafely`
+  drops what they would post and an unanswered call leaves Dart's queue waiting forever.
+- **The stage falls back to the icon** while an effect has no atlas or could not be drawn; cached
+  bytes decoding show the empty stage, so a scroll back never flickers icon-to-picture. The clock
+  is made in the panel's `initState`, not `late final` — nothing reads the controller until a
+  scroll notification, and a lazily made clock never starts (caught by the frame-index test).
+
+**Device checks**: every category's tiles play and look right (the effect, not a dissolve-ish
+blur); the canvas does not stutter while tiles draw during playback; the profiler's memory stays
+within ~28 MB of decoded tiles while browsing every category and falls when the sheet closes;
+atlas JPEGs measure ≤ 150 KB (tune `PREVIEW_JPEG_QUALITY` if over); an export run after browsing
+is unaffected, and tiles asked during an export keep icons and fill in afterwards.
+
 ### Effects — the multi-pass framework and 39 effects
 
 **Awaiting device verification** beyond the four already checked (`fisheye` perfect, `vignette`
@@ -3346,6 +3398,11 @@ Drag-and-drop lives in `ScrollableTimeline`. The shape of it:
   hardware. Replace with `ExportClipDecoder` + `VideoFrameEncoder` (hardware, already built for
   export): decode GOPs forward, emit frames backward. Then the editor imports nothing from
   `ffmpeg_kit`, and FFmpeg belongs only to the compression feature.
+- **The transition tiles have the two weaknesses the effect tiles were built without.** Each
+  frame goes through `Image.memory`, so decoded frames pile into Flutter's shared `ImageCache`
+  (~88 MB browsing every category), and a `renderTransitionPreview` whose renderer is released
+  mid-call leaves the channel unanswered — `TransitionPreviewFrames`' one-at-a-time queue then
+  waits forever. Moving them onto the effect tiles' atlas, job and cache fixes both.
 - **Speed change shifts pitch, in export and now in the preview too.** Sonic was removed from
   export after it silently killed all export audio (dead-ends entry 22); the linear resampler that
   replaced it does rate conversion and speed with no dependency that can throw, at the cost of

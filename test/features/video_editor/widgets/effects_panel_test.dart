@@ -1,14 +1,21 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/logic/effects/effect_catalog.dart';
+import 'package:slimshotai/features/video_editor/logic/effects/effect_preview_atlases.dart';
 import 'package:slimshotai/features/video_editor/models/effect_bar_model.dart';
 import 'package:slimshotai/features/video_editor/models/media_asset.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_segment.dart';
+import 'package:slimshotai/features/video_editor/providers/effect_preview_provider.dart';
 import 'package:slimshotai/features/video_editor/providers/video_editor_notifier.dart';
 import 'package:slimshotai/features/video_editor/services/video_editor_service.dart';
+import 'package:slimshotai/features/video_editor/widgets/panels/effect_preview_stage.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/effects_panel.dart';
 
 /// The effects sheet works on effect bars: with no bar selected a tap adds
@@ -71,7 +78,14 @@ void main() {
     pumpSeq++;
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [videoEditorProvider.overrideWith((ref) => notifier)],
+        overrides: [
+          videoEditorProvider.overrideWith((ref) => notifier),
+          // Answered at once, or every tile's ask would leave the cache's
+          // timeout timer pending at the test's end. Failed keeps the icons,
+          // which is what these tests lay out and tap.
+          effectPreviewRendererProvider
+              .overrideWithValue((_) async => const EffectPreviewFailed()),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: EffectsPanel(key: ValueKey('panel-$pumpSeq')),
@@ -259,5 +273,128 @@ void main() {
     final intensity = notifier.state.effectBars.single.intensity;
     expect(intensity.baseValue, 0.4, reason: 'the base is untouched');
     expect(intensity.keyframes.first.value, greaterThan(0));
+  });
+
+  group('the tiles play', () {
+    int firstFrame(WidgetTester tester) => tester
+        .widget<EffectPreviewStage>(find.byType(EffectPreviewStage).first)
+        .frameIndex
+        .value;
+
+    testWidgets('every tile has a stage for its effect', (tester) async {
+      await pumpPanel(tester, notifierWith());
+      final stages = tester
+          .widgetList<EffectPreviewStage>(find.byType(EffectPreviewStage))
+          .toList();
+      final effects = effectsInCategory(kEffectPanelCategories.first);
+      expect(stages.map((s) => s.effectId), effects.map((e) => e.id));
+    });
+
+    testWidgets('the grid keeps no tiles off screen', (tester) async {
+      await pumpPanel(tester, notifierWith());
+      expect(
+        tester.widget<GridView>(find.byType(GridView)).scrollCacheExtent,
+        const ScrollCacheExtent.pixels(0),
+      );
+    });
+
+    testWidgets('the frame index follows the clock', (tester) async {
+      await pumpPanel(tester, notifierWith());
+      expect(firstFrame(tester), 0);
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(firstFrame(tester), greaterThanOrEqualTo(1));
+    });
+
+    testWidgets('the clock holds still while the grid scrolls', (tester) async {
+      await pumpPanel(tester, notifierWith());
+      await openCategory(tester, EffectCategory.intro);
+      // Past the loop's 0.4 s plain beat first: frame 0 cannot tell a held
+      // clock from the beat, so a hold caught there pins nothing.
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(firstFrame(tester), greaterThanOrEqualTo(1));
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(GridView)),
+      );
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+      final held = firstFrame(tester);
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(firstFrame(tester), held);
+      await gesture.up();
+      await tester.pump();
+      // The first stretch absorbs the release's ballistic scroll settling;
+      // the second runs the resumed clock past the loop's 0.4 s plain beat,
+      // where the frame is 0 whether or not the clock moves.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(firstFrame(tester), isNot(held));
+    });
+
+    group('with atlases that decode', () {
+      late List<ui.Image> created;
+
+      setUp(() => created = []);
+
+      Future<ui.Image> fakeDecode(Uint8List bytes) async {
+        final recorder = ui.PictureRecorder();
+        ui.Canvas(recorder).drawRect(
+          const Rect.fromLTWH(0, 0, 8, 8),
+          Paint()..color = const Color(0xFF224466),
+        );
+        final picture = recorder.endRecording();
+        final image = picture.toImageSync(800, 720);
+        picture.dispose();
+        created.add(image);
+        return image;
+      }
+
+      Future<void> pumpPlaying(WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              videoEditorProvider.overrideWith((ref) => notifierWith()),
+              effectPreviewRendererProvider.overrideWithValue(
+                (bar) async => EffectPreviewAtlas(Uint8List.fromList([1])),
+              ),
+              effectAtlasDecoderProvider.overrideWithValue(fakeDecode),
+            ],
+            child: const MaterialApp(
+              home: Scaffold(body: EffectsPanel(key: ValueKey('playing'))),
+            ),
+          ),
+        );
+        // The atlases draw one at a time; a few pumps settle the category.
+        for (var i = 0; i < 12; i++) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+      }
+
+      testWidgets("switching category disposes the old tiles' images",
+          (tester) async {
+        await pumpPlaying(tester);
+        expect(created, isNotEmpty);
+        final before = List.of(created);
+        await openCategory(tester, EffectCategory.retro);
+        for (var i = 0; i < 12; i++) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        for (final image in before) {
+          expect(image.debugDisposed, isTrue);
+        }
+      });
+
+      testWidgets('closing the sheet disposes every image', (tester) async {
+        await pumpPlaying(tester);
+        expect(created, isNotEmpty);
+        await tester.pumpWidget(const SizedBox());
+        for (final image in created) {
+          expect(image.debugDisposed, isTrue);
+        }
+      });
+    });
   });
 }
