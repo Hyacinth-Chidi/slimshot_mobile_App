@@ -224,7 +224,9 @@ void main() {
       final effects = File(
         'lib/features/video_editor/widgets/panels/effects_panel.dart',
       ).readAsStringSync();
-      expect(effects, contains('notifier.beginLiveEdit()'));
+      // It goes through the bar's own entry, which pauses and snapshots
+      // (effect_bar_keyframes_test pins the pause).
+      expect(effects, contains('notifier.beginEffectBarIntensityEdit()'));
     });
   });
 

@@ -22,19 +22,33 @@ void main() {
     return text.substring(start, end);
   }
 
-  test('Effects is on the clip menu only, never the root menu', () {
-    // **It was on both.** The handler gates the real sheet on the clip menu —
-    // an effect belongs to a clip, and the root menu has none selected — so
-    // the root entry fell through to a "coming soon" placeholder for a
-    // feature that is built and shipping one tap away. That is a wrong
-    // signpost rather than an unfinished tool, which is why it goes despite
-    // the standing rule about keeping unbuilt tools visible.
-    expect(
-      menuSource('_rootMenu'),
-      isNot(contains("id: 'effects'")),
-      reason: 'the root menu has no clip selected to apply an effect to',
-    );
-    expect(menuSource('_editMenu'), contains("id: 'effects'"));
+  test('Effects is on the main menu, right after Overlay, and not on the clip menu',
+      () {
+    // Effects are bars on the timeline now, placed at the playhead with
+    // nothing selected — so they open from the main menu. A clip no longer
+    // carries an effect, so its menu offers none.
+    final root = menuSource('_rootMenu');
+    final overlay = root.indexOf("id: 'overlay'");
+    final effects = root.indexOf("id: 'effects'");
+    expect(effects, greaterThan(overlay));
+    expect(overlay, isNot(-1));
+    final between = root.substring(overlay, effects);
+    expect(RegExp(r"id: '").allMatches(between).length, 1,
+        reason: 'nothing sits between Overlay and Effects');
+    expect(menuSource('_editMenu'), isNot(contains("id: 'effects'")));
+    expect(screen.readAsStringSync(), contains("tool.id == 'effects'"));
+  });
+
+  test('a selected effect bar has a menu of its own: Edit, Copy, Delete', () {
+    final menu = menuSource('_effectBarMenu');
+    final ids = RegExp(r"id: '([a-z_]+)'")
+        .allMatches(menu)
+        .map((m) => m.group(1))
+        .toList();
+    expect(ids, ['effect_bar', 'effect_edit', 'duplicate', 'delete']);
+    final source = screen.readAsStringSync();
+    expect(source, contains("'effect_bar': _effectBarMenu"));
+    expect(source, contains("tool.id == 'effect_edit'"));
   });
 
   test('Animate is not on the root menu, and Animation is on the overlays', () {

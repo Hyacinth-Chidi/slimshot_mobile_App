@@ -172,6 +172,9 @@ const EditorMenu _rootMenu = EditorMenu(
       icon: LucideIcons.subtitles,
     ),
     EditorTool(id: 'overlay', label: 'Overlay', icon: LucideIcons.layers),
+    // Effects are bars on the timeline, dropped at the playhead with nothing
+    // selected — so they open from here, not from a clip.
+    EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
     // **Transform's children are root tools now, and Transform is a tool of its
     // own.** The submenu was a tap tax on four things a user reaches for
     // directly — Crop especially, which is one of the most common edits and was
@@ -269,7 +272,6 @@ const EditorMenu _editMenu = EditorMenu(
     // Beside Filters because a clip's effect and its look are siblings: both
     // change how this one clip is drawn. **Only here, never on the root menu**
     // — an effect belongs to a clip, and the root menu has none selected.
-    EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
     EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
   ],
 );
@@ -308,6 +310,17 @@ const EditorMenu _imageOverlayMenu = EditorMenu(
     // so the export would have dropped the green while the canvas showed it.
     EditorTool(id: 'chroma', label: 'Chroma', icon: LucideIcons.pipette),
     EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
+    EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
+    EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
+  ],
+);
+
+/// A selected effect bar. Edit opens the effects sheet on the bar — another
+/// effect, its strength — and Copy continues the effect straight after it.
+const EditorMenu _effectBarMenu = EditorMenu(
+  id: 'effect_bar',
+  tools: [
+    EditorTool(id: 'effect_edit', label: 'Edit', icon: LucideIcons.sparkles),
     EditorTool(id: 'duplicate', label: 'Copy', icon: LucideIcons.copy),
     EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
   ],
@@ -426,6 +439,7 @@ final Map<String, EditorMenu> _menus = {
   'video_overlay': _videoOverlayMenu,
   'text': _textMenu,
   'text_overlay': _textOverlayMenu,
+  'effect_bar': _effectBarMenu,
   'transition': const EditorMenu(
     id: 'transition',
     tools: [],
@@ -2456,7 +2470,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     _showSpeedCurveSheet();
                   } else if (tool.id == 'chroma') {
                     _showChromaKeySheet();
-                  } else if (tool.id == 'effects') {
+                  } else if (tool.id == 'effects' ||
+                      tool.id == 'effect_edit') {
                     showEditorSheet<void>(
                       context,
                       builder: (context) => const EffectsPanel(),
@@ -2499,7 +2514,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       _splitAtPlayhead();
                     }
                   } else if (tool.id == 'delete') {
-                    if (editorState.selectedTextId != null) {
+                    if (editorState.selectedEffectBarId != null) {
+                      notifier.deleteEffectBar();
+                    } else if (editorState.selectedTextId != null) {
                       notifier.deleteTextOverlay(editorState.selectedTextId!);
                       notifier.selectTextOverlay(null);
                     } else if (editorState.selectedImageId != null) {
@@ -2563,7 +2580,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       builder: (context) => const AnimationDrawer(),
                     );
                   } else if (tool.id == 'duplicate') {
-                    if (editorState.selectedTextId != null) {
+                    if (editorState.selectedEffectBarId != null) {
+                      notifier.duplicateEffectBar();
+                    } else if (editorState.selectedTextId != null) {
                       notifier.duplicateTextOverlay(
                         editorState.selectedTextId!,
                       );

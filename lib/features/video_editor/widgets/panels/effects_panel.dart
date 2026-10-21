@@ -4,15 +4,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../logic/animation/clip_keyframes.dart';
 import '../../logic/effects/effect_catalog.dart';
 import '../../providers/video_editor_notifier.dart';
 import 'editor_sheet.dart';
-import 'apply_to_all_button.dart';
-import '../../../../core/utils/toast_utils.dart';
 
-/// The clip's Effects sheet: a category row, a grid of effect tiles, and one
-/// intensity slider.
+/// The Effects sheet: a category row, a grid of effect tiles, and one
+/// intensity slider — working on **effect bars**.
+///
+/// **With no bar selected, a tap adds one** at the playhead and selects it;
+/// **with a bar selected, a tap changes it.** So opened from the main menu the
+/// first tap adds a bar and every later one swaps its effect — browsing the
+/// shelves never litters the timeline — and opened from a bar's Edit it
+/// changes that bar. There is no None tile: a bar is removed with Delete, and
+/// backing out of an add is Undo. No title either: the sheet opened from
+/// Effects is the effects.
 ///
 /// **It lists the catalog, never a list of its own.** The text animation tab
 /// shipped with a hardcoded seven names while the engine played thirty, and the
@@ -135,9 +140,9 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
   @override
   void initState() {
     super.initState();
-    // Open on the shelf the clip's own effect lives on, so reopening the sheet
-    // shows what is applied rather than making the user hunt for it.
-    final selected = ref.read(videoEditorProvider).selectedSegment?.effect;
+    // Opened on a bar, the sheet opens on that bar's shelf with its tile lit.
+    final bar = ref.read(videoEditorProvider).selectedEffectBar;
+    final selected = videoEffectById(bar?.effectId);
     if (selected != null) _category = selected.category;
   }
 
@@ -146,11 +151,8 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
     final editorState = ref.watch(videoEditorProvider);
     final notifier = ref.read(videoEditorProvider.notifier);
 
-    final segment = editorState.selectedSegment;
-    // Resolved through the catalog, never by reading the stored string: an id
-    // from a newer build or a bad migration must show as "no effect", not
-    // highlight nothing while the slider pretends to retune something.
-    final selected = segment?.effect;
+    final bar = editorState.selectedEffectBar;
+    final selected = videoEffectById(bar?.effectId);
     final effects = effectsInCategory(_category);
 
     return SizedBox(
@@ -164,117 +166,46 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
           child: Column(
             children: [
               _handle(),
-              if (segment == null)
-                const Expanded(
-                  child: Center(
-                    child: Text(
-                      'Select a clip to add an effect.',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 14,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                )
-              else ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Effects',
-                        style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                      ApplyToAllButton(
-                        key: const Key('effects_apply_all'),
-                        enabled: editorState.segments.length > 1,
-                        onPressed: () {
-                          final count = notifier.applyEffectToAllClips();
-                          ToastUtils.show(
-                            context,
-                            'Effect applied to $count other clip${count == 1 ? '' : 's'}.',
-                          );
-                        },
-                      ),
-                    ],
-                  ),
+              _categoryRow(),
+              const SizedBox(height: 10),
+              if (bar != null)
+                _intensityRow(
+                  notifier: notifier,
+                  intensity: editorState.effectBarEditIntensity,
                 ),
-                _categoryRow(),
-                const SizedBox(height: 10),
-                // Nothing to retune while no effect is applied, and a slider
-                // over a value nothing reads is worse than no slider.
-                if (selected != null)
-                  _intensityRow(
-                    notifier: notifier,
-                    // **What the write will target.** With no diamonds that is
-                    // the base — so an envelope's shape is not flattened by a
-                    // slider chasing its resolved value. With diamonds it is
-                    // the keyframe at the playhead, because that is what the
-                    // drag will land on.
-                    intensity: editorState.clipEditValue(
-                      segment,
-                      ClipProperty.effectIntensity,
-                    ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: GridView.builder(
+                  key: ValueKey(_category),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  physics: const BouncingScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    childAspectRatio: 0.85,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
                   ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: GridView.builder(
-                    // Keyed by category so each shelf opens at the top rather
-                    // than inheriting a taller shelf's scroll offset, which
-                    // would scroll None off the moment a short category opens.
-                    key: ValueKey(_category),
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    physics: const BouncingScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      childAspectRatio: 0.85,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                    ),
-                    // +1 for the leading None tile, so every shelf has a way
-                    // back to an unaffected clip.
-                    itemCount: effects.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return EffectTile(
-                          label: 'None',
-                          icon: LucideIcons.ban,
-                          isSelected: selected == null,
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            // Cleared through the notifier's null, which maps
-                            // to `clearEffectId` — `effectId: null` alone is
-                            // ignored by `copyWith` by convention and would
-                            // leave the effect in place.
-                            notifier.setClipEffect(null);
-                          },
-                        );
-                      }
-                      final effect = effects[index - 1];
-                      return EffectTile(
-                        key: ValueKey(effect.id),
-                        label: effect.label,
-                        icon: effectIcon(effect),
-                        isSelected: selected?.id == effect.id,
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          // One tap is the whole interaction: the catalog's
-                          // own default intensity is applied, so the effect is
-                          // visibly itself before the slider is ever touched.
-                          notifier.setClipEffect(effect.id);
-                        },
-                      );
-                    },
-                  ),
+                  itemCount: effects.length,
+                  itemBuilder: (context, index) {
+                    final effect = effects[index];
+                    return EffectTile(
+                      key: ValueKey(effect.id),
+                      label: effect.label,
+                      icon: effectIcon(effect),
+                      isSelected: selected?.id == effect.id,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        if (ref.read(videoEditorProvider).selectedEffectBar ==
+                            null) {
+                          notifier.addEffectBar(effect.id);
+                        } else {
+                          notifier.setEffectBarEffect(effect.id);
+                        }
+                      },
+                    );
+                  },
                 ),
-              ],
+              ),
             ],
           ),
         ),
@@ -374,29 +305,17 @@ class _EffectsPanelState extends ConsumerState<EffectsPanel> {
                     // pixel parameter would make those two different pictures.
                     value: value,
                     onChangeStart: (_) {
-                      // **One undo entry for the whole drag.** The snapshot is
-                      // taken here and every frame after writes live; going
-                      // through a snapshotting setter per frame makes undo walk
-                      // the drag back a pixel at a time. It pauses first: on a
-                      // keyframed clip every frame writes at the playhead, and a
-                      // moving one would leave a trail of diamonds.
-                      notifier.beginLiveEdit();
+                      // **One undo entry for the whole drag**, and a pause
+                      // first: on a keyframed bar every frame writes at the
+                      // playhead, and a moving one would leave a trail of
+                      // diamonds.
+                      notifier.beginEffectBarIntensityEdit();
                     },
-                    onChanged: (next) {
-                      // **This slider has no idea keyframes exist**, and that
-                      // is the point. `setClipProperty` writes the base value
-                      // on a clip with no diamonds and the keyframe under the
-                      // playhead on a clip with some — the same rule the pinch
-                      // gesture and the volume slider follow, so the sheet
-                      // needs no keyframe control of its own. The rejected
-                      // design put one here, which is how the feature ended up
-                      // able to animate exactly one number.
-                      notifier.setClipProperty(
-                        ClipProperty.effectIntensity,
-                        next,
-                        takeUndoSnapshot: false,
-                      );
-                    },
+                    // **This slider has no idea keyframes exist**, and that is
+                    // the point: the notifier writes the base on a bar with no
+                    // diamonds and the keyframe under the playhead on one with
+                    // some, so the sheet needs no keyframe control of its own.
+                    onChanged: notifier.setEffectBarIntensityLive,
                   ),
                 ),
               ),
