@@ -7,6 +7,8 @@ import 'package:characters/characters.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../logic/effects/effect_preview_atlases.dart';
+import '../logic/effects/effect_preview_layout.dart';
 import '../logic/captions/caption_settings.dart';
 import '../logic/text_animation_catalog.dart';
 import '../logic/transitions/transition_preview_frames.dart';
@@ -687,6 +689,39 @@ class NativeTimelinePreviewService {
   /// A transition tile's frames: [transitionName] drawn by its own shader
   /// between two sample pictures, [frames] JPEGs from start to finish — or
   /// null when the renderer is not up or could not draw it.
+  /// An effect tile's atlas: [bar] (the sample bar) drawn by the engine into
+  /// one JPEG of [kEffectPreviewFrames] frames. Busy — no engine yet, an
+  /// export holding it, the editor closing — is its own answer, so the cache
+  /// retries it where a real failure keeps the tile's icon for the session.
+  Future<EffectPreviewResult> renderEffectPreview(
+    EditorTimelineEffect bar,
+  ) async {
+    try {
+      final bytes = await _methodChannel.invokeMethod<Uint8List>(
+        'renderEffectPreview',
+        {
+          'effect': bar.toJson(),
+          'cellWidth': kEffectPreviewCellWidth,
+          'cellHeight': kEffectPreviewCellHeight,
+          'columns': kEffectPreviewColumns,
+          'frames': kEffectPreviewFrames,
+          'fps': kEffectPreviewFps,
+        },
+      );
+      return bytes == null
+          ? const EffectPreviewFailed()
+          : EffectPreviewAtlas(bytes);
+    } on PlatformException catch (error) {
+      return error.code == 'busy'
+          ? const EffectPreviewBusy()
+          : const EffectPreviewFailed();
+    } on MissingPluginException {
+      // A test or a platform without the engine: nothing failed, nothing to
+      // remember.
+      return const EffectPreviewBusy();
+    }
+  }
+
   Future<List<Uint8List>?> renderTransitionPreview(
     String transitionName, {
     int width = kTransitionPreviewWidth,

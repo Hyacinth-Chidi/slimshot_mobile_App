@@ -11,6 +11,9 @@ import com.techfamz.slimshotai.export.CaptionAudioSources
 import com.techfamz.slimshotai.export.ExportCapabilities
 import com.techfamz.slimshotai.export.VideoExportEngine
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectPreviewAnswer
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectPreviewRequest
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectPreviewSpec
 import com.techfamz.slimshotai.nativepreview.gl.TransitionShaders
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
@@ -470,6 +473,38 @@ class NativeTimelinePreviewManager(
             // A transition tile's frames, drawn by the transition's own shader
             // between two sample pictures. Null when the renderer is not up or
             // could not draw it; the sheet then shows the transition's icon.
+            "renderEffectPreview" -> {
+                // An effect tile's atlas. Three answers, and Dart treats them
+                // differently: bytes; null for an effect this engine cannot
+                // draw (remembered — the tile keeps its icon); "busy" for not
+                // now (retried the next time a tile asks).
+                val request = EffectPreviewRequest.parse(
+                    call.argument<Any>("effect"),
+                    EffectPreviewSpec.fromArgs(
+                        call.argument<Number>("cellWidth"),
+                        call.argument<Number>("cellHeight"),
+                        call.argument<Number>("columns"),
+                        call.argument<Number>("frames"),
+                        call.argument<Number>("fps"),
+                    ),
+                )
+                val active = renderer
+                when {
+                    request == null -> result.success(null)
+                    active == null -> result.error("busy", "No preview engine yet.", null)
+                    else -> active.renderEffectPreview(request) { answer ->
+                        mainHandler.post {
+                            when (answer) {
+                                is EffectPreviewAnswer.Atlas -> result.success(answer.jpeg)
+                                EffectPreviewAnswer.Failed -> result.success(null)
+                                EffectPreviewAnswer.Busy ->
+                                    result.error("busy", "The engine is busy.", null)
+                            }
+                        }
+                    }
+                }
+            }
+
             "renderTransitionPreview" -> {
                 val type = call.argument<String>("type")
                 val active = renderer

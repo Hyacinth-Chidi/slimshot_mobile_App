@@ -15,7 +15,15 @@ import android.util.Log
 import android.view.Surface
 import com.techfamz.slimshotai.nativepreview.LaneFit
 import com.techfamz.slimshotai.nativepreview.NativeTimelineClip
+import com.techfamz.slimshotai.nativepreview.EffectStack
 import com.techfamz.slimshotai.nativepreview.gl.effects.BlurPass
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectPreviewAnswer
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectPreviewCanvas
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectPreviewJob
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectPreviewRequest
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectPreviewSpec
+import com.techfamz.slimshotai.nativepreview.gl.effects.EffectShaders
+import com.techfamz.slimshotai.nativepreview.gl.effects.PreviewHost
 import com.techfamz.slimshotai.thumbnails.StillImageDecoder
 import java.util.concurrent.Executors
 import java.nio.ByteBuffer
@@ -858,6 +866,14 @@ internal class TransitionRenderer(
     fun release() {
         backgroundDecoder.shutdownNow()
         released = true
+        // Every live effect-tile job answers busy now: `quitSafely` drops what
+        // they would post, and a job never answered leaves Dart's tile queue
+        // waiting on it for good.
+        effectPreviewJobs.forEach { it.abandon() }
+        synchronized(atlasEncoderLock) {
+            atlasEncoder?.shutdownNow()
+            atlasEncoder = null
+        }
         for (bitmap in previewStillsReady.values) bitmap.recycle()
         previewStillsReady.clear()
         val latch = CountDownLatch(1)
@@ -1996,6 +2012,191 @@ internal class TransitionRenderer(
             onDone(frames)
         }
         if (!posted) onDone(null)
+    }
+
+    /** Live effect-tile jobs, abandoned in [release] so each answers busy. */
+    private val effectPreviewJobs =
+        java.util.Collections.newSetFromMap(ConcurrentHashMap<EffectPreviewJob, Boolean>())
+
+    private val atlasEncoderLock = Any()
+
+    /** Encodes read-back atlases off the GL thread; made with the first tile. */
+    private var atlasEncoder: java.util.concurrent.ExecutorService? = null
+
+    /**
+     * One effect tile's atlas: [request]'s bar drawn frame by frame through
+     * its own pass instances and a private chain, so the live preview's
+     * passes and targets are never touched — a few cells per GL turn
+     * ([EffectPreviewJob]), each slice queued behind whatever the canvas has,
+     * so a tile never holds the thread for a whole effect. [onDone] runs with
+     * the JPEG, Failed or Busy, exactly once; [release] abandons live jobs so
+     * no pending call is left waiting.
+     */
+    fun renderEffectPreview(
+        request: EffectPreviewRequest,
+        onDone: (EffectPreviewAnswer) -> Unit,
+    ) {
+        if (released) {
+            onDone(EffectPreviewAnswer.Busy)
+            return
+        }
+        lateinit var job: EffectPreviewJob
+        job = EffectPreviewJob(
+            spec = request.spec,
+            canvas = GlEffectPreviewCanvas(request),
+            host = {
+                when {
+                    released -> PreviewHost.RELEASED
+                    exportSurface != null -> PreviewHost.EXPORTING
+                    else -> PreviewHost.READY
+                }
+            },
+            post = { runnable -> handler.post(runnable) },
+            encode = { pixels, done -> encodeAtlas(request.spec, pixels, done) },
+            onDone = { answer ->
+                effectPreviewJobs.remove(job)
+                onDone(answer)
+            },
+        )
+        effectPreviewJobs.add(job)
+        job.start()
+    }
+
+    /** JPEG-encodes a read-back atlas, never on the GL thread. */
+    private fun encodeAtlas(
+        spec: EffectPreviewSpec,
+        pixels: ByteBuffer,
+        done: (ByteArray?) -> Unit,
+    ) {
+        val encoder = synchronized(atlasEncoderLock) {
+            if (released) {
+                null
+            } else {
+                atlasEncoder ?: Executors.newSingleThreadExecutor().also { atlasEncoder = it }
+            }
+        }
+        if (encoder == null) {
+            done(null)
+            return
+        }
+        try {
+            encoder.execute {
+                val jpeg = try {
+                    val raw = Bitmap.createBitmap(
+                        spec.atlasWidth,
+                        spec.atlasHeight,
+                        Bitmap.Config.ARGB_8888,
+                    )
+                    pixels.position(0)
+                    raw.copyPixelsFromBuffer(pixels)
+                    // Read-back rows run bottom up; the cells were drawn on
+                    // flipped rows, so one flip puts every frame where the
+                    // Dart layout looks for it.
+                    val flip = android.graphics.Matrix().apply { preScale(1f, -1f) }
+                    val upright =
+                        Bitmap.createBitmap(raw, 0, 0, spec.atlasWidth, spec.atlasHeight, flip, false)
+                    raw.recycle()
+                    val out = java.io.ByteArrayOutputStream()
+                    upright.compress(Bitmap.CompressFormat.JPEG, PREVIEW_JPEG_QUALITY, out)
+                    upright.recycle()
+                    out.toByteArray()
+                } catch (error: Exception) {
+                    Log.w(TAG, "Effect preview encode failed", error)
+                    null
+                }
+                done(jpeg)
+            }
+        } catch (rejected: RejectedExecutionException) {
+            done(null)
+        }
+    }
+
+    /**
+     * The GL half of one effect tile's drawing, on this renderer's context.
+     * Everything it uses it builds for itself — the sample texture, the atlas
+     * target, a private [EffectPassChain] and the effect's own pass instances
+     * — and [tearDown] frees it all, so the live preview's state is never
+     * touched and nothing survives the job.
+     */
+    private inner class GlEffectPreviewCanvas(
+        private val request: EffectPreviewRequest,
+    ) : EffectPreviewCanvas {
+        private var sampleTexture = 0
+        private var atlas: RenderTarget? = null
+        private var chain: EffectPassChain? = null
+        private var passes: List<EffectPass> = emptyList()
+
+        override fun makeCurrent(): Boolean = makeRenderTargetCurrent() != null
+
+        override fun setUp(): Boolean {
+            val spec = request.spec
+            val bitmap = TransitionPreviewSamples.still(spec.cellWidth, spec.cellHeight)
+            sampleTexture = uploadStill(bitmap)
+            bitmap.recycle()
+            atlas = createRenderTarget(spec.atlasWidth, spec.atlasHeight) ?: return false
+            val chain = EffectPassChain { message -> Log.w(TAG, "Effect preview: $message") }
+            this.chain = chain
+            // A chain with no targets hands the picture back unprocessed, and
+            // a tile drawn from that would show the plain sample as if it were
+            // the effect — failed, never that.
+            if (!chain.resize(spec.cellWidth, spec.cellHeight)) return false
+            passes = EffectShaders.passesFor(request.bar.effectId)
+            return passes.isNotEmpty()
+        }
+
+        override fun drawCell(index: Int, seconds: Double?) {
+            val spec = request.spec
+            val atlas = checkNotNull(atlas)
+            GLES20.glDisable(GLES20.GL_BLEND)
+            val picture = if (seconds == null) {
+                sampleTexture
+            } else {
+                val drawn = EffectStack.drawnAt(listOf(request.bar), seconds).firstOrNull()
+                if (drawn == null) {
+                    sampleTexture
+                } else {
+                    EffectShaders.applyIntensity(passes, drawn.intensity)
+                    EffectShaders.applyProgress(passes, drawn.progress)
+                    checkNotNull(chain).run(sampleTexture, passes, spec.cellWidth, spec.cellHeight)
+                }
+            }
+            // The chain left its own target bound; the cell is a viewport of
+            // the atlas, set after the bind that would reset it.
+            atlas.bind()
+            val cell = spec.cellViewport(index)
+            GLES20.glViewport(cell[0], cell[1], cell[2], cell[3])
+            presentTexture(picture)
+        }
+
+        override fun readBack(): ByteBuffer {
+            val spec = request.spec
+            checkNotNull(atlas).bind()
+            val pixels = ByteBuffer.allocateDirect(spec.atlasWidth * spec.atlasHeight * 4)
+                .order(ByteOrder.nativeOrder())
+            GLES20.glReadPixels(
+                0,
+                0,
+                spec.atlasWidth,
+                spec.atlasHeight,
+                GLES20.GL_RGBA,
+                GLES20.GL_UNSIGNED_BYTE,
+                pixels,
+            )
+            return pixels
+        }
+
+        override fun tearDown() {
+            EffectShaders.releasePasses(passes)
+            passes = emptyList()
+            chain?.release()
+            chain = null
+            atlas?.release()
+            atlas = null
+            if (sampleTexture != 0) GlUtil.deleteTexture(sampleTexture)
+            sampleTexture = 0
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            requestRender()
+        }
     }
 
     private fun drawPreviewFrames(type: String, width: Int, height: Int, count: Int): List<ByteArray>? {

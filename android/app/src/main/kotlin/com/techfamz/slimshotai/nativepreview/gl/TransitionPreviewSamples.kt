@@ -23,6 +23,9 @@ internal object TransitionPreviewSamples {
     fun pair(width: Int, height: Int): Pair<Bitmap, Bitmap> =
         Pair(sunset(width, height), mountains(width, height))
 
+    /** The one picture an effect tile is drawn on: the sunset. */
+    fun still(width: Int, height: Int): Bitmap = sunset(width, height)
+
     private fun canvasFor(bitmap: Bitmap): Canvas = Canvas(bitmap).apply {
         scale(1f, -1f, bitmap.width / 2f, bitmap.height / 2f)
     }

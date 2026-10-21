@@ -2,11 +2,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../logic/effects/effect_preview_atlases.dart';
+import '../services/native_timeline_preview_service.dart';
 
-/// What draws an effect tile's atlas. Answers busy until the engine is wired
-/// to it; a test overrides it.
+/// What draws an effect tile's atlas: the engine, over the preview method
+/// channel. Only that channel — never the preview's event stream, so this
+/// second service instance cannot steal its events. A test overrides it.
 final effectPreviewRendererProvider = Provider<EffectPreviewRenderer>(
-  (ref) => (_) async => const EffectPreviewBusy(),
+  (ref) => NativeTimelinePreviewService().renderEffectPreview,
 );
 
 /// The Effects sheet's preview atlases, kept for the app's session — not
