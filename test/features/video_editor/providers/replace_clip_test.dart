@@ -76,7 +76,6 @@ void main() {
     cropRect: const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
     flipHorizontal: true,
     filterId: 'warm',
-    effectId: 'vignette',
     transitionType: 'dissolve',
     transitionDuration: 0.5,
     overrideVideoPath: '/proxy_of_old.mp4',
@@ -96,7 +95,6 @@ void main() {
     expect(s.cropRect, const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8));
     expect(s.flipHorizontal, isTrue);
     expect(s.filterId, 'warm');
-    expect(s.effectId, 'vignette');
     expect(s.transitionType, 'dissolve');
     // The proxy was rendered from the old file.
     expect(s.overrideVideoPath, isNull);

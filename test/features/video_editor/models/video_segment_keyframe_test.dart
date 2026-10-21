@@ -143,10 +143,6 @@ void main() {
           canvasOffsetY: const AnimatableDouble(
               baseValue: 0.0, keyframes: [Keyframe(progress: 0.5, value: 0.2)]),
         ),
-        plain.copyWith(
-          effectIntensity: const AnimatableDouble(
-              baseValue: 1.0, keyframes: [Keyframe(progress: 0.5, value: 0.2)]),
-        ),
       ]) {
         expect(animated.hasKeyframes, isTrue);
       }
@@ -160,10 +156,10 @@ void main() {
         id: 'a',
         sourceStart: 0,
         sourceEnd: 5,
-        effectIntensity: const AnimatableDouble(baseValue: 0.8, envelope: 'throb'),
+        volume: const AnimatableDouble(baseValue: 0.8, envelope: 'throb'),
       );
       expect(s.hasKeyframes, isFalse);
-      expect(s.effectIntensity.isAnimated, isTrue);
+      expect(s.volume.isAnimated, isTrue);
     });
   });
 

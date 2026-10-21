@@ -60,16 +60,15 @@ void main() {
       // the user placing anything, so the rule must treat the clip as untouched.
       final n = notifierWith([
         clip('a').copyWith(
-          effectIntensity:
-              const AnimatableDouble(baseValue: 0.8, envelope: 'throb'),
+          volume: const AnimatableDouble(baseValue: 0.8, envelope: 'throb'),
         ),
       ], selectedSegmentId: 'a');
-      n.setClipProperty(ClipProperty.effectIntensity, 0.4);
+      n.setClipProperty(ClipProperty.volume, 0.4);
 
-      expect(only(n).effectIntensity.baseValue, 0.4);
-      expect(only(n).effectIntensity.keyframes, isEmpty);
-      // …and the envelope survives, so the preset still shapes the new strength.
-      expect(only(n).effectIntensity.envelope, 'throb');
+      expect(only(n).volume.baseValue, 0.4);
+      expect(only(n).volume.keyframes, isEmpty);
+      // …and the envelope survives, so it still shapes the new value.
+      expect(only(n).volume.envelope, 'throb');
     });
   });
 
@@ -313,26 +312,6 @@ void main() {
     });
   });
 
-  group('ownership', () {
-    test('clearing the effect leaves transform keyframes alone', () {
-      // **Keyframes are the clip's, not the effect's.** The rejected design
-      // took them down with the effect, which is the confusion of ownership
-      // this rebuild exists to fix.
-      final n = notifierWith([
-        clip('a').copyWith(effectId: 'vignette'),
-      ], selectedSegmentId: 'a', position: 5.0);
-      n.addKeyframeAtPlayhead();
-      n.setClipProperty(ClipProperty.canvasScale, 2.0);
-
-      n.setClipEffect(null);
-
-      final s = only(n);
-      expect(s.effectId, isNull);
-      expect(s.canvasScale.keyframes, isNotEmpty);
-      expect(s.canvasScaleAt(0.5), 2.0);
-    });
-  });
-
   group('what a control shows', () {
     // **A control shows what its write will target.** With no diamonds the
     // edit writes the base, so the base is shown; with diamonds the edit
@@ -352,12 +331,10 @@ void main() {
       // write back one frame of it when grabbed.
       final n = notifierWith([
         clip('a').copyWith(
-          effectIntensity:
-              const AnimatableDouble(baseValue: 0.8, envelope: 'throb'),
+          volume: const AnimatableDouble(baseValue: 0.8, envelope: 'throb'),
         ),
       ], selectedSegmentId: 'a', position: 5.0);
-      expect(
-          n.state.clipEditValue(only(n), ClipProperty.effectIntensity), 0.8);
+      expect(n.state.clipEditValue(only(n), ClipProperty.volume), 0.8);
     });
 
     test('with diamonds, the value at the playhead', () {

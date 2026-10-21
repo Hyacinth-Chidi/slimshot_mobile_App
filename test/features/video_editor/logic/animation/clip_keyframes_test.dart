@@ -77,10 +77,10 @@ void main() {
     test('an envelope survives capturing, though keyframes now win', () {
       // The envelope is not destroyed by keyframing — removing the last diamond
       // has to hand the clip back to it.
-      var s = withClipParameter(seg(), ClipProperty.effectIntensity,
+      var s = withClipParameter(seg(), ClipProperty.volume,
           const AnimatableDouble(baseValue: 0.8, envelope: 'throb'));
       s = captureKeyframe(s, 0.5);
-      expect(clipParameter(s, ClipProperty.effectIntensity).envelope, 'throb');
+      expect(clipParameter(s, ClipProperty.volume).envelope, 'throb');
     });
 
     test('the diamond set is the union, so a half-written draft still shows them',

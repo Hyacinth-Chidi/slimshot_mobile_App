@@ -59,10 +59,11 @@ enum ClipProperty {
   canvasOffsetY,
   canvasRotation,
   volume,
-  effectIntensity,
 
   /// How present the clip is, 0..1 — a mix toward the letterbox fill in the
-  /// engine, never alpha. The seventh property; a fade is two diamonds.
+  /// engine, never alpha. A fade is two diamonds. (An effect's strength was a
+  /// clip property until effects became bars on the timeline; a bar keyframes
+  /// its own.)
   opacity,
 }
 
@@ -79,8 +80,6 @@ AnimatableDouble clipParameter(VideoSegment s, ClipProperty p) {
       return s.canvasRotation;
     case ClipProperty.volume:
       return s.volume;
-    case ClipProperty.effectIntensity:
-      return s.effectIntensity;
     case ClipProperty.opacity:
       return s.opacity;
   }
@@ -103,8 +102,6 @@ VideoSegment withClipParameter(
       return s.copyWith(canvasRotation: v);
     case ClipProperty.volume:
       return s.copyWith(volume: v);
-    case ClipProperty.effectIntensity:
-      return s.copyWith(effectIntensity: v);
     case ClipProperty.opacity:
       return s.copyWith(opacity: v);
   }

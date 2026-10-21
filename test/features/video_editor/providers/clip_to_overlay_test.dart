@@ -63,7 +63,6 @@ void main() {
       final everything = clip('a').copyWith(
         filterId: 'warm',
         adjustments: const ColorAdjustments(brightness: 0.2),
-        effectId: 'vhs',
         cropRect: const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
         flipHorizontal: true,
         speedCurve: kSpeedCurvePresets.first.curve,
@@ -76,7 +75,6 @@ void main() {
       expect(clipToOverlayLosses(everything), [
         'Filter',
         'Adjust',
-        'Effect',
         'Crop',
         'Flip',
         'Speed curve',

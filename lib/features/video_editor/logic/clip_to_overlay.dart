@@ -27,7 +27,6 @@ import 'overlay_box_fit.dart';
 List<String> clipToOverlayLosses(VideoSegment s) => [
       if (s.filterId != null) 'Filter',
       if (!s.adjustments.isIdentity) 'Adjust',
-      if (s.effectId != null) 'Effect',
       if (s.cropRect != kFullFrameRect) 'Crop',
       if (s.flipHorizontal || s.flipVertical) 'Flip',
       if (s.speedCurve != null) 'Speed curve',

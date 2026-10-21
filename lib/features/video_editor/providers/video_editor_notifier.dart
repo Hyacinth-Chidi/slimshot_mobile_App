@@ -18,6 +18,7 @@ import '../logic/animation/keyframe_core.dart';
 import '../logic/animation/overlay_keyframes.dart';
 import '../logic/canvas_geometry.dart';
 import '../logic/animation/clip_keyframes.dart' as kf;
+import '../logic/effects/clip_effect_migration.dart';
 import '../logic/effects/effect_bar_placement.dart';
 import '../logic/effects/effect_catalog.dart';
 import '../logic/filter_presets.dart';
@@ -561,6 +562,17 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       isClipSelected: false,
     );
 
+    // A draft from before the effects track holds its effects on its clips.
+    // Each becomes a bar over exactly where it showed, on a free lane.
+    final converted = migrateClipEffects(
+      rawSegments: draft.segments,
+      segments: state.segments,
+      occupied: _laneSpans,
+    );
+    if (converted.isNotEmpty) {
+      state = state.copyWith(effectBars: [...state.effectBars, ...converted]);
+    }
+
     // A draft saved before the lane rules held can hold stacked overlays —
     // duplicates used to land exactly on top of their original — or gaps.
     _applyLanes(normalizeLanes(_laneSpans));
@@ -1041,8 +1053,6 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       // placement; a split is a cut, not a reason to lose either.
       filterId: segment.filterId,
       filterIntensity: segment.filterIntensity,
-      effectId: segment.effectId,
-      effectIntensity: segment.effectIntensity,
       canvasScale: segment.canvasScale,
       canvasOffsetX: segment.canvasOffsetX,
       canvasOffsetY: segment.canvasOffsetY,
@@ -1208,8 +1218,6 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       sourceEnd: kDefaultPhotoDurationSeconds,
       filterId: segment.filterId,
       filterIntensity: segment.filterIntensity,
-      effectId: segment.effectId,
-      effectIntensity: flat(ClipProperty.effectIntensity),
       canvasScale: flat(ClipProperty.canvasScale),
       canvasOffsetX: flat(ClipProperty.canvasOffsetX),
       canvasOffsetY: flat(ClipProperty.canvasOffsetY),
@@ -1418,20 +1426,6 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// Copies the selected clip's own crop onto every other clip. One undo step.
   int applyCropToAllClips() => _copyToOtherClips(
         (source, target) => target.copyWith(cropRect: source.cropRect),
-      );
-
-  /// Copies the selected clip's effect and intensity (keyframes included) onto
-  /// every other clip; an unaffected clip clears the others. One undo step.
-  int applyEffectToAllClips() => _copyToOtherClips(
-        (source, target) => source.effectId == null
-            ? target.copyWith(
-                clearEffectId: true,
-                effectIntensity: source.effectIntensity,
-              )
-            : target.copyWith(
-                effectId: source.effectId,
-                effectIntensity: source.effectIntensity,
-              ),
       );
 
   /// Applies [copy] from the selected clip to every other clip, snapshotting
@@ -2241,106 +2235,6 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
           else
             segment,
       ],
-    );
-  }
-
-  /// Applies an effect to the **selected** clip, or clears it when [effectId]
-  /// is null.
-  ///
-  /// An effect belongs to a clip, never to the project: unlike a filter there
-  /// is no "apply to all" mode, because a multi-pass effect on every clip is a
-  /// cost the user did not ask for. With no clip selected this does nothing
-  /// rather than guessing at a target.
-  ///
-  /// [intensity] defaults to the catalog's own [VideoEffect.defaultIntensity]
-  /// for [effectId], so tapping a tile is the whole interaction — the slider
-  /// is there for anyone who wants to retune it, not a step on the way to
-  /// seeing the effect at all.
-  ///
-  /// **Clearing goes through `clearEffectId`.** A bare `effectId: null` is
-  /// ignored by `copyWith` for every nullable field in this codebase, so it
-  /// would leave the old effect in place and read as a dead None tile.
-  ///
-  /// [takeUndoSnapshot] is false only for the slider's live frames: the
-  /// gesture takes one snapshot on drag start, so a drag undoes as one step
-  /// rather than a pixel at a time.
-  void setClipEffect(
-    String? effectId, {
-    double? intensity,
-    bool takeUndoSnapshot = true,
-  }) {
-    final targetId = state.selectedSegmentId;
-    if (targetId == null) return;
-
-    final effect = videoEffectById(effectId);
-    // An id the catalog does not know draws nothing, so storing it would be a
-    // tile that appears to work and does not. Treated as a clear.
-    final resolvedId = effect?.id;
-    final resolvedIntensity =
-        intensity ?? effect?.defaultIntensity ?? defaultEffectIntensity;
-
-    if (takeUndoSnapshot) saveStateForUndo();
-
-    // **Changing the effect drops the *intensity's* keyframes** (see
-    // [_nextEffectIntensity]) — that parameter belongs to the effect, and
-    // carrying a curve onto a different shader would animate a strength the
-    // user never shaped. It leaves the transform and volume keyframes standing:
-    // those are the *clip's*, not the effect's, and the rejected design's habit
-    // of taking them down with the effect is exactly the confusion of ownership
-    // this rebuild exists to fix.
-    state = state.copyWith(
-      segments: [
-        for (final segment in state.segments)
-          if (segment.id == targetId)
-            segment.copyWith(
-              effectId: resolvedId,
-              clearEffectId: resolvedId == null,
-              effectIntensity: _nextEffectIntensity(
-                segment: segment,
-                resolvedId: resolvedId,
-                baseValue: resolvedIntensity.clamp(0.0, 1.0),
-              ),
-            )
-          else
-            segment,
-      ],
-    );
-  }
-
-  /// The intensity parameter a clip should hold once [resolvedId] is applied
-  /// at [baseValue].
-  ///
-  /// Two cases, and keeping them apart is what makes the slider safe:
-  ///
-  /// * **The effect is unchanged** — this is the slider moving, or the panel
-  ///   re-sending the same id. Only [AnimatableDouble.baseValue] is written;
-  ///   whatever envelope or keyframes the parameter carries survive untouched.
-  ///   Retuning a strength must never silently discard the shape on it, and
-  ///   the slider re-sends the id on every frame of a drag, so a rebuild-from-
-  ///   scratch here would wipe the animation on the first pixel of movement.
-  /// * **A different effect is applied** — the old effect's shape belongs to
-  ///   the old effect (a glitch's pulse means nothing on a vignette), so the
-  ///   parameter is rebuilt from the new effect's own
-  ///   [VideoEffect.defaultEnvelope] and any keyframes are dropped. That is
-  ///   also what makes one tap feel designed rather than static.
-  ///
-  /// Clearing the effect resets to a flat default: a clip with no effect
-  /// holding a pulse would put an envelope back the moment any effect was
-  /// applied, which the user never asked for.
-  AnimatableDouble _nextEffectIntensity({
-    required VideoSegment segment,
-    required String? resolvedId,
-    required double baseValue,
-  }) {
-    if (resolvedId == null) {
-      return AnimatableDouble(baseValue: baseValue);
-    }
-    if (segment.effectId == resolvedId) {
-      return segment.effectIntensity.copyWith(baseValue: baseValue);
-    }
-    return AnimatableDouble(
-      baseValue: baseValue,
-      envelope: videoEffectById(resolvedId)?.defaultEnvelope,
     );
   }
 

@@ -7,7 +7,7 @@ import 'package:slimshotai/features/video_editor/models/video_segment.dart';
 import 'package:slimshotai/features/video_editor/providers/video_editor_notifier.dart';
 import 'package:slimshotai/features/video_editor/services/video_editor_service.dart';
 
-/// "Apply to all" for the placement, the crop and the effect: one tap copies
+/// "Apply to all" for the placement and the crop: one tap copies
 /// the selected clip's onto every other clip, as one undo step.
 ///
 /// **A copy, not a mode.** Filters and transitions toggle into a live
@@ -58,7 +58,6 @@ void main() {
           clip('a').copyWith(canvasScale: const AnimatableDouble(baseValue: 2.0)),
           clip('b').copyWith(
             cropRect: const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8),
-            effectId: 'vignette',
             opacity: const AnimatableDouble(baseValue: 0.5),
           ),
         ],
@@ -68,7 +67,6 @@ void main() {
       final b = n.state.segments[1];
       expect(b.canvasScale.baseValue, 2.0);
       expect(b.cropRect, const Rect.fromLTWH(0.1, 0.1, 0.8, 0.8));
-      expect(b.effectId, 'vignette');
       expect(b.opacity.baseValue, 0.5);
     });
   });
@@ -84,33 +82,6 @@ void main() {
       );
       expect(n.applyCropToAllClips(), 1);
       expect(n.state.segments[1].cropRect, const Rect.fromLTWH(0.25, 0, 0.5, 1));
-    });
-  });
-
-  group('the effect', () {
-    test('copies the effect and its intensity onto every other clip', () {
-      final n = notifierWith(
-        [
-          clip('a').copyWith(
-            effectId: 'vignette',
-            effectIntensity: const AnimatableDouble(baseValue: 0.7),
-          ),
-          clip('b').copyWith(effectId: 'glow'),
-        ],
-        selected: 'a',
-      );
-      expect(n.applyEffectToAllClips(), 1);
-      expect(n.state.segments[1].effectId, 'vignette');
-      expect(n.state.segments[1].effectIntensity.baseValue, 0.7);
-    });
-
-    test('an unaffected clip clears the others', () {
-      final n = notifierWith(
-        [clip('a'), clip('b').copyWith(effectId: 'glow')],
-        selected: 'a',
-      );
-      n.applyEffectToAllClips();
-      expect(n.state.segments[1].effectId, isNull);
     });
   });
 
@@ -135,7 +106,6 @@ void main() {
       final none = notifierWith([clip('a'), clip('b')]);
       expect(none.applyTransformToAllClips(), 0);
       expect(none.applyCropToAllClips(), 0);
-      expect(none.applyEffectToAllClips(), 0);
       expect(none.state.canUndo, isFalse);
 
       final alone = notifierWith([clip('a')], selected: 'a');

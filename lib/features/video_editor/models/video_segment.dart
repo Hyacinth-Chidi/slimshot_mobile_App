@@ -164,48 +164,6 @@ class VideoSegment {
   final String? filterId;
   final double filterIntensity;
 
-  /// Visual effect on this clip alone, as a [VideoEffect] id.
-  ///
-  /// Null means the clip is unaffected. Distinct from [filterId]: a filter is a
-  /// colour matrix applied to the texels as the clip is sampled, while an
-  /// effect is a shader pass (or a chain of them) over the whole clip — grain,
-  /// glitch, blur. The two compose, so a clip may carry both.
-  ///
-  /// **The stored string is kept verbatim even when this build does not know
-  /// it.** An id from a newer build must survive a round trip through an older
-  /// one's drafts rather than being silently erased on save; it simply resolves
-  /// to null and draws nothing meanwhile. Resolve it through [effect], never by
-  /// assuming the catalog contains it.
-  final String? effectId;
-
-  /// How strongly [effectId] is applied, **normalised 0..1**, and how that
-  /// strength varies across the clip.
-  ///
-  /// Never a pixel radius: the same clip is drawn into a ~400px preview and a
-  /// 1080p export, and a pixel parameter would make those two different
-  /// pictures. The shader scales this into whatever units it needs against the
-  /// frame it is actually drawing.
-  ///
-  /// An [AnimatableDouble] rather than a plain double so an effect can *move*
-  /// over its clip — a glitch that pulses, a blur that clears — from a named
-  /// envelope the catalog declares or from keyframes the user places. **A
-  /// parameter carrying neither resolves flat to its base value at every
-  /// progress**, which is exactly what the scalar did, so a clip that has not
-  /// asked for animation renders identically to how it always has.
-  ///
-  /// The intensity slider writes [AnimatableDouble.baseValue] and leaves the
-  /// envelope and keyframes alone — retuning a strength must not silently
-  /// discard the shape the user (or the catalog) put on it.
-  final AnimatableDouble effectIntensity;
-
-  /// The effect strength at [progress] (0..1 through the clip's effect
-  /// window).
-  ///
-  /// Convenience for the Dart-side consumers that need a number rather than a
-  /// parameter. Both renderers resolve it themselves, on their own clock.
-  double effectIntensityAt(double progress) =>
-      effectIntensity.resolveAt(progress);
-
   VideoSegment({
     required this.id,
     this.assetId = '',
@@ -221,8 +179,6 @@ class VideoSegment {
     this.isReversed = false,
     this.filterId,
     this.filterIntensity = 1.0,
-    this.effectId,
-    this.effectIntensity = kDefaultEffectIntensityParameter,
     this.canvasScale = kUnitParameter,
     this.canvasOffsetX = kZeroParameter,
     this.canvasOffsetY = kZeroParameter,
@@ -303,7 +259,6 @@ class VideoSegment {
       canvasOffsetY.keyframes.isNotEmpty ||
       canvasRotation.keyframes.isNotEmpty ||
       volume.keyframes.isNotEmpty ||
-      effectIntensity.keyframes.isNotEmpty ||
       opacity.keyframes.isNotEmpty;
 
   /// Source position [secondsIntoClip] seconds into this clip's span on the
@@ -358,9 +313,6 @@ class VideoSegment {
     String? filterId,
     bool clearFilterId = false,
     double? filterIntensity,
-    String? effectId,
-    bool clearEffectId = false,
-    AnimatableDouble? effectIntensity,
     AnimatableDouble? canvasScale,
     AnimatableDouble? canvasOffsetX,
     AnimatableDouble? canvasOffsetY,
@@ -390,8 +342,6 @@ class VideoSegment {
       isReversed: isReversed ?? this.isReversed,
       filterId: clearFilterId ? null : (filterId ?? this.filterId),
       filterIntensity: filterIntensity ?? this.filterIntensity,
-      effectId: clearEffectId ? null : (effectId ?? this.effectId),
-      effectIntensity: effectIntensity ?? this.effectIntensity,
       canvasScale: canvasScale ?? this.canvasScale,
       canvasOffsetX: canvasOffsetX ?? this.canvasOffsetX,
       canvasOffsetY: canvasOffsetY ?? this.canvasOffsetY,
@@ -424,14 +374,6 @@ class VideoSegment {
     return preset.getInterpolatedMatrix(filterIntensity);
   }
 
-  /// This clip's effect resolved against the catalog, or null when it has none
-  /// — including when it stores an id this build does not know.
-  ///
-  /// Every consumer goes through this rather than reading [effectId] directly,
-  /// which is what makes an unrecognised id degrade to an unaffected clip
-  /// instead of reaching a renderer with no shader for it.
-  VideoEffect? get effect => videoEffectById(effectId);
-
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -453,12 +395,6 @@ class VideoSegment {
       'isReversed': isReversed,
       'filterId': filterId,
       'filterIntensity': filterIntensity,
-      'effectId': effectId,
-      // A bare number while nothing animates it, a map once something does —
-      // see [AnimatableDouble.toJson]. So a clip that has not asked for
-      // animation writes the field exactly as it always has, and a draft
-      // written here still opens in a build that predates this model.
-      'effectIntensity': effectIntensity.toJson(),
       'canvasScale': canvasScale.toJson(),
       'canvasOffsetX': canvasOffsetX.toJson(),
       'canvasOffsetY': canvasOffsetY.toJson(),
@@ -520,21 +456,10 @@ class VideoSegment {
       // Absent in drafts saved before clips could carry their own filter.
       filterId: json['filterId'] as String?,
       filterIntensity: (json['filterIntensity'] as num?)?.toDouble() ?? 1.0,
-      // Absent in every draft written before clips could carry an effect, so
-      // both reads fall back rather than throwing — a saved project must open
-      // in a build that added fields under it.
-      effectId: json['effectId'] as String?,
-      // **Every draft saved before this stage holds a bare number here**, and
-      // one written before effects existed holds nothing at all.
-      // `AnimatableDouble.fromJson` takes `dynamic` for exactly that: a number
-      // loads as a flat value with no envelope and no keyframes, a map loads
-      // fully, and anything else — absent, null, junk — falls back rather than
-      // throwing. A saved project turning into a crash on open is the worst
-      // failure this read could have.
-      effectIntensity: AnimatableDouble.fromJson(
-        json['effectIntensity'],
-        fallback: defaultEffectIntensity,
-      ),
+      // A draft from before the effects track also holds `effectId` and
+      // `effectIntensity` here. They are not a clip's any more:
+      // `migrateClipEffects` turns them into effect bars on load, and the
+      // clip reads past them.
       canvasScale: AnimatableDouble.fromJson(json['canvasScale'], fallback: 1.0),
       canvasOffsetX:
           AnimatableDouble.fromJson(json['canvasOffsetX'], fallback: 0.0),
