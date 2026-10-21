@@ -108,12 +108,24 @@ vec4 sampleFrame(sampler2D tex, vec2 uv) {
 // A shake seeded from a hash of `uProgress` is reproducible frame for frame on
 // any device at any rate.
 //
-// The classic sin-fract hash. `mediump` is enough because the input is bounded
-// 0..1 and scaled by small constants, so the argument to `sin` never reaches the
-// magnitudes where a low-precision `sin` loses its periodicity.
-float hash11(float n) {
-    return fract(sin(n * 127.1) * 43758.5453);
+// The classic sin-fract hash, **in high precision where the GPU has it**. The
+// argument stays small, but the `43758.5` it is multiplied by does not: a 16-bit
+// `mediump` float stores a number that size to the nearest 32, so the fraction
+// is always zero — on a GPU that takes `mediump` literally (the Infinix's
+// PowerVR) this hash returned nothing, Glitch never tore, the shakes sat still
+// and grain was a flat darkening. A GPU with no high-precision fragment math
+// gets a multiplier a 16-bit float can still take the fraction of: coarser
+// noise, but noise.
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+float hash11(highp float n) {
+    highp float wave = sin(n * 127.1) * 43758.5453;
+    return fract(wave);
 }
+#else
+float hash11(float n) {
+    return fract(sin(n * 127.1) * 43.7585453);
+}
+#endif
 
 // Two independent values from one seed, for a 2D displacement. Offsetting the
 // seed rather than hashing the hash keeps the two axes uncorrelated — chaining

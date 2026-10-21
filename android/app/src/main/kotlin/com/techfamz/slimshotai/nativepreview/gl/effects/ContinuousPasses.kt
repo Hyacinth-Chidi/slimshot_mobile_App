@@ -1,5 +1,7 @@
 package com.techfamz.slimshotai.nativepreview.gl.effects
 
+import android.opengl.GLES20
+
 /*
  * Continuous looks: effects that run for the whole clip rather than settling.
  *
@@ -10,18 +12,17 @@ package com.techfamz.slimshotai.nativepreview.gl.effects
  *
  * Two consequences worth stating, because both look like bugs otherwise:
  *
- * * **The motion's rate is per clip, not per second.** A drift that crosses the
- *   frame over the clip takes 3s on a 3s clip and 90s on a 90s one. For a pan
- *   that is exactly right — the gesture is "across this clip". For the shakes
- *   it would be wrong, so they multiply progress by a rate constant and shake at
- *   a fixed number of cycles per clip; a shake tied to wall-clock seconds cannot
- *   exist here, because export runs faster than realtime and the file would
- *   shake at a different speed than the canvas.
+ * * **A pan's rate is per bar; a shake's is per second.** A drift that crosses
+ *   the frame over the bar takes 3s on a 3s bar and 90s on a 90s one — for a
+ *   pan exactly right, the gesture is "across this bar". A shake has a speed
+ *   of its own, so the shakes keep time in the bar's own seconds
+ *   (`barSeconds`) — timeline time, never wall clock, so the file shakes as
+ *   the canvas did however fast the export runs.
  * * **There is no settle, and none is wanted.** A continuous look is displaced
  *   at its last frame as much as at its first. The settle rule belongs to the
  *   intro category.
  *
- * Every displacement here is a pure function of `uProgress` — **never
+ * Every displacement here is a pure function of the bar's clock — **never
  * `Random()`**, never a frame counter, never `System.nanoTime`. Export renders
  * faster than realtime, so anything stateful draws a different picture in the
  * file than on the canvas; `TextAnimationCurves` is a pure function of a
@@ -91,129 +92,102 @@ void main() {
 }
 
 /**
- * Subtle continuous camera shake — the handheld look.
+ * The shake shaders' shared mapping: the canvas point at [uv] sampled through a
+ * camera pose `(dx, dy, radians, zoom)`, offsets in short sides. **The same
+ * arithmetic as [CameraShake.sampleOf]**, which the cover is checked against —
+ * if one changes the other must.
+ */
+private const val SHAKE_UV = """
+vec2 shakeUv(vec4 pose, vec2 uv) {
+    vec2 extent = vec2(0.5 * max(1.0, uAspect), 0.5 * max(1.0, 1.0 / uAspect));
+    vec2 p = (uv - vec2(0.5)) * 2.0 * extent;
+    vec2 q = (p - pose.xy) / pose.w;
+    float c = cos(pose.z);
+    float s = sin(pose.z);
+    vec2 r = vec2(c * q.x + s * q.y, -s * q.x + c * q.y);
+    return r / (2.0 * extent) + vec2(0.5);
+}
+"""
+
+/**
+ * A camera held in a hand: a slow sway, a faint tremor, a slight turn.
  *
- * The same deterministic hash as [SteadyInPass] without the decay, plus a slow
- * drift underneath it: a real handheld camera wanders as well as jitters, and
- * jitter alone reads as a mechanical vibration rather than as a person holding
- * something.
+ * The pose is worked out on the CPU each frame ([CameraShake.HANDHELD]) from the
+ * bar's own seconds and arrives as `uPose`. It used to be a fresh hashed offset
+ * per frame, which on the device sat still and elsewhere vibrated
+ * (device-reported: not realistic).
  */
 internal class HandheldPass(program: FullFrameProgram) :
     SingleFramePass("handheld", program) {
 
+    private val uPose = program.location("uPose")
+
+    override fun bindExtraUniforms(viewportWidth: Int, viewportHeight: Int) {
+        val aspect = viewportWidth.toDouble() / viewportHeight.toDouble()
+        val pose = CameraShake.poseAt(CameraShake.HANDHELD, seconds.toDouble(), intensity, aspect)
+        GLES20.glUniform4f(uPose, pose.dx.toFloat(), pose.dy.toFloat(), pose.radians.toFloat(), pose.zoom.toFloat())
+    }
+
     internal companion object {
-        /** Peak jitter at intensity 1, as a fraction of the frame's short side. */
-        const val MAX_AMPLITUDE = 0.012f
-
-        /**
-         * Jitter samples across the clip.
-         *
-         * High, because this is measured per *clip*: on a 5s clip 90 samples is
-         * about 18Hz, which is the frequency range a hand actually shakes at.
-         */
-        const val RATE = 90.0f
-
-        /** How far the slow wander travels, relative to the jitter. */
-        const val DRIFT_SCALE = 1.6f
-
-        /**
-         * The cover zoom.
-         *
-         * Enough to keep the displaced frame's edges off screen at full
-         * intensity: the jitter and the drift together reach about 3% of the
-         * frame, and 6% of headroom covers it with margin. Without it the frame
-         * would show a black sliver along one edge on every shake.
-         */
-        const val COVER_SCALE = 1.06f
-
         val FRAGMENT = """
 precision mediump float;
 varying vec2 vTexCoord;
 uniform sampler2D uTexture;
-uniform float uIntensity;
-uniform float uProgress;
 uniform float uAspect;
-${EffectShaderLib.COMMON}
+uniform vec4 uPose;
+$SHAKE_UV
 void main() {
-    float amplitude = ${MAX_AMPLITUDE} * uIntensity;
-
-    // Fast jitter: deterministic, a pure function of the clip's own position.
-    vec2 jitter = (hash21(uProgress * ${RATE}) - vec2(0.5)) * 2.0 * amplitude;
-    // Slow wander underneath it, so the camera drifts as well as shakes. Two
-    // incommensurable frequencies, so the pair never repeats within a clip.
-    vec2 drift = vec2(
-        sin(uProgress * 7.0),
-        cos(uProgress * 5.0)
-    ) * amplitude * ${DRIFT_SCALE};
-
-    vec2 scaleVec = aspectScale(uAspect);
-    // Displaced in the square space so the shake travels equally on both axes.
-    vec2 centred = (vTexCoord - vec2(0.5)) * scaleVec + jitter + drift;
-    vec2 uv = centred / scaleVec / ${COVER_SCALE} + vec2(0.5);
-    gl_FragColor = sampleFrame(uTexture, uv);
+    gl_FragColor = texture2D(uTexture, clamp(shakeUv(uPose, vTexCoord), 0.0, 1.0));
 }
 """
     }
 }
 
 /**
- * Aggressive shake, with rotation.
+ * A hard shake: fast jolts, turns of a few degrees, a punch in now and then,
+ * and the blur a shutter records of a camera moving that fast.
  *
- * [HandheldPass] turned up is not the same effect: past a certain amplitude a
- * pure translation reads as the picture sliding rather than as a camera being
- * shaken, and what sells the difference is the frame **rotating** slightly with
- * each jolt. So this is its own shader rather than the same one at a higher
- * intensity — and it keeps its own slider, which a shared entry could not.
+ * Its own motion ([CameraShake.SUPER_SHAKE]), not Handheld turned up: past a
+ * certain speed a shake is jolts, not sway. The blur samples along the path
+ * each point travelled during the exposure — from the pose
+ * [CameraShake.EXPOSURE_SECONDS] earlier (`uPosePrev`) to the pose now — so a
+ * turn blurs round and a jolt blurs straight, exactly as far as it moved. Five
+ * taps, no loop.
  */
 internal class SuperShakePass(program: FullFrameProgram) :
     SingleFramePass("super_shake", program) {
 
+    private val uPose = program.location("uPose")
+    private val uPosePrev = program.location("uPosePrev")
+
+    override fun bindExtraUniforms(viewportWidth: Int, viewportHeight: Int) {
+        val aspect = viewportWidth.toDouble() / viewportHeight.toDouble()
+        val now = seconds.toDouble()
+        val style = CameraShake.SUPER_SHAKE
+        val pose = CameraShake.poseAt(style, now, intensity, aspect)
+        val prev = CameraShake.poseAt(style, now - CameraShake.EXPOSURE_SECONDS, intensity, aspect)
+        GLES20.glUniform4f(uPose, pose.dx.toFloat(), pose.dy.toFloat(), pose.radians.toFloat(), pose.zoom.toFloat())
+        GLES20.glUniform4f(uPosePrev, prev.dx.toFloat(), prev.dy.toFloat(), prev.radians.toFloat(), prev.zoom.toFloat())
+    }
+
     internal companion object {
-        /** Peak displacement at intensity 1, as a fraction of the frame's short side. */
-        const val MAX_AMPLITUDE = 0.05f
-
-        /** Peak rotation at intensity 1, in radians — about 3 degrees. */
-        const val MAX_RADIANS = 0.055f
-
-        /** Jitter samples across the clip — faster than handheld, as a jolt is. */
-        const val RATE = 150.0f
-
-        /**
-         * The cover zoom.
-         *
-         * Larger than handheld's because both the displacement and the rotation
-         * pull the frame's corners inward: at 5% displacement and 3 degrees the
-         * corners need roughly 12% of headroom to stay off screen.
-         */
-        const val COVER_SCALE = 1.16f
-
         val FRAGMENT = """
 precision mediump float;
 varying vec2 vTexCoord;
 uniform sampler2D uTexture;
-uniform float uIntensity;
-uniform float uProgress;
 uniform float uAspect;
-${EffectShaderLib.COMMON}
+uniform vec4 uPose;
+uniform vec4 uPosePrev;
+$SHAKE_UV
 void main() {
-    float amplitude = ${MAX_AMPLITUDE} * uIntensity;
-    float seeded = uProgress * ${RATE};
-
-    vec2 jitter = (hash21(seeded) - vec2(0.5)) * 2.0 * amplitude;
-    // A third independent hash for the roll, offset well away from the two the
-    // displacement uses so the rotation is not correlated with either axis —
-    // a correlated roll reads as the frame swinging on a pendulum.
-    float roll = (hash11(seeded + 313.7) - 0.5) * 2.0 * ${MAX_RADIANS} * uIntensity;
-
-    vec2 scaleVec = aspectScale(uAspect);
-    vec2 centred = (vTexCoord - vec2(0.5)) * scaleVec + jitter;
-
-    float s = sin(roll);
-    float c = cos(roll);
-    vec2 turned = vec2(centred.x * c - centred.y * s, centred.x * s + centred.y * c);
-
-    vec2 uv = turned / scaleVec / ${COVER_SCALE} + vec2(0.5);
-    gl_FragColor = sampleFrame(uTexture, uv);
+    vec2 now = shakeUv(uPose, vTexCoord);
+    vec2 then = shakeUv(uPosePrev, vTexCoord);
+    vec4 sum = texture2D(uTexture, clamp(now, 0.0, 1.0));
+    sum += texture2D(uTexture, clamp(mix(now, then, 0.25), 0.0, 1.0));
+    sum += texture2D(uTexture, clamp(mix(now, then, 0.5), 0.0, 1.0));
+    sum += texture2D(uTexture, clamp(mix(now, then, 0.75), 0.0, 1.0));
+    sum += texture2D(uTexture, clamp(then, 0.0, 1.0));
+    gl_FragColor = sum * 0.2;
 }
 """
     }

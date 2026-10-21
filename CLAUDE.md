@@ -1803,11 +1803,39 @@ is not a failure anything can report, which is why it presented as a frozen prog
   resolution exactly as before and a copy is used only where the gaussian hides it (≥ 2.5
   reduced texels of sigma). Copies are kept per scale and dropped on a size change; a refused
   copy falls back to the full-res blur. Blur In is unchanged.
+- **The shared hash returned nothing on the device** (`EffectHashShadersTest`, **awaiting
+  device verification**). `hash11` was `fract(sin(x) * 43758.5)` at `mediump`, and a 16-bit
+  float stores a number near 43758 to the nearest 32 — the fraction is always zero. The
+  argument had been guarded against overflow everywhere; the multiplier never was. On the
+  Infinix's PowerVR, which takes `mediump` literally, **Glitch never tore even at 100%,
+  Handheld and Super Shake sat at one fixed offset, Film Grain was a flat darkening, VHS's line
+  jitter froze, Grid Reveal arrived as a plain fade and Steady In did not shake** — the first
+  three device-reported, the rest found from the same cause. The hash now runs in `highp`
+  behind `#ifdef GL_FRAGMENT_PRECISION_HIGH`, with a small multiplier a 16-bit float can still
+  take the fraction of where the GPU has no high precision.
+- **Randomness the same for every pixel of a frame is planned on the CPU**, not hashed in the
+  shader: exact on every GPU, and testable. **Glitch** (`GlitchPlan`): stepped 12 times a
+  second, in bursts — 0.5s windows that strike or stay clean, nearly all striking at 100%, the
+  first always (so a bar, and its tile, opens on a glitch), never more than three clean in a
+  row — up to four torn blocks (wrapping), channel splits, now and then a band's channels
+  swapped, sent as `uBlock0..3`/`uGlitch`. **Handheld and Super Shake** (`CameraShake`): the
+  pose is smooth value noise in the bar's own **seconds** — a hand's sway under 2Hz with an
+  8.5Hz tremor and under two degrees of turn; a shake's 5–11Hz jolts, three and a half degrees
+  and a punch in — sent as `uPose`; Super Shake also blurs along the path each point travelled
+  over a 1/60s exposure (`uPosePrev`, five taps). They had drawn a fresh hashed offset per frame
+  — white noise, a vibration rather than a camera, even where the hash worked — at a rate per
+  bar, so a longer bar shook slower. A fixed zoom per intensity and canvas shape
+  (`CameraShake.coverFor`) keeps every pose's edges off screen; a test sweeps the corners
+  through every frame. `CameraShake.sampleOf` is the shader's `shakeUv`, step for step — if
+  one changes the other must.
 
 **Randomness in a shader must be a deterministic hash**, of UV and of `uProgress` where it should
 move. Never `Random()`, never a frame counter. And **`mediump` overflows around n≈515** in
 `fract(sin(n*127.1)*…)`: hash seeds must be folded to 0..1 per term rather than summed and
-wrapped at the end, or grain bands flatly on some GPUs and not others.
+wrapped at the end, or grain bands flatly on some GPUs and not others. **The `* 43758.5` is
+the other half**: at `mediump` it leaves no fraction at all, so a sin-fract hash runs in
+`highp` where the GPU has it (`EffectShaderLib`'s `hash11`), and randomness shared by a whole
+frame belongs on the CPU (`PlanHash`), as above.
 
 **`BlurPass` holds the only loop in the codebase** — 16 taps indexing `uWeights[i]`. Spec-legal on
 ES 2.0 (Appendix A constant-index-expression) but with no driver precedent here, so it is

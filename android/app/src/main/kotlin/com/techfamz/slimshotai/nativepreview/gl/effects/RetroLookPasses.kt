@@ -1,5 +1,7 @@
 package com.techfamz.slimshotai.nativepreview.gl.effects
 
+import android.opengl.GLES20
+
 /*
  * The analogue artefacts: film grain, tape, broadcast, damaged signal.
  *
@@ -471,111 +473,83 @@ void main() {
 }
 
 /**
- * Digital corruption: blocks of the picture torn sideways, with the channels
- * separating inside the tear.
+ * Digital corruption: blocks of the picture torn sideways, their channels
+ * pulled apart, now and then a band's colours swapped.
  *
- * **Discrete, not continuous**, which is what distinguishes a digital glitch
- * from every analogue artefact here. A tape fault wanders; a corrupted frame is
- * fine, then wrong, then fine again, and the damage lands on *block boundaries*
- * because that is the granularity a codec works in. So both the vertical bands
- * and the time steps are quantised, and between steps nothing moves at all.
+ * **Planned on the CPU** ([GlitchPlan]): which blocks tear, how far, and when,
+ * from the bar's own seconds, handed to the shader as [GlitchPlan.MAX_BLOCKS]
+ * blocks a frame. The shader used to decide each band itself from `hash11`,
+ * which at `mediump` on the device returned nothing — the gate never opened and
+ * the effect drew the untouched picture even at 100% (device-reported).
  *
- * **It is also mostly absent.** A glitch running on every frame is not a glitch,
- * it is a texture — the eye normalises it within a second and it stops reading
- * as damage. The shader therefore gates the whole effect behind a hashed
- * threshold, so most instants are the clean frame and the corruption arrives in
- * bursts. That gate is what makes this worth leaving on.
+ * A tear **wraps** — what is pushed off one side comes in at the other, as a
+ * corrupt line does — while a channel split clamps, so the frame's edges never
+ * show a stripe of the opposite side's colour.
  */
 internal class GlitchPass(program: FullFrameProgram) :
     SingleFramePass("glitch", program) {
 
+    private val uBlocks = IntArray(GlitchPlan.MAX_BLOCKS) { program.location("uBlock$it") }
+    private val uGlitch = program.location("uGlitch")
+
+    override fun bindExtraUniforms(viewportWidth: Int, viewportHeight: Int) {
+        val frame = GlitchPlan.at(seconds.toDouble(), intensity)
+        for (j in 0 until GlitchPlan.MAX_BLOCKS) {
+            GLES20.glUniform4f(
+                uBlocks[j],
+                frame.blocks[j * 4],
+                frame.blocks[j * 4 + 1],
+                frame.blocks[j * 4 + 2],
+                frame.blocks[j * 4 + 3],
+            )
+        }
+        GLES20.glUniform4f(uGlitch, frame.frameSplit, frame.swapFrom, frame.swapTo, 0f)
+    }
+
     internal companion object {
-        /** Peak sideways tear at intensity 1, as a fraction of the frame width. */
-        const val MAX_TEAR = 0.09f
-
         /**
-         * How many discrete instants the clip is divided into.
-         *
-         * Per clip, like every rate here. On a 5s clip this steps about 12 times
-         * a second, which is slow enough that each state is legible as its own
-         * frame of damage rather than blurring into a shimmer.
-         */
-        const val STEPS = 60.0f
-
-        /** How many horizontal bands the frame is torn into. */
-        const val BANDS = 22.0f
-
-        /**
-         * How often a band is glitched at all, at intensity 1.
-         *
-         * **The gate that keeps this watchable.** At 0.42 a little under half
-         * the bands are disturbed during a burst and most instants leave the
-         * frame almost untouched. Raising it toward 1 makes every band tear on
-         * every step, at which point the picture is unreadable — damage rather
-         * than a look.
-         */
-        const val MAX_RATE = 0.42f
-
-        /** Channel separation inside a torn band, as a fraction of width. */
-        const val MAX_SPLIT = 0.02f
-
-        /**
-         * The glitch.
-         *
-         * Two hashes, both deterministic and both seeded from small numbers so
-         * `mediump`'s `sin` stays well-conditioned: one decides whether a given
-         * band at a given instant is torn, the other decides how far. Nothing
-         * here is stateful, so the file and the canvas corrupt on identical
-         * frames — which is the whole reason `Random()` is barred.
-         *
-         * A `step` rather than a `smoothstep` on the gate: the corruption is
-         * either happening to this band or it is not, and easing into it would
-         * read as a smear.
+         * The glitch, drawn from the plan. A block is `(y0, y1, tear, split)`
+         * in texture coordinates; an unused one is `(-1, -1, 0, 0)` and covers
+         * no row. `uGlitch` is the whole frame's channel split and the swapped
+         * band. Nothing here is random: the plan already decided.
          */
         val FRAGMENT = """
 precision mediump float;
 varying vec2 vTexCoord;
 uniform sampler2D uTexture;
-uniform float uIntensity;
-uniform float uProgress;
-${EffectShaderLib.COMMON}
+uniform vec4 uBlock0;
+uniform vec4 uBlock1;
+uniform vec4 uBlock2;
+uniform vec4 uBlock3;
+uniform vec4 uGlitch;
+
+float within(float y, float from, float to) {
+    return step(from, y) * (1.0 - step(to, y));
+}
+
 void main() {
-    // Quantised in both axes: which band this pixel is in, and which instant
-    // the clip is at. Between steps the picture is perfectly still, which is
-    // what makes the damage read as digital rather than as a wobble.
-    float band = floor(vTexCoord.y * ${BANDS});
-    float tick = floor(uProgress * ${STEPS});
+    float y = vTexCoord.y;
+    float in0 = within(y, uBlock0.x, uBlock0.y);
+    float in1 = within(y, uBlock1.x, uBlock1.y);
+    float in2 = within(y, uBlock2.x, uBlock2.y);
+    float in3 = within(y, uBlock3.x, uBlock3.y);
 
-    // **Both terms wrapped before they are combined.** `band * 7.31 + tick *
-    // 13.17` would reach ~950, past the point where `seed * 127.1` overflows an
-    // fp16 `mediump` — and the low-order bits the hash needs are gone before
-    // that. See the file comment. Folded first, the seed stays single-digit.
-    float sb = fract(band * 0.4137);
-    float st = fract(tick * 0.2731);
-    float seed = fract(sb + st * 0.53) * 6.0;
-    float roll = hash11(seed);
-    float gate = step(1.0 - ${MAX_RATE} * uIntensity, roll);
+    float tear = in0 * uBlock0.z + in1 * uBlock1.z + in2 * uBlock2.z + in3 * uBlock3.z;
+    float split = uGlitch.x + in0 * uBlock0.w + in1 * uBlock1.w + in2 * uBlock2.w + in3 * uBlock3.w;
 
-    // How far, and which way. A second, independent seed — reusing the first
-    // would tie the displacement's size to whether it happened at all, so every
-    // tear would be the same width. Offset by a small constant rather than a
-    // large one, for the same precision reason.
-    float amount = (hash11(seed + 3.79) - 0.5) * 2.0;
-    float tear = amount * ${MAX_TEAR} * uIntensity * gate;
+    // Wrapped, and only past an edge: a fragment at the very right must not
+    // wrap to the left when nothing is torn.
+    float x = vTexCoord.x + tear;
+    if (x > 1.0) x -= 1.0;
+    if (x < 0.0) x += 1.0;
 
-    vec2 uv = clamp(vTexCoord + vec2(tear, 0.0), vec2(0.0), vec2(1.0));
+    vec4 base = texture2D(uTexture, vec2(x, y));
+    float red = texture2D(uTexture, vec2(clamp(x + split, 0.0, 1.0), y)).r;
+    float blue = texture2D(uTexture, vec2(clamp(x - split, 0.0, 1.0), y)).b;
 
-    // Channels separate inside a tear and nowhere else — the split is gated on
-    // the same roll, so an undisturbed band is byte-for-byte the source.
-    float split = ${MAX_SPLIT} * uIntensity * gate;
-    vec2 redUv = clamp(uv + vec2(split, 0.0), vec2(0.0), vec2(1.0));
-    vec2 blueUv = clamp(uv - vec2(split, 0.0), vec2(0.0), vec2(1.0));
-
-    vec4 base = texture2D(uTexture, uv);
-    float red = texture2D(uTexture, redUv).r;
-    float blue = texture2D(uTexture, blueUv).b;
-
-    gl_FragColor = vec4(red, base.g, blue, base.a);
+    vec3 rgb = vec3(red, base.g, blue);
+    rgb = mix(rgb, rgb.brg, within(y, uGlitch.y, uGlitch.z));
+    gl_FragColor = vec4(rgb, base.a);
 }
 """
     }
