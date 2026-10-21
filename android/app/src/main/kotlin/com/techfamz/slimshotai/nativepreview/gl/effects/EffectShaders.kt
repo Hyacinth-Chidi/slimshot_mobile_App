@@ -294,6 +294,18 @@ internal object EffectShaders {
     }
 
     /**
+     * Tells every pass in [passes] that keeps time how many seconds its bar
+     * has been playing — [applyProgress]'s twin for effects with a real speed,
+     * and as cheap: a `@Volatile` write per pass, called on every frame.
+     */
+    fun applySeconds(passes: List<EffectPass>, seconds: Double) {
+        val value = seconds.coerceAtLeast(0.0).toFloat()
+        for (pass in passes) {
+            (pass as? TimeControlled)?.applySeconds(value)
+        }
+    }
+
+    /**
      * Bright-pass, separable blur, composite.
      *
      * **Four passes for a `passCount: 3` catalog entry.** The catalog counts the

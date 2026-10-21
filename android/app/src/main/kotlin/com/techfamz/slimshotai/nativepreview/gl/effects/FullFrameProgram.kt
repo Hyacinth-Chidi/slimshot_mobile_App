@@ -35,6 +35,7 @@ internal class FullFrameProgram(fragmentSource: String) {
     private val uIntensity = GLES20.glGetUniformLocation(handle, "uIntensity")
     private val uProgress = GLES20.glGetUniformLocation(handle, "uProgress")
     private val uAspect = GLES20.glGetUniformLocation(handle, "uAspect")
+    private val uSeconds = GLES20.glGetUniformLocation(handle, "uSeconds")
 
     fun use() = GLES20.glUseProgram(handle)
 
@@ -67,6 +68,14 @@ internal class FullFrameProgram(fragmentSource: String) {
      */
     fun setProgress(value: Float) {
         GLES20.glUniform1f(uProgress, value)
+    }
+
+    /**
+     * Seconds since the effect's bar began — the clock of an effect with a real
+     * speed. A no-op for a shader that declares no `uSeconds`.
+     */
+    fun setSeconds(value: Float) {
+        GLES20.glUniform1f(uSeconds, value)
     }
 
     /** Width over height of the frame being drawn, for distance correction. */

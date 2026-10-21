@@ -37,6 +37,7 @@ class EffectStackTest {
                 for ((want, got) in expected.zip(drawn)) {
                     assertEquals("$name @ $seconds: intensity", want.double("intensity"), got.intensity, 1e-6)
                     assertEquals("$name @ $seconds: progress", want.double("progress"), got.progress, 1e-6)
+                    assertEquals("$name @ $seconds: barSeconds", want.double("barSeconds"), got.barSeconds, 1e-6)
                     checked++
                 }
             }

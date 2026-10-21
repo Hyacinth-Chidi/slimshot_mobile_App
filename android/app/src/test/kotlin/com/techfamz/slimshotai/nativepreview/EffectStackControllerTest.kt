@@ -18,6 +18,7 @@ class EffectStackControllerTest {
     private class FakePass(override val id: String) : EffectPass {
         var intensity = -1.0
         var progress = -1.0
+        var seconds = -1.0
         override fun render(
             sourceTextureId: Int,
             target: RenderTarget?,
@@ -51,6 +52,7 @@ class EffectStackControllerTest {
         release = { passes -> released += passes },
         setIntensity = { passes, v -> passes.forEach { (it as FakePass).intensity = v } },
         setProgress = { passes, v -> passes.forEach { (it as FakePass).progress = v } },
+        setSeconds = { passes, v -> passes.forEach { (it as FakePass).seconds = v } },
     )
 
     private fun bar(id: String, effect: String, start: Double, end: Double, lane: Int = 0) =
@@ -80,6 +82,27 @@ class EffectStackControllerTest {
         assertEquals(listOf(emptyList<EffectPass>()), sink.handed)
         controller.apply(emptyList())
         assertEquals("only the first frame needs to say it", 1, sink.handed.size)
+    }
+
+    @Test
+    fun `each bar's passes get its own clock in seconds`() {
+        // Rain falls at a speed in real seconds: the bar from 2s, drawn at 5.5s,
+        // is 3.5s into its fall whatever the bar's length.
+        val bars = listOf(bar("r", "grain", 2.0, 12.0))
+        controller.setBars(bars)
+        controller.apply(at(bars, 5.5))
+        assertEquals(3.5, (sink.handed.last().single() as FakePass).seconds, 1e-9)
+    }
+
+    @Test
+    fun `a clock that moved asks for a frame even when nothing else did`() {
+        val bars = listOf(bar("r", "grain", 0.0, 10.0))
+        controller.setBars(bars)
+        controller.apply(at(bars, 1.0))
+        val redrawsBefore = sink.redraws
+        // Same instant again: nothing moved, no frame owed.
+        controller.apply(at(bars, 1.0))
+        assertEquals(redrawsBefore, sink.redraws)
     }
 
     @Test

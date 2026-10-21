@@ -47,6 +47,8 @@ internal class EffectStackController(
         { passes, value -> EffectShaders.applyIntensity(passes, value) },
     private val setProgress: (List<EffectPass>, Double) -> Unit =
         { passes, value -> EffectShaders.applyProgress(passes, value) },
+    private val setSeconds: (List<EffectPass>, Double) -> Unit =
+        { passes, value -> EffectShaders.applySeconds(passes, value) },
 ) {
     /** Built instances by effect id; an instance is one effect's passes. */
     private val pools = HashMap<String, MutableList<List<EffectPass>>>()
@@ -65,6 +67,7 @@ internal class EffectStackController(
 
     private val lastIntensity = IdentityHashMap<List<EffectPass>, Double>()
     private val lastProgress = IdentityHashMap<List<EffectPass>, Double>()
+    private val lastSeconds = IdentityHashMap<List<EffectPass>, Double>()
 
     /**
      * Builds what [bars] will need and releases what they will not, in one
@@ -103,6 +106,7 @@ internal class EffectStackController(
                 instances.subList(keep, instances.size).forEach {
                     lastIntensity.remove(it)
                     lastProgress.remove(it)
+                    lastSeconds.remove(it)
                 }
                 instances.subList(keep, instances.size).clear()
             }
@@ -135,6 +139,11 @@ internal class EffectStackController(
             if (changed(lastProgress[instance], effect.progress)) {
                 lastProgress[instance] = effect.progress
                 setProgress(instance, effect.progress)
+                uniformsMoved = true
+            }
+            if (changed(lastSeconds[instance], effect.barSeconds)) {
+                lastSeconds[instance] = effect.barSeconds
+                setSeconds(instance, effect.barSeconds)
                 uniformsMoved = true
             }
         }
@@ -175,6 +184,7 @@ internal class EffectStackController(
         rendererKnown = false
         lastIntensity.clear()
         lastProgress.clear()
+        lastSeconds.clear()
     }
 
     private fun changed(previous: Double?, next: Double) =

@@ -68,12 +68,14 @@
             {
               "id": "low",
               "intensity": 0.7,
-              "progress": 0.4
+              "progress": 0.4,
+              "barSeconds": 2.0
             },
             {
               "id": "high",
               "intensity": 0.7,
-              "progress": 0.4
+              "progress": 0.4,
+              "barSeconds": 2.0
             }
           ]
         }
@@ -106,7 +108,8 @@
             {
               "id": "a",
               "intensity": 0.7,
-              "progress": 0.9995
+              "progress": 0.9995,
+              "barSeconds": 1.999
             }
           ]
         },
@@ -116,7 +119,8 @@
             {
               "id": "b",
               "intensity": 0.7,
-              "progress": 0.0
+              "progress": 0.0,
+              "barSeconds": 0.0
             }
           ]
         },
@@ -153,7 +157,8 @@
             {
               "id": "g",
               "intensity": 0.7,
-              "progress": 0.2
+              "progress": 0.2,
+              "barSeconds": 1.0
             }
           ]
         }
@@ -194,12 +199,14 @@
             {
               "id": "b",
               "intensity": 0.7,
-              "progress": 0.2
+              "progress": 0.2,
+              "barSeconds": 1.0
             },
             {
               "id": "v",
               "intensity": 0.7,
-              "progress": 0.2
+              "progress": 0.2,
+              "barSeconds": 1.0
             }
           ]
         }
@@ -232,7 +239,8 @@
             {
               "id": "g",
               "intensity": 0.7,
-              "progress": 0.2
+              "progress": 0.2,
+              "barSeconds": 1.0
             }
           ]
         }
@@ -271,7 +279,8 @@
             {
               "id": "k",
               "intensity": 0.0,
-              "progress": 0.0
+              "progress": 0.0,
+              "barSeconds": 0.0
             }
           ]
         },
@@ -281,7 +290,8 @@
             {
               "id": "k",
               "intensity": 0.5,
-              "progress": 0.5
+              "progress": 0.5,
+              "barSeconds": 2.0
             }
           ]
         },
@@ -291,7 +301,8 @@
             {
               "id": "k",
               "intensity": 0.875,
-              "progress": 0.875
+              "progress": 0.875,
+              "barSeconds": 3.5
             }
           ]
         },
@@ -323,7 +334,8 @@
             {
               "id": "e",
               "intensity": 0.8,
-              "progress": 0.0
+              "progress": 0.0,
+              "barSeconds": 0.0
             }
           ]
         },
@@ -333,7 +345,8 @@
             {
               "id": "e",
               "intensity": 0.05,
-              "progress": 0.25
+              "progress": 0.25,
+              "barSeconds": 1.0
             }
           ]
         },
@@ -343,7 +356,8 @@
             {
               "id": "e",
               "intensity": 0.7851851851851853,
-              "progress": 0.9750000000000001
+              "progress": 0.9750000000000001,
+              "barSeconds": 3.9000000000000004
             }
           ]
         }
@@ -383,7 +397,8 @@
             {
               "id": "z",
               "intensity": 0.0,
-              "progress": 0.0
+              "progress": 0.0,
+              "barSeconds": 0.0
             }
           ]
         },
@@ -393,7 +408,8 @@
             {
               "id": "z",
               "intensity": 0.06,
-              "progress": 0.5
+              "progress": 0.5,
+              "barSeconds": 0.6
             }
           ]
         },
@@ -403,7 +419,8 @@
             {
               "id": "z",
               "intensity": 0.12,
-              "progress": 1.0
+              "progress": 1.0,
+              "barSeconds": 1.2
             }
           ]
         },
@@ -413,7 +430,8 @@
             {
               "id": "z",
               "intensity": 0.9,
-              "progress": 1.0
+              "progress": 1.0,
+              "barSeconds": 9.0
             }
           ]
         }
@@ -438,7 +456,8 @@
             {
               "id": "c",
               "intensity": 1.0,
-              "progress": 0.25
+              "progress": 0.25,
+              "barSeconds": 1.0
             }
           ]
         }
@@ -471,7 +490,8 @@
             {
               "id": "v1",
               "intensity": 0.7,
-              "progress": 0.1
+              "progress": 0.1,
+              "barSeconds": 0.5
             }
           ]
         },
@@ -481,12 +501,14 @@
             {
               "id": "v1",
               "intensity": 0.7,
-              "progress": 0.6
+              "progress": 0.6,
+              "barSeconds": 3.0
             },
             {
               "id": "v2",
               "intensity": 0.7,
-              "progress": 0.4
+              "progress": 0.4,
+              "barSeconds": 2.0
             }
           ]
         }

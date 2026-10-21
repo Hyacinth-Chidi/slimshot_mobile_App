@@ -22,7 +22,7 @@ import com.techfamz.slimshotai.nativepreview.gl.RenderTarget
 internal open class SingleFramePass(
     override val id: String,
     protected val program: FullFrameProgram,
-) : EffectPass, IntensityControlled, ProgressControlled {
+) : EffectPass, IntensityControlled, ProgressControlled, TimeControlled {
 
     /**
      * The effect's strength, normalised 0..1, uploaded as a uniform on every
@@ -64,6 +64,20 @@ internal open class SingleFramePass(
         this.progress = progress
     }
 
+    /**
+     * Seconds since the bar began ([TimeControlled]). `@Volatile` like the
+     * other two: the timeline's thread writes it, the GL thread reads it.
+     */
+    @Volatile
+    var seconds: Float = 0f
+        set(value) {
+            field = value.coerceAtLeast(0f)
+        }
+
+    override fun applySeconds(seconds: Float) {
+        this.seconds = seconds
+    }
+
     override fun render(
         sourceTextureId: Int,
         target: RenderTarget?,
@@ -94,6 +108,7 @@ internal open class SingleFramePass(
         // the static looks — the location is -1. So the clock reaching every
         // pass costs one ignored uniform write and changes no existing picture.
         program.setProgress(progress)
+        program.setSeconds(seconds)
         program.setAspect(viewportWidth.toFloat() / viewportHeight.toFloat())
         bindExtraUniforms(viewportWidth, viewportHeight)
         program.bindSource(sourceTextureId)

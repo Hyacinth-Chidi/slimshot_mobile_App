@@ -17,6 +17,7 @@ class ActiveEffectBar {
     required this.bar,
     required this.intensity,
     required this.progress,
+    required this.barSeconds,
   });
 
   final EffectBarModel bar;
@@ -28,6 +29,13 @@ class ActiveEffectBar {
   /// The shader's clock: the intro window from the bar's start for a timed
   /// effect, the whole bar otherwise. Rests at 1.
   final double progress;
+
+  /// Seconds since the bar began — the clock of an effect that moves at a
+  /// real speed (rain, snow, a lightning strike's rhythm), which a 0..1 over
+  /// the whole bar cannot give: a long bar would rain in slow motion.
+  /// Timeline seconds, never wall clock, so the export reaches the same value
+  /// at the same instant however fast it runs.
+  final double barSeconds;
 }
 
 /// Where [seconds] falls in [bar], 0..1 — the clock its intensity keyframes
@@ -81,6 +89,7 @@ List<ActiveEffectBar> effectBarsDrawnAt(
           .clamp(0.0, 1.0)
           .toDouble(),
       progress: effectBarShaderProgressAt(bar, seconds),
+      barSeconds: seconds - bar.start,
     ));
   }
   return drawn;

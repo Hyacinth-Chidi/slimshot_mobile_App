@@ -85,6 +85,7 @@ Map<String, dynamic> _fixture() => {
                         'id': a.bar.id,
                         'intensity': a.intensity,
                         'progress': a.progress,
+                        'barSeconds': a.barSeconds,
                       },
                   ],
                 },

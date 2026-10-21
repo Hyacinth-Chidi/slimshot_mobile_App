@@ -2157,6 +2157,7 @@ internal class TransitionRenderer(
                 } else {
                     EffectShaders.applyIntensity(passes, drawn.intensity)
                     EffectShaders.applyProgress(passes, drawn.progress)
+                    EffectShaders.applySeconds(passes, drawn.barSeconds)
                     checkNotNull(chain).run(sampleTexture, passes, spec.cellWidth, spec.cellHeight)
                 }
             }

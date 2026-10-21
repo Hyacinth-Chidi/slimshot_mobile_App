@@ -27,6 +27,16 @@ void main() {
   List<String> drawn(List<EffectBarModel> bars, double t) =>
       [for (final a in effectBarsDrawnAt(bars, t)) a.bar.id];
 
+  test("each drawn bar carries its own clock in seconds since it began", () {
+    // Rain and snow fall at a speed in real seconds, however long the bar —
+    // a whole-bar 0..1 would make a long bar rain in slow motion. Timeline
+    // seconds, never wall clock: the export reaches the same value at the
+    // same instant whatever its speed.
+    final drawnBars = effectBarsDrawnAt([bar('r', 'grain', 2, 12)], 5.5);
+    expect(drawnBars.single.barSeconds, closeTo(3.5, 1e-12));
+    expect(effectBarsDrawnAt([bar('r', 'grain', 2, 12)], 2).single.barSeconds, 0);
+  });
+
   test('bars under the instant draw in lane order', () {
     final bars = [bar('high', 'grain', 0, 5, lane: 2), bar('low', 'vignette', 0, 5)];
     expect(drawn(bars, 2), ['low', 'high']);

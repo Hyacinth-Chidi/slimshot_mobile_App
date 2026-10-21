@@ -9,6 +9,12 @@ internal data class ActiveEffect(
     val intensity: Double,
     /** The shader's clock: over the intro from the bar's start, else the whole bar. */
     val progress: Double,
+    /**
+     * Seconds since the bar began — the clock of an effect that moves at a real
+     * speed. Timeline seconds, never wall clock, so the export draws the same
+     * instant the preview does however fast it runs.
+     */
+    val barSeconds: Double,
 )
 
 /**
@@ -36,6 +42,7 @@ internal object EffectStack {
                 bar = bar,
                 intensity = bar.intensity.resolveAt(barProgress(bar, seconds)).coerceIn(0.0, 1.0),
                 progress = shaderProgress(bar, seconds),
+                barSeconds = seconds - bar.start,
             )
         }
         return drawn
