@@ -2427,8 +2427,13 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             ),
 
           // â”€â”€ Fixed center playhead â”€â”€
+          // The column is as wide as the triangle and centres the line in
+          // it, so it is the column that is centred on the playback instant.
+          // Placing it by the line's own width put the line and the
+          // triangle's tip 4.25 px late — 85 ms at the default zoom.
           Positioned(
-            left: halfWidth - 0.75,
+            left: halfWidth - 5,
+            width: 10,
             top: 0,
             bottom: 0,
             child: IgnorePointer(
@@ -2436,10 +2441,17 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 children: [
                   // Small triangle indicator at the top
                   CustomPaint(
+                    key: const ValueKey('timeline-playhead-triangle'),
                     size: const Size(10, 6),
                     painter: _TrianglePainter(color: Colors.white),
                   ),
-                  Expanded(child: Container(width: 1.5, color: Colors.white)),
+                  Expanded(
+                    child: Container(
+                      key: const ValueKey('timeline-playhead-line'),
+                      width: 1.5,
+                      color: Colors.white,
+                    ),
+                  ),
                 ],
               ),
             ),
