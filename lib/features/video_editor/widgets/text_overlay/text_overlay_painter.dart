@@ -8,6 +8,7 @@ import '../../logic/text_animation_catalog.dart';
 import '../../logic/text_glyph_layout.dart';
 import '../../logic/text_overlay_geometry.dart';
 import '../../models/text_overlay_model.dart';
+import '../../../fonts/font_registry.dart';
 
 /// Paints one text overlay's box on the preview canvas, per character.
 ///
@@ -24,12 +25,15 @@ import '../../models/text_overlay_model.dart';
 /// glyph is clipped to — has to change in `OverlayRenderer.writeCorners` with
 /// it.
 class TextOverlayPainter extends CustomPainter {
+  /// Repaints when a font registers: a text drawn before its font landed
+  /// fell back to the System face, and an unchanged overlay alone would
+  /// never ask for the picture again.
   TextOverlayPainter({
     required this.overlay,
     required this.layout,
     required this.canvasSize,
     required this.positionSeconds,
-  });
+  }) : super(repaint: FontRegistry.instance.changes);
 
   final TextOverlayModel overlay;
   final TextOverlayLayout layout;

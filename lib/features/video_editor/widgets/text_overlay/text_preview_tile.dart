@@ -6,6 +6,7 @@ import '../../logic/text_glyph_layout.dart';
 import '../../logic/text_overlay_geometry.dart';
 import '../../models/text_overlay_model.dart';
 import 'text_overlay_painter.dart';
+import '../../../fonts/font_registry.dart';
 
 /// The canvas a preview tile measures its synthetic overlay against.
 ///
@@ -172,6 +173,13 @@ class _TextPreviewTileState extends State<TextPreviewTile> {
     super.initState();
     widget.clock?.addListener(_onClock);
     _phase = _phaseFrom(widget.clock) ?? 0;
+    FontRegistry.instance.changes.addListener(_onFontRegistered);
+  }
+
+  /// A font that lands measures differently from the System face it stood
+  /// in for, so the tile lays its text out again.
+  void _onFontRegistered() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -186,6 +194,7 @@ class _TextPreviewTileState extends State<TextPreviewTile> {
   @override
   void dispose() {
     widget.clock?.removeListener(_onClock);
+    FontRegistry.instance.changes.removeListener(_onFontRegistered);
     super.dispose();
   }
 

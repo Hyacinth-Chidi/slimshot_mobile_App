@@ -108,6 +108,10 @@ import '../features/video_editor/widgets/panels/record_panel.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import '../core/services/draft_files.dart';
+import '../features/fonts/font_registry.dart';
+import '../features/fonts/font_service.dart';
+import '../features/fonts/project_fonts.dart';
+import '../features/fonts/providers.dart';
 import '../core/services/media_picker_service.dart';
 
 class EditorTool {
@@ -671,6 +675,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final notifier = ref.read(videoEditorProvider.notifier);
     try {
       await notifier.loadDraft(draft);
+      // Fonts already on the phone draw from the first frame; the rest are
+      // fetched by the text listener below.
+      await ref.read(fontServiceProvider).registerOnPhone(
+            ref.read(videoEditorProvider).textOverlays.map((t) => t.fontFamily),
+          );
       final notice = notifier.takeLoadNotice();
       if (notice != null && mounted) ToastUtils.show(context, notice);
       await _syncNativePreviewTimeline(ref.read(videoEditorProvider));
@@ -1170,6 +1179,39 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     unawaited(showTextEditor(context: context, overlay: overlay, ref: ref));
   }
 
+  /// Fonts this session has already asked for — fetched or failed — so an
+  /// edit that leaves a text's font alone asks nothing.
+  final Set<String> _fontsAsked = {};
+  bool _fontFailureShown = false;
+
+  /// Fetches every font the project's texts wear that is not drawable yet.
+  /// A font that cannot be had is said once a session: its texts draw in
+  /// the System font, in the preview and in the file.
+  void _fetchProjectFonts(Iterable<TextOverlayModel> texts) {
+    if (!ref.read(fontServerConfiguredProvider)) return;
+    final service = ref.read(fontServiceProvider);
+    final names = fontsToFetch(
+      texts.map((t) => t.fontFamily),
+      _fontsAsked,
+      FontRegistry.instance.isAvailable,
+    );
+    for (final name in names) {
+      _fontsAsked.add(name);
+      unawaited(service.ensureAvailable(name).then((result) {
+        if (result == FontAvailability.available || _fontFailureShown || !mounted) return;
+        _fontFailureShown = true;
+        ToastUtils.show(context, kFontUnavailableMessage, isError: true);
+      }));
+    }
+  }
+
+  /// Fetches the fonts a grid of tiles draws in, so its tiles show their
+  /// real faces.
+  void _prefetchFonts(Set<String> names) {
+    if (!ref.read(fontServerConfiguredProvider)) return;
+    unawaited(ref.read(fontServiceProvider).prefetch(names));
+  }
+
   /// The selected caption's Caption style: the set's styles and highlight.
   /// Every tap reaches the whole set at once, one undo step each.
   void _showCaptionStyle() {
@@ -1179,6 +1221,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         .firstOrNull;
     if (caption == null) return;
     final notifier = ref.read(videoEditorProvider.notifier);
+    _prefetchFonts(captionPresetFontNames(kCaptionPresets));
     unawaited(
       showEditorSheet<void>(
         context,
@@ -2629,6 +2672,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   } else if (tool.id == 'add_text') {
                     _addText();
                   } else if (tool.id == 'add_template') {
+                    _prefetchFonts(templateFontNames(kTextTemplates));
                     unawaited(
                       showEditorSheet<void>(
                         context,
@@ -3336,6 +3380,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       (prev, tracks) {
         _audioPlayerManager.syncTracks(tracks);
       },
+    );
+
+    // The texts' list keeps its identity through a position event, so this
+    // runs on an edit, never thirty times a second during playback.
+    ref.listen<List<TextOverlayModel>>(
+      videoEditorProvider.select((s) => s.textOverlays),
+      (prev, texts) => _fetchProjectFonts(texts),
     );
 
     ref.listen<VideoEditorState>(videoEditorProvider, (prev, state) {

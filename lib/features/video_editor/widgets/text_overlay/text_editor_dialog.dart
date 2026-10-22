@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../fonts/project_fonts.dart';
+import '../../../fonts/providers.dart';
 import '../../../fonts/widgets/font_grid_view.dart';
 import '../../logic/captions/caption_preset_catalog.dart';
 import '../../logic/text_animation_catalog.dart';
@@ -244,6 +248,15 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
     if (_activeTool == TextEditorTool.keyboard) {
       _focusNode.requestFocus();
     }
+    if (_activeTool == TextEditorTool.templates) _prefetchTemplateFonts();
+  }
+
+  /// Fetches the fonts the Templates tab's tiles draw in.
+  void _prefetchTemplateFonts() {
+    if (!widget.ref.read(fontServerConfiguredProvider)) return;
+    unawaited(widget.ref
+        .read(fontServiceProvider)
+        .prefetch(templateFontNames(widget.templates)));
   }
 
   /// Takes [overlay]'s look into the sheet's own copies of it.
@@ -352,6 +365,9 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
   }
 
   void _setTool(TextEditorTool tool) {
+    if (tool == TextEditorTool.templates && _activeTool != tool) {
+      _prefetchTemplateFonts();
+    }
     setState(() => _activeTool = tool);
     if (tool == TextEditorTool.keyboard) {
       _focusNode.requestFocus();

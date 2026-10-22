@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
+import '../../../fonts/font_registry.dart';
 import '../../logic/animation/overlay_keyframes.dart';
 import '../../logic/text_overlay_geometry.dart';
 import '../../models/text_overlay_model.dart';
@@ -84,6 +85,25 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
 
   Offset get _editPosition =>
       Offset(_editValue(OverlayProperty.x), _editValue(OverlayProperty.y));
+
+  @override
+  void initState() {
+    super.initState();
+    FontRegistry.instance.changes.addListener(_onFontRegistered);
+  }
+
+  @override
+  void dispose() {
+    FontRegistry.instance.changes.removeListener(_onFontRegistered);
+    super.dispose();
+  }
+
+  /// A font that lands measures differently from the System face it stood
+  /// in for, so every box is laid out again — or its frame and handles
+  /// would keep the fallback's size.
+  void _onFontRegistered() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
