@@ -170,8 +170,10 @@ class FontGridController extends ChangeNotifier {
     if (entry.source != FontSource.server) return const FontReady();
     final progress = _downloading[entry.name];
     if (progress != null) return FontDownloading(progress);
-    if (_library.find(entry.name) != null) return const FontReady();
+    // Failed before on-the-phone: a file the engine refused is on the phone
+    // and still not a font, and a tap must be offered to fetch it again.
     if (_failed.contains(entry.name)) return const FontFailed();
+    if (_library.find(entry.name) != null) return const FontReady();
     return const FontNotOnPhone();
   }
 

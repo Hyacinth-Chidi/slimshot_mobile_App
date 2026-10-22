@@ -102,4 +102,17 @@ void main() {
     expect(fileIn('pd-v1.part').existsSync(), isFalse);
     expect(library.find('Playfair Display'), isNull);
   });
+
+  // A captive-portal Wi-Fi answers any address with its own page, 200 OK.
+  test('a body that is not a font is refused and leaves nothing', () async {
+    server.overrides['file:pd'] = () => http.Response('<html>Sign in to the Wi-Fi</html>', 200);
+    final library = FontLibrary(client: server.client, root: root);
+    await expectLater(
+      library.download(font('pd', 'Playfair Display'), ticket('pd')),
+      throwsA(isA<FontDownloadFailed>()),
+    );
+    expect(library.find('Playfair Display'), isNull);
+    expect(fileIn('pd-v1.ttf').existsSync(), isFalse);
+    expect(fileIn('pd.part').existsSync(), isFalse);
+  });
 }

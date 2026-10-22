@@ -51,4 +51,13 @@ void main() {
     server.overrides['preview:pd'] = () => http.Response('gone', 404);
     expect(await FontPreviewCache(client: server.client, root: root).fetch(url), isNull);
   });
+
+  test('a body that is not a PNG is not kept', () async {
+    server.overrides['preview:pd'] = () => http.Response('<html>Sign in to the Wi-Fi</html>', 200);
+    final cache = FontPreviewCache(client: server.client, root: root);
+    expect(await cache.fetch(url), isNull);
+    expect(cache.fileFor(url), isNull);
+    server.overrides.remove('preview:pd');
+    expect(await cache.fetch(url), isNotNull);
+  });
 }

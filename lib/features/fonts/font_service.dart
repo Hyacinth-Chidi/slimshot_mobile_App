@@ -67,7 +67,12 @@ class FontService {
     try {
       await _library.load();
       final onPhone = _library.find(name);
-      if (onPhone != null) return await _register(name, onPhone.filePath);
+      if (onPhone != null) {
+        final registered = await _register(name, onPhone.filePath);
+        // A file the engine refuses is fetched again rather than kept as
+        // the font for good; a good one is never fetched twice.
+        if (registered == FontAvailability.available) return registered;
+      }
 
       final font = await _resolve(name);
       if (font == null) return FontAvailability.failed;

@@ -156,16 +156,21 @@ class FontLibrary {
       final total = ticket.byteSize > 0 ? ticket.byteSize : (response.contentLength ?? 0);
       final sink = part.openWrite();
       var received = 0;
+      final head = <int>[];
       try {
         await for (final chunk in response.stream) {
           sink.add(chunk);
+          if (head.length < 4) head.addAll(chunk.take(4 - head.length));
           received += chunk.length;
           if (total > 0) onProgress?.call((received / total).clamp(0.0, 1.0));
         }
       } finally {
         await sink.close();
       }
-      if (received == 0) throw const FontDownloadFailed('Empty file.');
+      // A captive-portal Wi-Fi answers any address with its own page, 200
+      // OK; kept as the font it would never register, and never be fetched
+      // again.
+      if (!_isFontFile(head)) throw const FontDownloadFailed('Not a font file.');
       if (await file.exists()) await file.delete();
       await part.rename(file.path);
     } catch (e) {
@@ -249,6 +254,18 @@ class FontLibrary {
     _writes = next.catchError((_) {});
     return next;
   }
+
+  /// The first four bytes of a TrueType, OpenType or collection file.
+  static const List<List<int>> _kFontSignatures = [
+    [0x00, 0x01, 0x00, 0x00],
+    [0x4F, 0x54, 0x54, 0x4F], // OTTO
+    [0x74, 0x72, 0x75, 0x65], // true
+    [0x74, 0x74, 0x63, 0x66], // ttcf
+  ];
+
+  static bool _isFontFile(List<int> head) => _kFontSignatures.any((signature) =>
+      head.length == signature.length &&
+      [for (var i = 0; i < head.length; i++) head[i] == signature[i]].every((same) => same));
 
   static String _safe(String id) => id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
 

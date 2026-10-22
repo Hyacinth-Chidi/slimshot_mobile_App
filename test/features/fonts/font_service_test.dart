@@ -150,4 +150,28 @@ void main() {
     expect(registry.isAvailable('Comic Sans'), isFalse);
     expect(server.hitsFor('family:Poppins'), 0);
   });
+
+  test('a font on the phone the engine refuses is fetched again', () async {
+    final font = ServerFont.tryParse(fontRow('pd', 'Playfair Display'))!;
+    await library.download(font, FontDownloadTicket.tryParse({
+      'url': 'https://cdn.test/fonts/pd-v1.ttf', 'format': 'ttf', 'version': 1,
+    })!);
+    server.hits.clear();
+    var refuse = true;
+    final fresh = FontService(
+      client: FontClient(server.api()),
+      library: library,
+      cache: cache,
+      registry: FontRegistry(loader: (bytes, name) async {
+        if (refuse) {
+          refuse = false;
+          throw Exception('not a font');
+        }
+        registered.add(name);
+      }),
+    );
+    expect(await fresh.ensureAvailable('Playfair Display'), FontAvailability.available);
+    expect(server.hitsFor('file:pd'), 1);
+    expect(registered, ['Playfair Display']);
+  });
 }

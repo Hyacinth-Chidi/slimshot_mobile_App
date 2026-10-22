@@ -70,7 +70,9 @@ class FontPreviewCache {
       final dir = _dir!;
       if (!await dir.exists()) await dir.create(recursive: true);
       final response = await _client.get(Uri.parse(url));
-      if (response.statusCode != HttpStatus.ok || response.bodyBytes.isEmpty) return null;
+      // Only a PNG is kept: a captive-portal page saved here would stand in
+      // for the preview, under its URL, for good.
+      if (response.statusCode != HttpStatus.ok || !_isPng(response.bodyBytes)) return null;
       final file = File('${dir.path}/${_fileName(url)}');
       final temp = File('${file.path}.part');
       await temp.writeAsBytes(response.bodyBytes, flush: true);
@@ -81,6 +83,13 @@ class FontPreviewCache {
       return null;
     }
   }
+
+  static bool _isPng(List<int> bytes) =>
+      bytes.length >= 4 &&
+      bytes[0] == 0x89 &&
+      bytes[1] == 0x50 &&
+      bytes[2] == 0x4E &&
+      bytes[3] == 0x47;
 
   /// A file name from the URL: FNV-1a over its bytes, 64 bits in hex.
   static String _fileName(String url) {

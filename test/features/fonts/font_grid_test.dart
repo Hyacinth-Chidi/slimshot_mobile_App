@@ -230,6 +230,29 @@ void main() {
       expect(controller.takeNotice(), isNull);
     });
 
+    test('a font whose file the engine refuses keeps its arrow', () async {
+      final client = FontClient(server.api());
+      final refusing = FontGridController(
+        service: FontService(
+          client: client,
+          library: library,
+          cache: cache,
+          registry: FontRegistry(loader: (bytes, name) async => throw Exception('not a font')),
+        ),
+        client: client,
+        cache: cache,
+        library: library,
+        previews: FontPreviewCache(client: server.client, root: root),
+        serverConfigured: true,
+        now: () => clock,
+      );
+      await refusing.open();
+      FontEntry pd() => refusing.entries.firstWhere((e) => e.label == 'Playfair Display');
+      await refusing.choose(pd(), (_) {});
+      expect(refusing.stateOf(pd()), isA<FontFailed>());
+      expect(refusing.takeNotice(), "Couldn't download this font");
+    });
+
     test("any other failure: \"Couldn't download this font\"", () async {
       await controller.open();
       server.overrides['download:pd'] = () => FakeFontServer.error('FORBIDDEN', 403);
