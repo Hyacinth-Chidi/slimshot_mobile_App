@@ -1192,12 +1192,10 @@ for deletion or an unusable atlas leaks a file per export.
 cap is generous for a photo in a small overlay box, but decoding an atlas at 1024 would
 downscale it and make exported text *blurrier* than the flat raster it replaced.
 
-**Tests that measure text must use `kTestFontFamily`** (`test/support/test_fonts.dart`).
-`GoogleFonts.getFont` throws from an async continuation nothing awaits when a font is neither
-cached nor fetchable, and `flutter_test` charges that error to whichever test is running —
-including ones that already passed. It cannot be caught at the call site or through
-`FlutterError.onError`, so the fix is a bundled family, not a try/catch. Production
-`font_utils.dart` is deliberately unchanged.
+**Tests that measure text must use `kTestFontFamily`** (`test/support/test_fonts.dart`) —
+Montserrat Bold, bundled, so text lays out against a real face's metrics. A server font draws in
+the System face until it is downloaded, which no test does, so a test naming one would measure
+the fallback.
 
 **Text animates per character** (Stage 2; **awaiting device verification**). Every animation —
 typing, wave, bounce, the legacy fades and slides — is defined once in
@@ -2413,7 +2411,7 @@ device look at Stage 4 a project's first set wears **Bubble** (the caption style
 half-second fade is most of a one-second caption's life). Device-reported: the first version
 wore the Subtitle template — Inter at regular weight, scale 0.9 — and read as thin and small.
 The font is **bundled** (`assets/fonts/Montserrat-Bold.ttf`, its own family in
-`customBundledFonts`, since the model has no weight field): a caption has to look the same
+`kBundledFontNames`, since the model has no weight field): a caption has to look the same
 offline and on a phone whose system face is not what a download would have been. **The size is
 a fraction of the frame**, not a fixed scale — a text's size used to be stored in the pixels of
 the canvas it was made on, which is whatever the phone left room for, so one scale was large on
@@ -2446,17 +2444,9 @@ misplace every later word; any way it closes before the words land cancels the r
   the preview**, so what it frees may be a texture the preview uploaded. That costs nothing new:
   `endExport` has always dropped every overlay texture (`overlays.releaseAll()`) and re-adopted
   the preview's list, which reloads what it needs.
-- **Export did not wait for fonts.** A font still downloading was rasterised in the fallback
-  face while the preview showed the real one. `exportVideo` now waits for
-  `GoogleFonts.pendingFonts()` — **through `awaitExportFonts`, never bare**
-  (`services/export_fonts.dart`). `pendingFonts()` is `Future.wait` over a set a *failed*
-  download is never removed from (google_fonts 6.3.3, `google_fonts_base.dart`), so after one
-  failed font — the Font tab opened offline is enough — it throws on every call until the app
-  restarts, and a download has no timeout of its own. The first version awaited it bare, which
-  would have failed every export for the rest of the session, text or no text; the review caught
-  it before a device did. The wait is bounded (`kExportFontWait`, 5s) and cannot throw, and going
-  ahead without a font is **said** (`exportFontWarning`) — only for a project that draws text,
-  since the font that failed may be one a sheet merely listed.
+- **Export did not wait for fonts** — fixed then by waiting on Google Fonts' downloads behind a
+  bounded wrapper, and **gone since**: fonts come from the server and are used only once on the
+  phone, so there is nothing to wait for (the fonts section).
 
 ### Auto captions — editing a set (Stage 2)
 
@@ -2665,7 +2655,7 @@ type over a soft shadow with a purple pill behind the spoken word, chosen on the
 shows the highlight off from the first moment, and the grid's first tile so "the first one" and
 "what I got" agree — then Classic (`kCaptionClassicLook`, the look the first device run approved),
 Karaoke, Pop, Boxed, Impact, Neon, Reveal, Focus. No in or out animations: the highlight is a caption's motion. The catalog
-test pins fonts in `allFonts`, animations selectable, shadows inside the Style tab's ranges,
+test pins fonts bundled or in `kServerTemplateFontNames`, animations selectable, shadows inside the Style tab's ranges,
 **a highlight never the text's own colour** (a word lit the colour it already wears does not
 light, and a pill the colour of its letters swallows them), and no two presets alike.
 
@@ -2776,6 +2766,69 @@ legacy caption whose scale is keyframed is not migrated, so a Size broadcast fro
 sibling leaves it larger at rest — dividing its scale keyframes by the old scale would convert it
 exactly. A new emoji is still made without a Size (it draws as it always has). `copyWith` has no
 `clearFontSize`; nothing clears a Size, and `_applyEdits` relies on null meaning "keep".
+
+### Fonts from the server — one grid, a tap to download
+
+**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-10-22-server-fonts-design.md`,
+plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-api.md` §8.
+**`google_fonts` is gone**, and with it every runtime download from Google: a guard test
+(`test/no_google_fonts_test.dart`) fails on any import under `lib/` or the package in `pubspec.yaml`.
+
+- **The Font tab is one grid** (`FontGridView`, `fonts/font_grid.dart`): System (Roboto), the three
+  bundled fonts (`kBundledFontNames`: Montserrat Bold, Bebas Neue, Poppins), then the server's
+  `trending` and `more-fonts` categories in the owner's order. No tabs, no Downloaded tab, no
+  delete. A server tile is the server's preview image (480×160, `FontPreviewCache` under
+  `<app support>/font_previews/`), with an arrow until the font is on the phone and a ring while it
+  downloads; one tap downloads and applies. **The last tap wins**: a font that lands after another
+  was chosen, or after the sheet closed, applies nothing. Search runs on the phone, over label and
+  name, ignoring case, spaces, dashes and underscores. A server font named like a local one, or
+  listed in both categories, shows once, first place.
+- **A font's name is what a text stores** (`fontNameFor`): the family for a Regular face,
+  `<family> <style>` otherwise ("Lato Bold"). The server keeps (family, style) unique
+  case-insensitively, so the name identifies the face, it is the name the engine registers, and
+  **the draft format is unchanged**.
+- **Files**: `<documents>/font_library/<id>-v<version>.<ext>`, written as `.part` and renamed when
+  whole, indexed by `library.json` (through a temp file) — not temp, which the OS sweeps, and not
+  a draft's folder, since one font serves every draft. The two lists are saved
+  (`<app support>/font_catalog.json`) and shown at once, and fetched again when missing, over five
+  minutes old, or pulled to refresh. A 404 for a category is an empty list (`more-fonts` may not
+  exist yet), a 429 keeps what is shown and asks nothing until `retryAfterSeconds` passes, and
+  with no `SLIMSHOT_API_URL` the grid is the local fonts alone (`fontServerConfiguredProvider`).
+  Offline the grid and every downloaded font work. A newer `version` of a font on the phone
+  downloads quietly when the lists arrive (`updateOutdated`), used from the next start.
+- **Registration** (`FontRegistry`): `ui.loadFontFromList` under the font's name, once a session —
+  the engine cannot replace a family it holds, which is why an update waits for a restart. A file
+  the engine refuses leaves its texts in System and never throws. **A text drawn before its font
+  landed redraws when it lands**: `FontRegistry.instance.changes` notifies, `TextOverlayLayer` and
+  `TextPreviewTile` lay their text out again, and `TextOverlayPainter` repaints through its
+  `repaint` listenable — needed beside the rebuild, because a new painter over an unchanged
+  overlay and box answers `shouldRepaint` false and would keep the fallback glyphs.
+- **Making a name drawable** (`FontService.ensureAvailable` → `FontAvailability`): registered
+  already; else on the phone; else found by name in the saved lists; else
+  `GET /fonts/by-family/:name`, **accepted only when the face it answers has that very name** —
+  the lookup returns a family's Regular face, and "Lato Bold" is not "Lato". Every download asks
+  for a fresh address (good for ten minutes, never stored); calls for one name share one download.
+- **A project's fonts** (`fonts/project_fonts.dart`): opening a draft registers the fonts already
+  on the phone before the first frame; every other text font is fetched in the background, once a
+  session per name (`fontsToFetch`), from a listener on the text list alone — its identity
+  survives a position event, so playback asks nothing. A font that cannot be had is said once a
+  session (`kFontUnavailableMessage`); its texts draw in System, on the canvas and in the file.
+- **Templates and caption styles keep their faces**: the bundled three plus
+  `kServerTemplateFontNames` — Abril Fatface, Inter, Montserrat, Nunito, Oswald, Permanent Marker,
+  Playfair Display, Press Start 2P, Righteous, Sacramento — prefetched when the templates sheet,
+  the editor's Templates tab or Caption style opens, so the tiles show their real looks. The
+  catalog tests pin every face to those names: **a template naming any other would draw in System
+  for good.**
+- **The export no longer waits for fonts** (the owner's point: a font is used only once it is on
+  the phone). It registers the project's fonts that are on the phone — local, milliseconds —
+  before it rasterises, so a text whose font is there can never export in the fallback, and one
+  whose font is not draws System on the canvas and in the file alike. `export_fonts.dart` is gone.
+- **The interface font is bundled**: Plus Jakarta Sans as static files at 400–800
+  (`kInterfaceFontFamily`). The eight decorative fonts (personal-use or all-rights-reserved
+  notices), an unused demo face and two `.zip`s that were saved HTML pages are deleted; the
+  bundled fonts' SIL OFL notices are registered in `third_party_licences.dart`. Latin script only.
+- **The owner's to-do on the server**: create the `more-fonts` category, and upload the ten
+  template and caption fonts above as Regular faces. Only free (OFL) or licensed fonts go up.
 
 ### Apply to all — a copy, not a mode
 
@@ -3227,16 +3280,16 @@ inserted text is empty, so the rule that an empty text is deleted when the edito
 keeps placeholder words out of every export — a template inserting its sample would be exactly
 the ghost that rule exists to prevent. `placement` is a fraction of the canvas from its centre,
 converted at insert through the canvas size, so a template lands in the same place on any
-device. The catalog test pins what a template could otherwise break silently: every font is in
-`allFonts` (anything else throws in `GoogleFonts.getFont`); every animation resolves in its own
+device. The catalog test pins what a template could otherwise break silently: every font is bundled
+or in `kServerTemplateFontNames` (any other draws in System for good); every animation resolves in its own
 slot and is selectable; placement stays on the canvas and scale inside the pinch range; and a
 template's shadow is inside the Style tab's own ranges and survives a draft unchanged.
 Mutation-checked: an unknown font fails its test. (A rule that a boxed template use only
 whole-block animations was retired with the boxed-text fallback — a box is a quad of its own
 now and animates beside its letters.)
 
-**Twelve templates, built from everything text can do** (**awaiting device verification** — the
-real faces are Google Fonts, which tests cannot load). A **glow** is a shadow at distance 0 with a
+**Twelve templates, built from everything text can do** (**awaiting device verification** — most
+real faces come from the server, which tests do not reach). A **glow** is a shadow at distance 0 with a
 wide blur in the text's own hue (Neon, Glow, Typewriter); a **retro** or **comic** drop is a hard
 shadow, blur 0, pushed clear of the letters; captions and banners ride a box. Each template sets
 the whole shadow — colour, opacity, blur, distance, angle — not just a colour. **Type, then
@@ -4373,8 +4426,8 @@ light, not paint.**
 which is what lets the layout be tested without a video. The parts are `compress_panels.dart` —
 top bar, section label, glass group, choice row, switch row, segmented control, size card, info
 chip, bottom bar and buttons — **so the photo screen can be rebuilt from the same pieces** rather
-than a second look. The new primary button is not `GradientButton`: that one sets its label
-through `GoogleFonts`, which a test cannot load.
+than a second look. The new primary button is not `GradientButton`, which then set its label
+through Google Fonts.
 
 - **On Home's light and glass** (`ColourFieldBackdrop`, `FrostedGlass`) — outside the editor,
   where no colour is being judged. The old screen hard-coded Slate (`0xFF334155`, `0xFF0F172A`).
@@ -4416,8 +4469,7 @@ player, the history entry, saving and the full-screen views; the view is tested 
   **Photos**: the compare slider labelled Before / After (`ResultPhotoFrame`). Several of either
   get the thumbnail row; a tap previews that file (a video re-opens the player on it).
 - **Save to gallery** (or "Save 5 to gallery") pinned, Share and New video / New photos under it.
-  Two columns from 700 px. The screen no longer reads fonts through `GoogleFonts` directly; the
-  full-screen player still does.
+  Two columns from 700 px.
 
 **Compress photo is the video screen's design** (`CompressPhotoView`; **awaiting device
 verification**; from an approved mockup). All three screens — video, photo, result — sit on one
