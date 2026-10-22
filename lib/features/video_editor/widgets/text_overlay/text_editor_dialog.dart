@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../fonts/widgets/font_grid_view.dart';
 import '../../logic/captions/caption_preset_catalog.dart';
 import '../../logic/text_animation_catalog.dart';
 import '../../logic/text_overlay_geometry.dart';
@@ -209,8 +210,6 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
   /// Which preset was last applied, cleared the moment any individual style
   /// property is changed by hand — a tweaked preset is no longer that preset.
   int? _activePresetIndex;
-
-  final List<String> _fonts = allFonts;
 
   final List<Color> _colors = [
     Colors.white,
@@ -812,40 +811,11 @@ class _TextEditorBottomSheetState extends State<_TextEditorBottomSheet> {
   // ----------------------------------------------------------------- font
 
   Widget _buildFontPanel() {
-    return GridView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 2.5,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: _fonts.length,
-      itemBuilder: (context, index) {
-        final font = _fonts[index];
-        final isSelected = _fontFamily == font;
-        return GestureDetector(
-          onTap: () {
-            setState(() => _fontFamily = font);
-            _updateOverlay();
-          },
-          child: Container(
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? Colors.white.withValues(alpha: 0.2)
-                  : Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isSelected ? Colors.white : Colors.transparent,
-              ),
-            ),
-            child: Text(
-              font,
-              style: getFontStyle(font, color: Colors.white, fontSize: 16),
-            ),
-          ),
-        );
+    return FontGridView(
+      selectedName: _fontFamily,
+      onSelected: (name) {
+        setState(() => _fontFamily = name);
+        _updateOverlay();
       },
     );
   }
