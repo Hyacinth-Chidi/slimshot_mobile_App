@@ -16,11 +16,12 @@ import 'support.dart';
 
 void main() {
   group('the grid', () {
-    test('System, the bundled fonts, Trending, then More fonts', () {
-      final entries = fontGridEntries(
-        trending: parseServerFonts([fontRow('pd', 'Playfair Display'), fontRow('lb', 'Lato', style: 'Bold')]),
-        more: parseServerFonts([fontRow('rg', 'Righteous')]),
-      );
+    test("System, the bundled fonts, then every published font in the server's order", () {
+      final entries = fontGridEntries(parseServerFonts([
+        fontRow('pd', 'Playfair Display'),
+        fontRow('lb', 'Lato', style: 'Bold'),
+        fontRow('rg', 'Righteous'),
+      ]));
       expect(entries.map((e) => e.label),
           ['SYSTEM', 'Montserrat Bold', 'Bebas Neue', 'Poppins', 'Playfair Display', 'Lato Bold', 'Righteous']);
       expect(entries.first.name, 'Roboto');
@@ -31,30 +32,27 @@ void main() {
     });
 
     test('a server font named like a local one is left out', () {
-      final entries = fontGridEntries(
-        trending: parseServerFonts([
-          fontRow('bn', 'bebas neue'),
-          fontRow('mb', 'Montserrat', style: 'Bold'),
-          fontRow('rb', 'Roboto'),
-          fontRow('pd', 'Playfair Display'),
-        ]),
-        more: const [],
-      );
+      final entries = fontGridEntries(parseServerFonts([
+        fontRow('bn', 'bebas neue'),
+        fontRow('mb', 'Montserrat', style: 'Bold'),
+        fontRow('rb', 'Roboto'),
+        fontRow('pd', 'Playfair Display'),
+      ]));
       expect(entries.where((e) => e.source == FontSource.server).map((e) => e.font!.id), ['pd']);
     });
 
-    test('a font in both lists shows once, first place', () {
-      final entries = fontGridEntries(
-        trending: parseServerFonts([fontRow('pd', 'Playfair Display')]),
-        more: parseServerFonts([fontRow('pd2', 'playfair display'), fontRow('rg', 'Righteous')]),
-      );
+    test('a font listed twice shows once, first place', () {
+      final entries = fontGridEntries(parseServerFonts([
+        fontRow('pd', 'Playfair Display'),
+        fontRow('pd2', 'playfair display'),
+        fontRow('rg', 'Righteous'),
+      ]));
       expect(entries.where((e) => e.source == FontSource.server).map((e) => e.font!.id), ['pd', 'rg']);
     });
 
     test('search ignores case, spaces, dashes and underscores', () {
       final entries = fontGridEntries(
-        trending: parseServerFonts([fontRow('pd', 'Playfair Display'), fontRow('rg', 'Righteous')]),
-        more: const [],
+        parseServerFonts([fontRow('pd', 'Playfair Display'), fontRow('rg', 'Righteous')]),
       );
       expect(filterFontEntries(entries, 'playfair-display').map((e) => e.label), ['Playfair Display']);
       expect(filterFontEntries(entries, 'BEBAS_neue').map((e) => e.label), ['Bebas Neue']);
@@ -107,13 +105,12 @@ void main() {
     List<String> labels() => controller.entries.map((e) => e.label).toList();
     FontEntry entry(String label) => controller.entries.firstWhere((e) => e.label == label);
 
-    test('the saved lists show at once, then the server\'s', () async {
-      await cache.save(SavedFontLists(
-        trending: parseServerFonts([fontRow('old', 'Oswald')]),
-        more: const [],
+    test('the saved list shows at once, then the server\'s', () async {
+      await cache.save(SavedFontList(
+        fonts: parseServerFonts([fontRow('old', 'Oswald')]),
         fetchedAt: clock.subtract(const Duration(hours: 1)),
       ));
-      final gate = server.gates['fonts:trending'] = Completer<void>();
+      final gate = server.gates['fonts'] = Completer<void>();
       final opening = controller.open();
       for (var i = 0; i < 20 && !labels().contains('Oswald'); i++) {
         await Future<void>.delayed(const Duration(milliseconds: 5));
@@ -130,35 +127,34 @@ void main() {
     // kept for minutes hid it, which reads as the font not being there.
     test('every opening asks the server again', () async {
       await controller.open();
-      server.lists['trending']!.add(fontRow('mg', 'Margarine'));
+      server.fonts.insert(0, fontRow('mg', 'Margarine'));
       clock = clock.add(const Duration(seconds: 30));
       final again = build();
       await again.open();
-      expect(server.hitsFor('fonts:trending'), 2);
+      expect(server.hitsFor('fonts'), 2);
       expect(again.entries.map((e) => e.label), contains('Margarine'));
     });
 
-    test('a missing More fonts category leaves Trending', () async {
-      server.lists.remove('more-fonts');
+    test('no published fonts leaves the local ones, and says nothing', () async {
+      server.fonts = [];
       await controller.open();
-      expect(labels(), containsAllInOrder(['Playfair Display', 'Lato Bold']));
-      expect(labels(), isNot(contains('Righteous')));
+      expect(labels(), ['SYSTEM', 'Montserrat Bold', 'Bebas Neue', 'Poppins']);
       expect(controller.takeNotice(), isNull);
     });
 
     test('a rate-limited list keeps the saved one and waits', () async {
       await controller.open();
-      server.overrides['fonts:trending'] =
+      server.overrides['fonts'] =
           () => FakeFontServer.error('RATE_LIMITED', 429, details: {'retryAfterSeconds': 30});
       await controller.refresh();
       expect(labels(), contains('Playfair Display'));
-      expect(server.hitsFor('fonts:trending'), 2);
+      expect(server.hitsFor('fonts'), 2);
       clock = clock.add(const Duration(seconds: 10));
       await controller.refresh();
-      expect(server.hitsFor('fonts:trending'), 2);
+      expect(server.hitsFor('fonts'), 2);
       clock = clock.add(const Duration(seconds: 21));
       await controller.refresh();
-      expect(server.hitsFor('fonts:trending'), 3);
+      expect(server.hitsFor('fonts'), 3);
     });
 
     test('with no server address it lists local fonts and asks nothing', () async {

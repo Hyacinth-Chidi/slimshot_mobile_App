@@ -40,9 +40,8 @@ void main() {
     if (root.existsSync()) root.deleteSync(recursive: true);
   });
 
-  Future<void> saveLists() => cache.save(SavedFontLists(
-        trending: parseServerFonts(server.lists['trending']),
-        more: parseServerFonts(server.lists['more-fonts']),
+  Future<void> saveLists() => cache.save(SavedFontList(
+        fonts: parseServerFonts(server.fonts),
         fetchedAt: DateTime.now(),
       ));
 
@@ -130,8 +129,8 @@ void main() {
     server.hits.clear();
     await service.updateOutdated(parseServerFonts([fontRow('pd', 'Playfair Display')]));
     expect(server.hitsFor('download:pd'), 0);
-    server.lists['trending']![0] = fontRow('pd', 'Playfair Display', version: 2);
-    await service.updateOutdated(parseServerFonts(server.lists['trending']));
+    server.fonts[0] = fontRow('pd', 'Playfair Display', version: 2);
+    await service.updateOutdated(parseServerFonts(server.fonts));
     expect(server.hitsFor('download:pd'), 1);
     expect(library.find('Playfair Display')?.version, 2);
   });
@@ -139,8 +138,8 @@ void main() {
   test('an updated font already registered this session is not registered again', () async {
     await saveLists();
     await service.ensureAvailable('Playfair Display');
-    server.lists['trending']![0] = fontRow('pd', 'Playfair Display', version: 2);
-    await service.updateOutdated(parseServerFonts(server.lists['trending']));
+    server.fonts[0] = fontRow('pd', 'Playfair Display', version: 2);
+    await service.updateOutdated(parseServerFonts(server.fonts));
     expect(registered, ['Playfair Display']);
   });
 

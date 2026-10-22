@@ -3,7 +3,6 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:slimshotai/core/services/slimshot_api.dart';
 import 'package:slimshotai/features/fonts/data/font_client.dart';
-import 'package:slimshotai/features/fonts/data/font_models.dart';
 
 import '../../support/account_fakes.dart';
 import 'support.dart';
@@ -25,13 +24,13 @@ void main() {
     ));
   }
 
-  test('list asks for the category', () async {
+  test('list asks for every published font, with no category', () async {
     final client = clientWith((_) => FakeFontServer.ok([fontRow('pd', 'Playfair Display')]));
-    final fonts = await client.list(kTrendingFontsCategory);
+    final fonts = await client.list();
     final request = requests.single;
     expect(request.method, 'GET');
     expect(request.url.path, '/api/app/v1/catalog/fonts');
-    expect(request.url.queryParameters, {'category': 'trending'});
+    expect(request.url.queryParameters, isEmpty);
     expect(request.headers.containsKey('Authorization'), isFalse);
     expect(fonts.single.name, 'Playfair Display');
   });
@@ -69,7 +68,7 @@ void main() {
   test('a 404 is a NOT_FOUND exception', () async {
     final client = clientWith((_) => FakeFontServer.error('NOT_FOUND', 404));
     await expectLater(
-      client.list(kMoreFontsCategory),
+      client.byId('gone'),
       throwsA(isA<SlimshotApiException>().having((e) => e.code, 'code', 'NOT_FOUND')),
     );
   });

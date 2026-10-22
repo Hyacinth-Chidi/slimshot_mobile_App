@@ -15,19 +15,21 @@ void main() {
   });
 
   final fetched = DateTime.utc(2026, 10, 22, 12);
-  SavedFontLists lists() => SavedFontLists(
-        trending: parseServerFonts([fontRow('pd', 'Playfair Display'), fontRow('lb', 'Lato', style: 'Bold')]),
-        more: parseServerFonts([fontRow('rg', 'Righteous')]),
+  SavedFontList saved() => SavedFontList(
+        fonts: parseServerFonts([
+          fontRow('pd', 'Playfair Display'),
+          fontRow('lb', 'Lato', style: 'Bold'),
+          fontRow('rg', 'Righteous'),
+        ]),
         fetchedAt: fetched,
       );
 
-  test('saved lists round-trip with their time', () async {
-    await FontCatalogCache(root: root).save(lists());
+  test('the saved list round-trips in order, with its time', () async {
+    await FontCatalogCache(root: root).save(saved());
     final read = await FontCatalogCache(root: root).load();
-    expect(read!.trending.map((f) => f.name), ['Playfair Display', 'Lato Bold']);
-    expect(read.more.single.name, 'Righteous');
+    expect(read!.fonts.map((f) => f.name), ['Playfair Display', 'Lato Bold', 'Righteous']);
     expect(read.fetchedAt, fetched);
-    expect(read.trending.first.previewUrl, 'https://cdn.test/previews/pd-v1.png');
+    expect(read.fonts.first.previewUrl, 'https://cdn.test/previews/pd-v1.png');
   });
 
   test('a corrupt file reads as nothing saved', () async {

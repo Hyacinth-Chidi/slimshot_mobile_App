@@ -38,21 +38,18 @@ class FontEntry {
   final ServerFont? font;
 }
 
-/// The Font tab's tiles in order: System, the bundled fonts, then
-/// [trending] and [more] in the owner's order. A server font named like a
-/// local one, or listed twice, shows once — names compared in any case, as
-/// the server compares them.
-List<FontEntry> fontGridEntries({
-  required List<ServerFont> trending,
-  required List<ServerFont> more,
-}) {
+/// The Font tab's tiles in order: System, the bundled fonts, then every
+/// published font in the owner's order. A server font named like a local
+/// one, or listed twice, shows once — names compared in any case, as the
+/// server compares them.
+List<FontEntry> fontGridEntries(List<ServerFont> fonts) {
   final entries = <FontEntry>[
     const FontEntry(name: kSystemFontName, label: 'SYSTEM', source: FontSource.system),
     for (final name in kBundledFontNames)
       FontEntry(name: name, label: name, source: FontSource.bundled),
   ];
   final seen = {for (final e in entries) e.name.toLowerCase()};
-  for (final font in [...trending, ...more]) {
+  for (final font in fonts) {
     if (!seen.add(font.name.toLowerCase())) continue;
     entries.add(FontEntry(
       name: font.name,
@@ -105,11 +102,10 @@ final class FontFailed extends FontTileState {
 
 /// The Font tab's state: the lists, search, and what each tile is doing.
 ///
-/// The saved lists show at once and the server's are asked for on every
-/// opening and on refresh. A 404 for
-/// a category is an empty list; a 429 keeps what is shown and asks nothing
-/// until the server's wait has passed; with no server address nothing is
-/// asked at all. **The last tap wins**: a download that lands after another
+/// The saved list shows at once and the server's is asked for on every
+/// opening and on refresh. A 429 keeps what is shown and asks nothing until
+/// the server's wait has passed; with no server address nothing is asked at
+/// all. **The last tap wins**: a download that lands after another
 /// font was chosen, or after the tab closed, applies nothing.
 class FontGridController extends ChangeNotifier {
   FontGridController({
@@ -136,8 +132,7 @@ class FontGridController extends ChangeNotifier {
   final bool _serverConfigured;
   final DateTime Function() _now;
 
-  List<ServerFont> _trending = const [];
-  List<ServerFont> _more = const [];
+  List<ServerFont> _fonts = const [];
   String _query = '';
   final Map<String, double> _downloading = {};
   final Set<String> _failed = {};
@@ -150,7 +145,7 @@ class FontGridController extends ChangeNotifier {
 
   /// The tiles, filtered by [query].
   List<FontEntry> get entries =>
-      filterFontEntries(fontGridEntries(trending: _trending, more: _more), _query);
+      filterFontEntries(fontGridEntries(_fonts), _query);
 
   String get query => _query;
   set query(String value) {
@@ -177,24 +172,23 @@ class FontGridController extends ChangeNotifier {
     return const FontNotOnPhone();
   }
 
-  /// Shows the saved lists at once, then asks the server for its own — on
+  /// Shows the saved list at once, then asks the server for its own — on
   /// every opening, so a font the owner publishes is there the next time the
-  /// tab opens. The server caches the lists and clears them on any change, so
-  /// asking costs two small reads.
+  /// tab opens. The server caches the list and clears it on any change, so
+  /// asking costs one small read.
   Future<void> open() async {
     if (!_serverConfigured) return;
     await _previews.prepare();
     await _library.load();
     final saved = await _cache.load();
     if (saved != null) {
-      _trending = saved.trending;
-      _more = saved.more;
+      _fonts = saved.fonts;
       _notify();
     }
     await _fetch();
   }
 
-  /// Fetches the server's lists now, unless the server asked for a wait.
+  /// Fetches the server's list now, unless the server asked for a wait.
   Future<void> refresh() async {
     if (!_serverConfigured) return;
     await _fetch();
@@ -203,11 +197,9 @@ class FontGridController extends ChangeNotifier {
   Future<void> _fetch() async {
     final waitUntil = _waitUntil;
     if (waitUntil != null && _now().isBefore(waitUntil)) return;
-    final List<ServerFont> trending;
-    final List<ServerFont> more;
+    final List<ServerFont> fonts;
     try {
-      trending = await _list(kTrendingFontsCategory);
-      more = await _list(kMoreFontsCategory);
+      fonts = await _client.list();
     } on SlimshotApiException catch (e) {
       if (e.code == 'RATE_LIMITED') {
         _waitUntil = _now().add(Duration(seconds: e.detailInt('retryAfterSeconds') ?? 30));
@@ -217,26 +209,15 @@ class FontGridController extends ChangeNotifier {
       return;
     }
     if (_disposed) return;
-    _trending = trending;
-    _more = more;
+    _fonts = fonts;
     _notify();
-    await _cache.save(SavedFontLists(trending: trending, more: more, fetchedAt: _now()));
+    await _cache.save(SavedFontList(fonts: fonts, fetchedAt: _now()));
     await _previews.fetchAll([
-      for (final font in [...trending, ...more])
+      for (final font in fonts)
         if (font.previewUrl case final url?) url,
     ]);
     _notify();
-    await _service.updateOutdated([...trending, ...more]);
-  }
-
-  /// One category's fonts; a category that does not exist is empty.
-  Future<List<ServerFont>> _list(String category) async {
-    try {
-      return await _client.list(category);
-    } on SlimshotApiException catch (e) {
-      if (e.code == 'NOT_FOUND') return const [];
-      rethrow;
-    }
+    await _service.updateOutdated(fonts);
   }
 
   /// Applies [entry]'s font through [apply] once it is drawable — at once

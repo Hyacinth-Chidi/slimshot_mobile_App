@@ -84,12 +84,12 @@ class FontService {
     }
   }
 
-  /// The server font named [name]: from the saved lists, else the family
+  /// The server font named [name]: from the saved list, else the family
   /// lookup when it answers that very face; null when the server has none.
   Future<ServerFont?> _resolve(String name) async {
     final wanted = name.toLowerCase();
     final saved = await _cache.load();
-    for (final font in [...?saved?.trending, ...?saved?.more]) {
+    for (final font in saved?.fonts ?? const <ServerFont>[]) {
       if (font.name.toLowerCase() == wanted) return font;
     }
     try {

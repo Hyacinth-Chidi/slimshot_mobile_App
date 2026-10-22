@@ -29,7 +29,7 @@ Map<String, Object?> fontRow(
     };
 
 /// A stand-in for the server and its CDN, keyed by what was asked:
-/// `fonts:<slug>`, `font:<id>`, `family:<name>`, `download:<id>`,
+/// `fonts`, `font:<id>`, `family:<name>`, `download:<id>`,
 /// `file:<id>`, `preview:<id>`. [gates] hold an answer until completed;
 /// [overrides] replace one; [hits] counts every request.
 class FakeFontServer {
@@ -37,12 +37,15 @@ class FakeFontServer {
     client = MockClient(_answer);
   }
 
-  Map<String, List<Map<String, Object?>>> lists = {
-    'trending': [fontRow('pd', 'Playfair Display'), fontRow('lb', 'Lato', style: 'Bold')],
-    'more-fonts': [fontRow('rg', 'Righteous')],
-  };
+  /// Every published font, in the owner's order: what `GET /fonts` lists.
+  List<Map<String, Object?>> fonts = [
+    fontRow('pd', 'Playfair Display'),
+    fontRow('lb', 'Lato', style: 'Bold'),
+    fontRow('rg', 'Righteous'),
+  ];
 
-  /// Published fonts in no category: found by id or family, never listed.
+  /// Published but unlisted (or taken out of the list): found by id or
+  /// family, never listed.
   List<Map<String, Object?>> hidden = [];
 
   final Map<String, int> hits = {};
@@ -53,7 +56,7 @@ class FakeFontServer {
   int hitsFor(String key) => hits[key] ?? 0;
   int get totalHits => hits.values.fold(0, (a, b) => a + b);
 
-  Iterable<Map<String, Object?>> get _all => [...lists.values.expand((l) => l), ...hidden];
+  Iterable<Map<String, Object?>> get _all => [...fonts, ...hidden];
 
   Map<String, Object?>? _byId(String id) {
     for (final row in _all) {
@@ -80,7 +83,7 @@ class FakeFontServer {
       final name = request.url.pathSegments.last.split('-v').first;
       return path.contains('/previews/') ? 'preview:$name' : 'file:$name';
     }
-    if (path.endsWith('/catalog/fonts')) return 'fonts:${request.url.queryParameters['category']}';
+    if (path.endsWith('/catalog/fonts')) return 'fonts';
     final family = RegExp(r'/catalog/fonts/by-family/(.+)$').firstMatch(path);
     if (family != null) return 'family:${Uri.decodeComponent(family.group(1)!)}';
     final one = RegExp(r'/catalog/fonts/([^/]+)$').firstMatch(path);
@@ -97,10 +100,7 @@ class FakeFontServer {
     if (gate != null) await gate.future;
     final override = overrides[key];
     if (override != null) return override();
-    if (key.startsWith('fonts:')) {
-      final list = lists[key.substring('fonts:'.length)];
-      return list == null ? error('NOT_FOUND', 404) : ok(list);
-    }
+    if (key == 'fonts') return ok(fonts);
     if (key.startsWith('font:')) {
       final row = _byId(key.substring('font:'.length));
       return row == null ? error('NOT_FOUND', 404) : ok(row);

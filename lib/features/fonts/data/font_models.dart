@@ -2,11 +2,6 @@
 /// (`slimshot_server/docs/app-catalog-api.md` §8).
 library;
 
-/// The categories the Font tab lists, in this order. The only slugs the app
-/// hardcodes; names and order inside each are the dashboard's.
-const String kTrendingFontsCategory = 'trending';
-const String kMoreFontsCategory = 'more-fonts';
-
 /// A font's name in the app: its family for a Regular face, otherwise the
 /// family and the style ("Lato Bold").
 ///

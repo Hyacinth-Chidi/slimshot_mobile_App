@@ -10,13 +10,11 @@ class FontClient {
 
   final SlimshotApi _api;
 
-  /// The fonts filed in [category], in the owner's order. One list, no paging.
-  Future<List<ServerFont>> list(String category) async {
+  /// Every published font, in the owner's order. One list, no paging, no
+  /// categories: a font the owner publishes is listed.
+  Future<List<ServerFont>> list() async {
     final envelope = await _api.sendPublicEnvelope(
-      () => http.Request(
-        'GET',
-        _api.uri('/catalog/fonts').replace(queryParameters: {'category': category}),
-      ),
+      () => http.Request('GET', _api.uri('/catalog/fonts')),
     );
     return parseServerFonts(envelope.data);
   }

@@ -2775,29 +2775,31 @@ plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-a
 (`test/no_google_fonts_test.dart`) fails on any import under `lib/` or the package in `pubspec.yaml`.
 
 - **The Font tab is one grid** (`FontGridView`, `fonts/font_grid.dart`): System (Roboto), the three
-  bundled fonts (`kBundledFontNames`: Montserrat Bold, Bebas Neue, Poppins), then the server's
-  `trending` and `more-fonts` categories in the owner's order. No tabs, no Downloaded tab, no
-  delete. A server tile is the server's preview image (480×160, `FontPreviewCache` under
+  bundled fonts (`kBundledFontNames`: Montserrat Bold, Bebas Neue, Poppins), then **every
+  published font** in the owner's order (`GET /fonts`, no category). **No categories at all** —
+  the owner's call, after trying Trending and More fonts and finding a font filed nowhere simply
+  missing from the app: publish a font and it is listed, a new one at the top until moved, the
+  order set on the dashboard's Order tab. No tabs, no Downloaded tab, no delete. A server tile is the server's preview image (480×160, `FontPreviewCache` under
   `<app support>/font_previews/`), with an arrow until the font is on the phone and a ring while it
   downloads; one tap downloads and applies. **The last tap wins**: a font that lands after another
   was chosen, or after the sheet closed, applies nothing. Search runs on the phone, over label and
   name, ignoring case, spaces, dashes and underscores. A server font named like a local one, or
-  listed in both categories, shows once, first place.
+  listed twice, shows once, first place.
 - **A font's name is what a text stores** (`fontNameFor`): the family for a Regular face,
   `<family> <style>` otherwise ("Lato Bold"). The server keeps (family, style) unique
   case-insensitively, so the name identifies the face, it is the name the engine registers, and
   **the draft format is unchanged**.
 - **Files**: `<documents>/font_library/<id>-v<version>.<ext>`, written as `.part` and renamed when
   whole, indexed by `library.json` (through a temp file) — not temp, which the OS sweeps, and not
-  a draft's folder, since one font serves every draft. The two lists are saved
+  a draft's folder, since one font serves every draft. The list is saved
   (`<app support>/font_catalog.json`) and shown at once, and **asked for again on every opening**
   of the tab and on pull-to-refresh — device-reported: a list kept for five minutes hid a font
   just published, which reads as the font not being there; the server's cache is cleared by any
-  dashboard change and the limit is 120 reads a minute, so two reads an opening cost nothing. A 404 for a category is an empty list (`more-fonts` may not
-  exist yet), a 429 keeps what is shown and asks nothing until `retryAfterSeconds` passes, and
+  dashboard change and the limit is 120 reads a minute, so a read an opening costs nothing. A 429
+  keeps what is shown and asks nothing until `retryAfterSeconds` passes, and
   with no `SLIMSHOT_API_URL` the grid is the local fonts alone (`fontServerConfiguredProvider`).
   Offline the grid and every downloaded font work. A newer `version` of a font on the phone
-  downloads quietly when the lists arrive (`updateOutdated`), used from the next start.
+  downloads quietly when the list arrives (`updateOutdated`), used from the next start.
 - **Registration** (`FontRegistry`): `ui.loadFontFromList` under the font's name, once a session —
   the engine cannot replace a family it holds, which is why an update waits for a restart. A file
   the engine refuses leaves its texts in System and never throws. **A text drawn before its font
@@ -2806,7 +2808,7 @@ plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-a
   `repaint` listenable — needed beside the rebuild, because a new painter over an unchanged
   overlay and box answers `shouldRepaint` false and would keep the fallback glyphs.
 - **Making a name drawable** (`FontService.ensureAvailable` → `FontAvailability`): registered
-  already; else on the phone; else found by name in the saved lists; else
+  already; else on the phone; else found by name in the saved list; else
   `GET /fonts/by-family/:name`, **accepted only when the face it answers has that very name** —
   the lookup returns a family's Regular face, and "Lato Bold" is not "Lato". Every download asks
   for a fresh address (good for ten minutes, never stored); calls for one name share one download.
@@ -2829,8 +2831,8 @@ plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-a
   (`kInterfaceFontFamily`). The eight decorative fonts (personal-use or all-rights-reserved
   notices), an unused demo face and two `.zip`s that were saved HTML pages are deleted; the
   bundled fonts' SIL OFL notices are registered in `third_party_licences.dart`. Latin script only.
-- **The owner's to-do on the server**: create the `more-fonts` category, and upload the ten
-  template and caption fonts above as Regular faces. Only free (OFL) or licensed fonts go up.
+- **The owner's to-do on the server**: upload the ten template and caption fonts above as
+  Regular faces. Only free (OFL) or licensed fonts go up.
 
 ### Apply to all — a copy, not a mode
 

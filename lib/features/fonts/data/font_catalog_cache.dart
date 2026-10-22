@@ -6,20 +6,15 @@ import 'package:path_provider/path_provider.dart';
 
 import 'font_models.dart';
 
-/// The two lists the Font tab shows, as the server last sent them.
-class SavedFontLists {
-  const SavedFontLists({
-    required this.trending,
-    required this.more,
-    required this.fetchedAt,
-  });
+/// The fonts the Font tab shows, as the server last listed them.
+class SavedFontList {
+  const SavedFontList({required this.fonts, required this.fetchedAt});
 
-  final List<ServerFont> trending;
-  final List<ServerFont> more;
+  final List<ServerFont> fonts;
   final DateTime fetchedAt;
 }
 
-/// The lists, kept in `<app support>/font_catalog.json` so the grid opens at
+/// The list, kept in `<app support>/font_catalog.json` so the grid opens at
 /// once and works offline.
 class FontCatalogCache {
   FontCatalogCache({Directory? root}) : _root = root;
@@ -34,7 +29,7 @@ class FontCatalogCache {
   }
 
   /// What was kept, or null — nothing saved, or a file that cannot be read.
-  Future<SavedFontLists?> load() async {
+  Future<SavedFontList?> load() async {
     await _writes;
     try {
       final file = await _file();
@@ -43,27 +38,22 @@ class FontCatalogCache {
       if (json is! Map) return null;
       final fetchedAt = DateTime.tryParse('${json['fetchedAt']}');
       if (fetchedAt == null) return null;
-      return SavedFontLists(
-        trending: parseServerFonts(json['trending']),
-        more: parseServerFonts(json['more']),
-        fetchedAt: fetchedAt,
-      );
+      return SavedFontList(fonts: parseServerFonts(json['fonts']), fetchedAt: fetchedAt);
     } catch (_) {
       return null;
     }
   }
 
-  /// Keeps [lists], one write at a time, through a temp file.
-  Future<void> save(SavedFontLists lists) {
+  /// Keeps [list], one write at a time, through a temp file.
+  Future<void> save(SavedFontList list) {
     final next = _writes.then((_) async {
       final file = await _file();
       final temp = File('${file.path}.tmp');
       await temp.writeAsString(
         jsonEncode({
           'version': 1,
-          'fetchedAt': lists.fetchedAt.toUtc().toIso8601String(),
-          'trending': [for (final f in lists.trending) f.toJson()],
-          'more': [for (final f in lists.more) f.toJson()],
+          'fetchedAt': list.fetchedAt.toUtc().toIso8601String(),
+          'fonts': [for (final f in list.fonts) f.toJson()],
         }),
         flush: true,
       );
