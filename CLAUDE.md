@@ -3091,10 +3091,20 @@ Reorder and the cut seam are done.
 instant under the playhead when the pinch begins stays under it (`_pinchAnchorSeconds`), from
 `kMaxPixelsPerSecond` (600, ~20px a frame at 30fps) out to where the whole project fills
 `kZoomOutFitFraction` (80%) of the screen — never closer than `kDefaultPixelsPerSecond` (50), the
-scale the editor opens at and the one it had before; not saved with the draft
-(`logic/timeline/timeline_zoom.dart`). `_pixelsPerSecond` became a field and everything on the
-track is placed through it, so lanes, handles, diamonds, markers, the filmstrip (fixed-width
-tiles, so more frames rather than stretched ones) and the ruler all follow.
+scale it had before; not saved with the draft (`logic/timeline/timeline_zoom.dart`).
+`_pixelsPerSecond` became a field and everything on the track is placed through it, so lanes,
+handles, diamonds, markers, the filmstrip (fixed-width tiles, so more frames rather than stretched
+ones) and the ruler all follow.
+
+**It opens zoomed out** (`_fitScaleOnOpen`, `timeline_opening_zoom_test.dart`, **awaiting device
+verification**; the user's call): at that furthest zoom out, so a long project opens with all of it
+in view and a pinch spreads it out, while a short one opens at 50 as before. It opened at 50
+whatever the length — a minute of video was eight screens to scroll through before anyone pinched
+it smaller. **Fitted once**, the first time the project has a length; a scale refitted to every
+edit would change under the finger as a trim changed the length. The opening frame fetch covers
+the half screen right of the playhead at that scale (`_visibleEndSeconds` before layout) —
+fitted, that is far more than the 12 s it assumed, and nothing rebuilds the track after its first
+layout to ask again, so the rest of the strip stayed blank until touched.
 
 - **A `Listener`, not a recogniser**: it sees every finger without entering the arena, so a
   one-finger scrub, trim or carry is exactly what it was; the pinch begins at the second finger,

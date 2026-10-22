@@ -16,9 +16,10 @@ void main() {
   const audio = AudioTrackModel(
     id: 'a',
     filePath: '/a.mp3',
-    sourceDuration: 20,
+    // Short enough to open at the usual scale, 50 px a second.
+    sourceDuration: 6,
     sourceStart: 0,
-    sourceEnd: 20,
+    sourceEnd: 6,
     timelineStart: 0,
     laneIndex: 0,
   );
@@ -40,8 +41,8 @@ void main() {
             child: ScrollableTimeline(
               onPausePlayback: () {},
               inputPath: '',
-              durationSeconds: 20,
-              trimRange: const RangeValues(0, 20),
+              durationSeconds: 6,
+              trimRange: const RangeValues(0, 6),
               timelinePositionSeconds: position,
               playhead: playhead,
               audioTracks: const [audio],

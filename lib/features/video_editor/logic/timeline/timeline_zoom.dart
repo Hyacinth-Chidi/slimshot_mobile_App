@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
-/// The timeline's scale when the editor opens, in pixels per second — the
-/// scale it had before it could zoom.
+/// The timeline's scale for a short project, in pixels per second — the scale
+/// it had before it could zoom, and the closest it opens. A longer project
+/// opens fitted, at [minPixelsPerSecond].
 const double kDefaultPixelsPerSecond = 50.0;
 
 /// The furthest a pinch zooms in: ~20px per frame at 30fps, so a cut or a
@@ -14,9 +15,9 @@ const double kZoomOutFitFraction = 0.8;
 /// The closest two ruler labels may sit.
 const double kRulerMinLabelSpacingPx = 70.0;
 
-/// The furthest a pinch zooms out: until the whole project fills
-/// [kZoomOutFitFraction] of the viewport, and never closer than the default —
-/// a short project has nothing to zoom out to.
+/// The furthest a pinch zooms out, and the scale the timeline opens at: until
+/// the whole project fills [kZoomOutFitFraction] of the viewport, and never
+/// closer than the default — a short project has nothing to zoom out to.
 double minPixelsPerSecond({
   required double viewportWidth,
   required double durationSeconds,

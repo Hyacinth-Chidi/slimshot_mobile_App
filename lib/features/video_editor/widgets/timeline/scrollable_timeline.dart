@@ -292,14 +292,39 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   /// stay glued to the filmstrip row when tall lane stacks scroll.
   final ScrollController _verticalScrollController = ScrollController();
 
-  /// Window assumed visible before the scroll view has been laid out, so the
-  /// opening filmstrip tiles are already being fetched on first paint.
+  /// The least window assumed visible before the scroll view has been laid
+  /// out, so the opening filmstrip tiles are already being fetched on first
+  /// paint.
   static const double _kInitialVisibleSeconds = 12.0;
 
   /// The timeline's scale: what a pinch changes. Everything on the track is
   /// placed through it, so a zoom moves every lane, handle, marker and the
-  /// ruler together. Not saved: the editor reopens at the default.
+  /// ruler together. Not saved: the editor reopens fitted.
   double _pixelsPerSecond = kDefaultPixelsPerSecond;
+
+  /// Whether the scale is settled: fitted the first time the project had a
+  /// length ([_fitScaleOnOpen]), or pinched since.
+  bool _scaleSettled = false;
+
+  /// Opens the timeline at its furthest zoom out ([minPixelsPerSecond]): a
+  /// long project fitted to the screen, a short one at the usual scale. A
+  /// pinch then spreads it out. It opened at the usual scale whatever the
+  /// length, so a minute of video was eight screens to scroll through before
+  /// anyone pinched it smaller.
+  ///
+  /// **Once.** A scale refitted to every edit would change under the finger
+  /// as a trim changed the project's length.
+  void _fitScaleOnOpen() {
+    if (_scaleSettled || _totalEditedDuration <= 0) return;
+    _scaleSettled = true;
+    final fitted = _minPixelsPerSecond;
+    // Keep the playhead's instant under it, as a pinch does.
+    if (_scrollController.hasClients) {
+      _scrollController.position
+          .correctPixels(_scrollController.offset / _pixelsPerSecond * fitted);
+    }
+    _pixelsPerSecond = fitted;
+  }
 
   /// The fingers on the track, by pointer — a pinch is two of them.
   final Map<int, Offset> _pinchPointers = {};
@@ -573,6 +598,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     if (distance < 1) return;
     _pinchStartDistance = distance;
     _pinchStartScale = _pixelsPerSecond;
+    _scaleSettled = true;
     // The scroll offset is the playhead's time at the current scale: content
     // is padded by half a screen, so offset x puts time x / scale under it.
     _pinchAnchorSeconds = _scrollController.offset / _pixelsPerSecond;
@@ -655,8 +681,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
 
   double get _visibleEndSeconds {
     if (!_scrollController.hasClients) {
-      // Before first layout, cover a screenful so the opening frames load.
-      return _kInitialVisibleSeconds;
+      // Before first layout, cover a screenful so the opening frames load:
+      // the half of the screen right of the playhead, at the scale the
+      // timeline opens at. Fitted, that can be far more than the floor, and
+      // nothing rebuilds the track after its first layout to ask again.
+      final halfScreen = MediaQuery.sizeOf(context).width / 2;
+      return max(_kInitialVisibleSeconds, halfScreen / _pixelsPerSecond);
     }
     final halfViewport = _scrollController.position.viewportDimension / 2;
     return (_scrollController.offset + halfViewport) / _pixelsPerSecond;
@@ -2102,6 +2132,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final editorState = ref.watch(videoEditorProvider);
     final screenWidth = MediaQuery.of(context).size.width;
     final halfWidth = screenWidth / 2;
+    _fitScaleOnOpen();
 
     final contentWidth = _totalEditedDuration * _pixelsPerSecond;
 
