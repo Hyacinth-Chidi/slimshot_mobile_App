@@ -4,18 +4,25 @@ import 'package:just_audio/just_audio.dart';
 
 import '../models/audio_track_model.dart';
 
-/// Drift past this, while playing, is corrected. A correction is a seek, and
-/// a seek is heard, so ordinary drift below it is lived with — but it used to
-/// be half a second, which let music sit audibly off the picture for good.
-const double kMusicDriftToleranceSeconds = 0.1;
+/// While playing, only a jump this large is corrected — a scrub, a loop
+/// round — never drift.
+///
+/// Every seek of a playing track is **heard**, as a click. The music player
+/// and the engine are two players with no shared clock, and the music always
+/// sits a little behind — the time its sound takes to start, steady for the
+/// whole track. Correcting from 0.1 s seeked every 1.5 s on that alone, and
+/// the music crackled. The overlay sound learned the same lesson
+/// (`OverlayAudioSync.JUMP_SECONDS`, the same 0.5).
+const double kMusicJumpSeconds = 0.5;
 
 /// Corrections are at least this far apart, the start counting as one: a
 /// player that has just been told to play takes a moment to get going, and
-/// reading that as drift would seek again right after every start.
-const Duration kMusicCorrectionInterval = Duration(milliseconds: 1500);
+/// reading that as a jump would seek again right after every start.
+const Duration kMusicCorrectionInterval = Duration(seconds: 2);
 
-/// After a seek lands, a playhead that has moved on by more than this gets a
-/// second, short seek — to a spot already buffered, so it is quick.
+/// Before a track starts, a playhead that has moved on by more than this
+/// while its seek landed gets a second, short seek. Before only — once the
+/// track plays, a second seek is a second click.
 const double kMusicSettleToleranceSeconds = 0.02;
 
 /// What the manager needs of a music player: just_audio's, or a test's.
@@ -173,7 +180,7 @@ class AudioPlayerManager {
           final last = _lastAlignedAt[track.id];
           final settled = last == null || _clock() - last >= kMusicCorrectionInterval;
           final currentPos = player.position.inMicroseconds / 1e6;
-          if (settled && (currentPos - targetSourcePosition).abs() > kMusicDriftToleranceSeconds) {
+          if (settled && (currentPos - targetSourcePosition).abs() > kMusicJumpSeconds) {
             unawaited(_align(track, player, thenPlay: false));
           }
         }
@@ -197,13 +204,15 @@ class AudioPlayerManager {
   /// `play()` used to go out with the seek still in flight, so the music
   /// started from wherever the player happened to be, and late by however
   /// long the seek took. A seek takes long enough for the playhead to move
-  /// on, so a second, short one follows where it has.
+  /// on, so before a start a second, short one follows where it has — never
+  /// on a playing track, where it would be heard.
   Future<void> _align(AudioTrackModel track, MusicPlayer player, {required bool thenPlay}) async {
     _isSeeking[track.id] = true;
     try {
       await player.seek(_at(_sourceTarget(track, _playheadNow)));
       final target = _sourceTarget(track, _playheadNow);
-      if ((player.position.inMicroseconds / 1e6 - target).abs() > kMusicSettleToleranceSeconds) {
+      if (thenPlay &&
+          (player.position.inMicroseconds / 1e6 - target).abs() > kMusicSettleToleranceSeconds) {
         await player.seek(_at(target));
       }
       if (thenPlay && _advancing && _covers(track, _playheadNow)) player.play();

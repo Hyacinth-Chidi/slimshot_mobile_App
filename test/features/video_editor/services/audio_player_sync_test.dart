@@ -7,9 +7,8 @@ import 'package:slimshotai/features/video_editor/services/audio_player_manager.d
 /// Imported music keeps time with the playhead.
 ///
 /// It started late — `play()` went out before its seek had finished, on the
-/// first position update after the playhead reached it — and while playing it
-/// was only corrected once more than half a second out, so the lateness it
-/// started with stayed for the whole track.
+/// first position update after the playhead reached it. While playing, only a
+/// jump is corrected: a seek is heard, so ordinary drift is lived with.
 class FakeMusicPlayer implements MusicPlayer {
   @override
   bool playing = false;
@@ -86,38 +85,59 @@ void main() {
     expect(player.log, ['seek 11000', 'play']);
   });
 
-  test('while playing, drift under 0.1 s is left alone and over it is corrected', () async {
+  test('a steady lag while playing is lived with, never seeked', () async {
+    // The music player and the engine are two players with no shared clock,
+    // and the music is always a little behind — the time its sound takes to
+    // start. Every seek while playing is heard as a click; correcting this
+    // seeked every 1.5 s, and the music crackled.
     manager.seekAndPlaySync(1.0, [track], true);
     await pumpEventQueue();
     player.log.clear();
 
-    // Past the start's grace, 80 ms out: left alone.
-    now = const Duration(seconds: 2);
-    player.position = const Duration(milliseconds: 11000 - 80);
+    for (var ms = 32; ms <= 10000; ms += 32) {
+      now = Duration(milliseconds: ms);
+      final playhead = 1.0 + ms / 1000;
+      player.position = Duration(milliseconds: (11000 + ms) - 150);
+      manager.seekAndPlaySync(playhead, [track], true);
+      await pumpEventQueue();
+    }
+    expect(player.log, isEmpty);
+  });
+
+  test('a jump past half a second is corrected, with one seek', () async {
+    manager.seekAndPlaySync(1.0, [track], true);
+    await pumpEventQueue();
+    player.log.clear();
+
+    now = const Duration(seconds: 3);
+    player.position = const Duration(milliseconds: 11000 - 400);
     manager.seekAndPlaySync(1.0, [track], true);
     await pumpEventQueue();
     expect(player.log, isEmpty);
 
-    // 150 ms out: corrected — the old rule waited for half a second.
-    player.position = const Duration(milliseconds: 11000 - 150);
+    // The seek takes 120 ms. Chasing the playhead with a second one would be
+    // a second click; the start may, since nothing is heard yet.
+    final gate = player.seekGate = Completer<void>();
+    player.position = const Duration(milliseconds: 11000 - 600);
     manager.seekAndPlaySync(1.0, [track], true);
+    now = const Duration(milliseconds: 3120);
+    gate.complete();
     await pumpEventQueue();
     expect(player.log, ['seek 11000']);
   });
 
-  test('corrections are at least 1.5 s apart, the start counting as one', () async {
+  test('corrections are at least 2 s apart, the start counting as one', () async {
     manager.seekAndPlaySync(1.0, [track], true);
     await pumpEventQueue();
     player.log.clear();
 
-    // Just after the start the player is still spinning up: not drift.
-    now = const Duration(milliseconds: 500);
-    player.position = const Duration(milliseconds: 11000 - 300);
+    now = const Duration(milliseconds: 1500);
+    player.position = const Duration(milliseconds: 11000 - 600);
     manager.seekAndPlaySync(1.0, [track], true);
     await pumpEventQueue();
     expect(player.log, isEmpty);
 
-    now = const Duration(milliseconds: 1600);
+    now = const Duration(milliseconds: 2100);
     manager.seekAndPlaySync(1.0, [track], true);
     await pumpEventQueue();
     expect(player.log, ['seek 11000']);

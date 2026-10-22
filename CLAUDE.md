@@ -3518,10 +3518,15 @@ by a test:
   own middle, rounded to the nearest step and held inside the clip; a clip's first and last tiles
   ask for the exact frame (`OPTION_CLOSEST`, cached apart under `exact`), the rest the nearest
   keyframe for speed (`clip_filmstrip_timing_test.dart`).
-- **Imported music started late and stayed late.** `play()` went out with its seek in flight, and
-  while playing drift was corrected only past 0.5 s. It plays once the seek has landed, re-aimed
-  by a short second seek where the playhead moved on meanwhile; drift past 0.1 s is corrected, at
-  most every 1.5 s, the start counting as one (`MusicPlayer`, `audio_player_sync_test.dart`).
+- **Imported music started late.** `play()` went out with its seek in flight. It plays once the
+  seek has landed, re-aimed by a short second seek where the playhead moved on meanwhile — before
+  the start only (`MusicPlayer`, `audio_player_sync_test.dart`). **While it plays, drift is lived
+  with**: only a jump of `kMusicJumpSeconds` (0.5) is corrected, with one seek, at most every 2 s.
+  Device-reported: a first version corrected from 0.1 s, and music, extracted sound and sound
+  effects crackled — the music player always sits a steady tenth or so behind the engine (the time
+  its sound takes to start), so it seeked every 1.5 s, and every seek of a playing track is a
+  click. The overlay sound's lesson, below, unapplied; a test now plays ten seconds of steady lag
+  and requires no seek.
 - **The playhead moved only when a report landed** — about 30 times a second, a step every other
   frame, ~20 px at the closest zoom — and **text appeared, left and animated on those reports**,
   behind the picture. `PlayheadDisplayClock` (`logic/timeline/`) draws the playhead between the
