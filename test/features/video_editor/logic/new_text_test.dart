@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/new_text.dart';
 import 'package:slimshotai/features/video_editor/logic/text_template_catalog.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
-import 'package:slimshotai/features/video_editor/utils/font_utils.dart';
+import 'package:slimshotai/features/fonts/font_names.dart';
 
 /// A new text: empty, at the playhead, and in the app's own default face.
 void main() {
@@ -15,7 +15,7 @@ void main() {
     final text = newText(id: 't', start: start, end: end, canvasSize: canvas);
     expect(text.fontFamily, kNewTextFontFamily);
     // Bundled, so it looks the same offline and on any phone.
-    expect(customBundledFonts, contains(kNewTextFontFamily));
+    expect(kBundledFontNames, contains(kNewTextFontFamily));
     expect(text.text, isEmpty);
     expect((text.startTime, text.endTime), (start, end));
     expect(text.referenceCanvasSize, canvas);

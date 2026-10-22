@@ -4,7 +4,7 @@ import 'package:slimshotai/features/video_editor/logic/text_animation_catalog.da
 import 'package:slimshotai/features/video_editor/logic/text_overlay_geometry.dart';
 import 'package:slimshotai/features/video_editor/logic/text_template_catalog.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
-import 'package:slimshotai/features/video_editor/utils/font_utils.dart';
+import 'package:slimshotai/features/fonts/font_names.dart';
 
 /// Text templates: a complete starting look for a new text, one tap.
 ///
@@ -26,11 +26,12 @@ void main() {
     }
   });
 
+  // A template's face is bundled, or one the server keeps published for it:
+  // any other name would draw in the System font for good.
   test('every font is one the app can load', () {
-    // A family outside `allFonts` resolves through `GoogleFonts.getFont`,
-    // which throws for a name it does not know.
     for (final t in kTextTemplates) {
-      expect(allFonts, contains(t.fontFamily), reason: t.id);
+      expect(isLocalFontName(t.fontFamily) || kServerTemplateFontNames.contains(t.fontFamily), isTrue,
+          reason: t.id);
     }
   });
 

@@ -7,7 +7,7 @@ import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping
 import 'package:slimshotai/features/video_editor/logic/text_animation_catalog.dart';
 import 'package:slimshotai/features/video_editor/logic/text_look.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
-import 'package:slimshotai/features/video_editor/utils/font_utils.dart';
+import 'package:slimshotai/features/fonts/font_names.dart';
 
 /// Caption presets: a whole look and a highlight, one tap. Every rule a preset
 /// could break silently is pinned across the catalog, so one added later
@@ -88,9 +88,12 @@ void main() {
     });
   });
 
+  // A style's face is bundled, or one the server keeps published for it.
   test('every font is one the app can load', () {
     for (final p in kCaptionPresets) {
-      expect(allFonts, contains(p.look.fontFamily), reason: p.id);
+      final font = p.look.fontFamily;
+      expect(isLocalFontName(font) || kServerTemplateFontNames.contains(font), isTrue,
+          reason: p.id);
     }
   });
 

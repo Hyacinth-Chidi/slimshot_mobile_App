@@ -18,7 +18,6 @@ dependencies:
 
   # UI & Animations
   flutter_animate: ^4.5.0
-  google_fonts: ^6.2.1
   animations: ^2.2.0
 
   # State Management & Routing
@@ -104,30 +103,6 @@ flutter:
     - family: Poppins
       fonts:
         - asset: assets/fonts/Poppins-Regular.ttf
-    - family: Ariana Violeta
-      fonts:
-        - asset: assets/fonts/ArianaVioleta-dz2K.ttf
-    - family: Believe It
-      fonts:
-        - asset: assets/fonts/BelieveIt-DvLE.ttf
-    - family: Chrusty Rock
-      fonts:
-        - asset: assets/fonts/ChrustyRock-ORLA.ttf
-    - family: Debrosee
-      fonts:
-        - asset: assets/fonts/Debrosee-ALPnL.ttf
-    - family: New Retro Style 3d
-      fonts:
-        - asset: assets/fonts/Newretrostyle3d-ygjm.ttf
-    - family: Shade Blue
-      fonts:
-        - asset: assets/fonts/ShadeBlue-2OozX.ttf
-    - family: Short Baby
-      fonts:
-        - asset: assets/fonts/ShortBaby-Mg2w.ttf
-    - family: Super Kindly
-      fonts:
-        - asset: assets/fonts/SuperKindly-drE8E.ttf
 
 dev_dependencies:
   flutter_test:

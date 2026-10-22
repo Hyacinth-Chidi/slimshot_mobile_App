@@ -11,9 +11,9 @@ import '../../../support/test_fonts.dart';
 
 /// The templates sheet: pick a starting look for a new text.
 ///
-/// The real catalog's families are Google Fonts, which a test cannot load
-/// (see `flutter_test_config.dart`), so these tests hand the sheet templates
-/// of their own in the bundled test family. That the sheet *defaults* to the
+/// Most of the real catalog's families come from the server, which a test
+/// does not reach, so these tests hand the sheet templates of their own in
+/// the bundled test family. That the sheet *defaults* to the
 /// real catalog is pinned separately, without building a tile.
 void main() {
   const templates = [

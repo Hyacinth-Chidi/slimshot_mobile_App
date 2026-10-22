@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'features/compression/logic/compress_inputs.dart';
@@ -49,7 +48,6 @@ Future<void> main() async {
     AdService.loadInterstitialAd(); // Start background preload immediately
     AdService.loadRewardedAd(); // Start background preload for Rewarded Ads
   }
-  GoogleFonts.config.allowRuntimeFetching = true;
 
   final prefs = await SharedPreferences.getInstance();
   final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;

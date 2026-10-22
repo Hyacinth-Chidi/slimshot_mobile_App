@@ -8,7 +8,7 @@ import 'package:slimshotai/features/video_editor/logic/captions/caption_settings
 import 'package:slimshotai/features/video_editor/logic/captions/caption_word.dart';
 import 'package:slimshotai/features/video_editor/logic/text_look.dart';
 import 'package:slimshotai/features/video_editor/logic/text_overlay_geometry.dart';
-import 'package:slimshotai/features/video_editor/utils/font_utils.dart';
+import 'package:slimshotai/features/fonts/font_names.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/providers/video_editor_notifier.dart';
@@ -94,8 +94,7 @@ void main() {
       expect(c.fontFamily, 'Montserrat Bold');
       // Bundled, not fetched: a caption must look the same offline, and on a
       // phone whose system face is not the one the download would have been.
-      expect(isCustomFont(c.fontFamily), isTrue);
-      expect(allFonts, contains(c.fontFamily));
+      expect(kBundledFontNames, contains(c.fontFamily));
       expect(c.color, const Color(0xFFFFFFFF));
       expect(c.shadowColor, const Color(0xFF000000));
       expect(c.backgroundColor.a, 0);

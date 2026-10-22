@@ -57,7 +57,8 @@ class TextTemplate {
   /// What the tile shows — never inserted. See the class comment.
   final String sampleText;
 
-  /// One of `allFonts`, or the app cannot load it.
+  /// Bundled, or one of `kServerTemplateFontNames`, which the server keeps
+  /// published for the templates.
   final String fontFamily;
 
   final Color color;

@@ -1,23 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../fonts/font_names.dart';
-
-/// The fonts bundled in the app. **Goes in Task 11 of the server-fonts plan**
-/// with its last users; read `kBundledFontNames`.
-const List<String> customBundledFonts = kBundledFontNames;
-
-/// Every font the built-in looks name. **Goes in Task 11** with its last
-/// users; the Font tab lists the server's fonts.
-const List<String> allFonts = [
-  kSystemFontName,
-  ...kBundledFontNames,
-  ...kServerTemplateFontNames,
-];
-
-/// Whether [fontFamily] needs no download. **Goes in Task 11**; read
-/// `isLocalFontName`.
-bool isCustomFont(String fontFamily) => isLocalFontName(fontFamily);
-
 /// The style a text in [fontFamily] draws with.
 ///
 /// **One plain `TextStyle`, at once** — the text geometry measures during
