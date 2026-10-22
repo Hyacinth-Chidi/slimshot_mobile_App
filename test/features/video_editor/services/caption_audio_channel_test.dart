@@ -136,28 +136,6 @@ void main() {
     expect(calls.single.method, 'cancelCaptionAudio');
   });
 
-  test('export waits for fonts still loading before it draws any text',
-      () async {
-    final fonts = Completer<void>();
-    answer = (_) async => {
-          'outputPath': '/tmp/o.mp4',
-          'durationSeconds': 5.0,
-          'frameCount': 150,
-          'degradedTransitions': 0,
-        };
-    final export = NativeTimelinePreviewService(fontsReady: () => fonts.future)
-        .exportVideo(state, outputPath: '/tmp/o.mp4');
-    await Future<void>.delayed(Duration.zero);
-    expect(
-      calls,
-      isEmpty,
-      reason: 'nothing may be rasterised before fonts land',
-    );
-    fonts.complete();
-    await export;
-    expect(calls.single.method, 'exportVideo');
-  });
-
   group('a font is never a reason an export fails', () {
     const exported = {
       'outputPath': '/tmp/o.mp4',
@@ -166,24 +144,15 @@ void main() {
       'degradedTransitions': 0,
     };
 
-    test('a font that failed to load still exports', () async {
+    test('a registration that throws still exports', () async {
       answer = (_) async => exported;
       final warnings = <String>[];
       final result = await NativeTimelinePreviewService(
-        fontsReady: () async => throw Exception('Failed to load font'),
+        registerFonts: (_) async => throw Exception('Failed to load font'),
       ).exportVideo(state, outputPath: '/tmp/o.mp4', onWarning: warnings.add);
       expect(result.outputPath, '/tmp/o.mp4');
       expect(calls.single.method, 'exportVideo');
-      expect(warnings, isEmpty, reason: 'this project draws no text');
-    });
-
-    test('a font that never loads does not stall the export', () async {
-      answer = (_) async => exported;
-      final result = await NativeTimelinePreviewService(
-        fontsReady: () => Completer<void>().future,
-        fontsTimeout: const Duration(milliseconds: 20),
-      ).exportVideo(state, outputPath: '/tmp/o.mp4');
-      expect(result.outputPath, '/tmp/o.mp4');
+      expect(warnings, isEmpty);
     });
   });
 }

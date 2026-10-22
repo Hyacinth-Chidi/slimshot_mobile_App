@@ -5,8 +5,8 @@ import 'dart:ui';
 
 import 'package:characters/characters.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 
+import '../../fonts/font_registry.dart';
 import '../logic/effects/effect_preview_atlases.dart';
 import '../logic/effects/effect_preview_layout.dart';
 import '../logic/captions/caption_settings.dart';
@@ -18,7 +18,6 @@ import '../models/editor_timeline.dart';
 import '../models/text_overlay_model.dart';
 import '../models/video_editor_state.dart';
 import 'caption_audio_result.dart';
-import 'export_fonts.dart';
 import 'text_atlas_overlay.dart';
 import 'text_overlay_rasterizer.dart';
 
@@ -31,26 +30,20 @@ class NativeTimelinePreviewService {
     EventChannel? playbackEventChannel,
     VideoEditorTimelineComposer timelineComposer =
         const VideoEditorTimelineComposer(),
-    Future<void> Function()? fontsReady,
-    Duration fontsTimeout = kExportFontWait,
+    Future<void> Function(Iterable<String> fontNames)? registerFonts,
   })  : _methodChannel = methodChannel ??
             const MethodChannel('slimshot_ai/native_timeline_preview'),
         _playbackEventChannel = playbackEventChannel ?? _defaultEventChannel,
         _timelineComposer = timelineComposer,
-        _fontsReady = fontsReady ?? _pendingFonts,
-        _fontsTimeout = fontsTimeout;
+        _registerFonts = registerFonts ?? registerFontsOnPhone;
 
   final MethodChannel _methodChannel;
   final EventChannel _playbackEventChannel;
   final VideoEditorTimelineComposer _timelineComposer;
 
-  /// Completes once every font a text may use has finished loading.
-  final Future<void> Function() _fontsReady;
-  final Duration _fontsTimeout;
-
-  static Future<void> _pendingFonts() async {
-    await GoogleFonts.pendingFonts();
-  }
+  /// Registers the project's text fonts that are on the phone, so no text
+  /// whose font is here can be drawn in the fallback.
+  final Future<void> Function(Iterable<String> fontNames) _registerFonts;
 
   Stream<NativeTimelinePreviewEvent>? _events;
 
@@ -313,14 +306,13 @@ class NativeTimelinePreviewService {
     int targetShortSidePx = 1080,
     void Function(String message)? onWarning,
   }) async {
-    // A font still downloading when export starts would be rasterised in the
-    // fallback face while the preview shows the real one. The wait is bounded
-    // and cannot fail the export (`awaitExportFonts`); going ahead without a
-    // font is said, not hidden.
-    final fontsLoaded =
-        await awaitExportFonts(_fontsReady, limit: _fontsTimeout);
-    final fontWarning = exportFontWarning(state, fontsLoaded: fontsLoaded);
-    if (fontWarning != null) onWarning?.call(fontWarning);
+    // No waiting for downloads: a font is applied only once it is on the
+    // phone, so the export draws what the canvas draws. What it does need is
+    // every font that *is* here registered (a local read, milliseconds) —
+    // and a registration that fails is never a reason an export fails.
+    try {
+      await _registerFonts(state.textOverlays.map((t) => t.fontFamily));
+    } catch (_) {}
 
     // Text is rasterised by Flutter's own text engine and handed to the
     // native overlay pass as images — reimplementing text layout in Android

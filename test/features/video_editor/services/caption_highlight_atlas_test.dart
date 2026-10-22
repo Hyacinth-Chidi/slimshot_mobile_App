@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -240,9 +241,13 @@ void main() {
 
     tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-    Future<List<String>> export(TextOverlayModel text) async {
+    Future<List<String>> export(
+      TextOverlayModel text, {
+      Future<void> Function(Iterable<String> fontNames)? registerFonts,
+    }) async {
       final warnings = <String>[];
-      await NativeTimelinePreviewService(fontsReady: () async {}).exportVideo(
+      await NativeTimelinePreviewService(registerFonts: registerFonts ?? (_) async {})
+          .exportVideo(
         VideoEditorState(
           assets: const [
             MediaAsset(
@@ -264,6 +269,29 @@ void main() {
       );
       return warnings;
     }
+
+    test("export registers the project's text fonts before it rasterises", () async {
+      final gate = Completer<void>();
+      final registered = <String>[];
+      final exporting = export(
+        caption().copyWith(fontFamily: 'Playfair Display'),
+        registerFonts: (names) {
+          registered.addAll(names);
+          return gate.future;
+        },
+      );
+      // Real time, generously: an export that did not wait would rasterise
+      // and reach the engine well inside it.
+      var finished = false;
+      unawaited(exporting.then((_) => finished = true));
+      await Future.any([exporting, Future<void>.delayed(const Duration(seconds: 2))]);
+      expect(registered, ['Playfair Display']);
+      expect(finished, isFalse, reason: 'the export waits for the registration');
+      expect(sent, isEmpty, reason: 'nothing is drawn before the fonts are registered');
+      gate.complete();
+      await exporting;
+      expect(sent, hasLength(1));
+    });
 
     test('a boxed text now takes the atlas, its box drawn as one quad', () async {
       final warnings = await export(

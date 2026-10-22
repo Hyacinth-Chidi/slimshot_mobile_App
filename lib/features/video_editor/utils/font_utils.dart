@@ -1,58 +1,30 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-/// Custom fonts bundled in assets/fonts/ and registered in pubspec.yaml.
-/// These use TextStyle(fontFamily: ...) directly, NOT GoogleFonts.getFont().
-const List<String> customBundledFonts = [
-  'Montserrat Bold',
-  'Ariana Violeta',
-  'Believe It',
-  'Chrusty Rock',
-  'Debrosee',
-  'New Retro Style 3d',
-  'Shade Blue',
-  'Short Baby',
-  'Super Kindly',
-];
+import '../../fonts/font_names.dart';
 
-/// Google Fonts that are loaded on-demand via the google_fonts package.
-const List<String> googleFontsList = [
-  'Roboto',
-  'Montserrat',
-  'Lato',
-  'Oswald',
-  'Bebas Neue',
-  'Playfair Display',
-  'Pacifico',
-  'Dancing Script',
-  'Poppins',
-  'Raleway',
-  'Inter',
-  'Nunito',
-  'Lobster',
-  'Caveat',
-  'Abril Fatface',
-  'Righteous',
-  'Permanent Marker',
-  'Press Start 2P',
-  'Cinzel',
-  'Sacramento',
-];
+/// The fonts bundled in the app. **Goes in Task 11 of the server-fonts plan**
+/// with its last users; read `kBundledFontNames`.
+const List<String> customBundledFonts = kBundledFontNames;
 
-/// Combined list: Google Fonts first, then custom bundled fonts.
+/// Every font the built-in looks name. **Goes in Task 11** with its last
+/// users; the Font tab lists the server's fonts.
 const List<String> allFonts = [
-  ...googleFontsList,
-  ...customBundledFonts,
+  kSystemFontName,
+  ...kBundledFontNames,
+  ...kServerTemplateFontNames,
 ];
 
-/// Returns true if the font is a custom bundled font (not a Google Font).
-bool isCustomFont(String fontFamily) {
-  return customBundledFonts.contains(fontFamily);
-}
+/// Whether [fontFamily] needs no download. **Goes in Task 11**; read
+/// `isLocalFontName`.
+bool isCustomFont(String fontFamily) => isLocalFontName(fontFamily);
 
-/// Returns a TextStyle that works for both Google Fonts and custom bundled fonts.
-/// For Google Fonts, it uses GoogleFonts.getFont().
-/// For custom bundled fonts, it uses TextStyle(fontFamily: ...).
+/// The style a text in [fontFamily] draws with.
+///
+/// **One plain `TextStyle`, at once** — the text geometry measures during
+/// layout, so this cannot wait. A bundled font is in the app; a server font
+/// is registered under its name once it is on the phone (`FontRegistry`);
+/// until then the engine draws the System font, and the text is laid out
+/// again when the font lands.
 TextStyle getFontStyle(
   String fontFamily, {
   double? fontSize,
@@ -63,21 +35,8 @@ TextStyle getFontStyle(
   Paint? foreground,
   double? letterSpacing,
 }) {
-  if (isCustomFont(fontFamily)) {
-    return TextStyle(
-      fontFamily: fontFamily,
-      fontSize: fontSize,
-      color: foreground == null ? color : null,
-      fontWeight: fontWeight,
-      height: height,
-      shadows: shadows,
-      foreground: foreground,
-      letterSpacing: letterSpacing,
-    );
-  }
-
-  return GoogleFonts.getFont(
-    fontFamily,
+  return TextStyle(
+    fontFamily: fontFamily,
     fontSize: fontSize,
     color: foreground == null ? color : null,
     fontWeight: fontWeight,
