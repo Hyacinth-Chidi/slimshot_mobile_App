@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -135,6 +136,12 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
   final String inputPath;
   final double durationSeconds;
   final double timelinePositionSeconds;
+
+  /// The playhead as drawn, every frame while the engine plays
+  /// (`PlayheadDisplayClock`). Given, the timeline scrolls to it and to
+  /// nothing else: [timelinePositionSeconds] arrives in reports behind it and
+  /// would pull the track back a little each time.
+  final ValueListenable<double>? playhead;
   final RangeValues trimRange;
   final List<VideoSegment> segments;
   final String? selectedSegmentId;
@@ -235,6 +242,7 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
     required this.inputPath,
     required this.durationSeconds,
     this.timelinePositionSeconds = 0.0,
+    this.playhead,
     required this.trimRange,
     this.segments = const [],
     this.selectedSegmentId,
@@ -493,6 +501,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    widget.playhead?.addListener(_followPlayhead);
+  }
+
+  void _followPlayhead() => _syncScrollToTimelinePosition(widget.playhead!.value);
+
+  @override
   void didUpdateWidget(covariant ScrollableTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.inputPath != widget.inputPath) {
@@ -501,13 +517,19 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       }
     }
 
-    if (oldWidget.timelinePositionSeconds != widget.timelinePositionSeconds) {
+    if (oldWidget.playhead != widget.playhead) {
+      oldWidget.playhead?.removeListener(_followPlayhead);
+      widget.playhead?.addListener(_followPlayhead);
+    }
+    if (widget.playhead == null &&
+        oldWidget.timelinePositionSeconds != widget.timelinePositionSeconds) {
       _syncScrollToTimelinePosition(widget.timelinePositionSeconds);
     }
   }
 
   @override
   void dispose() {
+    widget.playhead?.removeListener(_followPlayhead);
     _reorderAutoScrollTimer?.cancel();
     _scrollController.dispose();
     _verticalScrollController.dispose();

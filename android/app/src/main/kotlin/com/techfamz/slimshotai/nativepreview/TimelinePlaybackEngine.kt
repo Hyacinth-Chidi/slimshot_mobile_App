@@ -733,7 +733,14 @@ internal class TimelinePlaybackEngine(
         // engine was already parked, has to end the tail's clock too.
         lastTailClockMs = 0L
         overlayAudio.pauseAll()
-        emit("paused", "isReady" to isReady)
+        // Where the picture stopped. The editor's last position event is up
+        // to an interval behind it, and its playhead lands here instead — so
+        // a pause leaves the playhead, the picture and the next play agreeing.
+        emit(
+            "paused",
+            "isReady" to isReady,
+            "positionSeconds" to timelinePositionSeconds(),
+        )
     }
 
     fun setVolume(newVolume: Float) {
@@ -1560,10 +1567,15 @@ internal class TimelinePlaybackEngine(
         val nowMs = SystemClock.elapsedRealtime()
         if (nowMs - lastPositionEventMs < POSITION_EVENT_INTERVAL_MS) return
         lastPositionEventMs = nowMs
+        val advancing = lanes.getOrNull(masterLane)?.player?.isPlaying == true
         onEvent(
             mapOf(
                 "type" to "position",
-                "positionSeconds" to smoothedPosition(position, nowMs),
+                "positionSeconds" to smoothedPosition(position, nowMs, advancing),
+                // The editor draws its playhead on between these events only
+                // while the picture is moving — the same test the smoothing
+                // below makes, so the two can never disagree.
+                "advancing" to advancing,
             ),
         )
     }
@@ -1583,7 +1595,7 @@ internal class TimelinePlaybackEngine(
      * picture is stopped. The result is also held monotonic, so a coarse
      * update landing behind the estimate cannot make it jump backwards.
      */
-    private fun smoothedPosition(raw: Double, nowMs: Long): Double {
+    private fun smoothedPosition(raw: Double, nowMs: Long, masterPlaying: Boolean): Double {
         if (clockSampleSeconds.isNaN() ||
             abs(raw - clockSampleSeconds) > CLOCK_SAMPLE_EPSILON
         ) {
@@ -1591,7 +1603,7 @@ internal class TimelinePlaybackEngine(
             clockSampleAtMs = nowMs
         }
 
-        val advancing = isPlaying && lanes.getOrNull(masterLane)?.player?.isPlaying == true
+        val advancing = isPlaying && masterPlaying
         if (!advancing) {
             lastEmittedPositionSeconds = raw
             return raw

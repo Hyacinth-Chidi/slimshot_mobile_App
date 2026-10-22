@@ -3503,6 +3503,47 @@ source seconds through the clip's speed, so the pull feels the same on a sped cl
 fires once on arrival (`_trimSnapped`), not on every frame held there. `snapToNearest` is
 unit-agnostic so the two feel identical.
 
+#### Timing — what the playhead points at, and when
+
+**Awaiting device verification.** From a check of everything that has to agree on an instant —
+the picture, the playhead, the filmstrip, the bars, the music, the text. Five faults, each pinned
+by a test:
+
+- **The playhead line was 4.25 px late** (85 ms at the default zoom): the column holding the line
+  and its triangle was placed by the line's width but centred the line on the triangle's. The
+  column is centred on the playback instant now (`timeline_playhead_alignment_test.dart`).
+- **A filmstrip tile showed a frame from before itself**: its left edge rounded *down* to the
+  200 ms grid — for a clip's first tile after a split, a frame from across the cut — and the
+  extractor then moved to the nearest keyframe, which can lie across the cut too. A tile shows its
+  own middle, rounded to the nearest step and held inside the clip; a clip's first and last tiles
+  ask for the exact frame (`OPTION_CLOSEST`, cached apart under `exact`), the rest the nearest
+  keyframe for speed (`clip_filmstrip_timing_test.dart`).
+- **Imported music started late and stayed late.** `play()` went out with its seek in flight, and
+  while playing drift was corrected only past 0.5 s. It plays once the seek has landed, re-aimed
+  by a short second seek where the playhead moved on meanwhile; drift past 0.1 s is corrected, at
+  most every 1.5 s, the start counting as one (`MusicPlayer`, `audio_player_sync_test.dart`).
+- **The playhead moved only when a report landed** — about 30 times a second, a step every other
+  frame, ~20 px at the closest zoom — and **text appeared, left and animated on those reports**,
+  behind the picture. `PlayheadDisplayClock` (`logic/timeline/`) draws the playhead between the
+  engine's reports, every frame, from the screen's ticker into `_drawnPlayhead`; the timeline
+  scrolls to it (`ScrollableTimeline.playhead`) and text is drawn at it
+  (`TextOverlayLayer.playhead`). **It writes nothing** — the reports stay the playhead state's only
+  writer, dead-ends entry 12. It moves only while the engine says its picture is moving
+  (`advancing` on the position event, the very test the engine's own smoothing makes), at most
+  `kPlayheadMaxExtrapolationSeconds` (0.1) past the last report, and never back for a report that
+  lands late. Given it, the timeline follows it alone: the reports, arriving behind it, would pull
+  the track back a little thirty times a second (`timeline_drawn_playhead_test.dart`, checked by
+  putting the old sync back).
+- **A pause lands on the frame the engine stopped on.** The `paused` event carries the engine's
+  position and the playhead takes it, unless something moved the playhead since (`_pauseFrom`) —
+  without the move the drawn playhead, a little ahead, would jump back on every pause. Putting the
+  playhead there does not seek the engine onto the frame it already shows (`_engineParkedAt`).
+
+**Not fixed, and only a device can measure it:** the picture and the sound leave the phone through
+pipelines of different latency (display versus audio output, Bluetooth the worst), which nothing
+in the app sees. The drawn playhead also trails the engine by the platform channel's own delay, a
+few milliseconds.
+
 #### Reordering clips
 
 Drag-and-drop lives in `ScrollableTimeline`. The shape of it:

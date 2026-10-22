@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/lucide_icons.dart';
@@ -42,11 +43,18 @@ class TextOverlayLayer extends ConsumerStatefulWidget {
   final void Function(TextOverlayModel, bool) onShowTextEditor;
   final int? targetLaneIndex;
 
+  /// The playhead as drawn, every frame while the engine plays. Given, text
+  /// appears, leaves and animates at it — in step with the picture and the
+  /// timeline — rather than at the last position report, which lands behind
+  /// both and half as often.
+  final ValueListenable<double>? playhead;
+
   const TextOverlayLayer({
     super.key,
     required this.videoCanvasSize,
     required this.onShowTextEditor,
     this.targetLaneIndex,
+    this.playhead,
   });
 
   @override
@@ -90,12 +98,27 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
   void initState() {
     super.initState();
     FontRegistry.instance.changes.addListener(_onFontRegistered);
+    widget.playhead?.addListener(_onPlayheadMoved);
+  }
+
+  @override
+  void didUpdateWidget(covariant TextOverlayLayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playhead != widget.playhead) {
+      oldWidget.playhead?.removeListener(_onPlayheadMoved);
+      widget.playhead?.addListener(_onPlayheadMoved);
+    }
   }
 
   @override
   void dispose() {
     FontRegistry.instance.changes.removeListener(_onFontRegistered);
+    widget.playhead?.removeListener(_onPlayheadMoved);
     super.dispose();
+  }
+
+  void _onPlayheadMoved() {
+    if (mounted) setState(() {});
   }
 
   /// A font that lands measures differently from the System face it stood
@@ -109,7 +132,8 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
   Widget build(BuildContext context) {
     final editorState = ref.watch(videoEditorProvider);
     final canvasSize = widget.videoCanvasSize;
-    final currentPosMs = (editorState.currentPlaybackPosition * 1000).toInt();
+    final position = widget.playhead?.value ?? editorState.currentPlaybackPosition;
+    final currentPosMs = (position * 1000).toInt();
 
     final children = <Widget>[];
     Widget? selectedFrame;
@@ -124,7 +148,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
       if (currentPosMs < startMs || currentPosMs >= endMs) continue;
 
       // Where its keyframes put it now — the text itself when it has none.
-      final shown = overlay.shownAt(editorState.currentPlaybackPosition);
+      final shown = overlay.shownAt(position);
       final layout = TextOverlayLayout.measure(shown, canvasSize);
       final center = textOverlayCenter(shown, canvasSize, layout.canvasScale);
       final isSelected = overlay.id == editorState.selectedTextId;
@@ -135,7 +159,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
           layout,
           center,
           isSelected,
-          editorState.currentPlaybackPosition,
+          position,
         ),
       );
       if (isSelected) {

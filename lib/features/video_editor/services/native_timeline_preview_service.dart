@@ -820,6 +820,7 @@ class NativeTimelinePreviewEvent {
   const NativeTimelinePreviewEvent({
     required this.type,
     this.positionSeconds,
+    this.advancing = false,
     this.isReady,
     this.message,
     this.progress,
@@ -827,6 +828,12 @@ class NativeTimelinePreviewEvent {
 
   final String type;
   final double? positionSeconds;
+
+  /// On `position` events: whether the engine's picture is moving — its
+  /// master lane genuinely playing, not buffering or stalled. The drawn
+  /// playhead runs on between reports only while this holds; an event that
+  /// does not say is read as still.
+  final bool advancing;
   final bool? isReady;
   final String? message;
 
@@ -844,6 +851,7 @@ class NativeTimelinePreviewEvent {
     return NativeTimelinePreviewEvent(
       type: event['type'] as String? ?? 'unknown',
       positionSeconds: (event['positionSeconds'] as num?)?.toDouble(),
+      advancing: event['advancing'] == true,
       isReady: event['isReady'] as bool?,
       message: event['message'] as String?,
       progress: (event['progress'] as num?)?.toDouble(),
