@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../core/theme/app_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import '../core/theme/lucide_icons.dart';
@@ -214,9 +214,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                       ).createShader(bounds),
-                                  child: Text(
+                                  child: const Text(
                                     'SlimShot AI',
-                                    style: GoogleFonts.plusJakartaSans(
+                                    style: TextStyle(fontFamily: kInterfaceFontFamily, 
                                       fontSize: 28,
                                       fontWeight: FontWeight.w800,
                                       letterSpacing: -0.5,
@@ -269,15 +269,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 32),
 
                           // Recent Drafts Placeholder Section
-                          Padding(
-                                padding: const EdgeInsets.symmetric(
+                          const Padding(
+                                padding: EdgeInsets.symmetric(
                                   horizontal: 4,
                                 ),
                                 child: Row(
                                   children: [
                                     Text(
                                       'Recent Drafts',
-                                      style: GoogleFonts.plusJakartaSans(
+                                      style: TextStyle(fontFamily: kInterfaceFontFamily, 
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
                                         color: AppColors.textPrimary,
@@ -301,22 +301,22 @@ class _HomeScreenState extends State<HomeScreen> {
                           else if (_recentDrafts.isEmpty)
                             FrostedGlass(
                                   borderRadius: BorderRadius.circular(16),
-                                  child: SizedBox(
+                                  child: const SizedBox(
                                     height: 120,
                                     child: Center(
                                       child: Column(
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
-                                          const Icon(
+                                          Icon(
                                             LucideIcons.inbox,
                                             color: AppColors.textTertiary,
                                             size: 32,
                                           ),
-                                          const SizedBox(height: 8),
+                                          SizedBox(height: 8),
                                           Text(
                                             'Your recent video drafts will appear here',
-                                            style: GoogleFonts.plusJakartaSans(
+                                            style: TextStyle(fontFamily: kInterfaceFontFamily, 
                                               fontSize: 13,
                                               color: AppColors.textSecondary,
                                             ),
@@ -393,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Text(
                 timeago.format(draft.updatedAt),
-                style: GoogleFonts.plusJakartaSans(
+                style: const TextStyle(fontFamily: kInterfaceFontFamily, 
                   fontSize: 11,
                   color: AppColors.textSecondary,
                 ),
@@ -506,7 +506,7 @@ class _GridActionCardState extends State<_GridActionCard> {
                       Text(
                         widget.title,
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.plusJakartaSans(
+                        style: const TextStyle(fontFamily: kInterfaceFontFamily, 
                           fontSize: 13,
                           height: 1.2, // Tighter line height for multiline text
                           fontWeight: FontWeight.bold,
@@ -633,9 +633,9 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
+                                const Text(
                                   'Edit New',
-                                  style: GoogleFonts.plusJakartaSans(
+                                  style: TextStyle(fontFamily: kInterfaceFontFamily, 
                                     fontSize: 26,
                                     height: 1.1,
                                     fontWeight: FontWeight.bold,
@@ -647,9 +647,9 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                                   shaderCallback: (bounds) => AppColors
                                       .lightAccentGradient
                                       .createShader(bounds),
-                                  child: Text(
+                                  child: const Text(
                                     'Video',
-                                    style: GoogleFonts.plusJakartaSans(
+                                    style: TextStyle(fontFamily: kInterfaceFontFamily, 
                                       fontSize: 26,
                                       height: 1.1,
                                       fontWeight: FontWeight.bold,
@@ -659,7 +659,7 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                                 const SizedBox(height: 12),
                                 Text(
                                   'Create, edit and share amazing videos',
-                                  style: GoogleFonts.plusJakartaSans(
+                                  style: TextStyle(fontFamily: kInterfaceFontFamily, 
                                     fontSize: 12,
                                     height: 1.4,
                                     color: AppColors.textPrimary.withValues(

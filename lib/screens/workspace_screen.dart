@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../core/theme/app_fonts.dart';
 import '../core/theme/lucide_icons.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
@@ -78,19 +78,19 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                 child: const Icon(LucideIcons.trash2, color: AppColors.error, size: 24),
               ),
               const SizedBox(height: 16),
-              Text(
+              const Text(
                 'Delete Draft?',
-                style: GoogleFonts.plusJakartaSans(
+                style: TextStyle(fontFamily: kInterfaceFontFamily, 
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.bold,
                   fontSize: 17,
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
+              const Text(
                 'This action cannot be undone.',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.plusJakartaSans(
+                style: TextStyle(fontFamily: kInterfaceFontFamily, 
                   color: AppColors.textSecondary,
                   fontSize: 13,
                 ),
@@ -106,7 +106,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      child: Text('Cancel', style: GoogleFonts.plusJakartaSans(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
+                      child: const Text('Cancel', style: TextStyle(fontFamily: kInterfaceFontFamily, color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 14)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -118,7 +118,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      child: Text('Delete', style: GoogleFonts.plusJakartaSans(color: AppColors.error, fontWeight: FontWeight.bold, fontSize: 14)),
+                      child: const Text('Delete', style: TextStyle(fontFamily: kInterfaceFontFamily, color: AppColors.error, fontWeight: FontWeight.bold, fontSize: 14)),
                     ),
                   ),
                 ],
@@ -173,11 +173,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                     child: Row(
                       children: [
                         const SizedBox(width: 44),
-                        Expanded(
+                        const Expanded(
                           child: Text(
                             'Workspace',
                             textAlign: TextAlign.center,
-                            style: GoogleFonts.plusJakartaSans(
+                            style: TextStyle(fontFamily: kInterfaceFontFamily, 
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
                               color: AppColors.textPrimary,
@@ -246,18 +246,18 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          Text(
+          const Text(
             'Your Workspace is Empty',
-            style: GoogleFonts.plusJakartaSans(
+            style: TextStyle(fontFamily: kInterfaceFontFamily, 
               fontSize: 20,
               fontWeight: FontWeight.bold,
               color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          const Text(
             'Saved video drafts will appear here',
-            style: GoogleFonts.plusJakartaSans(
+            style: TextStyle(fontFamily: kInterfaceFontFamily, 
               fontSize: 14,
               color: AppColors.textSecondary,
             ),
@@ -326,7 +326,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                   color: AppColors.surface.withValues(alpha: 0.9),
                   child: Text(
                     timeago.format(draft.updatedAt),
-                    style: GoogleFonts.plusJakartaSans(
+                    style: const TextStyle(fontFamily: kInterfaceFontFamily, 
                       fontSize: 11,
                       color: AppColors.textSecondary,
                     ),

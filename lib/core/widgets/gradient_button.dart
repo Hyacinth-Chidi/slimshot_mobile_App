@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../theme/app_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/app_colors.dart';
 
@@ -102,7 +102,7 @@ class _GradientButtonState extends State<GradientButton> {
                       if (widget.title != null)
                         Text(
                           widget.title!,
-                          style: GoogleFonts.plusJakartaSans(
+                          style: const TextStyle(fontFamily: kInterfaceFontFamily, 
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.bold,

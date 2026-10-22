@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../core/theme/app_fonts.dart';
 import '../core/theme/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -83,9 +83,9 @@ class UpdateScreen extends StatelessWidget {
 
                     const SizedBox(height: 32),
 
-                    Text(
+                    const Text(
                       'New Update Available!',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: TextStyle(fontFamily: kInterfaceFontFamily, 
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
                         color: AppColors.textPrimary,
@@ -114,7 +114,7 @@ class UpdateScreen extends StatelessWidget {
                       ),
                       child: Text(
                         'v${updateInfo.latestVersion}',
-                        style: GoogleFonts.plusJakartaSans(
+                        style: const TextStyle(fontFamily: kInterfaceFontFamily, 
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: AppColors.primaryStart,
@@ -137,9 +137,9 @@ class UpdateScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          const Text(
                             "What's New",
-                            style: GoogleFonts.plusJakartaSans(
+                            style: TextStyle(fontFamily: kInterfaceFontFamily, 
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                               color: AppColors.textPrimary,
@@ -170,7 +170,7 @@ class UpdateScreen extends StatelessWidget {
                                   Expanded(
                                     child: Text(
                                       note,
-                                      style: GoogleFonts.plusJakartaSans(
+                                      style: const TextStyle(fontFamily: kInterfaceFontFamily, 
                                         fontSize: 14,
                                         color: AppColors.textSecondary,
                                         height: 1.4,
@@ -212,9 +212,9 @@ class UpdateScreen extends StatelessWidget {
                             vertical: 12,
                           ),
                         ),
-                        child: Text(
+                        child: const Text(
                           'Skip for now',
-                          style: GoogleFonts.plusJakartaSans(
+                          style: TextStyle(fontFamily: kInterfaceFontFamily, 
                             fontSize: 14,
                             color: AppColors.textSecondary,
                             fontWeight: FontWeight.w500,

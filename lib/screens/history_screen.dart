@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../core/theme/app_fonts.dart';
 import '../core/theme/lucide_icons.dart';
 
 import '../core/models/history_item.dart';
@@ -105,9 +105,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    Text(
+                    const Text(
                       'History',
-                      style: GoogleFonts.plusJakartaSans(
+                      style: TextStyle(fontFamily: kInterfaceFontFamily, 
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,

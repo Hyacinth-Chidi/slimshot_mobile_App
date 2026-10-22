@@ -24,6 +24,18 @@ void main() {
     }
   });
 
+  test('the bundled fonts carry their OFL notices', () async {
+    registerThirdPartyLicences();
+    final entries = await LicenseRegistry.licenses.toList();
+    for (final font in ['Montserrat', 'Bebas Neue', 'Poppins', 'Plus Jakarta Sans']) {
+      final notices = entries.where((e) => e.packages.contains(font)).toList();
+      expect(notices, hasLength(1), reason: font);
+      final text = notices.single.paragraphs.map((p) => p.text).join('\n');
+      expect(text, contains('SIL Open Font License'), reason: font);
+      expect(text, contains('Copyright'), reason: font);
+    }
+  });
+
   testWidgets('the licences open on the root navigator, over the tabs', (tester) async {
     final root = GlobalKey<NavigatorState>();
     await tester.pumpWidget(MaterialApp(

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../core/theme/app_fonts.dart';
 import '../core/theme/app_colors.dart';
 
 class MainShellScreen extends StatelessWidget {
@@ -150,7 +150,7 @@ class _NavBarItem extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 label,
-                style: GoogleFonts.plusJakartaSans(
+                style: const TextStyle(fontFamily: kInterfaceFontFamily, 
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: activeColor,

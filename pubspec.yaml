@@ -83,13 +83,27 @@ flutter:
     - family: Plus Jakarta Sans
       fonts:
         - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
         - asset: assets/fonts/PlusJakartaSans-Bold.ttf
           weight: 700
+        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800
     # The caption default. Bundled so captions look the same offline and on
     # every phone; a weight is a family of its own here.
     - family: Montserrat Bold
       fonts:
         - asset: assets/fonts/Montserrat-Bold.ttf
+    # Bundled beside Montserrat Bold so templates and caption styles have
+    # them offline; every other font comes from SlimShot's server.
+    - family: Bebas Neue
+      fonts:
+        - asset: assets/fonts/BebasNeue-Regular.ttf
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
     - family: Ariana Violeta
       fonts:
         - asset: assets/fonts/ArianaVioleta-dz2K.ttf

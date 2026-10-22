@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../core/theme/app_fonts.dart';
 import 'package:go_router/go_router.dart';
 import '../core/theme/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -156,9 +156,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           colorFilter: const ColorFilter.mode(AppColors.textPrimary, BlendMode.srcIn),
                         ),
                         const SizedBox(width: 8),
-                        Text(
+                        const Text(
                           'SlimShot AI',
-                          style: GoogleFonts.plusJakartaSans(
+                          style: TextStyle(fontFamily: kInterfaceFontFamily, 
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: AppColors.textPrimary,
@@ -238,7 +238,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 ],
                               ),
                               textAlign: TextAlign.center,
-                              style: GoogleFonts.plusJakartaSans(
+                              style: const TextStyle(fontFamily: kInterfaceFontFamily, 
                                 fontSize: 28, // Reduced from 36
                                 fontWeight: FontWeight.w800,
                                 color: AppColors.textPrimary,
@@ -255,7 +255,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             Text(
                               page.description,
                               textAlign: TextAlign.center,
-                              style: GoogleFonts.plusJakartaSans(
+                              style: const TextStyle(fontFamily: kInterfaceFontFamily, 
                                 fontSize: 14, // Reduced from 16
                                 color: AppColors.textSecondary,
                                 height: 1.4,
@@ -288,9 +288,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           style: TextButton.styleFrom(
                             foregroundColor: AppColors.textSecondary,
                           ),
-                          child: Text(
+                          child: const Text(
                             'Skip',
-                            style: GoogleFonts.plusJakartaSans(
+                            style: TextStyle(fontFamily: kInterfaceFontFamily, 
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -349,7 +349,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             children: [
                               Text(
                                 _currentPage == _pages.length - 1 ? 'Get Started' : 'Next',
-                                style: GoogleFonts.plusJakartaSans(
+                                style: const TextStyle(fontFamily: kInterfaceFontFamily, 
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
