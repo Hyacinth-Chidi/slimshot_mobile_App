@@ -124,16 +124,44 @@ class _ClipFilmstripState extends State<ClipFilmstrip> {
 
   int get _tileCount => (_spanSeconds / _tileSeconds).ceil().clamp(1, 4000);
 
-  /// Source time for tile [index], snapped to the cache grid.
+  /// The source time tile [index] shows: the frame at the **middle** of the
+  /// stretch of clip it covers, snapped to the nearest step of the cache grid
+  /// and held inside the clip.
+  ///
+  /// It was the tile's left edge rounded *down* — up to 200 ms before the
+  /// tile, and for a clip's first tile a frame from before the clip began:
+  /// after a split, the other side of the cut.
   int _frameTimeMsFor(int index) {
-    final secondsIntoClip = index * _tileSeconds;
-    final seconds = widget.isProxySource
-        // A proxy holds only this clip, already in playback order.
-        ? secondsIntoClip * widget.segment.speed
-        : widget.segment.sourceAtOffset(secondsIntoClip);
-    final ms = (seconds * 1000).round();
-    return (ms ~/ _sourceQuantumMs) * _sourceQuantumMs;
+    final start = index * _tileSeconds;
+    final end = (start + _tileSeconds).clamp(start, _spanSeconds).toDouble();
+    final middle = (start + end) / 2;
+    final seconds = _sourceAt(middle);
+    final snapped = (seconds * 1000 / _sourceQuantumMs).round() * _sourceQuantumMs;
+    // A step past the clip's own source would show a frame it does not
+    // contain; the unsnapped instant is inside it by construction.
+    final (lo, hi) = _sourceRangeMs;
+    return snapped >= lo && snapped < hi ? snapped : (seconds * 1000).round();
   }
+
+  double _sourceAt(double secondsIntoClip) => widget.isProxySource
+      // A proxy holds only this clip, already in playback order.
+      ? secondsIntoClip * widget.segment.speed
+      : widget.segment.sourceAtOffset(secondsIntoClip);
+
+  /// The clip's own source, in milliseconds: start inclusive, end exclusive.
+  (int, int) get _sourceRangeMs {
+    if (widget.isProxySource) {
+      return (0, (_spanSeconds * widget.segment.speed * 1000).round());
+    }
+    return (
+      (widget.segment.sourceStart * 1000).round(),
+      (widget.segment.sourceEnd * 1000).round(),
+    );
+  }
+
+  /// A clip's first and last tiles take the exact frame: the nearest
+  /// keyframe, which the rest take for speed, can lie across the cut there.
+  bool _isEdgeTile(int index) => index == 0 || index == _tileCount - 1;
 
   bool _isTileVisible(int index) {
     final start = widget.timelineStart + (index * _tileSeconds);
@@ -152,20 +180,33 @@ class _ClipFilmstripState extends State<ClipFilmstrip> {
     if (!mounted) return;
 
     final wanted = <int>{};
+    final wantedExact = <int>{};
     for (var index = 0; index < _tileCount; index++) {
       if (!_isTileVisible(index)) continue;
       final timeMs = _frameTimeMsFor(index);
-      if (_thumbnails.isResolved(widget.sourcePath, timeMs)) continue;
-      wanted.add(timeMs);
+      final exact = _isEdgeTile(index);
+      if (_thumbnails.isResolved(widget.sourcePath, timeMs, exact: exact)) continue;
+      (exact ? wantedExact : wanted).add(timeMs);
     }
-    if (wanted.isEmpty) return;
+    if (wanted.isEmpty && wantedExact.isEmpty) return;
 
-    await _thumbnails.request(
-      path: widget.sourcePath,
-      timesMs: wanted.toList(growable: false),
-      width: _requestWidth,
-      height: _requestHeight,
-    );
+    await Future.wait([
+      if (wanted.isNotEmpty)
+        _thumbnails.request(
+          path: widget.sourcePath,
+          timesMs: wanted.toList(growable: false),
+          width: _requestWidth,
+          height: _requestHeight,
+        ),
+      if (wantedExact.isNotEmpty)
+        _thumbnails.request(
+          path: widget.sourcePath,
+          timesMs: wantedExact.toList(growable: false),
+          width: _requestWidth,
+          height: _requestHeight,
+          exact: true,
+        ),
+    ]);
 
     if (mounted) setState(() {});
   }
@@ -210,7 +251,11 @@ class _ClipFilmstripState extends State<ClipFilmstrip> {
   }
 
   Widget _buildTile(int index) {
-    final bytes = _thumbnails.peek(widget.sourcePath, _frameTimeMsFor(index));
+    final bytes = _thumbnails.peek(
+      widget.sourcePath,
+      _frameTimeMsFor(index),
+      exact: _isEdgeTile(index),
+    );
     if (bytes == null) {
       // Nothing yet, or the source could not produce this frame. Either way the
       // slot keeps its width so tiles never reflow as frames arrive.

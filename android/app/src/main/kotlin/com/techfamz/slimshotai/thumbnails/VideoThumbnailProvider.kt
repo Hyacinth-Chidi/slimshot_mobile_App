@@ -71,9 +71,10 @@ class VideoThumbnailProvider : MethodChannel.MethodCallHandler {
                 }
                 val width = call.argument<Number>("width")?.toInt() ?: DEFAULT_WIDTH
                 val height = call.argument<Number>("height")?.toInt() ?: DEFAULT_HEIGHT
+                val exact = call.argument<Boolean>("exact") == true
 
                 queue.putLast {
-                    val frames = timesMs.map { extractFrame(path, it.toLong(), width, height) }
+                    val frames = timesMs.map { extractFrame(path, it.toLong(), width, height, exact) }
                     mainHandler.post { result.success(frames) }
                 }
             }
@@ -197,11 +198,18 @@ class VideoThumbnailProvider : MethodChannel.MethodCallHandler {
         return isImage
     }
 
+    /**
+     * The frame at [timeMs]: the nearest keyframe, or with [exact] the frame at
+     * that instant itself — decoded forward from the keyframe before it, so
+     * slower, and asked for only at a clip's edges, where the nearest keyframe
+     * can lie on the other side of a cut.
+     */
     private fun extractFrame(
         path: String,
         timeMs: Long,
         width: Int,
         height: Int,
+        exact: Boolean = false,
     ): ByteArray? {
         return try {
             if (isStillImage(path)) {
@@ -214,17 +222,16 @@ class VideoThumbnailProvider : MethodChannel.MethodCallHandler {
 
             val retriever = retrieverFor(path) ?: return null
             val timeUs = timeMs * 1000L
+            val option = if (exact) {
+                MediaMetadataRetriever.OPTION_CLOSEST
+            } else {
+                MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+            }
 
             val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                retriever.getScaledFrameAtTime(
-                    timeUs,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                    width,
-                    height,
-                )
+                retriever.getScaledFrameAtTime(timeUs, option, width, height)
             } else {
-                retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?.let { scaleDown(it, width, height) }
+                retriever.getFrameAtTime(timeUs, option)?.let { scaleDown(it, width, height) }
             } ?: return null
 
             val stream = ByteArrayOutputStream()
