@@ -38,10 +38,4 @@ void main() {
   test('nothing saved reads as nothing', () async {
     expect(await FontCatalogCache(root: root).load(), isNull);
   });
-
-  test('stale after five minutes', () {
-    final saved = lists();
-    expect(isStale(saved, fetched.add(const Duration(minutes: 4, seconds: 59))), isFalse);
-    expect(isStale(saved, fetched.add(const Duration(minutes: 5, seconds: 1))), isTrue);
-  });
 }

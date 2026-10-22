@@ -105,8 +105,8 @@ final class FontFailed extends FontTileState {
 
 /// The Font tab's state: the lists, search, and what each tile is doing.
 ///
-/// The saved lists show at once; the server's are asked for when the saved
-/// ones are missing or more than five minutes old, and on refresh. A 404 for
+/// The saved lists show at once and the server's are asked for on every
+/// opening and on refresh. A 404 for
 /// a category is an empty list; a 429 keeps what is shown and asks nothing
 /// until the server's wait has passed; with no server address nothing is
 /// asked at all. **The last tap wins**: a download that lands after another
@@ -177,7 +177,10 @@ class FontGridController extends ChangeNotifier {
     return const FontNotOnPhone();
   }
 
-  /// Shows the saved lists, then fetches the server's if they are stale.
+  /// Shows the saved lists at once, then asks the server for its own — on
+  /// every opening, so a font the owner publishes is there the next time the
+  /// tab opens. The server caches the lists and clears them on any change, so
+  /// asking costs two small reads.
   Future<void> open() async {
     if (!_serverConfigured) return;
     await _previews.prepare();
@@ -188,7 +191,7 @@ class FontGridController extends ChangeNotifier {
       _more = saved.more;
       _notify();
     }
-    if (saved == null || isStale(saved, _now())) await _fetch();
+    await _fetch();
   }
 
   /// Fetches the server's lists now, unless the server asked for a wait.

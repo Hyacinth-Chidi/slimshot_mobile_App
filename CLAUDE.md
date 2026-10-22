@@ -2790,8 +2790,10 @@ plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-a
 - **Files**: `<documents>/font_library/<id>-v<version>.<ext>`, written as `.part` and renamed when
   whole, indexed by `library.json` (through a temp file) — not temp, which the OS sweeps, and not
   a draft's folder, since one font serves every draft. The two lists are saved
-  (`<app support>/font_catalog.json`) and shown at once, and fetched again when missing, over five
-  minutes old, or pulled to refresh. A 404 for a category is an empty list (`more-fonts` may not
+  (`<app support>/font_catalog.json`) and shown at once, and **asked for again on every opening**
+  of the tab and on pull-to-refresh — device-reported: a list kept for five minutes hid a font
+  just published, which reads as the font not being there; the server's cache is cleared by any
+  dashboard change and the limit is 120 reads a minute, so two reads an opening cost nothing. A 404 for a category is an empty list (`more-fonts` may not
   exist yet), a 429 keeps what is shown and asks nothing until `retryAfterSeconds` passes, and
   with no `SLIMSHOT_API_URL` the grid is the local fonts alone (`fontServerConfiguredProvider`).
   Offline the grid and every downloaded font work. A newer `version` of a font on the phone

@@ -19,16 +19,6 @@ class SavedFontLists {
   final DateTime fetchedAt;
 }
 
-/// Whether [lists] should be fetched again: older than [maxAge] at [now].
-/// The server's own cache lasts up to five minutes, so asking sooner would
-/// mostly hear the same answer.
-bool isStale(
-  SavedFontLists lists,
-  DateTime now, {
-  Duration maxAge = const Duration(minutes: 5),
-}) =>
-    now.difference(lists.fetchedAt) > maxAge;
-
 /// The lists, kept in `<app support>/font_catalog.json` so the grid opens at
 /// once and works offline.
 class FontCatalogCache {

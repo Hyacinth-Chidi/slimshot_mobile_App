@@ -126,15 +126,16 @@ void main() {
       expect((await cache.load())!.fetchedAt, clock);
     });
 
-    test('a list under five minutes old is not fetched again', () async {
+    // A font the owner publishes shows the next time the tab opens: a list
+    // kept for minutes hid it, which reads as the font not being there.
+    test('every opening asks the server again', () async {
       await controller.open();
-      expect(server.hitsFor('fonts:trending'), 1);
-      clock = clock.add(const Duration(minutes: 4));
-      await build().open();
-      expect(server.hitsFor('fonts:trending'), 1);
-      clock = clock.add(const Duration(minutes: 2));
-      await build().open();
+      server.lists['trending']!.add(fontRow('mg', 'Margarine'));
+      clock = clock.add(const Duration(seconds: 30));
+      final again = build();
+      await again.open();
       expect(server.hitsFor('fonts:trending'), 2);
+      expect(again.entries.map((e) => e.label), contains('Margarine'));
     });
 
     test('a missing More fonts category leaves Trending', () async {
