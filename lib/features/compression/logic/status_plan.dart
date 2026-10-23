@@ -130,3 +130,62 @@ bool _isHdr(String? transfer) =>
 
   return (side(w, boxW), side(h, boxH));
 }
+
+/// HDR to SDR, FFmpeg's standard recipe: to linear light, into BT.709
+/// primaries, tone-mapped, back to BT.709's curve in limited range.
+const String _kToneMap = 'zscale=t=linear:npl=100,format=gbrpf32le,'
+    'zscale=p=bt709,tonemap=tonemap=hable:desat=0,'
+    'zscale=t=bt709:m=bt709:r=tv,format=yuv420p';
+
+/// Mild: sensor grain out, detail kept.
+const String _kDenoise = 'hqdn3d=1.5:1.5:6:6';
+
+/// The FFmpegKit argument string that makes [plan] of [input] at [output].
+String statusCommand(
+  StatusPlan plan, {
+  required String input,
+  required String output,
+  required bool removeMetadata,
+}) {
+  final cmd = StringBuffer('-y -i "$input" ');
+  if (removeMetadata) cmd.write('-map_metadata -1 ');
+  if (plan.copyOnly) {
+    cmd.write('-map 0:v:0 -map 0:a:0? -c copy -movflags +faststart "$output"');
+    return cmd.toString();
+  }
+
+  final scale = plan.width != null && plan.height != null
+      ? 'scale=${plan.width}:${plan.height}:flags=lanczos'
+      // Unknown size: FFmpeg fits it, never larger than the source.
+      : "scale=w='if(gte(iw,ih),min($_kLongSide,iw),min($_kShortSide,iw))'"
+          ":h='if(gte(iw,ih),min($_kShortSide,ih),min($_kLongSide,ih))'"
+          ':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos';
+  final chain = [
+    if (plan.toneMap) _kToneMap,
+    _kDenoise,
+    scale,
+    'setsar=1',
+    'fps=${_rate(plan.frameRate)}',
+    'format=yuv420p',
+  ].join(',');
+
+  cmd
+    ..write('-map 0:v:0 ')
+    ..write(plan.audioChannels > 0 ? '-map 0:a:0? ' : '')
+    ..write('-vf "$chain" ')
+    ..write('-c:v libx264 -preset $kStatusX264Preset -profile:v high -level 3.1 '
+        '-pix_fmt yuv420p -crf $kStatusCrf '
+        '-maxrate ${kStatusMaxVideoKbps}k -bufsize ${kStatusMaxVideoKbps * 2}k ')
+    ..write('-color_primaries bt709 -color_trc bt709 -colorspace bt709 ')
+    ..write(plan.audioChannels > 0
+        ? '-c:a aac -b:a 128k -ar 44100 -ac ${plan.audioChannels} '
+        : '-an ')
+    ..write('-movflags +faststart "$output"');
+  return cmd.toString();
+}
+
+/// 29.97002997… → "29.97", 25.0 → "25".
+String _rate(double fps) {
+  final fixed = fps.toStringAsFixed(2);
+  return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
+}
