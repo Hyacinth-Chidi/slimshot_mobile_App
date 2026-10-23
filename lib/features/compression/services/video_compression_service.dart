@@ -7,7 +7,6 @@ import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new/statistics.dart';
 import 'package:ffmpeg_kit_flutter_new/log.dart';
-import 'package:ffmpeg_kit_flutter_new/stream_information.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../logic/compression_presets.dart';
@@ -21,43 +20,10 @@ class VideoCompressionService {
 
       if (information == null) return null;
 
-      final streams = information.getStreams();
-      StreamInformation? videoStream;
-
-      if (streams.isNotEmpty) {
-        for (final s in streams) {
-          if (s.getType() == 'video') {
-            videoStream = s;
-            break;
-          }
-        }
-      }
-
-      if (videoStream == null) return null;
-
-      final width = videoStream.getWidth()?.toInt() ?? 0;
-      final height = videoStream.getHeight()?.toInt() ?? 0;
-      final codec = videoStream.getCodec() ?? 'unknown';
-
-      int bitrateKbps = 0;
-      final bitrateStr = videoStream.getBitrate() ?? information.getBitrate();
-      if (bitrateStr != null) {
-        bitrateKbps = (int.tryParse(bitrateStr) ?? 0) ~/ 1000;
-      }
-
-      double durationSecs = 0;
-      final durationStr = information.getDuration();
-      if (durationStr != null) {
-        durationSecs = double.tryParse(durationStr) ?? 0;
-      }
-
-      final metadata = VideoMetadata(
-        width: width,
-        height: height,
-        bitrateKbps: bitrateKbps,
-        codec: codec,
-        durationSecs: durationSecs,
+      final metadata = VideoMetadata.fromProbe(
+        Map<String, dynamic>.from(information.getAllProperties() ?? const {}),
       );
+      if (metadata.width == 0) return null;
 
       debugPrint(
         '📊 Video Analysis: ${metadata.width}x${metadata.height}, '
