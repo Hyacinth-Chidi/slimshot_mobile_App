@@ -73,9 +73,13 @@ StatusPlan statusPlan(VideoMetadata? source) {
       source.avgFrameRate > 0 &&
       (source.frameRate - source.avgFrameRate).abs() > 0.5;
   final toneMap = _isHdr(source.colorTransfer);
-  final audioChannels = source.audioCodec == null || source.audioChannels <= 0
+  // A track whose channel count could not be read is still sound: stereo,
+  // never dropped.
+  final audioChannels = source.audioCodec == null
       ? 0
-      : math.min(source.audioChannels, 2);
+      : source.audioChannels <= 0
+          ? 2
+          : math.min(source.audioChannels, 2);
 
   final copyOnly = source.codec.toLowerCase() == 'h264' &&
       (source.audioCodec == null || source.audioCodec!.toLowerCase() == 'aac') &&

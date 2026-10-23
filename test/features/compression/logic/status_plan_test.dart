@@ -92,6 +92,8 @@ void main() {
     expect(statusPlan(meta(audioChannels: 6)).audioChannels, 2);
     expect(statusPlan(meta(audioChannels: 1)).audioChannels, 1);
     expect(statusPlan(meta(audioCodec: null, audioChannels: 0)).audioChannels, 0);
+    // A track whose channel count the probe could not read is still sound.
+    expect(statusPlan(meta(audioCodec: 'aac', audioChannels: 0)).audioChannels, 2);
   });
 
   group('already status-ready: copied, not encoded', () {
