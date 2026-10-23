@@ -10,6 +10,26 @@ import 'package:ffmpeg_kit_flutter_new/log.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../logic/compression_presets.dart';
+import '../logic/status_plan.dart';
+
+/// What the compressor does with one video.
+sealed class VideoJob {
+  const VideoJob();
+}
+
+/// Hand the input back as it is: already well compressed for the preset.
+class KeepOriginal extends VideoJob {
+  const KeepOriginal();
+}
+
+/// Run [command]. With [keepIfLarger] the result stands even when it is
+/// bigger than the input — a WhatsApp Status file's shape matters more than
+/// its size; otherwise a bigger result gives the original back.
+class RunFfmpeg extends VideoJob {
+  const RunFfmpeg(this.command, {required this.keepIfLarger});
+  final String command;
+  final bool keepIfLarger;
+}
 
 class VideoCompressionService {
   /// Extract video metadata using ffprobe.
@@ -38,13 +58,68 @@ class VideoCompressionService {
     }
   }
 
-  /// Build the FFmpeg command based on preset, metadata, and WhatsApp toggle.
+  /// The job for one video. With [whatsAppStatus] the presets and the format
+  /// step aside: the file is made in the shape WhatsApp Status keeps
+  /// ([statusPlan]), copied when it already is, and never handed back as it
+  /// was — a small 1080×1920 original is exactly the file WhatsApp blurs.
+  VideoJob jobFor({
+    required String inputPath,
+    required String outputPath,
+    required CompressionPreset preset,
+    required VideoMetadata? metadata,
+    required bool whatsAppStatus,
+    required bool removeMetadata,
+    required String targetFormat,
+  }) {
+    if (whatsAppStatus) {
+      return RunFfmpeg(
+        statusCommand(
+          statusPlan(metadata),
+          input: inputPath,
+          output: outputPath,
+          removeMetadata: removeMetadata,
+        ),
+        keepIfLarger: true,
+      );
+    }
+    if (preset.id == 'best_quality' &&
+        metadata != null &&
+        metadata.isAlreadyOptimized) {
+      return const KeepOriginal();
+    }
+    return RunFfmpeg(
+      _buildCommand(
+        inputPath: inputPath,
+        outputPath: outputPath,
+        preset: preset,
+        metadata: metadata ??
+            const VideoMetadata(
+              width: 1920,
+              height: 1080,
+              bitrateKbps: 5000,
+              codec: 'h264',
+              durationSecs: 0,
+            ),
+        removeMetadata: removeMetadata,
+        targetFormat: targetFormat,
+      ),
+      keepIfLarger: false,
+    );
+  }
+
+  /// The output file's extension: always MP4 for WhatsApp Status.
+  String outputExtension({
+    required bool whatsAppStatus,
+    required String targetFormat,
+  }) =>
+      whatsAppStatus ? 'mp4' : targetFormat;
+
+  /// The preset's FFmpeg command.
   String _buildCommand({
     required String inputPath,
     required String outputPath,
     required CompressionPreset preset,
     required VideoMetadata metadata,
-    required bool whatsAppOptimize,
     required bool removeMetadata,
     required String targetFormat,
   }) {
@@ -96,16 +171,6 @@ class VideoCompressionService {
       }
     }
 
-    if (whatsAppOptimize) {
-      final scaleFilter = _shouldDownscaleForWhatsapp(metadata)
-          ? '-vf "scale=\'min(1280,iw)\':-2" '
-          : '';
-
-      cmd.write(
-        '$scaleFilter-pix_fmt yuv420p -profile:v baseline -level 3.1 -r 30 ',
-      );
-    }
-
     if (targetFormat == 'webm') {
       cmd.write('-c:a libopus -b:a 96k ');
     } else {
@@ -119,13 +184,6 @@ class VideoCompressionService {
     cmd.write('"$outputPath"');
 
     return cmd.toString();
-  }
-
-  bool _shouldDownscaleForWhatsapp(VideoMetadata metadata) {
-    final maxDim = metadata.width > metadata.height
-        ? metadata.width
-        : metadata.height;
-    return maxDim > 1280;
   }
 
   /// Max bitrate cap for "Smart Compress" mode (kbps).
@@ -171,37 +229,33 @@ class VideoCompressionService {
   }) async {
     try {
       final inputFile = File(inputPath);
-      if (preset.id == 'best_quality' &&
-          metadata != null &&
-          metadata.isAlreadyOptimized) {
-        debugPrint('⏭ Video already optimized — skipping compression');
-        return inputPath; // Return original file
-      }
-
-
       final appDir = await getTemporaryDirectory();
+      final extension = outputExtension(
+        whatsAppStatus: whatsAppOptimize,
+        targetFormat: targetFormat,
+      );
       final String outputPath =
-          '${appDir.path}/slimshot_temp_${const Uuid().v4()}.$targetFormat';
+          '${appDir.path}/slimshot_temp_${const Uuid().v4()}.$extension';
 
-      final effectiveMetadata =
-          metadata ??
-          const VideoMetadata(
-            width: 1920,
-            height: 1080,
-            bitrateKbps: 5000,
-            codec: 'h264',
-            durationSecs: 0,
-          );
-
-      final String command = _buildCommand(
+      final job = jobFor(
         inputPath: inputPath,
         outputPath: outputPath,
         preset: preset,
-        metadata: effectiveMetadata,
-        whatsAppOptimize: whatsAppOptimize,
+        metadata: metadata,
+        whatsAppStatus: whatsAppOptimize,
         removeMetadata: removeMetadata,
         targetFormat: targetFormat,
       );
+      final RunFfmpeg run;
+      switch (job) {
+        case KeepOriginal():
+          debugPrint('⏭ Video already optimized — skipping compression');
+          return inputPath;
+        case RunFfmpeg():
+          run = job;
+      }
+      final command = run.command;
+      final durationSecs = metadata?.durationSecs ?? 0;
 
       debugPrint('🎬 FFmpeg command: ffmpeg $command');
 
@@ -216,7 +270,8 @@ class VideoCompressionService {
 
             final outputFile = File(outputPath);
 
-            if (await outputFile.length() >= await inputFile.length()) {
+            if (!run.keepIfLarger &&
+                await outputFile.length() >= await inputFile.length()) {
               debugPrint('⚠️ Output larger than input — returning original');
               await outputFile.delete();
               completer.complete(inputPath);
@@ -235,9 +290,9 @@ class VideoCompressionService {
           if (onProgress != null) {
             final timeMs = statistics.getTime();
             if (timeMs > 0) {
-              if (effectiveMetadata.durationSecs > 0) {
+              if (durationSecs > 0) {
                 final progressPct =
-                    (timeMs / (effectiveMetadata.durationSecs * 1000)) * 100;
+                    (timeMs / (durationSecs * 1000)) * 100;
                 onProgress(progressPct.clamp(0, 99));
               } else {
                 final progressPct = (timeMs / 60000) * 100;
