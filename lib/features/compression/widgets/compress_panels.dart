@@ -328,12 +328,16 @@ class CompressOptionRow extends StatelessWidget {
     required this.label,
     required this.trailing,
     this.onTap,
+    this.note,
   });
 
   final IconData icon;
   final String label;
   final Widget trailing;
   final VoidCallback? onTap;
+
+  /// A second, quieter line under the label.
+  final String? note;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -356,14 +360,7 @@ class CompressOptionRow extends StatelessWidget {
                   spacing: 8,
                   overflowSpacing: 8,
                   children: [
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
+                    _label(),
                     trailing,
                   ],
                 ),
@@ -374,6 +371,33 @@ class CompressOptionRow extends StatelessWidget {
       );
 }
 
+extension on CompressOptionRow {
+  Widget _label() {
+    final title = Text(
+      label,
+      style: const TextStyle(
+        fontSize: 14.5,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textPrimary,
+      ),
+    );
+    final note = this.note;
+    if (note == null) return title;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        title,
+        const SizedBox(height: 2),
+        Text(
+          note,
+          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+      ],
+    );
+  }
+}
+
 /// A switch for a [CompressOptionRow]: one tap on the row or the switch.
 class CompressSwitchRow extends StatelessWidget {
   const CompressSwitchRow({
@@ -382,12 +406,14 @@ class CompressSwitchRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onToggle,
+    this.note,
   });
 
   final IconData icon;
   final String label;
   final bool value;
   final VoidCallback onToggle;
+  final String? note;
 
   void _toggle() {
     HapticFeedback.selectionClick();
@@ -398,6 +424,7 @@ class CompressSwitchRow extends StatelessWidget {
   Widget build(BuildContext context) => CompressOptionRow(
         icon: icon,
         label: label,
+        note: note,
         onTap: _toggle,
         trailing: Switch(
           value: value,
