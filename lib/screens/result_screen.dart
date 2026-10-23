@@ -287,9 +287,16 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       keptAsItWas: skipped.isNotEmpty && skipped.every((s) => s),
       preview: preview,
       previewAspectRatio: aspect,
-      quality: state.selectedPreset?.name,
-      format: formatName(
-          isVideo ? state.targetVideoFormat : state.targetImageFormat),
+      quality: resultQualityLabel(
+        whatsAppStatus: isVideo && state.whatsAppOptimize,
+        presetName: state.selectedPreset?.name,
+      ),
+      format: resultFormatName(
+        isVideo: isVideo,
+        whatsAppStatus: state.whatsAppOptimize,
+        videoFormat: state.targetVideoFormat,
+        imageFormat: state.targetImageFormat,
+      ),
       locationRemoved: state.removeMetadata,
       thumbnails: [
         for (final path in outputs)

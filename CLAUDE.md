@@ -4491,6 +4491,25 @@ format segments overflowed a 320 px phone at 1.3× text, and a test pins it. The
 were renamed to match the video ones (`Best quality` / `Smart` / `Smallest`), and
 `expectedCompression` — read only by the old tiles' "-50%" — is gone.
 
+**WhatsApp Status — a file already in the shape Status keeps** (`logic/status_plan.dart`,
+**awaiting device verification**; spec `docs/superpowers/specs/2026-10-23-whatsapp-status-compression-design.md`).
+The owner's main reason to compress is posting to Status without WhatsApp blurring it. Their
+evidence: an edit exported at 1080×1920 blurred on Status, the same edit downloaded back from
+Instagram at 720×1280 — smaller, a third of the bitrate — stayed clear. WhatsApp keeps something
+like 720×1280 and shrinks anything larger itself, fast and cheap. So the switch (renamed from
+"WhatsApp ready", which scaled by width only and so left every portrait 1080×1920 as it was)
+makes that shape: inside 720×1280 / 1280×720, never enlarged, even sides; a constant rate (60 →
+30, 50 → 25, capped at 30); H.264 High 3.1, x264 `medium`, CRF 21 under a ceiling
+(`kStatusMaxVideoKbps`, **provisional 2000** until posted variants and WhatsApp's delivered
+copies are compared); HDR (PQ/HLG) tone-mapped; a mild denoise; AAC 128 kbps 44.1 kHz. A file
+already in that shape is **copied, not encoded** (`statusPlan(...).copyOnly`); the result is kept
+even when larger than the input, because a small 1080p original is exactly what blurs. On screen
+it overrides quality and format (dimmed, out of reach, "Overrides quality and format"), and the
+result names "WhatsApp Status" and MP4. No tip about WhatsApp's HD option — the owner's call.
+No splitting of long videos — also the owner's. **The editor's export gets the same rule once this
+is confirmed on a device** (a "WhatsApp Status" switch under Resolution and Frame rate, already
+chosen). The probe reads ffprobe's JSON through `VideoMetadata.fromProbe`, pure and tested.
+
 **Target sizes and quick presets are gone** (removed 2026-10-07 at the user's call: "remove the
 ones that are not wired"). `CompressionMode.targetSize`, the target-size lists, `OutputPreset`
 with its WhatsApp / Status / Email / Form upload / Profile entries, `applyOutputPreset`,

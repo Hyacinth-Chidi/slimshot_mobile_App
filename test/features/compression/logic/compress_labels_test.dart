@@ -51,4 +51,23 @@ void main() {
     expect(photoInfoLabel('d.jpg', null, null), 'JPG');
     expect(photoInfoLabel('noext', 4000, 3000), '12 MP');
   });
+
+  group('the result names what was applied', () {
+    test('quality: WhatsApp Status in place of the preset', () {
+      expect(resultQualityLabel(whatsAppStatus: true, presetName: 'Smart'), 'WhatsApp Status');
+      expect(resultQualityLabel(whatsAppStatus: false, presetName: 'Smart'), 'Smart');
+      expect(resultQualityLabel(whatsAppStatus: false, presetName: null), isNull);
+    });
+    test('format: always MP4 for WhatsApp Status, and only for video', () {
+      String name({required bool isVideo, required bool status}) => resultFormatName(
+            isVideo: isVideo,
+            whatsAppStatus: status,
+            videoFormat: 'webm',
+            imageFormat: 'webp',
+          );
+      expect(name(isVideo: true, status: true), 'MP4');
+      expect(name(isVideo: true, status: false), 'WebM');
+      expect(name(isVideo: false, status: true), 'WebP');
+    });
+  });
 }
