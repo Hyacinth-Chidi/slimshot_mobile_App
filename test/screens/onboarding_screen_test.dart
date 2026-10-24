@@ -120,4 +120,17 @@ void main() {
       expect(find.text('Get started'), findsOneWidget);
     });
   }
+
+  // On a tablet the picture grows with the room it has, up to 1.6x; on a
+  // phone it is the size it was laid out at.
+  testWidgets('the timeline grows on a tablet and stays put on a phone',
+      (tester) async {
+    await pumpOnboarding(tester);
+    // On screen, after the picture's scale.
+    final phone = tester.getRect(find.byKey(const Key('onboarding_timeline')));
+    await pumpOnboarding(tester, size: const Size(1600, 2560), ratio: 2);
+    final tablet = tester.getRect(find.byKey(const Key('onboarding_timeline')));
+    expect(tablet.width, greaterThan(phone.width * 1.3));
+    expect(tablet.width, lessThanOrEqualTo(360 * 1.6 + 0.5));
+  });
 }

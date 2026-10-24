@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -17,12 +18,16 @@ class _OnboardPage {
     required this.accent,
     required this.line,
     required this.visual,
+    required this.visualSize,
   });
 
   final String lead;
   final String accent;
   final String line;
   final Widget visual;
+
+  /// The size [visual] is laid out at, on a 360-wide phone.
+  final Size visualSize;
 }
 
 /// The first launch: three pages, one thing the app does best on each —
@@ -45,18 +50,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       accent: 'pro',
       line: 'Clips, text, effects, sound and music, layered on one timeline.',
       visual: _TimelineVisual(),
+      visualSize: _TimelineVisual.size,
     ),
     _OnboardPage(
       lead: 'Clear on ',
       accent: 'WhatsApp Status',
       line: 'Compressed in the shape Status keeps, so your video never blurs.',
       visual: _StatusVisual(),
+      visualSize: Size(360, 380),
     ),
     _OnboardPage(
       lead: 'Captions in ',
       accent: 'one tap',
       line: "Every word on time, lit up as it's spoken.",
       visual: _CaptionsVisual(),
+      visualSize: Size(360, 380),
     ),
   ];
 
@@ -98,9 +106,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const Positioned.fill(child: ColourFieldBackdrop()),
           SafeArea(
             child: Center(
-              // A tablet gets the phone's column, centred.
+              // A tablet gets a column a little wider than a phone, centred.
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
+                constraints: const BoxConstraints(maxWidth: 560),
                 child: Column(
                   children: [
                     _TopBar(
@@ -200,18 +208,39 @@ class _TopBar extends StatelessWidget {
 class _PageBody extends StatelessWidget {
   const _PageBody({required this.page});
 
+  static const double _maxVisualScale = 1.6;
+
   final _OnboardPage page;
 
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // The picture takes what the words leave, and shrinks to fit it on
-          // a short phone rather than overflowing.
+          // The picture takes what the words leave: it shrinks to fit on a
+          // short phone rather than overflowing, and grows on a tablet up to
+          // [_maxVisualScale] rather than sitting small in an empty screen.
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: FittedBox(fit: BoxFit.scaleDown, child: page.visual),
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final natural = page.visualSize;
+                  final scale = math.min(
+                    _maxVisualScale,
+                    math.min(
+                      box.maxWidth / natural.width,
+                      box.maxHeight / natural.height,
+                    ),
+                  );
+                  return Center(
+                    child: SizedBox(
+                      width: natural.width * scale,
+                      height: natural.height * scale,
+                      child: FittedBox(child: page.visual),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
           Padding(
@@ -386,6 +415,10 @@ class _TimelineVisual extends StatelessWidget {
   const _TimelineVisual();
 
   static const double _width = 360;
+  static const Size size = Size(
+    _width,
+    200 + 18 + _rulerH + _gap + _filmH + 3 * (_gap + _laneH),
+  );
   static const double _rulerH = 16;
   static const double _filmH = 56;
   static const double _laneH = 33;

@@ -4507,14 +4507,17 @@ Continue, then purple Get started. Both Skip and Get started set `hasSeenOnboard
   their seams, and a bar of each kind in the editor's colours — text (`border` grey), effect
   (`effectTrack`), photo (`photoTrack`), sound effect (`soundEffect`, its own glyph), music
   (`primaryEnd`, a waveform) — with the playhead stopping at the music bar. It says "a real
-  editor" before a word is read. Drawn in code on a 360-wide layout and scaled to fit
-  (`FittedBox`), so a short phone shrinks it rather than overflowing.
+  editor" before a word is read. Drawn in code on a 360-wide layout (`_OnboardPage.visualSize`)
+  and scaled to the room it has — down on a short phone rather than overflowing, **up to 1.6× on
+  a tablet** (`_maxVisualScale`) rather than sitting phone-sized in an empty screen, in a column
+  of at most 560.
 - **Pages 2 and 3** use the New Video card's photos in its white frames: the same picture blurred
   and sharp, tagged; a dancer with a caption whose middle word is on the purple pill.
 - **What it replaced**: screenshots of the old editor and generic lines ("Endless possibilities",
   "No cloud needed" — untrue since captions use the server). Their three PNGs are deleted.
 - `onboarding_screen_test.dart` pins the bars, the playhead's foot, the walk through the pages,
-  both ways out, and every page on a small phone at 1.3× text and a tablet both ways up.
+  both ways out, every page on a small phone at 1.3× text and a tablet both ways up, and the
+  picture growing on a tablet while a phone's stays as laid out.
 
 ### Compress video — Home's light, rows, the sizes left to the result
 
