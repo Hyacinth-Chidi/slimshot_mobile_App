@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/theme/app_colors.dart';
+import 'package:slimshotai/core/theme/app_fonts.dart';
 import 'package:slimshotai/core/utils/toast_utils.dart';
 
 /// The toast is a compact pill at the top, not a banner.
@@ -103,33 +105,58 @@ void main() {
     expect(find.text('Draft deleted'), findsNothing);
   });
 
-  testWidgets('error and warning carry their own icon and severity colour',
+  // The island (the owner's pick of four): a black pill, the severity a
+  // solid disc of its colour with a white glyph on it.
+  testWidgets('each severity is its own glyph, white on a disc of its colour',
       (tester) async {
     final context = await pumpHost(tester);
+    final seen = <IconData>{};
+    for (final (message, isError, isWarning, colour) in [
+      ('export failed', true, false, AppColors.error),
+      ('lane unavailable', false, true, AppColors.warning),
+      ('saved', false, false, AppColors.success),
+    ]) {
+      ToastUtils.show(context, message, isError: isError, isWarning: isWarning);
+      await settleToast(tester);
+      final icon = tester.widget<Icon>(
+        find.descendant(of: find.byType(ToastPill), matching: find.byType(Icon)),
+      );
+      expect(icon.color, AppColors.textPrimary, reason: message);
+      seen.add(icon.icon!);
+      final disc = find.ancestor(
+        of: find.byIcon(icon.icon!),
+        matching: find.byWidgetPredicate((w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).shape == BoxShape.circle),
+      );
+      expect(
+        (tester.widget<Container>(disc).decoration! as BoxDecoration).color,
+        colour,
+        reason: message,
+      );
+    }
+    expect(seen, hasLength(3), reason: 'three severities, three glyphs');
+  });
 
-    ToastUtils.show(context, 'export failed', isError: true);
+  testWidgets('the pill is black with a faint edge, the words in the app face',
+      (tester) async {
+    final context = await pumpHost(tester);
+    ToastUtils.show(context, 'Draft deleted');
     await settleToast(tester);
-    final errorIcon = tester.widget<Icon>(
-      find.descendant(of: find.byType(ToastPill), matching: find.byType(Icon)),
-    );
-
-    ToastUtils.show(context, 'lane unavailable', isWarning: true);
-    await settleToast(tester);
-    final warningIcon = tester.widget<Icon>(
-      find.descendant(of: find.byType(ToastPill), matching: find.byType(Icon)),
-    );
-
-    ToastUtils.show(context, 'saved');
-    await settleToast(tester);
-    final successIcon = tester.widget<Icon>(
-      find.descendant(of: find.byType(ToastPill), matching: find.byType(Icon)),
-    );
-
-    // Three severities, three glyphs, three colours — the icon is what says
-    // error/warning/success now that the shouting title is gone.
-    expect(errorIcon.icon, isNot(warningIcon.icon));
-    expect(warningIcon.icon, isNot(successIcon.icon));
-    expect(errorIcon.color, isNot(successIcon.color));
+    final pill = tester
+        .widgetList<Container>(find.descendant(
+          of: find.byType(ToastPill),
+          matching: find.byType(Container),
+        ))
+        .firstWhere((c) =>
+            c.decoration is BoxDecoration &&
+            (c.decoration as BoxDecoration).shape == BoxShape.rectangle);
+    final box = pill.decoration! as BoxDecoration;
+    expect(box.color, AppColors.background);
+    expect(box.border, isNotNull);
+    final text = tester.widget<Text>(find.text('Draft deleted'));
+    expect(text.style!.fontFamily, kInterfaceFontFamily);
   });
 
   test('ToastUtils is the one toast implementation in lib/', () {

@@ -629,7 +629,11 @@ the credit beside the shader in `LayeredTransitions.kt` does not ship in the APK
   screen; a second floated it below the app bar, which read as "inside the
   screen"). What fixes the covering is compactness and tap-through, not
   distance: it drops in 8px below the safe area and slides down/up with a
-  fade on `AppMotion`'s curves. Rules a test pins
+  fade on `AppMotion`'s curves. **It is the island** (the owner's pick of four, 2026-10-24,
+  **awaiting device verification**): a black pill (`background`) with a faint white edge that
+  drops in and grows from 85%, like the iPhone's Dynamic Island, the severity a solid disc of
+  `success`/`warning`/`error` with a white glyph (check, triangle, cross), the words in the
+  interface face — before, a grey pill whose only colour was a 16px icon. Rules a test pins
   (`toast_utils_test.dart`): compact (sized to its text), top-centred, **no
   title** — "Success!" above "Draft deleted" is the echo rule, severity is
   the icon and its `AppColors.error/warning/success` colour — tap to
