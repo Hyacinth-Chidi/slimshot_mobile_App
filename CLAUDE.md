@@ -4468,13 +4468,16 @@ player, the history entry, saving and the full-screen views; the view is tested 
   "0%" as if something had failed.
 - **Several files show totals for all of them** ("All 5 photos"). The old strip mixed the
   selected photo's sizes with the whole batch's percentage, so the three numbers did not agree.
-- **Details** — quality (the preset's name), format (`formatName`: MP4, WebM, JPG, WebP) and
-  location — confirm what was applied.
+- **Nothing but the result** (the owner's call, **awaiting device verification**): it read as
+  another step to take — a details list, a full-width Save over Share and "New video". It is the
+  export screen's shape now: the picture larger, the sizes card, and **Save and Share side by
+  side**, Share the purple one since posting is usually why the file was compressed. The details
+  card and "New video" are gone. **✕ and the phone's Back both go home** (`PopScope` in the view):
+  Back used to step back to the compress screen.
 - **Video**: play, a scrubbable time bar and full screen on the picture (`ResultVideoFrame`).
   **Photos**: the compare slider labelled Before / After (`ResultPhotoFrame`). Several of either
   get the thumbnail row; a tap previews that file (a video re-opens the player on it).
-- **Save to gallery** (or "Save 5 to gallery") pinned, Share and New video / New photos under it.
-  Two columns from 700 px.
+- **Save** (or "Save 5") and **Share**, pinned. Two columns from 700 px.
 
 **Compress photo is the video screen's design** (`CompressPhotoView`; **awaiting device
 verification**; from an approved mockup). All three screens — video, photo, result — sit on one
@@ -4513,8 +4516,7 @@ and the denoise on full-size frames before the shrink). A file
 already in that shape is **copied, not encoded** (`statusPlan(...).copyOnly`); the result is kept
 even when larger than the input, because a small 1080p original is exactly what blurs. On screen
 it sits **first, in a box of its own above Quality** (the owner's call: it is why most people
-compress, and it overrides what is below it), and it overrides quality and format (dimmed, out of reach, "Overrides quality and format"), and the
-result names "WhatsApp Status" and MP4. No tip about WhatsApp's HD option — the owner's call.
+compress, and it overrides what is below it), and it overrides quality and format (dimmed, out of reach, "Overrides quality and format"). No tip about WhatsApp's HD option — the owner's call.
 No splitting of long videos — also the owner's. **The editor's export gets the same rule once this
 is confirmed on a device** (a "WhatsApp Status" switch under Resolution and Frame rate, already
 chosen). The probe reads ffprobe's JSON through `VideoMetadata.fromProbe`, pure and tested.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/theme/lucide_icons.dart';
+import 'package:slimshotai/features/compression/widgets/compress_panels.dart';
 import 'package:slimshotai/features/compression/widgets/compress_result_view.dart';
 
 const _mb = 1024 * 1024;
@@ -9,7 +10,6 @@ class _Calls {
   int close = 0;
   int save = 0;
   int share = 0;
-  int again = 0;
   final previews = <int>[];
 }
 
@@ -42,9 +42,6 @@ void main() {
           keptAsItWas: keptAsItWas,
           preview: const ColoredBox(color: Colors.black),
           previewAspectRatio: video ? 16 / 9 : 3 / 4,
-          quality: 'Smart',
-          format: video ? 'MP4 · 1080p' : 'JPG',
-          locationRemoved: true,
           thumbnails: [
             for (var i = 0; i < count; i++) const ColoredBox(color: Colors.grey),
           ],
@@ -53,27 +50,37 @@ void main() {
           onClose: () => calls.close++,
           onSave: () => calls.save++,
           onShare: () => calls.share++,
-          onCompressAnother: () => calls.again++,
         ),
       ),
     ));
     await tester.pump();
   }
 
-  testWidgets('a video: done, the real sizes, what was applied, the actions',
+  testWidgets('a video: done, the real sizes and two buttons — nothing more to do',
       (tester) async {
+    // It read as another step: a details list and three buttons. The
+    // export screen's picture, title and two buttons is the model.
     await pump(tester);
     expect(find.text('Done'), findsOneWidget);
     expect(find.text('48.2 MB'), findsOneWidget);
     expect(find.text('12.1 MB'), findsOneWidget);
     expect(find.text('75% smaller'), findsOneWidget);
-    expect(find.text('Smart'), findsOneWidget);
-    expect(find.text('MP4 · 1080p'), findsOneWidget);
-    expect(find.text('Removed'), findsOneWidget);
-    expect(find.text('Save to gallery'), findsOneWidget);
+    expect(find.text('Save'), findsOneWidget);
     expect(find.text('Share'), findsOneWidget);
-    expect(find.text('New video'), findsOneWidget);
+    expect(find.text('Details'), findsNothing);
+    expect(find.text('New video'), findsNothing);
+    expect(find.byKey(const Key('result_new')), findsNothing);
     expect(find.byKey(const Key('result_thumb_0')), findsNothing);
+  });
+
+  testWidgets('Save and Share sit side by side, Share the purple one', (tester) async {
+    await pump(tester);
+    final save = tester.getRect(find.byKey(const Key('result_save')));
+    final share = tester.getRect(find.byKey(const Key('result_share')));
+    expect(save.center.dy, closeTo(share.center.dy, 1));
+    expect(save.width, closeTo(share.width, 1));
+    expect(save.right, lessThan(share.left));
+    expect(tester.widget(find.byKey(const Key('result_share'))), isA<CompressPrimaryButton>());
   });
 
   testWidgets('each action reaches its callback', (tester) async {
@@ -81,16 +88,23 @@ void main() {
     await tester.tap(find.byKey(const Key('result_close')));
     await tester.tap(find.byKey(const Key('result_save')));
     await tester.tap(find.byKey(const Key('result_share')));
-    await tester.tap(find.byKey(const Key('result_new')));
-    expect((calls.close, calls.save, calls.share, calls.again), (1, 1, 1, 1));
+    expect((calls.close, calls.save, calls.share), (1, 1, 1));
+  });
+
+  testWidgets("the phone's Back closes it too, as ✕ does", (tester) async {
+    // Back only stepped back to the Compress screen.
+    await pump(tester);
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(calls.close, 1);
   });
 
   testWidgets('several photos: totals for all, a thumbnail each',
       (tester) async {
     await pump(tester,
         video: false, count: 5, before: (18.6 * _mb) ~/ 1, after: (4.2 * _mb) ~/ 1);
-    expect(find.text('Save 5 to gallery'), findsOneWidget);
-    expect(find.text('New photos'), findsOneWidget);
+    expect(find.text('Save 5'), findsOneWidget);
+    expect(find.text('New photos'), findsNothing);
     expect(find.text('All 5 photos'), findsOneWidget);
     expect(find.text('77% smaller'), findsOneWidget);
     await tester.tap(find.byKey(const Key('result_thumb_3')));

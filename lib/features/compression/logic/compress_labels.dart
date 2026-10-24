@@ -55,21 +55,3 @@ String photoInfoLabel(String path, int? width, int? height) {
       : null;
   return [?format, ?pixels].join(' · ');
 }
-
-/// The quality a result names: WhatsApp Status when that switch made it,
-/// since the presets stood aside.
-String? resultQualityLabel({
-  required bool whatsAppStatus,
-  required String? presetName,
-}) =>
-    whatsAppStatus ? 'WhatsApp Status' : presetName;
-
-/// The format a result names. WhatsApp Status always makes MP4; photos have
-/// no such switch.
-String resultFormatName({
-  required bool isVideo,
-  required bool whatsAppStatus,
-  required String videoFormat,
-  required String imageFormat,
-}) =>
-    formatName(isVideo ? (whatsAppStatus ? 'mp4' : videoFormat) : imageFormat);
