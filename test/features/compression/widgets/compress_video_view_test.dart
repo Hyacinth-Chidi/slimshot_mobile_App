@@ -185,6 +185,14 @@ void main() {
   });
 
   group('WhatsApp Status', () {
+    testWidgets('sits at the top, above the qualities it overrides', (tester) async {
+      await pump(tester, _state());
+      final whatsApp = tester.getTopLeft(find.byKey(const Key('compress_whatsapp'))).dy;
+      expect(whatsApp, lessThan(tester.getTopLeft(find.text('Quality')).dy));
+      expect(whatsApp,
+          lessThan(tester.getTopLeft(find.byKey(const Key('compress_preset_best_quality'))).dy));
+    });
+
     Opacity opacityOver(WidgetTester tester, String key) => tester.widget<Opacity>(find
         .ancestor(of: find.byKey(Key(key)), matching: find.byType(Opacity))
         .first);

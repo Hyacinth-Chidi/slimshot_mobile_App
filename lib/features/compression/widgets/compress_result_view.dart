@@ -73,15 +73,6 @@ class CompressResultView extends StatelessWidget {
           backKey: const Key('result_close'),
           icon: LucideIcons.x,
           iconLabel: 'Close',
-          badge: Container(
-            width: 24,
-            height: 24,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.success,
-            ),
-            child: const Icon(LucideIcons.check, size: 15, color: Colors.white),
-          ),
           onBack: onClose,
         ),
         // A photo is compared by dragging across it, so it gets more room.

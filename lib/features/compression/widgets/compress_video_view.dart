@@ -116,6 +116,21 @@ class CompressVideoView extends StatelessWidget {
           ? const [CompressKeepOpenNote()]
           : [
               const SizedBox(height: 6),
+              // First, on its own: it is why most people compress, and it
+              // overrides everything below it.
+              CompressGroup(children: [
+                CompressSwitchRow(
+                  key: const Key('compress_whatsapp'),
+                  icon: LucideIcons.messageCircle,
+                  label: 'WhatsApp Status',
+                  value: state.whatsAppOptimize,
+                  onToggle: onToggleWhatsApp,
+                  note: state.whatsAppOptimize
+                      ? 'Overrides quality and format'
+                      : null,
+                ),
+              ]),
+              const SizedBox(height: 20),
               const CompressSectionLabel('Quality'),
               _Overridden(
                 key: const Key('compress_overridden_quality'),
@@ -137,16 +152,6 @@ class CompressVideoView extends StatelessWidget {
               const SizedBox(height: 20),
               const CompressSectionLabel('Options'),
               CompressGroup(children: [
-                CompressSwitchRow(
-                  key: const Key('compress_whatsapp'),
-                  icon: LucideIcons.messageCircle,
-                  label: 'WhatsApp Status',
-                  value: state.whatsAppOptimize,
-                  onToggle: onToggleWhatsApp,
-                  note: state.whatsAppOptimize
-                      ? 'Overrides quality and format'
-                      : null,
-                ),
                 CompressSwitchRow(
                   key: const Key('compress_remove_location'),
                   icon: LucideIcons.mapPinOff,

@@ -4455,8 +4455,9 @@ through Google Fonts.
   Tests pin no overflow at 320 px wide with text at 1.3×.
 
 **The result screen is the same family** (`CompressResultView`, `compress_result_view.dart`;
-**awaiting device verification**; designed from an approved mockup). "✓ Done" centred with ✕
-(home) beside it, in place of the bouncing tick and "Ready to Share!". The screen keeps the
+**awaiting device verification**; designed from an approved mockup). "Done" centred with ✕
+(home) beside it, in place of the bouncing tick and "Ready to Share!" — **no tick beside it** (the
+owner's call; `compress_result_view_test.dart` pins it). The screen keeps the
 player, the history entry, saving and the full-screen views; the view is tested without them.
 
 - **Before → After lives here, with real sizes** (`CompressBeforeAfterCard`): the after's share of
@@ -4511,11 +4512,19 @@ found it soft once (a 2 Mbps cap with a 4 Mb buffer let bursts near 4 Mbps) and 
 and the denoise on full-size frames before the shrink). A file
 already in that shape is **copied, not encoded** (`statusPlan(...).copyOnly`); the result is kept
 even when larger than the input, because a small 1080p original is exactly what blurs. On screen
-it overrides quality and format (dimmed, out of reach, "Overrides quality and format"), and the
+it sits **first, in a box of its own above Quality** (the owner's call: it is why most people
+compress, and it overrides what is below it), and it overrides quality and format (dimmed, out of reach, "Overrides quality and format"), and the
 result names "WhatsApp Status" and MP4. No tip about WhatsApp's HD option — the owner's call.
 No splitting of long videos — also the owner's. **The editor's export gets the same rule once this
 is confirmed on a device** (a "WhatsApp Status" switch under Resolution and Frame rate, already
 chosen). The probe reads ffprobe's JSON through `VideoMetadata.fromProbe`, pure and tested.
+
+**A cancelled compression cannot touch a restarted one** (`compression_cancel_test.dart`). Every
+run asked "is *a* compression running?" rather than "is *mine*?": after Cancel and a restart, the
+cancelled run's FFmpeg call ended late as a failure, saw the new run's "running", marked it failed
+and stopped, and threw its result away, while its progress landed on the new run's ring. Each run
+now takes a number (`_run`), Cancel and `reset` retire the current one before anything is awaited,
+and a run writes state only while its number is current; a file a retired run produced is deleted.
 
 **Target sizes and quick presets are gone** (removed 2026-10-07 at the user's call: "remove the
 ones that are not wired"). `CompressionMode.targetSize`, the target-size lists, `OutputPreset`

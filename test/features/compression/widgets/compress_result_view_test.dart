@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/features/compression/widgets/compress_result_view.dart';
 
 const _mb = 1024 * 1024;
@@ -131,5 +132,11 @@ void main() {
     final preview = tester.getRect(find.byKey(const Key('result_preview')));
     final sizes = tester.getRect(find.byKey(const Key('result_sizes')));
     expect(preview.right, lessThanOrEqualTo(sizes.left));
+  });
+
+  testWidgets('the title has no green tick beside it', (tester) async {
+    await pump(tester);
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.byIcon(LucideIcons.check), findsNothing);
   });
 }
