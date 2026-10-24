@@ -34,6 +34,7 @@ import '../features/video_editor/logic/tool_dismissal.dart';
 import '../features/video_editor/logic/toolbar_visibility.dart';
 import '../features/video_editor/logic/clip_to_overlay.dart';
 import '../features/video_editor/widgets/panels/move_to_overlay_dialog.dart';
+import '../features/video_editor/logic/timeline/playhead_display_clock.dart';
 import '../features/video_editor/logic/timeline/timeline_geometry.dart';
 import '../features/video_editor/providers/video_editor_notifier.dart';
 import '../features/video_editor/services/media_import_service.dart';
@@ -500,6 +501,27 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// would drag the playhead back to the video end.
   bool _isDrivingTail = false;
 
+  /// The playhead as drawn: carried on every frame between the engine's
+  /// reports while it plays (`PlayheadDisplayClock`), the playhead state
+  /// otherwise. The timeline scrolls to it and text is drawn at it. Nothing
+  /// writes it back — the reports stay the playhead state's only writer.
+  final ValueNotifier<double> _drawnPlayhead = ValueNotifier(0);
+  final PlayheadDisplayClock _playheadClock = PlayheadDisplayClock();
+  final Stopwatch _playheadWatch = Stopwatch()..start();
+
+  /// True while the engine plays the video and its reports drive the drawn
+  /// playhead — not in the tail, where the ticker walks the state itself.
+  bool _followingEngine = false;
+
+  /// Where the playhead stood when a pause ended playback the engine drove.
+  /// The engine's own stopping point (on its `paused` event) is taken in its
+  /// place only if nothing has moved the playhead since.
+  double? _pauseFrom;
+
+  /// Where the engine stopped, once the playhead has been put there, so the
+  /// move does not seek the engine onto the frame it is already showing.
+  double? _engineParkedAt;
+
   /// Where a transition played from the transitions sheet stops: just past
   /// its window. Null when nothing is being played that way; any pause clears
   /// it, so it never stops a playback the user started.
@@ -590,10 +612,19 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final editorState = ref.read(videoEditorProvider);
     if (!editorState.isPlaying) return;
 
-    // The engine is the sole writer of the playhead while it has one; the
-    // ticker exists only for the tail past the last video frame, where there
-    // is no native clock left. Two clocks writing the playhead is entry 12 in
-    // dead-ends.
+    // The engine is the sole writer of the playhead while it has one; here
+    // the ticker only draws it between the engine's reports, writing nothing.
+    // Two clocks writing the playhead is entry 12 in dead-ends.
+    if (_followingEngine) {
+      _drawnPlayhead.value = _playheadClock.positionAt(
+        _playheadWatch.elapsed,
+        end: _videoTimelineDuration(editorState.segments),
+      );
+      return;
+    }
+
+    // Past the last video frame there is no native clock left, and the
+    // ticker walks the playhead through the tail itself.
     _driveNativeAudioTail(
       editorState: editorState,
       notifier: ref.read(videoEditorProvider.notifier),
@@ -665,6 +696,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       recording.dispose();
     }
     _ticker.dispose();
+    _drawnPlayhead.dispose();
     _audioPlayerManager.dispose();
     unawaited(_nativePreviewSubscription?.cancel() ?? Future<void>.value());
     unawaited(_nativePreviewService.dispose());
@@ -777,7 +809,25 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
       final position = event.positionSeconds!;
       ref.read(videoEditorProvider.notifier).updatePlaybackPosition(position);
+      _playheadClock.report(
+        position,
+        advancing: event.advancing,
+        at: _playheadWatch.elapsed,
+      );
       _audioPlayerManager.seekAndPlaySync(position, state.audioTracks, true);
+    } else if (event.type == 'paused') {
+      // A pause the editor asked for lands on the frame the engine stopped
+      // on: the last report is up to an interval behind it, and the drawn
+      // playhead a little ahead. Anything that moved the playhead meanwhile
+      // — a scrub, a play — wins.
+      final from = _pauseFrom;
+      final at = event.positionSeconds;
+      _pauseFrom = null;
+      if (from == null || at == null) return;
+      final state = ref.read(videoEditorProvider);
+      if (state.isPlaying || state.currentPlaybackPosition != from) return;
+      _engineParkedAt = at;
+      ref.read(videoEditorProvider.notifier).updatePlaybackPosition(at);
     } else if (event.type == 'completed') {
       final state = ref.read(videoEditorProvider);
       if (!_canUseNativeTimelinePreview(state)) return;
@@ -789,11 +839,12 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       // Audio or an overlay can outlast the video. The engine's clock ends
       // with its last frame, so the ticker takes over from here and walks the
       // playhead through the tail while the canvas shows the background.
+      _followingEngine = false;
       if (totalDuration > videoDuration + 0.05) {
         notifier.updatePlaybackPosition(videoDuration);
         _isDrivingTail = true;
         _lastTick = DateTime.now();
-        _ticker.start();
+        if (!_ticker.isActive) _ticker.start();
         return;
       }
 
@@ -3237,6 +3288,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       inputPath: sourceVideo.path,
       durationSeconds: editorState.durationSeconds,
       timelinePositionSeconds: editorState.currentPlaybackPosition,
+      playhead: _drawnPlayhead,
       trimRange: editorState.trimRange,
       segments: displaySegments,
       selectedSegmentId: editorState.selectedSegmentId,
@@ -3328,6 +3380,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       if (isPlaying) {
         // Any transport change ends the tail; the engine owns the clock again.
         _isDrivingTail = false;
+        _pauseFrom = null;
+        _engineParkedAt = null;
         _lastTick = DateTime.now();
         // Ensure audio players are loaded before playing
         final state = ref.read(videoEditorProvider);
@@ -3346,10 +3400,16 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
           await _seekNativePreviewToTimeline(ref.read(videoEditorProvider));
           await _nativePreviewService.play();
         }());
-        // The engine drives the playhead; the ticker only takes over for a
-        // tail past the last video frame.
-        _ticker.stop();
+        // The engine drives the playhead; the ticker draws it between the
+        // engine's reports, and walks it through a tail past the last frame.
+        _playheadClock.place(ref.read(videoEditorProvider).currentPlaybackPosition);
+        _followingEngine = true;
+        if (!_ticker.isActive) _ticker.start();
       } else {
+        if (_followingEngine) {
+          _pauseFrom = ref.read(videoEditorProvider).currentPlaybackPosition;
+        }
+        _followingEngine = false;
         _isDrivingTail = false;
         _transitionPlaybackStop = null;
         _ticker.stop();
@@ -3438,13 +3498,16 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     ref.listen<double>(
       videoEditorProvider.select((s) => s.currentPlaybackPosition),
       (prev, currentPos) {
+        if (!_followingEngine) _drawnPlayhead.value = currentPos;
         final state = ref.read(videoEditorProvider);
         if (!state.isPlaying) {
           // Deliberately no _syncNativePreviewTimeline here: the whole-state
           // listener above already runs on this change, and composing plus
           // encoding the timeline twice per gesture frame was a large part of
           // why dragging the playhead felt heavy.
-          if (_canUseNativeTimelinePreview(state)) {
+          final parked = _engineParkedAt;
+          _engineParkedAt = null;
+          if (_canUseNativeTimelinePreview(state) && currentPos != parked) {
             unawaited(_seekNativePreviewToTimeline(state));
           }
           _audioPlayerManager.seekAndPlaySync(
@@ -3499,6 +3562,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                               videoSurface: NativeTimelinePreviewView(
                                 service: _nativePreviewService,
                               ),
+                              playhead: _drawnPlayhead,
                               onTogglePreview: _togglePreview,
                               // The space beside the picture is "done here",
                               // one level per tap: an open panel closes

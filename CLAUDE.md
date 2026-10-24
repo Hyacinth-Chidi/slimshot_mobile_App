@@ -3091,10 +3091,20 @@ Reorder and the cut seam are done.
 instant under the playhead when the pinch begins stays under it (`_pinchAnchorSeconds`), from
 `kMaxPixelsPerSecond` (600, ~20px a frame at 30fps) out to where the whole project fills
 `kZoomOutFitFraction` (80%) of the screen — never closer than `kDefaultPixelsPerSecond` (50), the
-scale the editor opens at and the one it had before; not saved with the draft
-(`logic/timeline/timeline_zoom.dart`). `_pixelsPerSecond` became a field and everything on the
-track is placed through it, so lanes, handles, diamonds, markers, the filmstrip (fixed-width
-tiles, so more frames rather than stretched ones) and the ruler all follow.
+scale it had before; not saved with the draft (`logic/timeline/timeline_zoom.dart`).
+`_pixelsPerSecond` became a field and everything on the track is placed through it, so lanes,
+handles, diamonds, markers, the filmstrip (fixed-width tiles, so more frames rather than stretched
+ones) and the ruler all follow.
+
+**It opens zoomed out** (`_fitScaleOnOpen`, `timeline_opening_zoom_test.dart`, **awaiting device
+verification**; the user's call): at that furthest zoom out, so a long project opens with all of it
+in view and a pinch spreads it out, while a short one opens at 50 as before. It opened at 50
+whatever the length — a minute of video was eight screens to scroll through before anyone pinched
+it smaller. **Fitted once**, the first time the project has a length; a scale refitted to every
+edit would change under the finger as a trim changed the length. The opening frame fetch covers
+the half screen right of the playhead at that scale (`_visibleEndSeconds` before layout) —
+fitted, that is far more than the 12 s it assumed, and nothing rebuilds the track after its first
+layout to ask again, so the rest of the strip stayed blank until touched.
 
 - **A `Listener`, not a recogniser**: it sees every finger without entering the arena, so a
   one-finger scrub, trim or carry is exactly what it was; the pinch begins at the second finger,
@@ -3502,6 +3512,52 @@ common intent and was otherwise a frame or two off every time. The tolerance is 
 source seconds through the clip's speed, so the pull feels the same on a sped clip; the haptic
 fires once on arrival (`_trimSnapped`), not on every frame held there. `snapToNearest` is
 unit-agnostic so the two feel identical.
+
+#### Timing — what the playhead points at, and when
+
+**Awaiting device verification.** From a check of everything that has to agree on an instant —
+the picture, the playhead, the filmstrip, the bars, the music, the text. Five faults, each pinned
+by a test:
+
+- **The playhead line was 4.25 px late** (85 ms at the default zoom): the column holding the line
+  and its triangle was placed by the line's width but centred the line on the triangle's. The
+  column is centred on the playback instant now (`timeline_playhead_alignment_test.dart`).
+- **A filmstrip tile showed a frame from before itself**: its left edge rounded *down* to the
+  200 ms grid — for a clip's first tile after a split, a frame from across the cut — and the
+  extractor then moved to the nearest keyframe, which can lie across the cut too. A tile shows its
+  own middle, rounded to the nearest step and held inside the clip; a clip's first and last tiles
+  ask for the exact frame (`OPTION_CLOSEST`, cached apart under `exact`), the rest the nearest
+  keyframe for speed (`clip_filmstrip_timing_test.dart`).
+- **Imported music started late.** `play()` went out with its seek in flight. It plays once the
+  seek has landed, re-aimed by a short second seek where the playhead moved on meanwhile — before
+  the start only (`MusicPlayer`, `audio_player_sync_test.dart`). **While it plays, drift is lived
+  with**: only a jump of `kMusicJumpSeconds` (0.5) is corrected, with one seek, at most every 2 s.
+  Device-reported: a first version corrected from 0.1 s, and music, extracted sound and sound
+  effects crackled — the music player always sits a steady tenth or so behind the engine (the time
+  its sound takes to start), so it seeked every 1.5 s, and every seek of a playing track is a
+  click. The overlay sound's lesson, below, unapplied; a test now plays ten seconds of steady lag
+  and requires no seek.
+- **The playhead moved only when a report landed** — about 30 times a second, a step every other
+  frame, ~20 px at the closest zoom — and **text appeared, left and animated on those reports**,
+  behind the picture. `PlayheadDisplayClock` (`logic/timeline/`) draws the playhead between the
+  engine's reports, every frame, from the screen's ticker into `_drawnPlayhead`; the timeline
+  scrolls to it (`ScrollableTimeline.playhead`) and text is drawn at it
+  (`TextOverlayLayer.playhead`). **It writes nothing** — the reports stay the playhead state's only
+  writer, dead-ends entry 12. It moves only while the engine says its picture is moving
+  (`advancing` on the position event, the very test the engine's own smoothing makes), at most
+  `kPlayheadMaxExtrapolationSeconds` (0.1) past the last report, and never back for a report that
+  lands late. Given it, the timeline follows it alone: the reports, arriving behind it, would pull
+  the track back a little thirty times a second (`timeline_drawn_playhead_test.dart`, checked by
+  putting the old sync back).
+- **A pause lands on the frame the engine stopped on.** The `paused` event carries the engine's
+  position and the playhead takes it, unless something moved the playhead since (`_pauseFrom`) —
+  without the move the drawn playhead, a little ahead, would jump back on every pause. Putting the
+  playhead there does not seek the engine onto the frame it already shows (`_engineParkedAt`).
+
+**Not fixed, and only a device can measure it:** the picture and the sound leave the phone through
+pipelines of different latency (display versus audio output, Bluetooth the worst), which nothing
+in the app sees. The drawn playhead also trails the engine by the platform channel's own delay, a
+few milliseconds.
 
 #### Reordering clips
 

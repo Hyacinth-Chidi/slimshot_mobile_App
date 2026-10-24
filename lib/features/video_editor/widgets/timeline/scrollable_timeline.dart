@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -135,6 +136,12 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
   final String inputPath;
   final double durationSeconds;
   final double timelinePositionSeconds;
+
+  /// The playhead as drawn, every frame while the engine plays
+  /// (`PlayheadDisplayClock`). Given, the timeline scrolls to it and to
+  /// nothing else: [timelinePositionSeconds] arrives in reports behind it and
+  /// would pull the track back a little each time.
+  final ValueListenable<double>? playhead;
   final RangeValues trimRange;
   final List<VideoSegment> segments;
   final String? selectedSegmentId;
@@ -235,6 +242,7 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
     required this.inputPath,
     required this.durationSeconds,
     this.timelinePositionSeconds = 0.0,
+    this.playhead,
     required this.trimRange,
     this.segments = const [],
     this.selectedSegmentId,
@@ -284,14 +292,39 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   /// stay glued to the filmstrip row when tall lane stacks scroll.
   final ScrollController _verticalScrollController = ScrollController();
 
-  /// Window assumed visible before the scroll view has been laid out, so the
-  /// opening filmstrip tiles are already being fetched on first paint.
+  /// The least window assumed visible before the scroll view has been laid
+  /// out, so the opening filmstrip tiles are already being fetched on first
+  /// paint.
   static const double _kInitialVisibleSeconds = 12.0;
 
   /// The timeline's scale: what a pinch changes. Everything on the track is
   /// placed through it, so a zoom moves every lane, handle, marker and the
-  /// ruler together. Not saved: the editor reopens at the default.
+  /// ruler together. Not saved: the editor reopens fitted.
   double _pixelsPerSecond = kDefaultPixelsPerSecond;
+
+  /// Whether the scale is settled: fitted the first time the project had a
+  /// length ([_fitScaleOnOpen]), or pinched since.
+  bool _scaleSettled = false;
+
+  /// Opens the timeline at its furthest zoom out ([minPixelsPerSecond]): a
+  /// long project fitted to the screen, a short one at the usual scale. A
+  /// pinch then spreads it out. It opened at the usual scale whatever the
+  /// length, so a minute of video was eight screens to scroll through before
+  /// anyone pinched it smaller.
+  ///
+  /// **Once.** A scale refitted to every edit would change under the finger
+  /// as a trim changed the project's length.
+  void _fitScaleOnOpen() {
+    if (_scaleSettled || _totalEditedDuration <= 0) return;
+    _scaleSettled = true;
+    final fitted = _minPixelsPerSecond;
+    // Keep the playhead's instant under it, as a pinch does.
+    if (_scrollController.hasClients) {
+      _scrollController.position
+          .correctPixels(_scrollController.offset / _pixelsPerSecond * fitted);
+    }
+    _pixelsPerSecond = fitted;
+  }
 
   /// The fingers on the track, by pointer — a pinch is two of them.
   final Map<int, Offset> _pinchPointers = {};
@@ -493,6 +526,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    widget.playhead?.addListener(_followPlayhead);
+  }
+
+  void _followPlayhead() => _syncScrollToTimelinePosition(widget.playhead!.value);
+
+  @override
   void didUpdateWidget(covariant ScrollableTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.inputPath != widget.inputPath) {
@@ -501,13 +542,19 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       }
     }
 
-    if (oldWidget.timelinePositionSeconds != widget.timelinePositionSeconds) {
+    if (oldWidget.playhead != widget.playhead) {
+      oldWidget.playhead?.removeListener(_followPlayhead);
+      widget.playhead?.addListener(_followPlayhead);
+    }
+    if (widget.playhead == null &&
+        oldWidget.timelinePositionSeconds != widget.timelinePositionSeconds) {
       _syncScrollToTimelinePosition(widget.timelinePositionSeconds);
     }
   }
 
   @override
   void dispose() {
+    widget.playhead?.removeListener(_followPlayhead);
     _reorderAutoScrollTimer?.cancel();
     _scrollController.dispose();
     _verticalScrollController.dispose();
@@ -551,6 +598,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     if (distance < 1) return;
     _pinchStartDistance = distance;
     _pinchStartScale = _pixelsPerSecond;
+    _scaleSettled = true;
     // The scroll offset is the playhead's time at the current scale: content
     // is padded by half a screen, so offset x puts time x / scale under it.
     _pinchAnchorSeconds = _scrollController.offset / _pixelsPerSecond;
@@ -633,8 +681,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
 
   double get _visibleEndSeconds {
     if (!_scrollController.hasClients) {
-      // Before first layout, cover a screenful so the opening frames load.
-      return _kInitialVisibleSeconds;
+      // Before first layout, cover a screenful so the opening frames load:
+      // the half of the screen right of the playhead, at the scale the
+      // timeline opens at. Fitted, that can be far more than the floor, and
+      // nothing rebuilds the track after its first layout to ask again.
+      final halfScreen = MediaQuery.sizeOf(context).width / 2;
+      return max(_kInitialVisibleSeconds, halfScreen / _pixelsPerSecond);
     }
     final halfViewport = _scrollController.position.viewportDimension / 2;
     return (_scrollController.offset + halfViewport) / _pixelsPerSecond;
@@ -2080,6 +2132,7 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     final editorState = ref.watch(videoEditorProvider);
     final screenWidth = MediaQuery.of(context).size.width;
     final halfWidth = screenWidth / 2;
+    _fitScaleOnOpen();
 
     final contentWidth = _totalEditedDuration * _pixelsPerSecond;
 
@@ -2427,8 +2480,13 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             ),
 
           // â”€â”€ Fixed center playhead â”€â”€
+          // The column is as wide as the triangle and centres the line in
+          // it, so it is the column that is centred on the playback instant.
+          // Placing it by the line's own width put the line and the
+          // triangle's tip 4.25 px late — 85 ms at the default zoom.
           Positioned(
-            left: halfWidth - 0.75,
+            left: halfWidth - 5,
+            width: 10,
             top: 0,
             bottom: 0,
             child: IgnorePointer(
@@ -2436,10 +2494,17 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 children: [
                   // Small triangle indicator at the top
                   CustomPaint(
+                    key: const ValueKey('timeline-playhead-triangle'),
                     size: const Size(10, 6),
                     painter: _TrianglePainter(color: Colors.white),
                   ),
-                  Expanded(child: Container(width: 1.5, color: Colors.white)),
+                  Expanded(
+                    child: Container(
+                      key: const ValueKey('timeline-playhead-line'),
+                      width: 1.5,
+                      color: Colors.white,
+                    ),
+                  ),
                 ],
               ),
             ),

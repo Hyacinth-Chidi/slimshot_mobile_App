@@ -35,30 +35,41 @@ class VideoThumbnailService {
   /// which covers a long timeline comfortably.
   static const int _maxEntries = 900;
 
-  String _key(String path, int timeMs) => '$path@$timeMs';
+  /// An exact frame and the nearest keyframe to the same instant are
+  /// different pictures, so they are cached apart.
+  String _key(String path, int timeMs, {bool exact = false}) =>
+      exact ? '$path@$timeMs!' : '$path@$timeMs';
 
   /// The frame for this instant if it has already been decoded.
   ///
   /// Returns null both when the frame is not loaded yet and when extraction
   /// failed; the strip renders a placeholder either way.
-  Uint8List? peek(String path, int timeMs) => _cache[_key(path, timeMs)];
+  Uint8List? peek(String path, int timeMs, {bool exact = false}) =>
+      _cache[_key(path, timeMs, exact: exact)];
 
   /// True once we have tried this frame, successfully or not. Lets a caller
   /// stop re-requesting a frame the source cannot produce.
-  bool isResolved(String path, int timeMs) => _cache.containsKey(_key(path, timeMs));
+  bool isResolved(String path, int timeMs, {bool exact = false}) =>
+      _cache.containsKey(_key(path, timeMs, exact: exact));
 
   /// Fetches any of [timesMs] that are neither cached nor already being
   /// fetched. Completes when this batch lands; other callers' batches are not
   /// waited on.
+  ///
+  /// By default each is the **nearest keyframe** to its instant — fast, and
+  /// close enough inside a clip. [exact] decodes the frame at the instant
+  /// itself, an order of magnitude slower: for a clip's edges, where the
+  /// nearest keyframe can lie on the other side of a cut.
   Future<void> request({
     required String path,
     required List<int> timesMs,
     int width = 160,
     int height = 160,
+    bool exact = false,
   }) async {
     final missing = <int>[];
     for (final timeMs in timesMs) {
-      final key = _key(path, timeMs);
+      final key = _key(path, timeMs, exact: exact);
       if (_cache.containsKey(key) || _inFlight.contains(key)) continue;
       _inFlight.add(key);
       missing.add(timeMs);
@@ -71,20 +82,21 @@ class VideoThumbnailService {
         'timesMs': missing,
         'width': width,
         'height': height,
+        'exact': exact,
       });
 
       for (var i = 0; i < missing.length; i++) {
-        _store(_key(path, missing[i]), frames?.elementAtOrNull(i));
+        _store(_key(path, missing[i], exact: exact), frames?.elementAtOrNull(i));
       }
     } catch (error) {
       // Record the failure so the strip does not spin on an unreadable file.
       for (final timeMs in missing) {
-        _store(_key(path, timeMs), null);
+        _store(_key(path, timeMs, exact: exact), null);
       }
       debugPrint('[Thumbnails] $path failed: $error');
     } finally {
       for (final timeMs in missing) {
-        _inFlight.remove(_key(path, timeMs));
+        _inFlight.remove(_key(path, timeMs, exact: exact));
       }
     }
   }

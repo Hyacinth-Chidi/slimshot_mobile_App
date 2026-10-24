@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -36,6 +37,9 @@ class VideoPreviewCanvas extends ConsumerStatefulWidget {
   final ValueChanged<Size>? onCanvasSizeChanged;
   final void Function(TextOverlayModel, bool)? onShowTextEditor;
 
+  /// The playhead as drawn, for the text layers (`TextOverlayLayer.playhead`).
+  final ValueListenable<double>? playhead;
+
   const VideoPreviewCanvas({
     super.key,
     required this.videoSurface,
@@ -43,6 +47,7 @@ class VideoPreviewCanvas extends ConsumerStatefulWidget {
     this.onOutsidePictureTapped,
     this.onCanvasSizeChanged,
     this.onShowTextEditor,
+    this.playhead,
   });
 
   @override
@@ -293,6 +298,7 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                                             videoCanvasSize: _videoCanvasSize!,
                                             onShowTextEditor: widget.onShowTextEditor ?? (_, __) {},
                                             targetLaneIndex: lane,
+                                            playhead: widget.playhead,
                                           ),
                                         ],
                                       ),
