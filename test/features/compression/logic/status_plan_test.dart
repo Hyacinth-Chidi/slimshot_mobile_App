@@ -7,7 +7,7 @@ void main() {
   VideoMetadata meta({
     int width = 720,
     int height = 1280,
-    int bitrateKbps = 1800,
+    int bitrateKbps = 1200,
     String codec = 'h264',
     double frameRate = 30,
     double avgFrameRate = 30,
@@ -111,7 +111,7 @@ void main() {
         '10-bit': meta(bitDepth: 10),
         'HLG': meta(colorTransfer: 'arib-std-b67'),
         'rotated': meta(width: 1280, height: 720, rotation: 90),
-        'over the ceiling': meta(bitrateKbps: 2500),
+        'over the ceiling': meta(bitrateKbps: 1600),
         'unknown bitrate': meta(bitrateKbps: 0),
         'six channels': meta(audioChannels: 6),
       };
@@ -129,9 +129,10 @@ void main() {
     expect(plan.audioChannels, 2);
   });
 
-  test('the ceiling is provisional 2000 kbps', () {
-    expect(kStatusMaxVideoKbps, 2000);
+  test("the ceiling is Instagram's, the file the owner saw stay sharp", () {
+    // Its busiest second carried 1366 kbps.
+    expect(kStatusMaxVideoKbps, 1500);
     expect(kStatusCrf, 21);
-    expect(kStatusX264Preset, 'medium');
+    expect(kStatusX264Preset, 'veryfast');
   });
 }

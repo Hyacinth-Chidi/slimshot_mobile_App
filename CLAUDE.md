@@ -4499,9 +4499,15 @@ Instagram at 720×1280 — smaller, a third of the bitrate — stayed clear. Wha
 like 720×1280 and shrinks anything larger itself, fast and cheap. So the switch (renamed from
 "WhatsApp ready", which scaled by width only and so left every portrait 1080×1920 as it was)
 makes that shape: inside 720×1280 / 1280×720, never enlarged, even sides; a constant rate (60 →
-30, 50 → 25, capped at 30); H.264 High 3.1, x264 `medium`, CRF 21 under a ceiling
-(`kStatusMaxVideoKbps`, **provisional 2000** until posted variants and WhatsApp's delivered
-copies are compared); HDR (PQ/HLG) tone-mapped; a mild denoise; AAC 128 kbps 44.1 kHz. A file
+30, 50 → 25, capped at 30); H.264 High 3.1, x264 `veryfast`, CRF 21 under **Instagram's own
+ceiling** (`kStatusMaxVideoKbps` 1500, held per second — `bufsize` equals it — and a keyframe every
+5 s, as the file that stayed sharp has); HDR (PQ/HLG) tone-mapped; a mild denoise **after** the
+shrink; AAC 128 kbps 44.1 kHz. **FFmpeg sizes the output from the upright frames itself**, never
+from the probe: device-reported, a portrait video came out squashed into landscape — stored on
+its side with a rotation label the probe missed, it read as 1920×1080 and was sent
+`scale=1280:720`, which FFmpeg applied to the already-upright picture. The first device run also
+found it soft once (a 2 Mbps cap with a 4 Mb buffer let bursts near 4 Mbps) and slow (`medium`,
+and the denoise on full-size frames before the shrink). A file
 already in that shape is **copied, not encoded** (`statusPlan(...).copyOnly`); the result is kept
 even when larger than the input, because a small 1080p original is exactly what blurs. On screen
 it overrides quality and format (dimmed, out of reach, "Overrides quality and format"), and the

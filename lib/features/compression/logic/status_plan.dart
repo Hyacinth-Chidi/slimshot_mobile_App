@@ -4,18 +4,28 @@ import 'compression_presets.dart';
 
 /// The most video bitrate, in kbps, a WhatsApp Status file may carry.
 ///
-/// **Provisional.** WhatsApp does not publish what it leaves untouched; the
+/// Instagram's, copied: the owner's edit downloaded back from Instagram stayed
+/// sharp on Status, and its busiest second carried 1366 kbps. Held for every
+/// second (`bufsize` = this), not averaged over two: a 2 Mbps cap with a 4 Mb
+/// buffer let bursts run near 4 Mbps, and a file came back soft.
+///
+/// **Still provisional.** WhatsApp does not publish what it leaves untouched; the
 /// measurement in `docs/superpowers/specs/2026-10-23-whatsapp-status-compression-design.md`
 /// (posting variants and reading back what WhatsApp delivered) sets it. Above
 /// it a file is re-encoded by WhatsApp; this is the ceiling we encode under.
-const int kStatusMaxVideoKbps = 2000;
+const int kStatusMaxVideoKbps = 1500;
 
 /// x264's quality target under that ceiling: easy content (an app screen)
 /// comes out small, hard content (camera, motion) rides the ceiling.
 const int kStatusCrf = 21;
 
-/// Slower than the presets' `superfast`/`ultrafast`, for quality per byte.
-const String kStatusX264Preset = 'medium';
+/// `medium` took minutes on a low-end phone; under a tight bitrate ceiling
+/// `veryfast` gives most of its quality at a few times the speed.
+const String kStatusX264Preset = 'veryfast';
+
+/// A keyframe every 5 s at 30 fps, as Instagram's file has: fewer keyframes
+/// leave more of the ceiling for the picture.
+const int _kKeyframeInterval = 150;
 
 /// The box WhatsApp Status keeps, portrait; landscape swaps it.
 const int _kShortSide = 720;
@@ -36,8 +46,10 @@ class StatusPlan {
   /// is touched.
   final bool copyOnly;
 
-  /// The output size as shown; null when the source's size is unknown (the
-  /// command then fits it with FFmpeg's own expression).
+  /// The output size as the probe read it: what decides [copyOnly]. The
+  /// command does **not** size from it — FFmpeg fits the upright frames
+  /// itself, because a rotation label the probe missed would make a portrait
+  /// video read as landscape.
   final int? width;
   final int? height;
 
@@ -158,16 +170,18 @@ String statusCommand(
     return cmd.toString();
   }
 
-  final scale = plan.width != null && plan.height != null
-      ? 'scale=${plan.width}:${plan.height}:flags=lanczos'
-      // Unknown size: FFmpeg fits it, never larger than the source.
-      : "scale=w='if(gte(iw,ih),min($_kLongSide,iw),min($_kShortSide,iw))'"
-          ":h='if(gte(iw,ih),min($_kShortSide,ih),min($_kLongSide,ih))'"
-          ':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos';
+  // FFmpeg fits the frames it actually has — turned upright already — so a
+  // rotation label the probe missed cannot squash a portrait picture into a
+  // landscape box. Never larger than the source.
+  const scale = "scale=w='if(gte(iw,ih),min($_kLongSide,iw),min($_kShortSide,iw))'"
+      ":h='if(gte(iw,ih),min($_kShortSide,ih),min($_kLongSide,ih))'"
+      ':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos';
   final chain = [
     if (plan.toneMap) _kToneMap,
-    _kDenoise,
+    // Shrink first: cleaning after touches a quarter of a 1080p frame's
+    // pixels, or a ninth of a 4K one's.
     scale,
+    _kDenoise,
     'setsar=1',
     'fps=${_rate(plan.frameRate)}',
     'format=yuv420p',
@@ -179,7 +193,8 @@ String statusCommand(
     ..write('-vf "$chain" ')
     ..write('-c:v libx264 -preset $kStatusX264Preset -profile:v high -level 3.1 '
         '-pix_fmt yuv420p -crf $kStatusCrf '
-        '-maxrate ${kStatusMaxVideoKbps}k -bufsize ${kStatusMaxVideoKbps * 2}k ')
+        '-maxrate ${kStatusMaxVideoKbps}k -bufsize ${kStatusMaxVideoKbps}k '
+        '-g $_kKeyframeInterval ')
     ..write('-color_primaries bt709 -color_trc bt709 -colorspace bt709 ')
     ..write(plan.audioChannels > 0
         ? '-c:a aac -b:a 128k -ar 44100 -ac ${plan.audioChannels} '

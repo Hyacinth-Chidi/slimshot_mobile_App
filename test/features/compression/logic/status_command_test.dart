@@ -41,8 +41,8 @@ void main() {
     expect(cmd, contains('-map 0:a:0?'));
     expect(
       cmd,
-      contains('-c:v libx264 -preset medium -profile:v high -level 3.1 '
-          '-pix_fmt yuv420p -crf 21 -maxrate 2000k -bufsize 4000k'),
+      contains('-c:v libx264 -preset veryfast -profile:v high -level 3.1 '
+          '-pix_fmt yuv420p -crf 21 -maxrate 1500k -bufsize 1500k -g 150'),
     );
     expect(cmd, contains('-color_primaries bt709 -color_trc bt709 -colorspace bt709'));
     expect(cmd, contains('-c:a aac -b:a 128k -ar 44100 -ac 2'));
@@ -50,10 +50,12 @@ void main() {
     expect(cmd, endsWith('"/out.mp4"'));
   });
 
-  test('denoise, then scale, square pixels, a constant rate, 8-bit', () {
+  test('shrink first, then clean the small picture: square pixels, a constant rate, 8-bit', () {
+    // Cleaning before shrinking ran the denoise on every full-size 1080p
+    // (or 4K) pixel — most of why it was slow.
     inOrder(chainOf(command(plan())), [
+      'scale=',
       'hqdn3d=',
-      'scale=720:1280:flags=lanczos',
       'setsar=1',
       'fps=30',
       'format=yuv420p',
@@ -63,12 +65,20 @@ void main() {
   test('HDR is tone-mapped before anything else', () {
     final chain = chainOf(command(plan(toneMap: true)));
     expect(chain, startsWith('zscale=t=linear'));
-    inOrder(chain, ['tonemap=tonemap=hable', 'zscale=t=bt709:m=bt709:r=tv', 'hqdn3d=']);
+    inOrder(chain, ['tonemap=tonemap=hable', 'zscale=t=bt709:m=bt709:r=tv', 'scale=w=']);
     expect(chainOf(command(plan())), isNot(contains('zscale')));
   });
 
-  test('an unknown size is fitted by FFmpeg, never enlarged', () {
+  test('FFmpeg fits the upright picture itself, so a rotation label cannot mislead it', () {
+    // A portrait video stored on its side, whose rotation label went unread,
+    // looks 1920×1080 to the probe. Sizing from that sent "scale=1280:720",
+    // and FFmpeg — which does turn the picture upright — squashed a portrait
+    // picture into a landscape box. The size is FFmpeg's to choose, from the
+    // frames it actually has, whatever the plan thought.
+    final misled = chainOf(command(plan(width: 1280, height: 720)));
+    expect(misled, isNot(contains('scale=1280:720')));
     final chain = chainOf(command(plan(width: null, height: null)));
+    expect(misled, chain);
     expect(chain, contains('force_original_aspect_ratio=decrease'));
     expect(chain, contains('force_divisible_by=2'));
     expect(chain, contains('gte(iw,ih)'));

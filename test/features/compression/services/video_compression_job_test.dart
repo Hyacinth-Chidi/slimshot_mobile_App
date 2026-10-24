@@ -8,7 +8,7 @@ void main() {
   final best = CompressionPresets.videoPresets.firstWhere((p) => p.id == 'best_quality');
   final smart = CompressionPresets.videoPresets.firstWhere((p) => p.id == 'smart');
 
-  VideoMetadata meta({int width = 720, int height = 1280, int kbps = 1800}) => VideoMetadata(
+  VideoMetadata meta({int width = 720, int height = 1280, int kbps = 1200}) => VideoMetadata(
         width: width,
         height: height,
         bitrateKbps: kbps,
@@ -39,7 +39,7 @@ void main() {
 
   test('a 1080×1920 video is brought to 720×1280 and kept even if larger', () {
     final j = job(metadata: meta(width: 1080, height: 1920, kbps: 900)) as RunFfmpeg;
-    expect(j.command, contains('scale=720:1280'));
+    expect(j.command, contains('force_original_aspect_ratio=decrease'));
     expect(j.keepIfLarger, isTrue);
   });
 
