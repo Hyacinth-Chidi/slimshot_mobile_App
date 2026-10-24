@@ -468,7 +468,7 @@ class _GridActionCardState extends State<_GridActionCard> {
                     width: 100,
                     height: 100,
                     decoration: BoxDecoration(
-                      color: AppColors.primaryStart.withValues(alpha: 0.05),
+                      color: AppColors.textPrimary.withValues(alpha: 0.07),
                       shape: BoxShape.circle,
                     ),
                   ),

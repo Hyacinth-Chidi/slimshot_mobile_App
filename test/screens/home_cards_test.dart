@@ -146,6 +146,18 @@ void main() {
         findsOneWidget,
         reason: title,
       );
+      // The circle in the corner is white, not purple (the owner's call).
+      final circle = find.descendant(
+        of: find.ancestor(of: text, matching: find.byType(Stack)).first,
+        matching: find.byWidgetPredicate((w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).shape == BoxShape.circle),
+      );
+      final colour =
+          ((tester.widget<Container>(circle).decoration!) as BoxDecoration).color!;
+      expect(colour.r, closeTo(AppColors.textPrimary.r, 0.01), reason: title);
+      expect(colour.b, closeTo(AppColors.textPrimary.b, 0.01), reason: title);
     }
   });
 }
