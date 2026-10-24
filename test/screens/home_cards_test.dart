@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:slimshotai/core/theme/app_colors.dart';
 import 'package:slimshotai/core/theme/lucide_icons.dart';
+import 'package:slimshotai/core/widgets/frosted_glass.dart';
 import 'package:slimshotai/main.dart';
 
 /// The gallery, scripted: every pick returns [images].
@@ -123,5 +125,27 @@ void main() {
     await tester.tapAt(tester.getRect(card).centerRight - const Offset(40, 0));
     await _settle(tester);
     expect(picker.picks, 1);
+  });
+
+  // The owner's call: beside the New Video card, glass did not fit. The three
+  // tools are solid tiles.
+  testWidgets('the three tool cards are solid, not glass', (tester) async {
+    await pumpHome(tester);
+    for (final title in ['Compress\nVideo', 'Compress\nPhoto', 'Privacy\nStrip']) {
+      final text = find.text(title);
+      expect(find.ancestor(of: text, matching: find.byType(FrostedGlass)),
+          findsNothing, reason: title);
+      expect(
+        find.ancestor(
+          of: text,
+          matching: find.byWidgetPredicate((w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).color == AppColors.surface),
+        ),
+        findsOneWidget,
+        reason: title,
+      );
+    }
   });
 }

@@ -4462,6 +4462,10 @@ light, not paint.**
   on a white stand on the right (`_PhotoFan`, `assets/home/new_video_{left,middle,right}.webp`,
   the middle one wearing a play mark) — a picture of making a video from your own clips. The
   photos decode at 360 px tall (`cacheHeight`), not their 1672. The whole card is the tap target.
+- **The three tool cards under it are solid, not glass** (`_GridActionCard`, the owner's call;
+  `home_cards_test.dart`): `AppColors.surface` with a `surfaceLight` hairline, the edge purple
+  while pressed. Beside the New Video card's colour and photos the glass read as washed out. A
+  design of the owner's own is to come.
 - **Accents that sit on purple use `AppColors.lilac`, never the brand purple**, which vanishes
   there; "Video" is `lightAccentGradient` (white into lilac). Grey text on these screens is
   secondary, not tertiary. The coin is **`AppColors.credit`** (amber).

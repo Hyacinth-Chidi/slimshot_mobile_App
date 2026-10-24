@@ -438,11 +438,18 @@ class _GridActionCardState extends State<_GridActionCard> {
         widget.onTap();
       },
       onTapCancel: () => setState(() => _isPressed = false),
-      child: FrostedGlass(
-        borderRadius: BorderRadius.circular(16),
-        tint: _isPressed
-            ? AppColors.primaryStart.withValues(alpha: 0.16)
-            : null,
+      // Solid, the owner's call: beside the New Video card's colour and
+      // photos, glass read as washed out.
+      child: AnimatedContainer(
+        duration: 150.ms,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _isPressed ? AppColors.primaryStart : AppColors.surfaceLight,
+          ),
+        ),
         child: SizedBox(
           height: 120, // Square proportion
           child: Stack(
