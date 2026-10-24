@@ -699,19 +699,11 @@ class _PhotoFan extends StatelessWidget {
               cacheHeight: 360,
             ),
             if (video)
-              Center(
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.textPrimary.withValues(alpha: 0.85),
-                  ),
-                  child: const Icon(
-                    LucideIcons.play,
-                    size: 14,
-                    color: AppColors.primaryEnd,
-                  ),
+              const Center(
+                child: SizedBox(
+                  width: 15,
+                  height: 18,
+                  child: CustomPaint(painter: _PlayOutlinePainter()),
                 ),
               ),
           ]),
@@ -760,6 +752,34 @@ class _PhotoFan extends StatelessWidget {
           ),
         ]);
       });
+}
+
+/// A play mark drawn as a thick, rounded white outline, the photo showing
+/// through it.
+class _PlayOutlinePainter extends CustomPainter {
+  const _PlayOutlinePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 3.0;
+    const inset = stroke / 2;
+    final path = Path()
+      ..moveTo(inset, inset)
+      ..lineTo(size.width - inset, size.height / 2)
+      ..lineTo(inset, size.height - inset)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = AppColors.textPrimary.withValues(alpha: 0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PlayOutlinePainter oldDelegate) => false;
 }
 
 /// A white triangle with rounded corners: a wide base, sides rising to a
