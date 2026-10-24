@@ -84,6 +84,16 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
   CompressionNotifier(this._videoService, this._imageService)
     : super(const CompressionState());
 
+  /// The run whose results may reach the screen. Each compression takes the
+  /// next number and Cancel retires the current one, so a run only ever
+  /// writes state while it is [_isCurrent]. Every run used to ask "is *a*
+  /// compression running?" — and a cancelled one, its FFmpeg call ending late
+  /// as a failure, saw the restarted run's "running", marked it failed and
+  /// stopped, and its progress landed on the new run's ring.
+  int _run = 0;
+
+  bool _isCurrent(int run) => mounted && run == _run;
+
   void setInputFiles(List<XFile> files, {CompressionPreset? defaultPreset}) async {
     int totalSize = 0;
     for (var file in files) {
@@ -127,6 +137,7 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
 
   Future<void> compressVideo() async {
     if (state.inputFiles.isEmpty || state.selectedPreset == null) return;
+    final run = ++_run;
 
     state = state.copyWith(
       isProcessing: true,
@@ -144,12 +155,13 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
       int totalCompressed = 0;
 
       for (int i = 0; i < state.inputFiles.length; i++) {
-        if (!state.isProcessing) break; // Check for cancellation
+        if (!_isCurrent(run)) break; // Cancelled
 
         state = state.copyWith(currentProcessingIndex: i, progress: 5);
         final file = state.inputFiles[i];
 
         VideoMetadata? currentMetadata = i == 0 ? state.videoMetadata : await _videoService.getVideoMetadata(file.path);
+        if (!_isCurrent(run)) break;
 
         final resultPath = await _videoService.compressVideo(
           inputPath: file.path,
@@ -159,13 +171,20 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
           removeMetadata: state.removeMetadata,
           targetFormat: state.targetVideoFormat,
           onProgress: (progressPct) {
-            if (state.isProcessing && state.currentProcessingIndex == i) {
+            if (_isCurrent(run) && state.currentProcessingIndex == i) {
               final p = progressPct.clamp(5.0, 95.0);
               state = state.copyWith(progress: p);
             }
           },
         );
 
+        if (!_isCurrent(run)) {
+          // Finished, or ended as a failure, after Cancel: nobody wants it.
+          if (resultPath != null && resultPath != file.path) {
+            FileUtils.deleteFile(resultPath);
+          }
+          break;
+        }
         if (resultPath != null) {
           final compressedFile = XFile(resultPath);
           totalCompressed += await compressedFile.length();
@@ -176,7 +195,7 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
         }
       }
 
-      if (state.isProcessing) {
+      if (_isCurrent(run)) {
         state = state.copyWith(
           isProcessing: false,
           progress: 100,
@@ -184,9 +203,13 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
           compressedSize: totalCompressed,
           skippedCompressions: skipped,
         );
+      } else {
+        for (var i = 0; i < results.length; i++) {
+          if (!skipped[i]) FileUtils.deleteFile(results[i]);
+        }
       }
     } catch (e) {
-      if (state.isProcessing) {
+      if (_isCurrent(run)) {
         state = state.copyWith(isProcessing: false, error: e.toString());
       }
     }
@@ -194,6 +217,7 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
 
   Future<void> compressImage() async {
     if (state.inputFiles.isEmpty || state.selectedPreset == null) return;
+    final run = ++_run;
 
     state = state.copyWith(
       isProcessing: true, 
@@ -209,7 +233,7 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
       int totalCompressed = 0;
 
       for (int i = 0; i < state.inputFiles.length; i++) {
-        if (!state.isProcessing) break; // Check for cancellation
+        if (!_isCurrent(run)) break; // Cancelled
         
         state = state.copyWith(currentProcessingIndex: i, progress: 20);
         final file = state.inputFiles[i];
@@ -221,6 +245,10 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
           targetFormat: state.targetImageFormat,
         );
 
+        if (!_isCurrent(run)) {
+          if (resultPath != null) FileUtils.deleteFile(resultPath);
+          break;
+        }
         state = state.copyWith(progress: 80);
 
         if (resultPath != null) {
@@ -232,23 +260,31 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
         }
       }
 
-      if (state.isProcessing) {
+      if (_isCurrent(run)) {
         state = state.copyWith(
           isProcessing: false,
           progress: 100,
           outputPaths: results,
           compressedSize: totalCompressed,
         );
+      } else {
+        for (final path in results) {
+          FileUtils.deleteFile(path);
+        }
       }
     } catch (e) {
-      if (state.isProcessing) {
+      if (_isCurrent(run)) {
         state = state.copyWith(isProcessing: false, error: e.toString());
       }
     }
   }
 
   Future<void> cancelCompression() async {
+    // Retired before anything is awaited, so nothing the cancelled run does
+    // from here on reaches the screen.
+    _run++;
     await _videoService.cancelCompression();
+    if (!mounted) return;
     state = CompressionState(
       inputFiles: state.inputFiles,
       originalSize: state.originalSize,
@@ -262,6 +298,7 @@ class CompressionNotifier extends StateNotifier<CompressionState> {
   }
 
   void reset() {
+    _run++;
     if (state.outputPaths.isNotEmpty) {
       for (var path in state.outputPaths) {
         FileUtils.deleteFile(path);
