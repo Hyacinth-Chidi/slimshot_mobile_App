@@ -4501,8 +4501,9 @@ like 720×1280 and shrinks anything larger itself, fast and cheap. So the switch
 makes that shape: inside 720×1280 / 1280×720, never enlarged, even sides; a constant rate (60 →
 30, 50 → 25, capped at 30); H.264 High 3.1, x264 `veryfast`, CRF 21 under **Instagram's own
 ceiling** (`kStatusMaxVideoKbps` 1500, held per second — `bufsize` equals it — and a keyframe every
-5 s, as the file that stayed sharp has); HDR (PQ/HLG) tone-mapped; a mild denoise **after** the
-shrink; AAC 128 kbps 44.1 kHz. **FFmpeg sizes the output from the upright frames itself**, never
+5 s, as the file that stayed sharp has); HDR (PQ/HLG) tone-mapped; **no denoise** — measured
+with FFmpeg on the owner's videos it was 35% of all the work, the biggest step, and lowered SSIM
+(0.9945 against 0.9950 without); AAC 128 kbps 44.1 kHz. **FFmpeg sizes the output from the upright frames itself**, never
 from the probe: device-reported, a portrait video came out squashed into landscape — stored on
 its side with a rotation label the probe missed, it read as 1920×1080 and was sent
 `scale=1280:720`, which FFmpeg applied to the already-upright picture. The first device run also

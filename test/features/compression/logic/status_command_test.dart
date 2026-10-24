@@ -50,12 +50,14 @@ void main() {
     expect(cmd, endsWith('"/out.mp4"'));
   });
 
-  test('shrink first, then clean the small picture: square pixels, a constant rate, 8-bit', () {
-    // Cleaning before shrinking ran the denoise on every full-size 1080p
-    // (or 4K) pixel — most of why it was slow.
-    inOrder(chainOf(command(plan())), [
+  test('shrink, square pixels, a constant rate, 8-bit — and no denoise', () {
+    // Measured on the owner's screen recordings: the denoise was 35% of all
+    // the work (the biggest single step) and lowered SSIM, 0.9945 against
+    // 0.9950 without — there was no noise to remove.
+    final chain = chainOf(command(plan()));
+    expect(chain, isNot(contains('hqdn3d')));
+    inOrder(chain, [
       'scale=',
-      'hqdn3d=',
       'setsar=1',
       'fps=30',
       'format=yuv420p',

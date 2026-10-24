@@ -153,8 +153,6 @@ const String _kToneMap = 'zscale=t=linear:npl=100,format=gbrpf32le,'
     'zscale=p=bt709,tonemap=tonemap=hable:desat=0,'
     'zscale=t=bt709:m=bt709:r=tv,format=yuv420p';
 
-/// Mild: sensor grain out, detail kept.
-const String _kDenoise = 'hqdn3d=1.5:1.5:6:6';
 
 /// The FFmpegKit argument string that makes [plan] of [input] at [output].
 String statusCommand(
@@ -178,10 +176,9 @@ String statusCommand(
       ':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos';
   final chain = [
     if (plan.toneMap) _kToneMap,
-    // Shrink first: cleaning after touches a quarter of a 1080p frame's
-    // pixels, or a ninth of a 4K one's.
+    // No denoise: measured on the owner's videos it was 35% of all the work
+    // and lowered quality (SSIM 0.9945 against 0.9950 without).
     scale,
-    _kDenoise,
     'setsar=1',
     'fps=${_rate(plan.frameRate)}',
     'format=yuv420p',
