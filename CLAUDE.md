@@ -4396,9 +4396,14 @@ every glow at or under 30% and the white under 6% (`colour_field_backdrop_test.d
 glass fill neutral, no colour of its own (`frosted_glass_test.dart`). **Colour on these screens is
 light, not paint.**
 
-- **The Edit Video card is the one block of colour** — solid, from `AppColors.primaryDeep`
-  (Purple 950) behind the words into `primaryEnd` behind the image. It outranks the glass tools
-  under it; a bright purple card added to the overload.
+- **The New video card is the one block of colour** — deep purple (`primaryDeep` into
+  `primaryEnd` and `primaryStart`), outranking the glass tools under it; a bright purple card
+  added to the overload. **It is a button, not a banner** (`home_cards_test.dart`, **awaiting
+  device verification**; the owner's call from mockups): it read as an advert — "Edit New Video",
+  a slogan and a 3D picture, nothing that looked pressable — so people did not know it starts a
+  project. Now a white plus with glow rings and **"New video" under it**, the sign every editor
+  uses for "start something new", and a fan of three clips on the right (`_MediaFan`) — a picture
+  of picking from the gallery. The whole card is the tap target.
 - **Accents that sit on purple use `AppColors.lilac`, never the brand purple**, which vanishes
   there; "Video" is `lightAccentGradient` (white into lilac). Grey text on these screens is
   secondary, not tertiary. The coin is **`AppColors.credit`** (amber).

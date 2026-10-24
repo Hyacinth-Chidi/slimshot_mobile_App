@@ -540,151 +540,190 @@ class _HeroActionCardState extends State<_HeroActionCard> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _isPressed = true),
-      onTapUp: (_) {
-        setState(() => _isPressed = false);
-        HapticFeedback.selectionClick();
-        widget.onTap();
-      },
-      onTapCancel: () => setState(() => _isPressed = false),
-      // Solid, unlike the glass tools under it: the one primary action and
-      // the one block of colour on the screen. Kept deep — near-black purple
-      // behind the words into the brand's deep purple behind the image — since
-      // a bright purple card read as too much on the device.
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child:
-            AnimatedContainer(
-                  duration: 120.ms,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: _isPressed
-                          ? const [AppColors.primaryDeep, AppColors.primaryDeep]
-                          : const [AppColors.primaryDeep, AppColors.primaryEnd],
-                    ),
-                    border: Border.all(
-                      color: AppColors.textPrimary.withValues(alpha: 0.12),
+    return Semantics(
+      button: true,
+      label: 'New video',
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: const Key('home_new_video'),
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) {
+          setState(() => _isPressed = false);
+          HapticFeedback.selectionClick();
+          widget.onTap();
+        },
+        onTapCancel: () => setState(() => _isPressed = false),
+        // A plus that is the whole card, the sign every editor uses for "start
+        // something new". It read as a banner before — a slogan and a 3D
+        // picture, nothing that looked pressable. Still the one block of
+        // colour on the screen, kept deep: a bright purple read as too much.
+        child: AnimatedScale(
+          scale: _isPressed ? 0.98 : 1,
+          duration: 120.ms,
+          child: Container(
+            height: 156,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.primaryDeep,
+                  AppColors.primaryEnd,
+                  AppColors.primaryStart,
+                ],
+                stops: [0, 0.6, 1],
+              ),
+              border: Border.all(
+                color: AppColors.textPrimary.withValues(alpha: 0.14),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primaryEnd.withValues(alpha: 0.35),
+                  blurRadius: 30,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Stack(children: [
+                // A sheen from the top left, the light the home screen has.
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: const Alignment(0.2, 0.2),
+                        colors: [
+                          AppColors.textPrimary.withValues(alpha: 0.14),
+                          AppColors.textPrimary.withValues(alpha: 0),
+                        ],
+                      ),
                     ),
                   ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
+                ),
+                // Your media, fanned: what the plus opens.
+                const Positioned(right: 18, top: 34, child: _MediaFan()),
+                Padding(
+                  padding: const EdgeInsets.only(left: 26),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Subtle background glow on the right
-                      Positioned(
-                        right: -20,
-                        bottom: -20,
-                        child: AnimatedScale(
-                          scale: _isPressed ? 1.1 : 1.0,
-                          duration: 150.ms,
-                          child: Container(
-                            width: 140,
-                            height: 140,
-                            decoration: BoxDecoration(
-                              color: AppColors.textPrimary.withValues(
-                                alpha: 0.05,
-                              ),
-                              shape: BoxShape.circle,
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.textPrimary,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.textPrimary.withValues(alpha: 0.12),
+                              spreadRadius: 7,
                             ),
-                          ),
+                            BoxShadow(
+                              color: AppColors.textPrimary.withValues(alpha: 0.05),
+                              spreadRadius: 15,
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.35),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          LucideIcons.plus,
+                          size: 30,
+                          color: AppColors.primaryEnd,
                         ),
                       ),
-
-                      // The 3D Image on the right
-                      Positioned(
-                        right: -10,
-                        top: -10,
-                        bottom: -10,
-                        child: AnimatedScale(
-                          scale: _isPressed ? 0.95 : 1.0,
-                          duration: 150.ms,
-                          child: Image.asset(
-                            'assets/video.png',
-                            width:
-                                200, // Size it so it bleeds nicely out of bounds
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
-
-                      // The Text on the left
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 24,
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: SizedBox(
-                            width:
-                                150, // Constrain text width so it doesn't overlap image
-                            // The card is a fixed 160 tall: with large text
-                            // the words shrink to fit rather than run off it.
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: SizedBox(
-                                width: 150,
-                                child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  'Edit New',
-                                  style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                    fontSize: 26,
-                                    height: 1.1,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                ShaderMask(
-                                  blendMode: BlendMode.srcIn,
-                                  shaderCallback: (bounds) => AppColors
-                                      .lightAccentGradient
-                                      .createShader(bounds),
-                                  child: const Text(
-                                    'Video',
-                                    style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                      fontSize: 26,
-                                      height: 1.1,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Create, edit and share amazing videos',
-                                  style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                    fontSize: 12,
-                                    height: 1.4,
-                                    color: AppColors.textPrimary.withValues(
-                                      alpha: 0.8,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                              ),
-                            ),
-                          ),
+                      const SizedBox(height: 22),
+                      const Text(
+                        'New video',
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontFamily: kInterfaceFontFamily,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                     ],
                   ),
-                )
-                .animate(onPlay: (controller) => controller.repeat())
-                .shimmer(
-                  delay: 5.seconds,
-                  duration: 1500.ms,
-                  color: Colors.white.withValues(alpha: 0.25),
-                  angle: 1.2,
                 ),
+              ]),
+            ),
+          ),
+        ),
       ),
     ).animate().fadeIn(delay: widget.delay.ms).slideY(begin: 0.1, end: 0);
   }
+}
+
+/// Three clips fanned out, the middle one a video: a picture of picking from
+/// the gallery, where the card used to carry a 3D play button.
+class _MediaFan extends StatelessWidget {
+  const _MediaFan();
+
+  static Widget _clip(List<Color> colors, {bool video = false}) => Container(
+        width: 52,
+        height: 72,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: AppColors.textPrimary.withValues(alpha: 0.85),
+            width: 2,
+          ),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: colors,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: video
+            ? const Icon(LucideIcons.play, size: 16, color: AppColors.textPrimary)
+            : null,
+      );
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 96,
+        height: 92,
+        child: Stack(clipBehavior: Clip.none, children: [
+          Positioned(
+            left: 0,
+            top: 12,
+            child: Transform.rotate(
+              angle: -0.21,
+              child: _clip(const [AppColors.lilac, AppColors.primaryStart]),
+            ),
+          ),
+          Positioned(
+            left: 40,
+            top: 12,
+            child: Transform.rotate(
+              angle: 0.21,
+              child: _clip(const [AppColors.credit, AppColors.soundEffect]),
+            ),
+          ),
+          Positioned(
+            left: 20,
+            top: 4,
+            child: _clip(
+              const [AppColors.effectTrack, AppColors.primaryStart],
+              video: true,
+            ),
+          ),
+        ]),
+      );
 }

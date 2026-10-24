@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/main.dart';
 
 /// The gallery, scripted: every pick returns [images].
@@ -21,6 +22,15 @@ class _FakePicker extends ImagePickerPlatform {
     picks++;
     return images;
   }
+
+  /// What "New video" asks for: videos and photos together.
+  @override
+  Future<List<XFile>> getMedia({required MediaOptions options}) async {
+    picks++;
+    return media;
+  }
+
+  List<XFile> media = const [];
 }
 
 Future<void> _settle(WidgetTester tester) async {
@@ -80,4 +90,23 @@ void main() {
       );
     });
   }
+
+  // It read as a banner — a slogan and a 3D picture, nothing that looked
+  // pressable — so people did not know it starts a project.
+  testWidgets('the edit card is a plus and "New video", and a tap anywhere opens the gallery',
+      (tester) async {
+    await pumpHome(tester);
+    expect(find.text('New video'), findsOneWidget);
+    expect(find.text('Edit New'), findsNothing);
+    final card = find.byKey(const Key('home_new_video'));
+    expect(find.descendant(of: card, matching: find.byIcon(LucideIcons.plus)), findsOneWidget);
+    final plus = tester.getRect(find.descendant(of: card, matching: find.byIcon(LucideIcons.plus)));
+    final label = tester.getRect(find.text('New video'));
+    expect(label.top, greaterThan(plus.bottom), reason: 'the words sit under the plus');
+
+    // The fan of clips on the right is part of the button too.
+    await tester.tapAt(tester.getRect(card).centerRight - const Offset(40, 0));
+    await _settle(tester);
+    expect(picker.picks, 1);
+  });
 }
