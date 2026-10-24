@@ -763,11 +763,34 @@ class _PlayOutlinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     const stroke = 3.0;
     const inset = stroke / 2;
-    final path = Path()
-      ..moveTo(inset, inset)
-      ..lineTo(size.width - inset, size.height / 2)
-      ..lineTo(inset, size.height - inset)
-      ..close();
+    // How far along each edge a corner's curve begins: soft corners, as
+    // designed, not the pointed ones a plain join gives.
+    const round = 4.0;
+    final corners = [
+      const Offset(inset, inset),
+      Offset(size.width - inset, size.height / 2),
+      Offset(inset, size.height - inset),
+    ];
+    Offset toward(Offset from, Offset to) {
+      final d = to - from;
+      return from + d / d.distance * round;
+    }
+
+    final path = Path();
+    for (var i = 0; i < 3; i++) {
+      final prev = corners[(i + 2) % 3];
+      final at = corners[i];
+      final next = corners[(i + 1) % 3];
+      final start = toward(at, prev);
+      final end = toward(at, next);
+      if (i == 0) {
+        path.moveTo(start.dx, start.dy);
+      } else {
+        path.lineTo(start.dx, start.dy);
+      }
+      path.quadraticBezierTo(at.dx, at.dy, end.dx, end.dy);
+    }
+    path.close();
     canvas.drawPath(
       path,
       Paint()
