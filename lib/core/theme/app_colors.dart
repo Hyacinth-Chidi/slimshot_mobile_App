@@ -42,6 +42,10 @@ class AppColors {
   /// music are purple, sound effects orange, photos teal, video overlays pink.
   static const Color effectTrack = Color(0xFF3B82F6); // Blue 500
 
+  /// A photo bar, as onboarding draws the timeline (the editor's own photo
+  /// lane is Material's teal at half strength).
+  static const Color photoTrack = Color(0xFF0D9488); // Teal 600
+
   /// Accent text on purple glass: white running into lilac.
   static const LinearGradient lightAccentGradient = LinearGradient(
     colors: [textPrimary, lilac],
