@@ -153,4 +153,22 @@ void main() {
     expect(find.text('Done'), findsOneWidget);
     expect(find.byIcon(LucideIcons.check), findsNothing);
   });
+
+  testWidgets('a photo is labelled once: the slider already says Before and After',
+      (tester) async {
+    // The frame laid its own Before / After over the slider's, a few pixels
+    // apart — two pairs, one on the other.
+    await tester.pumpWidget(MaterialApp(
+      home: SizedBox(
+        width: 300,
+        height: 400,
+        child: ResultPhotoFrame(
+          compare: const Stack(children: [Text('Before'), Text('After')]),
+          onFullScreen: () {},
+        ),
+      ),
+    ));
+    expect(find.text('Before'), findsOneWidget);
+    expect(find.text('After'), findsOneWidget);
+  });
 }

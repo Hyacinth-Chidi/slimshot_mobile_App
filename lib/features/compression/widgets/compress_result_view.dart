@@ -273,8 +273,8 @@ class ResultVideoFrame extends StatelessWidget {
   }
 }
 
-/// A compressed photo against its original — the slider is the caller's —
-/// labelled, with full screen.
+/// A compressed photo against its original — the slider, which labels
+/// itself, is the caller's — with full screen.
 class ResultPhotoFrame extends StatelessWidget {
   const ResultPhotoFrame({
     super.key,
@@ -288,17 +288,9 @@ class ResultPhotoFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Stack(fit: StackFit.expand, children: [
         const ColoredBox(color: Colors.black),
+        // The slider labels itself, hiding each side's label as the line
+        // passes it; a second pair here sat on top of that one.
         compare,
-        const Positioned(
-          left: 12,
-          top: 12,
-          child: IgnorePointer(child: CompressInfoChip('Before')),
-        ),
-        const Positioned(
-          right: 12,
-          top: 12,
-          child: IgnorePointer(child: CompressInfoChip('After')),
-        ),
         Positioned(
           right: 8,
           bottom: 8,
