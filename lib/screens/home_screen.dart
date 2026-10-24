@@ -540,151 +540,302 @@ class _HeroActionCardState extends State<_HeroActionCard> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _isPressed = true),
-      onTapUp: (_) {
-        setState(() => _isPressed = false);
-        HapticFeedback.selectionClick();
-        widget.onTap();
-      },
-      onTapCancel: () => setState(() => _isPressed = false),
-      // Solid, unlike the glass tools under it: the one primary action and
-      // the one block of colour on the screen. Kept deep — near-black purple
-      // behind the words into the brand's deep purple behind the image — since
-      // a bright purple card read as too much on the device.
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child:
-            AnimatedContainer(
-                  duration: 120.ms,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: _isPressed
-                          ? const [AppColors.primaryDeep, AppColors.primaryDeep]
-                          : const [AppColors.primaryDeep, AppColors.primaryEnd],
-                    ),
-                    border: Border.all(
-                      color: AppColors.textPrimary.withValues(alpha: 0.12),
-                    ),
+    return Semantics(
+      button: true,
+      label: 'New Video',
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: const Key('home_new_video'),
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) {
+          setState(() => _isPressed = false);
+          HapticFeedback.selectionClick();
+          widget.onTap();
+        },
+        onTapCancel: () => setState(() => _isPressed = false),
+        // The owner's design. A plus that is the whole card, the sign every
+        // editor uses for "start something new" — it read as a banner before,
+        // a slogan and a 3D picture, nothing that looked pressable — and
+        // three photos fanned on a stand: a picture of making a video from
+        // your own clips. Still the one block of colour on the screen.
+        child: AnimatedScale(
+          scale: _isPressed ? 0.98 : 1,
+          duration: 120.ms,
+          child: Container(
+            height: 156,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.primaryDeep, AppColors.primaryEnd, AppColors.primaryStart],
+                stops: [0, 0.55, 1],
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: LayoutBuilder(
+                builder: (context, box) => Stack(children: [
+                  // The photos on their stand, right of centre.
+                  Positioned(
+                    right: box.maxWidth * 0.04,
+                    top: 0,
+                    bottom: 0,
+                    width: box.maxWidth * 0.5,
+                    child: const _PhotoFan(),
                   ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      // Subtle background glow on the right
-                      Positioned(
-                        right: -20,
-                        bottom: -20,
-                        child: AnimatedScale(
-                          scale: _isPressed ? 1.1 : 1.0,
-                          duration: 150.ms,
-                          child: Container(
-                            width: 140,
-                            height: 140,
-                            decoration: BoxDecoration(
-                              color: AppColors.textPrimary.withValues(
-                                alpha: 0.05,
-                              ),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // The 3D Image on the right
-                      Positioned(
-                        right: -10,
-                        top: -10,
-                        bottom: -10,
-                        child: AnimatedScale(
-                          scale: _isPressed ? 0.95 : 1.0,
-                          duration: 150.ms,
-                          child: Image.asset(
-                            'assets/video.png',
-                            width:
-                                200, // Size it so it bleeds nicely out of bounds
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
-
-                      // The Text on the left
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 24,
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: SizedBox(
-                            width:
-                                150, // Constrain text width so it doesn't overlap image
-                            // The card is a fixed 160 tall: with large text
-                            // the words shrink to fit rather than run off it.
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: SizedBox(
-                                width: 150,
-                                child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  'Edit New',
-                                  style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                    fontSize: 26,
-                                    height: 1.1,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                ShaderMask(
-                                  blendMode: BlendMode.srcIn,
-                                  shaderCallback: (bounds) => AppColors
-                                      .lightAccentGradient
-                                      .createShader(bounds),
-                                  child: const Text(
-                                    'Video',
-                                    style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                      fontSize: 26,
-                                      height: 1.1,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Create, edit and share amazing videos',
-                                  style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                    fontSize: 12,
-                                    height: 1.4,
-                                    color: AppColors.textPrimary.withValues(
-                                      alpha: 0.8,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                  // The plus and its words, on the left.
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: box.maxWidth * 0.42,
+                    child: const _NewVideoPlus(),
                   ),
-                )
-                .animate(onPlay: (controller) => controller.repeat())
-                .shimmer(
-                  delay: 5.seconds,
-                  duration: 1500.ms,
-                  color: Colors.white.withValues(alpha: 0.25),
-                  angle: 1.2,
-                ),
+                ]),
+              ),
+            ),
+          ),
+        ),
       ),
     ).animate().fadeIn(delay: widget.delay.ms).slideY(begin: 0.1, end: 0);
   }
+}
+
+/// The white plus inside two soft rings, "New Video" under it.
+class _NewVideoPlus extends StatelessWidget {
+  const _NewVideoPlus();
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 92,
+            height: 92,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.textPrimary.withValues(alpha: 0.08),
+            ),
+            child: Container(
+              width: 74,
+              height: 74,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.textPrimary.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: AppColors.textPrimary.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.textPrimary,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  LucideIcons.plus,
+                  size: 28,
+                  color: AppColors.primaryEnd,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'New Video',
+              maxLines: 1,
+              style: TextStyle(
+                fontFamily: kInterfaceFontFamily,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      );
+}
+
+/// Three photos fanned on a white stand, the middle one a video.
+class _PhotoFan extends StatelessWidget {
+  const _PhotoFan();
+
+  static Widget _photo(String side, {required double width, required double height, bool video = false}) =>
+      Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.textPrimary, width: 2.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.30),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(9.5),
+          child: Stack(fit: StackFit.expand, children: [
+            Image.asset(
+              'assets/home/new_video_$side.webp',
+              fit: BoxFit.cover,
+              // Drawn about 100 px tall: decode small, not at 1672.
+              cacheHeight: 360,
+            ),
+            if (video)
+              const Center(
+                child: SizedBox(
+                  width: 15,
+                  height: 18,
+                  child: CustomPaint(painter: _PlayOutlinePainter()),
+                ),
+              ),
+          ]),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+        final h = box.maxHeight;
+        final w = box.maxWidth;
+        final midW = h * 0.44;
+        final midH = h * 0.66;
+        final sideW = h * 0.40;
+        final sideH = h * 0.56;
+        final centre = w / 2;
+        return Stack(clipBehavior: Clip.none, children: [
+          // The stand: a soft white mound just above the card's foot, its
+          // peak hidden behind the photos.
+          Positioned(
+            left: centre - w * 0.33,
+            width: w * 0.66,
+            bottom: h * 0.04,
+            height: h * 0.32,
+            child: const CustomPaint(painter: _StandPainter()),
+          ),
+          Positioned(
+            left: centre - midW / 2 - sideW * 0.72,
+            top: h * 0.20,
+            child: Transform.rotate(
+              angle: -0.24,
+              child: _photo('left', width: sideW, height: sideH),
+            ),
+          ),
+          Positioned(
+            left: centre + midW / 2 - sideW * 0.28,
+            top: h * 0.20,
+            child: Transform.rotate(
+              angle: 0.24,
+              child: _photo('right', width: sideW, height: sideH),
+            ),
+          ),
+          Positioned(
+            left: centre - midW / 2,
+            top: h * 0.10,
+            child: _photo('middle', width: midW, height: midH, video: true),
+          ),
+        ]);
+      });
+}
+
+/// A play mark drawn as a thick, rounded white outline, the photo showing
+/// through it.
+class _PlayOutlinePainter extends CustomPainter {
+  const _PlayOutlinePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 3.0;
+    const inset = stroke / 2;
+    // How far along each edge a corner's curve begins: soft corners, as
+    // designed, not the pointed ones a plain join gives.
+    const round = 4.0;
+    final corners = [
+      const Offset(inset, inset),
+      Offset(size.width - inset, size.height / 2),
+      Offset(inset, size.height - inset),
+    ];
+    Offset toward(Offset from, Offset to) {
+      final d = to - from;
+      return from + d / d.distance * round;
+    }
+
+    final path = Path();
+    for (var i = 0; i < 3; i++) {
+      final prev = corners[(i + 2) % 3];
+      final at = corners[i];
+      final next = corners[(i + 1) % 3];
+      final start = toward(at, prev);
+      final end = toward(at, next);
+      if (i == 0) {
+        path.moveTo(start.dx, start.dy);
+      } else {
+        path.lineTo(start.dx, start.dy);
+      }
+      path.quadraticBezierTo(at.dx, at.dy, end.dx, end.dy);
+    }
+    path.close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = AppColors.textPrimary.withValues(alpha: 0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PlayOutlinePainter oldDelegate) => false;
+}
+
+/// A white triangle with rounded corners: a wide base, sides rising to a
+/// peak under the middle photo.
+class _StandPainter extends CustomPainter {
+  const _StandPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // A triangle inset by the corner radius, filled and stroked with a round
+    // join, is the same triangle with its corners rounded.
+    const r = 10.0;
+    final path = Path()
+      ..moveTo(r, size.height - r)
+      ..lineTo(size.width - r, size.height - r)
+      ..lineTo(size.width / 2, r)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = AppColors.textPrimary
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = AppColors.textPrimary
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 2
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _StandPainter oldDelegate) => false;
 }

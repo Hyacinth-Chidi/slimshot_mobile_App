@@ -116,8 +116,26 @@ class CompressVideoView extends StatelessWidget {
           ? const [CompressKeepOpenNote()]
           : [
               const SizedBox(height: 6),
-              const CompressSectionLabel('Quality'),
+              // First, on its own: it is why most people compress, and it
+              // overrides everything below it.
               CompressGroup(children: [
+                CompressSwitchRow(
+                  key: const Key('compress_whatsapp'),
+                  icon: LucideIcons.messageCircle,
+                  label: 'WhatsApp Status',
+                  value: state.whatsAppOptimize,
+                  onToggle: onToggleWhatsApp,
+                  note: state.whatsAppOptimize
+                      ? 'Overrides quality and format'
+                      : null,
+                ),
+              ]),
+              const SizedBox(height: 20),
+              const CompressSectionLabel('Quality'),
+              _Overridden(
+                key: const Key('compress_overridden_quality'),
+                overridden: state.whatsAppOptimize,
+                child: CompressGroup(children: [
                 for (final preset in CompressionPresets.videoPresets)
                   CompressChoiceRow(
                     key: Key('compress_preset_${preset.id}'),
@@ -129,17 +147,11 @@ class CompressVideoView extends StatelessWidget {
                     badge: preset.isPro && showPro ? 'PRO' : null,
                     onTap: () => onSelectPreset(preset),
                   ),
-              ]),
+                ]),
+              ),
               const SizedBox(height: 20),
               const CompressSectionLabel('Options'),
               CompressGroup(children: [
-                CompressSwitchRow(
-                  key: const Key('compress_whatsapp'),
-                  icon: LucideIcons.messageCircle,
-                  label: 'WhatsApp ready',
-                  value: state.whatsAppOptimize,
-                  onToggle: onToggleWhatsApp,
-                ),
                 CompressSwitchRow(
                   key: const Key('compress_remove_location'),
                   icon: LucideIcons.mapPinOff,
@@ -147,13 +159,19 @@ class CompressVideoView extends StatelessWidget {
                   value: state.removeMetadata,
                   onToggle: onToggleRemoveLocation,
                 ),
-                CompressOptionRow(
-                  icon: LucideIcons.fileVideo,
-                  label: 'Format',
-                  trailing: CompressSegmented(
-                    options: const [('mp4', 'MP4'), ('webm', 'WebM')],
-                    value: state.targetVideoFormat,
-                    onChanged: onFormat,
+                _Overridden(
+                  key: const Key('compress_overridden_format'),
+                  overridden: state.whatsAppOptimize,
+                  child: CompressOptionRow(
+                    icon: LucideIcons.fileVideo,
+                    label: 'Format',
+                    trailing: CompressSegmented(
+                      options: const [('mp4', 'MP4'), ('webm', 'WebM')],
+                      value: state.whatsAppOptimize
+                          ? 'mp4'
+                          : state.targetVideoFormat,
+                      onChanged: onFormat,
+                    ),
                   ),
                 ),
               ]),
@@ -173,6 +191,28 @@ class CompressVideoView extends StatelessWidget {
             ),
     );
   }
+}
+
+/// What WhatsApp Status decides for itself: shown dimmed and out of reach,
+/// so it reads as overridden rather than broken.
+class _Overridden extends StatelessWidget {
+  const _Overridden({
+    super.key,
+    required this.overridden,
+    required this.child,
+  });
+
+  final bool overridden;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+        ignoring: overridden,
+        child: Opacity(
+          opacity: overridden ? 0.4 : 1,
+          child: child,
+        ),
+      );
 }
 
 class _PreviewFrame extends StatelessWidget {

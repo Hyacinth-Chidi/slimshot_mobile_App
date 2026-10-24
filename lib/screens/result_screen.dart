@@ -15,7 +15,6 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/lucide_icons.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/before_after_slider.dart';
-import '../features/compression/logic/compress_labels.dart';
 import '../features/compression/providers/compression_provider.dart';
 import '../features/compression/widgets/compress_panels.dart';
 import '../features/compression/widgets/compress_result_view.dart';
@@ -287,10 +286,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       keptAsItWas: skipped.isNotEmpty && skipped.every((s) => s),
       preview: preview,
       previewAspectRatio: aspect,
-      quality: state.selectedPreset?.name,
-      format: formatName(
-          isVideo ? state.targetVideoFormat : state.targetImageFormat),
-      locationRemoved: state.removeMetadata,
       thumbnails: [
         for (final path in outputs)
           isVideo
@@ -302,7 +297,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       onClose: () => context.go('/home'),
       onSave: () => _save(outputs),
       onShare: () => MediaSaveService.shareFiles(outputs),
-      onCompressAnother: () => context.go('/home'),
     );
   }
 }

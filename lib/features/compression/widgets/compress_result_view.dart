@@ -8,10 +8,12 @@ import '../logic/compress_labels.dart';
 import 'compress_panels.dart';
 import 'compress_scaffold.dart';
 
-/// The finished compression, as a picture: the result, its real sizes, what
-/// was applied, and what to do with it. The screen owns the player, the
-/// history and the saving, and hands this the preview and the callbacks —
-/// the same split as the compress screens', on the same [CompressScaffold].
+/// The finished compression: the result, its real sizes, and Save and Share
+/// — the export screen's shape, picture, title and two buttons. A details
+/// list and a third "New video" button made it read as another step to
+/// take (the owner's call). ✕ and the phone's Back both close it. The screen
+/// owns the player, the history and the saving, and hands this the preview
+/// and the callbacks, on the same [CompressScaffold] as the compress screens.
 class CompressResultView extends StatelessWidget {
   const CompressResultView({
     super.key,
@@ -20,15 +22,11 @@ class CompressResultView extends StatelessWidget {
     required this.beforeBytes,
     required this.afterBytes,
     required this.preview,
-    required this.format,
-    required this.locationRemoved,
     required this.onClose,
     required this.onSave,
     required this.onShare,
-    required this.onCompressAnother,
     this.previewAspectRatio,
     this.keptAsItWas = false,
-    this.quality,
     this.thumbnails = const [],
     this.previewIndex = 0,
     this.onPreview,
@@ -48,10 +46,6 @@ class CompressResultView extends StatelessWidget {
   final Widget preview;
   final double? previewAspectRatio;
 
-  final String? quality;
-  final String format;
-  final bool locationRemoved;
-
   final List<Widget> thumbnails;
   final int previewIndex;
   final ValueChanged<int>? onPreview;
@@ -59,36 +53,37 @@ class CompressResultView extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onSave;
   final VoidCallback onShare;
-  final VoidCallback onCompressAnother;
 
   String get _noun => isVideo
       ? (count == 1 ? 'video' : 'videos')
       : (count == 1 ? 'photo' : 'photos');
 
   @override
-  Widget build(BuildContext context) => CompressScaffold(
+  Widget build(BuildContext context) => PopScope(
+        // Back leaves the result as ✕ does — home, not a step back to the
+        // compress screen it came from.
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) onClose();
+        },
+        child: _screen(context),
+      );
+
+  Widget _screen(BuildContext context) => CompressScaffold(
         topBar: CompressTopBar(
           title: 'Done',
           titleKey: const Key('result_title'),
           backKey: const Key('result_close'),
           icon: LucideIcons.x,
           iconLabel: 'Close',
-          badge: Container(
-            width: 24,
-            height: 24,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.success,
-            ),
-            child: const Icon(LucideIcons.check, size: 15, color: Colors.white),
-          ),
           onBack: onClose,
         ),
         // A photo is compared by dragging across it, so it gets more room.
         phonePictureHeight: compressPhonePictureHeight(
           MediaQuery.sizeOf(context),
           aspectRatio: previewAspectRatio ?? (isVideo ? 16 / 9 : 3 / 4),
-          capFraction: isVideo ? 0.42 : 0.45,
+          // With only the sizes under it, the picture takes the room.
+          capFraction: isVideo ? 0.52 : 0.55,
         ),
         picture: ClipRRect(
           key: const Key('result_preview'),
@@ -121,56 +116,28 @@ class CompressResultView extends StatelessWidget {
                   ? 'All $count $_noun'
                   : null,
         ),
-        const SizedBox(height: 20),
-        const CompressSectionLabel('Details'),
-        CompressGroup(children: [
-          if (quality != null)
-            CompressValueRow(
-              icon: LucideIcons.sparkles,
-              label: 'Quality',
-              value: quality!,
-            ),
-          CompressValueRow(
-            icon: isVideo ? LucideIcons.fileVideo : LucideIcons.fileImage,
-            label: 'Format',
-            value: format,
-          ),
-          CompressValueRow(
-            icon: LucideIcons.mapPinOff,
-            label: 'Location',
-            value: locationRemoved ? 'Removed' : 'Kept',
-          ),
-        ]),
         const SizedBox(height: 8),
       ];
 
-  Widget _actions() => Column(mainAxisSize: MainAxisSize.min, children: [
-        CompressPrimaryButton(
-          key: const Key('result_save'),
-          label: count > 1 ? 'Save $count to gallery' : 'Save to gallery',
-          icon: LucideIcons.download,
-          onPressed: onSave,
+  Widget _actions() => Row(children: [
+        Expanded(
+          child: CompressGlassIconButton(
+            key: const Key('result_save'),
+            icon: LucideIcons.download,
+            label: count > 1 ? 'Save $count' : 'Save',
+            onPressed: onSave,
+          ),
         ),
-        const SizedBox(height: 10),
-        Row(children: [
-          Expanded(
-            child: CompressGlassIconButton(
-              key: const Key('result_share'),
-              icon: LucideIcons.share2,
-              label: 'Share',
-              onPressed: onShare,
-            ),
+        const SizedBox(width: 10),
+        // Purple: posting is usually why the file was compressed.
+        Expanded(
+          child: CompressPrimaryButton(
+            key: const Key('result_share'),
+            label: 'Share',
+            icon: LucideIcons.share2,
+            onPressed: onShare,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: CompressGlassIconButton(
-              key: const Key('result_new'),
-              icon: LucideIcons.plus,
-              label: isVideo ? 'New video' : 'New photos',
-              onPressed: onCompressAnother,
-            ),
-          ),
-        ]),
+        ),
       ]);
 }
 
@@ -306,8 +273,8 @@ class ResultVideoFrame extends StatelessWidget {
   }
 }
 
-/// A compressed photo against its original — the slider is the caller's —
-/// labelled, with full screen.
+/// A compressed photo against its original — the slider, which labels
+/// itself, is the caller's — with full screen.
 class ResultPhotoFrame extends StatelessWidget {
   const ResultPhotoFrame({
     super.key,
@@ -321,17 +288,9 @@ class ResultPhotoFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Stack(fit: StackFit.expand, children: [
         const ColoredBox(color: Colors.black),
+        // The slider labels itself, hiding each side's label as the line
+        // passes it; a second pair here sat on top of that one.
         compare,
-        const Positioned(
-          left: 12,
-          top: 12,
-          child: IgnorePointer(child: CompressInfoChip('Before')),
-        ),
-        const Positioned(
-          right: 12,
-          top: 12,
-          child: IgnorePointer(child: CompressInfoChip('After')),
-        ),
         Positioned(
           right: 8,
           bottom: 8,

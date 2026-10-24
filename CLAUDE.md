@@ -4452,9 +4452,16 @@ every glow at or under 30% and the white under 6% (`colour_field_backdrop_test.d
 glass fill neutral, no colour of its own (`frosted_glass_test.dart`). **Colour on these screens is
 light, not paint.**
 
-- **The Edit Video card is the one block of colour** — solid, from `AppColors.primaryDeep`
-  (Purple 950) behind the words into `primaryEnd` behind the image. It outranks the glass tools
-  under it; a bright purple card added to the overload.
+- **The New video card is the one block of colour** — deep purple (`primaryDeep` into
+  `primaryEnd` and `primaryStart`), outranking the glass tools under it; a bright purple card
+  added to the overload. **It is a button, not a banner** (`home_cards_test.dart`, **awaiting
+  device verification**; the owner's call from mockups): it read as an advert — "Edit New Video",
+  a slogan and a 3D picture, nothing that looked pressable — so people did not know it starts a
+  project. Now **the owner's own design**: a white plus inside two soft rings with **"New Video"
+  under it**, the sign every editor uses for "start something new", and three real photos fanned
+  on a white stand on the right (`_PhotoFan`, `assets/home/new_video_{left,middle,right}.webp`,
+  the middle one wearing a play mark) — a picture of making a video from your own clips. The
+  photos decode at 360 px tall (`cacheHeight`), not their 1672. The whole card is the tap target.
 - **Accents that sit on purple use `AppColors.lilac`, never the brand purple**, which vanishes
   there; "Video" is `lightAccentGradient` (white into lilac). Grey text on these screens is
   secondary, not tertiary. The coin is **`AppColors.credit`** (amber).
@@ -4511,8 +4518,9 @@ through Google Fonts.
   Tests pin no overflow at 320 px wide with text at 1.3×.
 
 **The result screen is the same family** (`CompressResultView`, `compress_result_view.dart`;
-**awaiting device verification**; designed from an approved mockup). "✓ Done" centred with ✕
-(home) beside it, in place of the bouncing tick and "Ready to Share!". The screen keeps the
+**awaiting device verification**; designed from an approved mockup). "Done" centred with ✕
+(home) beside it, in place of the bouncing tick and "Ready to Share!" — **no tick beside it** (the
+owner's call; `compress_result_view_test.dart` pins it). The screen keeps the
 player, the history entry, saving and the full-screen views; the view is tested without them.
 
 - **Before → After lives here, with real sizes** (`CompressBeforeAfterCard`): the after's share of
@@ -4523,13 +4531,16 @@ player, the history entry, saving and the full-screen views; the view is tested 
   "0%" as if something had failed.
 - **Several files show totals for all of them** ("All 5 photos"). The old strip mixed the
   selected photo's sizes with the whole batch's percentage, so the three numbers did not agree.
-- **Details** — quality (the preset's name), format (`formatName`: MP4, WebM, JPG, WebP) and
-  location — confirm what was applied.
+- **Nothing but the result** (the owner's call, **awaiting device verification**): it read as
+  another step to take — a details list, a full-width Save over Share and "New video". It is the
+  export screen's shape now: the picture larger, the sizes card, and **Save and Share side by
+  side**, Share the purple one since posting is usually why the file was compressed. The details
+  card and "New video" are gone. **✕ and the phone's Back both go home** (`PopScope` in the view):
+  Back used to step back to the compress screen.
 - **Video**: play, a scrubbable time bar and full screen on the picture (`ResultVideoFrame`).
   **Photos**: the compare slider labelled Before / After (`ResultPhotoFrame`). Several of either
   get the thumbnail row; a tap previews that file (a video re-opens the player on it).
-- **Save to gallery** (or "Save 5 to gallery") pinned, Share and New video / New photos under it.
-  Two columns from 700 px.
+- **Save** (or "Save 5") and **Share**, pinned. Two columns from 700 px.
 
 **Compress photo is the video screen's design** (`CompressPhotoView`; **awaiting device
 verification**; from an approved mockup). All three screens — video, photo, result — sit on one
@@ -4546,6 +4557,39 @@ drops onto its own line when it does not fit beside its label** (`CompressOption
 format segments overflowed a 320 px phone at 1.3× text, and a test pins it. The image presets
 were renamed to match the video ones (`Best quality` / `Smart` / `Smallest`), and
 `expectedCompression` — read only by the old tiles' "-50%" — is gone.
+
+**WhatsApp Status — a file already in the shape Status keeps** (`logic/status_plan.dart`,
+**awaiting device verification**; spec `docs/superpowers/specs/2026-10-23-whatsapp-status-compression-design.md`).
+The owner's main reason to compress is posting to Status without WhatsApp blurring it. Their
+evidence: an edit exported at 1080×1920 blurred on Status, the same edit downloaded back from
+Instagram at 720×1280 — smaller, a third of the bitrate — stayed clear. WhatsApp keeps something
+like 720×1280 and shrinks anything larger itself, fast and cheap. So the switch (renamed from
+"WhatsApp ready", which scaled by width only and so left every portrait 1080×1920 as it was)
+makes that shape: inside 720×1280 / 1280×720, never enlarged, even sides; a constant rate (60 →
+30, 50 → 25, capped at 30); H.264 High 3.1, x264 `veryfast`, CRF 21 under **Instagram's own
+ceiling** (`kStatusMaxVideoKbps` 1500, held per second — `bufsize` equals it — and a keyframe every
+5 s, as the file that stayed sharp has); HDR (PQ/HLG) tone-mapped; **no denoise** — measured
+with FFmpeg on the owner's videos it was 35% of all the work, the biggest step, and lowered SSIM
+(0.9945 against 0.9950 without); AAC 128 kbps 44.1 kHz. **FFmpeg sizes the output from the upright frames itself**, never
+from the probe: device-reported, a portrait video came out squashed into landscape — stored on
+its side with a rotation label the probe missed, it read as 1920×1080 and was sent
+`scale=1280:720`, which FFmpeg applied to the already-upright picture. The first device run also
+found it soft once (a 2 Mbps cap with a 4 Mb buffer let bursts near 4 Mbps) and slow (`medium`,
+and the denoise on full-size frames before the shrink). A file
+already in that shape is **copied, not encoded** (`statusPlan(...).copyOnly`); the result is kept
+even when larger than the input, because a small 1080p original is exactly what blurs. On screen
+it sits **first, in a box of its own above Quality** (the owner's call: it is why most people
+compress, and it overrides what is below it), and it overrides quality and format (dimmed, out of reach, "Overrides quality and format"). No tip about WhatsApp's HD option — the owner's call.
+No splitting of long videos — also the owner's. **The editor's export gets the same rule once this
+is confirmed on a device** (a "WhatsApp Status" switch under Resolution and Frame rate, already
+chosen). The probe reads ffprobe's JSON through `VideoMetadata.fromProbe`, pure and tested.
+
+**A cancelled compression cannot touch a restarted one** (`compression_cancel_test.dart`). Every
+run asked "is *a* compression running?" rather than "is *mine*?": after Cancel and a restart, the
+cancelled run's FFmpeg call ended late as a failure, saw the new run's "running", marked it failed
+and stopped, and threw its result away, while its progress landed on the new run's ring. Each run
+now takes a number (`_run`), Cancel and `reset` retire the current one before anything is awaited,
+and a run writes state only while its number is current; a file a retired run produced is deleted.
 
 **Target sizes and quick presets are gone** (removed 2026-10-07 at the user's call: "remove the
 ones that are not wired"). `CompressionMode.targetSize`, the target-size lists, `OutputPreset`

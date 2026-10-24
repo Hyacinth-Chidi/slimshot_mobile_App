@@ -16,8 +16,10 @@ CompressionState _state({
   int index = 0,
   CompressionPreset? preset,
   bool optimized = false,
+  bool whatsApp = false,
 }) =>
     CompressionState(
+      whatsAppOptimize: whatsApp,
       inputFiles: [for (var i = 0; i < videos; i++) XFile('v$i.mp4')],
       originalSize: videos == 1 ? (48.2 * _mb).round() : 312 * _mb,
       selectedPreset: preset ?? _smart,
@@ -97,7 +99,8 @@ void main() {
     for (final preset in CompressionPresets.videoPresets) {
       expect(find.byKey(Key('compress_preset_${preset.id}')), findsOneWidget);
     }
-    expect(find.text('WhatsApp ready'), findsOneWidget);
+    expect(find.text('WhatsApp Status'), findsOneWidget);
+    expect(find.text('WhatsApp ready'), findsNothing);
     expect(find.text('Remove location'), findsOneWidget);
     expect(find.text('MP4'), findsOneWidget);
     expect(find.text('WebM'), findsOneWidget);
@@ -181,9 +184,52 @@ void main() {
     expect(find.byKey(const Key('compress_thumb_0')), findsNothing);
   });
 
+  group('WhatsApp Status', () {
+    testWidgets('sits at the top, above the qualities it overrides', (tester) async {
+      await pump(tester, _state());
+      final whatsApp = tester.getTopLeft(find.byKey(const Key('compress_whatsapp'))).dy;
+      expect(whatsApp, lessThan(tester.getTopLeft(find.text('Quality')).dy));
+      expect(whatsApp,
+          lessThan(tester.getTopLeft(find.byKey(const Key('compress_preset_best_quality'))).dy));
+    });
+
+    Opacity opacityOver(WidgetTester tester, String key) => tester.widget<Opacity>(find
+        .ancestor(of: find.byKey(Key(key)), matching: find.byType(Opacity))
+        .first);
+
+    testWidgets('on, it overrides quality and format', (tester) async {
+      await pump(tester, _state(whatsApp: true));
+      expect(find.text('Overrides quality and format'), findsOneWidget);
+      expect(opacityOver(tester, 'compress_preset_best_quality').opacity, lessThan(1));
+      expect(opacityOver(tester, 'compress_format_webm').opacity, lessThan(1));
+      await tester.ensureVisible(find.byKey(const Key('compress_preset_best_quality')));
+      await tester.tap(find.byKey(const Key('compress_preset_best_quality')),
+          warnIfMissed: false);
+      await tester.ensureVisible(find.byKey(const Key('compress_format_webm')));
+      await tester.tap(find.byKey(const Key('compress_format_webm')),
+          warnIfMissed: false);
+      expect(calls.presets, isEmpty);
+      expect(calls.formats, isEmpty);
+    });
+
+    testWidgets('off, quality and format answer as before', (tester) async {
+      await pump(tester, _state());
+      expect(find.text('Overrides quality and format'), findsNothing);
+      await tester.ensureVisible(find.byKey(const Key('compress_preset_best_quality')));
+      await tester.tap(find.byKey(const Key('compress_preset_best_quality')));
+      await tester.ensureVisible(find.byKey(const Key('compress_format_webm')));
+      await tester.tap(find.byKey(const Key('compress_format_webm')));
+      expect(calls.presets, ['best_quality']);
+      expect(calls.formats, ['webm']);
+    });
+  });
+
   testWidgets('a small phone with large text lays out without overflow',
       (tester) async {
     await pump(tester, _state(videos: 5),
+        size: const Size(320, 600), textScale: 1.3);
+    expect(tester.takeException(), isNull);
+    await pump(tester, _state(whatsApp: true),
         size: const Size(320, 600), textScale: 1.3);
     expect(tester.takeException(), isNull);
     await pump(tester, _state(processing: true, progress: 10),

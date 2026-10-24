@@ -1,10 +1,11 @@
 import 'dart:io';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/main.dart';
 
 /// The gallery, scripted: every pick returns [images].
@@ -21,6 +22,15 @@ class _FakePicker extends ImagePickerPlatform {
     picks++;
     return images;
   }
+
+  /// What "New video" asks for: videos and photos together.
+  @override
+  Future<List<XFile>> getMedia({required MediaOptions options}) async {
+    picks++;
+    return media;
+  }
+
+  List<XFile> media = const [];
 }
 
 Future<void> _settle(WidgetTester tester) async {
@@ -80,4 +90,38 @@ void main() {
       );
     });
   }
+
+  // It read as a banner — a slogan and a 3D picture, nothing that looked
+  // pressable — so people did not know it starts a project.
+  testWidgets('the edit card is a plus and "New Video", and a tap anywhere opens the gallery',
+      (tester) async {
+    await pumpHome(tester);
+    expect(find.text('New Video'), findsOneWidget);
+    // The owner's design: three photos fanned on the right.
+    for (final side in ['left', 'middle', 'right']) {
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('home_new_video')),
+          // Decoded small, so the asset sits inside a ResizeImage.
+          matching: find.byWidgetPredicate((w) =>
+              w is Image &&
+              w.image is ResizeImage &&
+              (w.image as ResizeImage).imageProvider ==
+                  AssetImage('assets/home/new_video_$side.webp')),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(find.text('Edit New'), findsNothing);
+    final card = find.byKey(const Key('home_new_video'));
+    expect(find.descendant(of: card, matching: find.byIcon(LucideIcons.plus)), findsOneWidget);
+    final plus = tester.getRect(find.descendant(of: card, matching: find.byIcon(LucideIcons.plus)));
+    final label = tester.getRect(find.text('New Video'));
+    expect(label.top, greaterThan(plus.bottom), reason: 'the words sit under the plus');
+
+    // The fan of clips on the right is part of the button too.
+    await tester.tapAt(tester.getRect(card).centerRight - const Offset(40, 0));
+    await _settle(tester);
+    expect(picker.picks, 1);
+  });
 }
