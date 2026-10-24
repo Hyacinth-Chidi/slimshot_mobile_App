@@ -542,7 +542,7 @@ class _HeroActionCardState extends State<_HeroActionCard> {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: 'New video',
+      label: 'New Video',
       excludeSemantics: true,
       child: GestureDetector(
         key: const Key('home_new_video'),
@@ -554,107 +554,47 @@ class _HeroActionCardState extends State<_HeroActionCard> {
           widget.onTap();
         },
         onTapCancel: () => setState(() => _isPressed = false),
-        // A plus that is the whole card, the sign every editor uses for "start
-        // something new". It read as a banner before — a slogan and a 3D
-        // picture, nothing that looked pressable. Still the one block of
-        // colour on the screen, kept deep: a bright purple read as too much.
+        // The owner's design. A plus that is the whole card, the sign every
+        // editor uses for "start something new" — it read as a banner before,
+        // a slogan and a 3D picture, nothing that looked pressable — and
+        // three photos fanned on a stand: a picture of making a video from
+        // your own clips. Still the one block of colour on the screen.
         child: AnimatedScale(
           scale: _isPressed ? 0.98 : 1,
           duration: 120.ms,
           child: Container(
             height: 156,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(22),
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  AppColors.primaryDeep,
-                  AppColors.primaryEnd,
-                  AppColors.primaryStart,
-                ],
-                stops: [0, 0.6, 1],
+                colors: [AppColors.primaryDeep, AppColors.primaryEnd, AppColors.primaryStart],
+                stops: [0, 0.55, 1],
               ),
-              border: Border.all(
-                color: AppColors.textPrimary.withValues(alpha: 0.14),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryEnd.withValues(alpha: 0.35),
-                  blurRadius: 30,
-                  offset: const Offset(0, 12),
-                ),
-              ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Stack(children: [
-                // A sheen from the top left, the light the home screen has.
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: const Alignment(0.2, 0.2),
-                        colors: [
-                          AppColors.textPrimary.withValues(alpha: 0.14),
-                          AppColors.textPrimary.withValues(alpha: 0),
-                        ],
-                      ),
-                    ),
+              borderRadius: BorderRadius.circular(22),
+              child: LayoutBuilder(
+                builder: (context, box) => Stack(children: [
+                  // The photos on their stand, right of centre.
+                  Positioned(
+                    right: box.maxWidth * 0.04,
+                    top: 0,
+                    bottom: 0,
+                    width: box.maxWidth * 0.5,
+                    child: const _PhotoFan(),
                   ),
-                ),
-                // Your media, fanned: what the plus opens.
-                const Positioned(right: 18, top: 34, child: _MediaFan()),
-                Padding(
-                  padding: const EdgeInsets.only(left: 26),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.textPrimary,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.textPrimary.withValues(alpha: 0.12),
-                              spreadRadius: 7,
-                            ),
-                            BoxShadow(
-                              color: AppColors.textPrimary.withValues(alpha: 0.05),
-                              spreadRadius: 15,
-                            ),
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.35),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          LucideIcons.plus,
-                          size: 30,
-                          color: AppColors.primaryEnd,
-                        ),
-                      ),
-                      const SizedBox(height: 22),
-                      const Text(
-                        'New video',
-                        maxLines: 1,
-                        style: TextStyle(
-                          fontFamily: kInterfaceFontFamily,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
+                  // The plus and its words, on the left.
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: box.maxWidth * 0.42,
+                    child: const _NewVideoPlus(),
                   ),
-                ),
-              ]),
+                ]),
+              ),
             ),
           ),
         ),
@@ -663,67 +603,187 @@ class _HeroActionCardState extends State<_HeroActionCard> {
   }
 }
 
-/// Three clips fanned out, the middle one a video: a picture of picking from
-/// the gallery, where the card used to carry a 3D play button.
-class _MediaFan extends StatelessWidget {
-  const _MediaFan();
+/// The white plus inside two soft rings, "New Video" under it.
+class _NewVideoPlus extends StatelessWidget {
+  const _NewVideoPlus();
 
-  static Widget _clip(List<Color> colors, {bool video = false}) => Container(
-        width: 52,
-        height: 72,
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 92,
+            height: 92,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.textPrimary.withValues(alpha: 0.08),
+            ),
+            child: Container(
+              width: 74,
+              height: 74,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.textPrimary.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: AppColors.textPrimary.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.textPrimary,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  LucideIcons.plus,
+                  size: 28,
+                  color: AppColors.primaryEnd,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'New Video',
+              maxLines: 1,
+              style: TextStyle(
+                fontFamily: kInterfaceFontFamily,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      );
+}
+
+/// Three photos fanned on a white stand, the middle one a video.
+class _PhotoFan extends StatelessWidget {
+  const _PhotoFan();
+
+  static Widget _photo(String side, {required double width, required double height, bool video = false}) =>
+      Container(
+        width: width,
+        height: height,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: AppColors.textPrimary.withValues(alpha: 0.85),
-            width: 2,
-          ),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: colors,
-          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.textPrimary, width: 2.5),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.35),
-              blurRadius: 14,
+              color: Colors.black.withValues(alpha: 0.30),
+              blurRadius: 12,
               offset: const Offset(0, 6),
             ),
           ],
         ),
-        child: video
-            ? const Icon(LucideIcons.play, size: 16, color: AppColors.textPrimary)
-            : null,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(9.5),
+          child: Stack(fit: StackFit.expand, children: [
+            Image.asset(
+              'assets/home/new_video_$side.webp',
+              fit: BoxFit.cover,
+              // Drawn about 100 px tall: decode small, not at 1672.
+              cacheHeight: 360,
+            ),
+            if (video)
+              Center(
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.textPrimary.withValues(alpha: 0.85),
+                  ),
+                  child: const Icon(
+                    LucideIcons.play,
+                    size: 14,
+                    color: AppColors.primaryEnd,
+                  ),
+                ),
+              ),
+          ]),
+        ),
       );
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 96,
-        height: 92,
-        child: Stack(clipBehavior: Clip.none, children: [
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+        final h = box.maxHeight;
+        final w = box.maxWidth;
+        final midW = h * 0.44;
+        final midH = h * 0.66;
+        final sideW = h * 0.40;
+        final sideH = h * 0.56;
+        final centre = w / 2;
+        return Stack(clipBehavior: Clip.none, children: [
+          // The stand: a white base rising from the card's foot, pointing up
+          // at the photos.
           Positioned(
-            left: 0,
-            top: 12,
+            left: centre - w * 0.40,
+            width: w * 0.80,
+            bottom: -h * 0.05,
+            height: h * 0.20,
+            child: const CustomPaint(painter: _StandPainter()),
+          ),
+          Positioned(
+            left: centre - midW / 2 - sideW * 0.72,
+            top: h * 0.20,
             child: Transform.rotate(
-              angle: -0.21,
-              child: _clip(const [AppColors.lilac, AppColors.primaryStart]),
+              angle: -0.24,
+              child: _photo('left', width: sideW, height: sideH),
             ),
           ),
           Positioned(
-            left: 40,
-            top: 12,
+            left: centre + midW / 2 - sideW * 0.28,
+            top: h * 0.20,
             child: Transform.rotate(
-              angle: 0.21,
-              child: _clip(const [AppColors.credit, AppColors.soundEffect]),
+              angle: 0.24,
+              child: _photo('right', width: sideW, height: sideH),
             ),
           ),
           Positioned(
-            left: 20,
-            top: 4,
-            child: _clip(
-              const [AppColors.effectTrack, AppColors.primaryStart],
-              video: true,
-            ),
+            left: centre - midW / 2,
+            top: h * 0.10,
+            child: _photo('middle', width: midW, height: midH, video: true),
           ),
-        ]),
-      );
+        ]);
+      });
+}
+
+/// A white base with rounded top corners and a small point under the
+/// middle photo.
+class _StandPainter extends CustomPainter {
+  const _StandPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final notch = size.height * 0.45;
+    final top = notch;
+    final path = Path()
+      ..addRRect(RRect.fromRectAndCorners(
+        Rect.fromLTRB(0, top, size.width, size.height),
+        topLeft: const Radius.circular(14),
+        topRight: const Radius.circular(14),
+      ))
+      ..moveTo(size.width / 2 - notch, top + 1)
+      ..lineTo(size.width / 2, 0)
+      ..lineTo(size.width / 2 + notch, top + 1)
+      ..close();
+    canvas.drawPath(path, Paint()..color = AppColors.textPrimary);
+  }
+
+  @override
+  bool shouldRepaint(covariant _StandPainter oldDelegate) => false;
 }

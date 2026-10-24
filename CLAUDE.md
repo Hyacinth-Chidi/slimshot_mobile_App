@@ -4401,9 +4401,11 @@ light, not paint.**
   added to the overload. **It is a button, not a banner** (`home_cards_test.dart`, **awaiting
   device verification**; the owner's call from mockups): it read as an advert — "Edit New Video",
   a slogan and a 3D picture, nothing that looked pressable — so people did not know it starts a
-  project. Now a white plus with glow rings and **"New video" under it**, the sign every editor
-  uses for "start something new", and a fan of three clips on the right (`_MediaFan`) — a picture
-  of picking from the gallery. The whole card is the tap target.
+  project. Now **the owner's own design**: a white plus inside two soft rings with **"New Video"
+  under it**, the sign every editor uses for "start something new", and three real photos fanned
+  on a white stand on the right (`_PhotoFan`, `assets/home/new_video_{left,middle,right}.webp`,
+  the middle one wearing a play mark) — a picture of making a video from your own clips. The
+  photos decode at 360 px tall (`cacheHeight`), not their 1672. The whole card is the tap target.
 - **Accents that sit on purple use `AppColors.lilac`, never the brand purple**, which vanishes
   there; "Video" is `lightAccentGradient` (white into lilac). Grey text on these screens is
   secondary, not tertiary. The coin is **`AppColors.credit`** (amber).
