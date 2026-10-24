@@ -728,13 +728,13 @@ class _PhotoFan extends StatelessWidget {
         final sideH = h * 0.56;
         final centre = w / 2;
         return Stack(clipBehavior: Clip.none, children: [
-          // The stand: a white base rising from the card's foot, pointing up
-          // at the photos.
+          // The stand: a soft white mound just above the card's foot, its
+          // peak hidden behind the photos.
           Positioned(
-            left: centre - w * 0.40,
-            width: w * 0.80,
-            bottom: -h * 0.05,
-            height: h * 0.20,
+            left: centre - w * 0.33,
+            width: w * 0.66,
+            bottom: h * 0.04,
+            height: h * 0.32,
             child: const CustomPaint(painter: _StandPainter()),
           ),
           Positioned(
@@ -762,26 +762,35 @@ class _PhotoFan extends StatelessWidget {
       });
 }
 
-/// A white base with rounded top corners and a small point under the
-/// middle photo.
+/// A white triangle with rounded corners: a wide base, sides rising to a
+/// peak under the middle photo.
 class _StandPainter extends CustomPainter {
   const _StandPainter();
 
   @override
   void paint(Canvas canvas, Size size) {
-    final notch = size.height * 0.45;
-    final top = notch;
+    // A triangle inset by the corner radius, filled and stroked with a round
+    // join, is the same triangle with its corners rounded.
+    const r = 10.0;
     final path = Path()
-      ..addRRect(RRect.fromRectAndCorners(
-        Rect.fromLTRB(0, top, size.width, size.height),
-        topLeft: const Radius.circular(14),
-        topRight: const Radius.circular(14),
-      ))
-      ..moveTo(size.width / 2 - notch, top + 1)
-      ..lineTo(size.width / 2, 0)
-      ..lineTo(size.width / 2 + notch, top + 1)
+      ..moveTo(r, size.height - r)
+      ..lineTo(size.width - r, size.height - r)
+      ..lineTo(size.width / 2, r)
       ..close();
-    canvas.drawPath(path, Paint()..color = AppColors.textPrimary);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = AppColors.textPrimary
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = AppColors.textPrimary
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 2
+        ..strokeJoin = StrokeJoin.round,
+    );
   }
 
   @override
