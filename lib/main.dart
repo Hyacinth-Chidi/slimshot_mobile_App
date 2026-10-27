@@ -31,6 +31,7 @@ import 'screens/main_shell_screen.dart';
 
 import 'features/sharing/share_intent_service.dart';
 import 'core/legal/third_party_licences.dart';
+import 'core/widgets/launch_splash.dart';
 
 Future<void> main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -49,13 +50,18 @@ Future<void> main() async {
     AdService.loadRewardedAd(); // Start background preload for Rewarded Ads
   }
 
-  final prefs = await SharedPreferences.getInstance();
+  // The splash's pictures are decoded while the native splash still shows,
+  // so the app's first frame can repeat it exactly (LaunchSplash).
+  final (prefs, launchArt) = await (
+    SharedPreferences.getInstance(),
+    LaunchSplashArt.load(),
+  ).wait;
   final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
   final String initialRoute = hasSeenOnboarding ? '/home' : '/onboarding';
 
   initializeAppRouter(initialRoute);
 
-  runApp(const ProviderScope(child: SlimShotApp()));
+  runApp(ProviderScope(child: SlimShotApp(launchArt: launchArt)));
 
   FlutterNativeSplash.remove();
   FileUtils.cleanupStartup();
@@ -245,7 +251,15 @@ GoRouter createAppRouter(String initialRoute) {
 class SlimShotApp extends ConsumerStatefulWidget {
   final bool enableShareIntents;
 
-  const SlimShotApp({super.key, this.enableShareIntents = true});
+  /// The splash's pictures, decoded before the first frame; null shows no
+  /// splash (tests, or pictures that failed to load).
+  final LaunchSplashArt? launchArt;
+
+  const SlimShotApp({
+    super.key,
+    this.enableShareIntents = true,
+    this.launchArt,
+  });
 
   @override
   ConsumerState<SlimShotApp> createState() => _SlimShotAppState();
@@ -278,6 +292,12 @@ class _SlimShotAppState extends ConsumerState<SlimShotApp> {
       theme: AppTheme.darkTheme,
       routerConfig: appRouter,
       debugShowCheckedModeBanner: false,
+      // The native splash, then the app lighting it up over whatever the
+      // router opened on, which builds underneath and is there for the fade.
+      builder: (context, child) => LaunchSplash(
+        art: widget.launchArt,
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }

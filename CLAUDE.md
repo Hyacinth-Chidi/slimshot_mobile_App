@@ -4519,6 +4519,51 @@ fills a transparent one with black).
   `logo.svg` (the app's own header — a solid play triangle, rounded bars) and the old icon's
   thinner artwork. The icon and splash now agree; the header does not.
 
+### The splash — the system's, then the app's
+
+**Awaiting device verification**; the owner's pick of three (2026-10-27). **The native splash was
+always native** (`flutter_native_splash` writes Android's launch theme); what changes on Android
+12+ is that the *system* draws it and allows only a centred icon on a flat colour (and a small
+mark at the foot) — no full-screen art, native or not. It looked broken because no Android 12
+icon was set, so the system fell back to the launcher icon in a circle, on navy (`#020617`) —
+not the app's `#09090B`, so the colour jumped when the app appeared.
+
+- **Native: `logo.png` dim (`kLaunchLogoRestingOpacity`, 35%) on `#09090B`, on every
+  version.** Android 12+ gets a 1152 canvas (288dp at 4x) with the logo 1:1 in its middle, inside
+  the 768 circle the system keeps, and **no `icon_background_color`** — a colour there draws a
+  circle behind the logo. The generator treats its pictures as 4x, so the logo lands at
+  `kLaunchLogoSize` (99.75×121.75dp) everywhere.
+- **The app's first frame repeats it exactly, then lights it** (`LaunchSplash`,
+  `core/widgets/launch_splash.dart`, in `MaterialApp.router`'s `builder`): over 880ms a purple
+  glow blooms, the three bars light top first 90ms apart, the logo lifts and the name rises
+  under it — Home's own wordmark — and the whole thing fades into the app, which has been
+  building underneath since the first frame. `launchSplashFrameAt` is the timeline as a pure
+  function. **The pictures are decoded in `main()` before the first frame** (beside the
+  preferences; `preserve` holds the native splash meanwhile): an `Image.asset` would still be
+  decoding when the first frame went out and the logo would blink off at the hand-over. Null
+  art (tests, or a picture that will not load) means no splash, never no app.
+- **Centred on the display, not the view** (`launchLogoCentre`): the native splash centres on
+  the whole screen, and on many Android phones the app's view stops above the navigation bar,
+  so centring on the view would drop the logo half a bar at the hand-over. A view short of the
+  display by more than 12% (split screen, a window) uses its own centre. **This is the first
+  suspect if the logo jumps at the hand-over on a device**; the size (4x) is the second.
+- **The bars light separately** because `logo.png` is cut into four layers
+  (`assets/splash/`: the white body and each purple bar, found by flood fill — they are
+  slanted and their rows overlap). `test/launch_splash_art_test.dart` with
+  `UPDATE_SPLASH_ART=1` redraws those and the two native pictures (`assets/native_splash/`,
+  out of the APK), then `dart run flutter_native_splash:create`. Without the variable it checks
+  the layers lay back together into `logo.png` with no pixel in two, the native logo is
+  `logo.png` at the resting opacity, the Android 12 logo sits in the circle, and the generated
+  resources use them.
+- **Animations off in the phone's settings: a 200ms fade only**, the controller on
+  `AnimationBehavior.preserve` — a normal controller runs at 5% of its duration with animations
+  off, and the splash already answers that setting itself. **Taps are held** while it covers an
+  app nobody can see yet; its pictures are disposed when it ends.
+- **The mockup's small "SlimShot AI" at the foot of the native splash was left out**: the name
+  rises under the logo a moment later, and on Android 12 the system places a foot mark itself,
+  so it could not be matched at the hand-over.
+- **Home's header still draws `logo.svg`**, the other drawing of the logo.
+
 ### Onboarding — three things the app does best, the timeline first
 
 **Awaiting device verification**; designed from mockups the owner picked (2026-10-24).

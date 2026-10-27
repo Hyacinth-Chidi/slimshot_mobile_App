@@ -73,6 +73,8 @@ flutter:
   assets:
     - assets/
     - assets/home/
+    # The splash's logo in four layers (test/launch_splash_art_test.dart).
+    - assets/splash/
 
   fonts:
     # Vendored from the abandoned lucide_icons package; see
@@ -128,9 +130,16 @@ flutter_launcher_icons:
   min_sdk_android: 24 # matches our minSdk
   remove_alpha_ios: true
 
+# The native half of the splash: the logo dim on the app's own black, the
+# same on every Android version (12+ allows only a centred icon). The app's
+# first frame repeats it and lights it up (lib/core/widgets/launch_splash.dart).
+# Pictures from test/launch_splash_art_test.dart (UPDATE_SPLASH_ART=1); run
+# `dart run flutter_native_splash:create` after redrawing them.
 flutter_native_splash:
-  color: "#020617"
-  image: assets/logo.png
+  color: "#09090B"
+  image: assets/native_splash/logo.png
   android_12:
-    icon_background_color: "#020617"
-    color: "#020617"
+    # No icon_background_color: a circle of colour behind the logo would show.
+    image: assets/native_splash/logo_android12.png
+    color: "#09090B"
+  web: false
