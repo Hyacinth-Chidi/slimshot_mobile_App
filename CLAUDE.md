@@ -4589,13 +4589,32 @@ Continue, then purple Get started. Both Skip and Get started set `hasSeenOnboard
   and scaled to the room it has — down on a short phone rather than overflowing, **up to 1.6× on
   a tablet** (`_maxVisualScale`) rather than sitting phone-sized in an empty screen, in a column
   of at most 560.
-- **Pages 2 and 3** use the New Video card's photos in its white frames: the same picture blurred
-  and sharp, tagged; a dancer with a caption whose middle word is on the purple pill.
+- **Page 2** uses the New Video card's photo in its white frame: the same picture blurred and
+  sharp, tagged.
+- **Page 3 is the finale, the finished video** (`_FinalePage`, the owner's pick, A of four; it
+  was a framed stock photo with a caption that never moved): the left photo of the New Video card
+  edge to edge from the top of the screen, under the status bar and the step bar (a shade at the
+  top keeps the bar readable), fading into the black where the words begin. **The photo is the
+  room the words leave**, so on any screen the two meet and never overlap. Its caption plays
+  word by word in the app's own Bubble look (`kDefaultCaptionLook`: Montserrat Bold, white, the
+  soft shadow), the spoken word on a pill of the highlight row's **pink**
+  (`kCaptionHighlightPink`, the owner's call over Bubble's purple): **"EDIT YOUR VIDEOS WITH
+  PASSION"** (`kOnboardingCaptionWords`, the owner's line, after a Pidgin one read as
+  machine-written). It sits low on the picture, where captions go and where the photo has
+  faded dark enough for white words; it wraps rather than shrinks, is sized from the screen
+  (22 on a phone, up to 38) and, like the app's captions, does not grow with the phone's text
+  size. With animations off it holds still on its first word.
+- **The pages run the whole screen**, with the step bar and the button laid over them
+  (`_Column` keeps each page clear of both): the finale's photo could not otherwise reach the
+  top edge. Only the bar and the button take touches, so a swipe between them still turns the
+  page — a test pins it.
 - **What it replaced**: screenshots of the old editor and generic lines ("Endless possibilities",
   "No cloud needed" — untrue since captions use the server). Their three PNGs are deleted.
 - `onboarding_screen_test.dart` pins the bars, the playhead's foot, the walk through the pages,
-  both ways out, every page on a small phone at 1.3× text and a tablet both ways up, and the
-  picture growing on a tablet while a phone's stays as laid out.
+  both ways out, every page on a small phone at 1.3× text and a tablet both ways up, the
+  picture growing on a tablet while a phone's stays as laid out, the finale's photo edge to edge
+  on a phone and a tablet, its caption's words lit in order on a pink pill, on the photo and
+  clear of the headline at 1.3× text, unscaled by the text size, and the swipe.
 
 ### Compress video — Home's light, rows, the sizes left to the result
 

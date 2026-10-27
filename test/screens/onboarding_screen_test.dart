@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:slimshotai/features/video_editor/logic/captions/caption_highlight.dart';
 import 'package:slimshotai/main.dart';
 import 'package:slimshotai/screens/onboarding_screen.dart';
 
@@ -133,4 +134,146 @@ void main() {
     expect(tablet.width, greaterThan(phone.width * 1.3));
     expect(tablet.width, lessThanOrEqualTo(360 * 1.6 + 0.5));
   });
+
+  Future<void> toLastPage(WidgetTester tester) async {
+    for (var i = 0; i < 2; i++) {
+      await tester.tap(find.text('Continue'));
+      await _settle(tester);
+    }
+  }
+
+  final finalePhoto = find.byKey(const Key('onboarding_finale_photo'));
+  final finaleCaption = find.byKey(const Key('onboarding_finale_caption'));
+
+  // The owner's pick (A of four): the last page is the finished video — a
+  // photo edge to edge from the top of the screen, fading into the black
+  // where the words are — not a picture in a frame.
+  for (final (name, size, ratio) in [
+    ('a phone', const Size(1080, 2340), 3.0),
+    ('a tablet', const Size(1600, 2560), 2.0),
+  ]) {
+    testWidgets("the last page's photo runs edge to edge from the top of the "
+        'screen on $name', (tester) async {
+      await pumpOnboarding(tester, size: size, ratio: ratio);
+      await toLastPage(tester);
+      final screen = size / ratio;
+      final photo = tester.getRect(finalePhoto);
+      expect(photo.left, 0);
+      expect(photo.top, 0, reason: 'under the status bar and the step bar');
+      expect(photo.width, screen.width, reason: 'wider than the words');
+      expect(photo.height, greaterThan(screen.height * 0.5));
+      final headline = tester.getRect(_headline('Captions in one tap'));
+      expect(photo.bottom, lessThanOrEqualTo(headline.top + 0.5));
+    });
+  }
+
+  // The owner's line, lit word by word in the app's own Bubble style.
+  testWidgets('its caption plays word by word: EDIT YOUR VIDEOS WITH PASSION',
+      (tester) async {
+    await pumpOnboarding(tester);
+    await toLastPage(tester);
+    expect(kOnboardingCaptionWords,
+        ['EDIT', 'YOUR', 'VIDEOS', 'WITH', 'PASSION']);
+    for (final word in kOnboardingCaptionWords) {
+      expect(find.descendant(of: finaleCaption, matching: find.text(word)),
+          findsOneWidget);
+    }
+    String lit() => tester
+        .widget<Text>(find.descendant(
+          of: find.byKey(const Key('onboarding_caption_lit')),
+          matching: find.byType(Text),
+        ))
+        .data!;
+    final order = <String>[];
+    for (var i = 0; i < 40; i++) {
+      final word = lit();
+      if (order.isEmpty || order.last != word) order.add(word);
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    // Every word lights in turn, in order, round and round.
+    expect(order.toSet(), kOnboardingCaptionWords.toSet());
+    for (var i = 1; i < order.length; i++) {
+      final before = kOnboardingCaptionWords.indexOf(order[i - 1]);
+      expect(kOnboardingCaptionWords.indexOf(order[i]),
+          (before + 1) % kOnboardingCaptionWords.length,
+          reason: order.join(' '));
+    }
+  });
+
+  // Where a real caption sits — low on the picture, where it has faded
+  // dark enough for white words — and never on the headline.
+  testWidgets('the caption sits on the photo and clear of the words, even on '
+      'a small phone with large text', (tester) async {
+    await pumpOnboarding(tester,
+        size: const Size(960, 1704), ratio: 3, textScale: 1.3);
+    await toLastPage(tester);
+    final photo = tester.getRect(finalePhoto);
+    final caption = tester.getRect(finaleCaption);
+    expect(caption.top, greaterThanOrEqualTo(photo.top));
+    expect(caption.bottom, lessThanOrEqualTo(photo.bottom));
+    expect(caption.center.dy, greaterThan(photo.center.dy),
+        reason: 'low on the picture, where captions go');
+    expect(caption.bottom,
+        lessThan(tester.getRect(_headline('Captions in one tap')).top));
+  });
+
+  // The pages now run the whole screen under the step bar and the button;
+  // a swipe in between must still reach them.
+  testWidgets('a swipe across the middle of the screen turns the page',
+      (tester) async {
+    await pumpOnboarding(tester);
+    await tester.fling(find.byType(PageView), const Offset(-300, 0), 1200);
+    await _settle(tester);
+    expect(_headline('Clear on WhatsApp Status'), findsOneWidget);
+  });
+
+  testWidgets('with animations turned off the caption holds still',
+      (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await pumpOnboarding(tester);
+    await toLastPage(tester);
+    String lit() => tester
+        .widget<Text>(find.descendant(
+          of: find.byKey(const Key('onboarding_caption_lit')),
+          matching: find.byType(Text),
+        ))
+        .data!;
+    final first = lit();
+    await tester.pump(const Duration(milliseconds: 1500));
+    expect(lit(), first);
+  });
+
+  // A picture of a caption on a video: like the app's own captions it does
+  // not grow with the phone's text size, and it wraps rather than shrinks.
+  testWidgets('the caption keeps its size with large text, on two lines',
+      (tester) async {
+    await pumpOnboarding(tester);
+    await toLastPage(tester);
+    final normal = tester.getSize(finaleCaption);
+    final word = tester.getSize(find.text('PASSION'));
+    // A fresh start, at large text.
+    await tester.pumpWidget(const SizedBox());
+    await pumpOnboarding(tester, textScale: 1.3);
+    await toLastPage(tester);
+    expect(tester.getSize(find.text('PASSION')), word);
+    expect(tester.getSize(finaleCaption), normal);
+    expect(tester.getRect(find.text('PASSION')).top,
+        greaterThan(tester.getRect(find.text('EDIT')).bottom),
+        reason: 'EDIT YOUR VIDEOS / WITH PASSION');
+  });
+
+  // The owner's call: the spoken word on a pink pill — the caption
+  // highlight row's own pink, so it is a look the app offers.
+  testWidgets('the spoken word sits on a pink pill', (tester) async {
+    await pumpOnboarding(tester);
+    await toLastPage(tester);
+    final pill = tester.widget<Container>(
+      find.byKey(const Key('onboarding_caption_lit')),
+    );
+    expect((pill.decoration! as BoxDecoration).color, kCaptionHighlightPink);
+    expect(kCaptionHighlightColors, contains(kCaptionHighlightPink));
+  });
 }
+

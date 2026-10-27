@@ -10,6 +10,18 @@ import '../core/theme/app_fonts.dart';
 import '../core/theme/lucide_icons.dart';
 import '../core/theme/sound_effect_icon.dart';
 import '../core/widgets/colour_field_backdrop.dart';
+import '../features/video_editor/logic/captions/caption_highlight.dart';
+import '../features/video_editor/logic/captions/caption_preset_catalog.dart';
+
+/// The last page's caption, the owner's line, lit word by word as the app
+/// lights a caption.
+const List<String> kOnboardingCaptionWords = [
+  'EDIT',
+  'YOUR',
+  'VIDEOS',
+  'WITH',
+  'PASSION',
+];
 
 /// One page: a picture, a headline whose last word is lit, one line.
 class _OnboardPage {
@@ -17,8 +29,9 @@ class _OnboardPage {
     required this.lead,
     required this.accent,
     required this.line,
-    required this.visual,
-    required this.visualSize,
+    this.visual = const SizedBox.shrink(),
+    this.visualSize = Size.zero,
+    this.finale = false,
   });
 
   final String lead;
@@ -28,7 +41,17 @@ class _OnboardPage {
 
   /// The size [visual] is laid out at, on a 360-wide phone.
   final Size visualSize;
+
+  /// The last page: not a picture in a frame but the finished video, a photo
+  /// edge to edge from the top of the screen with its caption playing
+  /// ([_FinalePage]).
+  final bool finale;
 }
+
+/// The step bar's height at the top, and the button's area at the foot:
+/// laid over the pages, which keep clear of both.
+const double _kTopBarHeight = 54;
+const double _kButtonAreaHeight = 82;
 
 /// The first launch: three pages, one thing the app does best on each —
 /// editing (the editor's own timeline, the owner's pick), WhatsApp-sharp
@@ -63,8 +86,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       lead: 'Captions in ',
       accent: 'one tap',
       line: "Every word on time, lit up as it's spoken.",
-      visual: _CaptionsVisual(),
-      visualSize: Size(360, 380),
+      finale: true,
     ),
   ];
 
@@ -104,37 +126,46 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: Stack(
         children: [
           const Positioned.fill(child: ColourFieldBackdrop()),
-          SafeArea(
-            child: Center(
-              // A tablet gets a column a little wider than a phone, centred.
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: Column(
-                  children: [
-                    _TopBar(
-                      page: _page,
-                      count: _pages.length,
-                      onSkip: _isLast ? null : _finish,
-                    ),
-                    Expanded(
-                      child: PageView.builder(
-                        controller: _pageController,
-                        itemCount: _pages.length,
-                        onPageChanged: (i) => setState(() => _page = i),
-                        itemBuilder: (context, i) => _PageBody(page: _pages[i]),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
-                      child: _PrimaryButton(
-                        label: _isLast ? 'Get started' : 'Continue',
-                        purple: _isLast,
-                        onTap: _next,
-                      ),
-                    ),
-                  ],
+          // The pages run the whole screen, so the last one's photo can reach
+          // its top edge; each keeps clear of the step bar and the button laid
+          // over them.
+          Positioned.fill(
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: _pages.length,
+              onPageChanged: (i) => setState(() => _page = i),
+              itemBuilder: (context, i) {
+                final page = _pages[i];
+                return page.finale
+                    ? _FinalePage(page: page)
+                    : _Column(
+                        top: _kTopBarHeight,
+                        bottom: _kButtonAreaHeight,
+                        child: _PageBody(page: page),
+                      );
+              },
+            ),
+          ),
+          // Only the bar and the button take touches; a swipe between them
+          // reaches the pages.
+          _Column(
+            child: Column(
+              children: [
+                _TopBar(
+                  page: _page,
+                  count: _pages.length,
+                  onSkip: _isLast ? null : _finish,
                 ),
-              ),
+                const Spacer(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+                  child: _PrimaryButton(
+                    label: _isLast ? 'Get started' : 'Continue',
+                    purple: _isLast,
+                    onTap: _next,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -205,6 +236,38 @@ class _TopBar extends StatelessWidget {
       );
 }
 
+/// The safe area, a column at most 560 wide in the middle (a tablet's is a
+/// little wider than a phone's), and room kept for the bar and the button.
+class _Column extends StatelessWidget {
+  const _Column({
+    required this.child,
+    this.top = 0,
+    this.bottom = 0,
+    this.safeTop = true,
+  });
+
+  final Widget child;
+  final double top;
+  final double bottom;
+
+  /// False for a block that does not reach the top of the screen.
+  final bool safeTop;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        top: safeTop,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Padding(
+              padding: EdgeInsets.only(top: top, bottom: bottom),
+              child: child,
+            ),
+          ),
+        ),
+      );
+}
+
 class _PageBody extends StatelessWidget {
   const _PageBody({required this.page});
 
@@ -243,7 +306,19 @@ class _PageBody extends StatelessWidget {
               ),
             ),
           ),
-          Padding(
+          _PageWords(page: page),
+        ],
+      );
+}
+
+/// A page's headline, its last words lit, and its one line.
+class _PageWords extends StatelessWidget {
+  const _PageWords({required this.page});
+
+  final _OnboardPage page;
+
+  @override
+  Widget build(BuildContext context) => Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -279,9 +354,7 @@ class _PageBody extends StatelessWidget {
                 const SizedBox(height: 12),
               ],
             ),
-          ),
-        ],
-      );
+          );
 }
 
 class _PrimaryButton extends StatelessWidget {
@@ -335,20 +408,21 @@ Widget _photo(String asset, {double cacheHeight = 480}) => Image.asset(
 /// A caption as the editor draws one: heavy white words, one of them on a
 /// purple pill.
 class _Caption extends StatelessWidget {
-  const _Caption(this.words, {required this.lit, this.size = 15});
+  const _Caption(this.words, {required this.lit});
+
+  static const double size = 15;
 
   final List<String> words;
   final int lit;
-  final double size;
 
   @override
   Widget build(BuildContext context) {
-    final style = TextStyle(
+    const style = TextStyle(
       fontFamily: kInterfaceFontFamily,
       fontSize: size,
       fontWeight: FontWeight.w800,
       color: AppColors.textPrimary,
-      shadows: const [Shadow(color: Colors.black, blurRadius: 6)],
+      shadows: [Shadow(color: Colors.black, blurRadius: 6)],
     );
     return Wrap(
       alignment: WrapAlignment.center,
@@ -358,7 +432,7 @@ class _Caption extends StatelessWidget {
         for (var i = 0; i < words.length; i++)
           i == lit
               ? Container(
-                  padding: EdgeInsets.symmetric(horizontal: size * 0.25),
+                  padding: const EdgeInsets.symmetric(horizontal: size * 0.25),
                   decoration: BoxDecoration(
                     color: AppColors.primaryStart,
                     borderRadius: BorderRadius.circular(size * 0.3),
@@ -825,32 +899,181 @@ class _StatusVisual extends StatelessWidget {
       );
 }
 
-// ── Page 3: captions ────────────────────────────────────────────────────────
+// ── Page 3: the finale ──────────────────────────────────────────────────────
 
-class _CaptionsVisual extends StatelessWidget {
-  const _CaptionsVisual();
+/// The last page is the finished video (the owner's pick, A of four): a photo
+/// edge to edge from the top of the screen — under the status bar and the
+/// step bar — fading into the black where the words begin, its caption
+/// playing low on the picture, where captions sit and where the photo has
+/// faded dark enough for white words. The photo is the room the words leave,
+/// so on any screen the two meet and never overlap.
+class _FinalePage extends StatelessWidget {
+  const _FinalePage({required this.page});
+
+  final _OnboardPage page;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 360,
-        height: 380,
-        child: Center(
-          child: _Framed(
-            width: 210,
-            height: 350,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                _photo(_right, cacheHeight: 720),
-                const Positioned(
-                  left: 10,
-                  right: 10,
-                  bottom: 40,
-                  child: _Caption(["LET'S", 'DANCE', 'NOW'], lit: 1, size: 16),
+  Widget build(BuildContext context) {
+    final topInset = MediaQuery.paddingOf(context).top;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ShaderMask(
+                key: const Key('onboarding_finale_photo'),
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (rect) => const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.black, Colors.black, Colors.transparent],
+                  stops: [0, 0.62, 1],
+                ).createShader(rect),
+                child: Image.asset(
+                  _left,
+                  fit: BoxFit.cover,
+                  // Her face is in the upper third.
+                  alignment: const Alignment(0, -0.4),
                 ),
-              ],
-            ),
+              ),
+              // A little shade at the top, so the step bar reads over it.
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                height: topInset + _kTopBarHeight + 30,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          AppColors.background.withValues(alpha: 0.45),
+                          AppColors.background.withValues(alpha: 0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const Align(
+                alignment: Alignment(0, 0.6),
+                child: _PlayingCaption(key: Key('onboarding_finale_caption')),
+              ),
+            ],
           ),
         ),
-      );
+        _Column(
+          safeTop: false,
+          bottom: _kButtonAreaHeight,
+          child: _PageWords(page: page),
+        ),
+      ],
+    );
+  }
+}
+
+/// A caption in the app's own default style, Bubble — white over a soft
+/// shadow, the spoken word on a pill — lit word by word, round and round.
+/// The pill is the highlight row's pink (the owner's call) rather than
+/// Bubble's purple. With animations turned off it holds still on its first
+/// word.
+class _PlayingCaption extends StatefulWidget {
+  const _PlayingCaption({super.key});
+
+  @override
+  State<_PlayingCaption> createState() => _PlayingCaptionState();
+}
+
+class _PlayingCaptionState extends State<_PlayingCaption>
+    with SingleTickerProviderStateMixin {
+  static const Duration _perWord = Duration(milliseconds: 600);
+
+  late final AnimationController _clock = AnimationController(
+    vsync: this,
+    duration: _perWord * kOnboardingCaptionWords.length,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _clock.stop();
+    } else if (!_clock.isAnimating) {
+      _clock.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _clock.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const look = kDefaultCaptionLook;
+    final angle = look.shadowAngle * math.pi / 180;
+    // A share of the screen, as the app sizes captions to the frame: 22 on
+    // a phone, larger on a tablet, where 22 would look lost. Small enough
+    // that the line breaks as EDIT YOUR VIDEOS / WITH PASSION.
+    final fontSize =
+        (MediaQuery.sizeOf(context).shortestSide * 0.062).clamp(22.0, 38.0);
+    final style = TextStyle(
+      fontFamily: look.fontFamily,
+      fontSize: fontSize,
+      color: look.color,
+      shadows: [
+        Shadow(
+          color: look.shadowColor.withValues(alpha: look.shadowOpacity),
+          offset: Offset(math.cos(angle), math.sin(angle)) * look.shadowDistance,
+          blurRadius: look.shadowBlur,
+        ),
+      ],
+    );
+    const words = kOnboardingCaptionWords;
+    return ExcludeSemantics(
+      child: AnimatedBuilder(
+        animation: _clock,
+        builder: (context, _) {
+          final lit = (_clock.value * words.length).floor() % words.length;
+          // A caption wraps across lines rather than shrinking.
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              runSpacing: 4,
+              children: [
+                for (var i = 0; i < words.length; i++)
+                  Container(
+                    key: i == lit
+                        ? const Key('onboarding_caption_lit')
+                        : ValueKey('onboarding_caption_$i'),
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: i == lit
+                        ? BoxDecoration(
+                            color: kCaptionHighlightPink,
+                            borderRadius: BorderRadius.circular(8),
+                          )
+                        : null,
+                    // A caption on a video, like the app's own: the phone's
+                    // text size does not grow it.
+                    child: Text(
+                      words[i],
+                      style: style,
+                      textScaler: TextScaler.noScaling,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 }

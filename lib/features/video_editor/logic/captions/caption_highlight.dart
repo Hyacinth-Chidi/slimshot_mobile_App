@@ -8,11 +8,14 @@ export 'caption_highlight_catalog.dart'
 /// The colour a highlight starts in.
 const Color kCaptionHighlightDefaultColor = Color(0xFFFFD60A);
 
+/// The highlight row's pink — also the onboarding caption's pill.
+const Color kCaptionHighlightPink = Color(0xFFFF375F);
+
 /// The colours the sheet offers for a highlight.
 const List<Color> kCaptionHighlightColors = [
   Color(0xFFFFD60A),
   Color(0xFFFF9F0A),
-  Color(0xFFFF375F),
+  kCaptionHighlightPink,
   Color(0xFFBF5AF2),
   Color(0xFF0A84FF),
   Color(0xFF30D158),
