@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:slimshotai/core/theme/app_colors.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_highlight.dart';
+import 'package:slimshotai/features/video_editor/logic/effects/effect_catalog.dart';
+import 'package:slimshotai/features/video_editor/logic/transitions/transition_catalog.dart';
 import 'package:slimshotai/main.dart';
 import 'package:slimshotai/screens/onboarding_screen.dart';
+import 'package:slimshotai/screens/onboarding_showreel.dart';
 
 Future<void> _settle(WidgetTester tester) async {
   // Looping light and entrance motion: it never settles by itself.
@@ -56,7 +60,7 @@ void main() {
         lessThan(tester.getRect(_headline('Edit like a pro')).top));
   });
 
-  testWidgets('Continue walks three pages; the last says Get started',
+  testWidgets('Continue walks four pages; the last says Get started',
       (tester) async {
     await pumpOnboarding(tester);
     expect(find.text('Skip'), findsOneWidget);
@@ -65,13 +69,16 @@ void main() {
     expect(_headline('Clear on WhatsApp Status'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await _settle(tester);
+    expect(_headline('Transitions that wow'), findsOneWidget);
+    await tester.tap(find.text('Continue'));
+    await _settle(tester);
     expect(_headline('Captions in one tap'), findsOneWidget);
     expect(find.text('Get started'), findsOneWidget);
     expect(find.text('Continue'), findsNothing);
     expect(find.text('Skip'), findsNothing);
   });
 
-  testWidgets('three steps in the progress bar, lit up to the current page',
+  testWidgets('four steps in the progress bar, lit up to the current page',
       (tester) async {
     await pumpOnboarding(tester);
     Color step(int i) => ((tester
@@ -79,7 +86,8 @@ void main() {
                     find.byKey(Key('onboarding_step_$i')))
                 .decoration!) as BoxDecoration)
             .color!;
-    expect(find.byKey(const Key('onboarding_step_2')), findsOneWidget);
+    expect(find.byKey(const Key('onboarding_step_3')), findsOneWidget);
+    expect(find.byKey(const Key('onboarding_step_4')), findsNothing);
     expect(step(0), isNot(step(1)));
     await tester.tap(find.text('Continue'));
     await _settle(tester);
@@ -92,7 +100,7 @@ void main() {
         (tester) async {
       await pumpOnboarding(tester);
       if (finish == 'Get started') {
-        for (var i = 0; i < 2; i++) {
+        for (var i = 0; i < 3; i++) {
           await tester.tap(find.text('Continue'));
           await _settle(tester);
         }
@@ -113,7 +121,7 @@ void main() {
   ]) {
     testWidgets('every page fits $name', (tester) async {
       await pumpOnboarding(tester, size: size, ratio: ratio, textScale: scale);
-      for (var i = 0; i < 2; i++) {
+      for (var i = 0; i < 3; i++) {
         await tester.tap(find.text('Continue'));
         await _settle(tester);
       }
@@ -135,8 +143,97 @@ void main() {
     expect(tablet.width, lessThanOrEqualTo(360 * 1.6 + 0.5));
   });
 
-  Future<void> toLastPage(WidgetTester tester) async {
+  Future<void> toTransitionsPage(WidgetTester tester) async {
     for (var i = 0; i < 2; i++) {
+      await tester.tap(find.text('Continue'));
+      await _settle(tester);
+    }
+  }
+
+  List<String> chipLabels(WidgetTester tester) => [
+        for (var i = 0; tester.any(find.byKey(Key('onboarding_move_$i'))); i++)
+          tester
+              .widget<Text>(find.descendant(
+                of: find.byKey(Key('onboarding_move_$i')),
+                matching: find.byType(Text),
+              ))
+              .data!,
+      ];
+
+  String litChip(WidgetTester tester) {
+    final labels = chipLabels(tester);
+    final lit = [
+      for (var i = 0; i < labels.length; i++)
+        if (((tester
+                        .widget<AnimatedContainer>(
+                            find.byKey(Key('onboarding_move_$i')))
+                        .decoration!) as BoxDecoration)
+                .color ==
+            AppColors.primaryStart)
+          labels[i],
+    ];
+    expect(lit, hasLength(1), reason: 'one chip lit at a time');
+    return lit.single;
+  }
+
+  // The owner's pick (A, Zoom Blur first, then the glitch): a framed clip
+  // plays the app's own moves between three photos, the chip under it lit
+  // for the one playing or about to.
+  testWidgets('the transitions page plays Zoom Blur, Glitch and Cube in '
+      'turn, lighting each', (tester) async {
+    await pumpOnboarding(tester);
+    await toTransitionsPage(tester);
+    expect(_headline('Transitions that wow'), findsOneWidget);
+    expect(find.byKey(const Key('onboarding_showreel')), findsOneWidget);
+    expect(chipLabels(tester), [
+      'Zoom Blur',
+      'Glitch',
+      'Cube',
+      EditorTransition.swirl.label,
+      '+${EditorTransition.values.length - 4}',
+    ]);
+    final order = <String>[];
+    for (var i = 0; i < 70; i++) {
+      final lit = litChip(tester);
+      if (order.isEmpty || order.last != lit) order.add(lit);
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    const moves = ['Zoom Blur', 'Glitch', 'Cube'];
+    expect(order.toSet(), moves.toSet());
+    for (var i = 1; i < order.length; i++) {
+      expect(moves.indexOf(order[i]),
+          (moves.indexOf(order[i - 1]) + 1) % moves.length,
+          reason: order.join(' '));
+    }
+  });
+
+  // The counts are the catalogs', so the line cannot fall behind them; the
+  // owner struck "smooth on any phone" from it.
+  testWidgets('its line counts the transitions and effects the app holds',
+      (tester) async {
+    await pumpOnboarding(tester);
+    await toTransitionsPage(tester);
+    expect(
+        find.text('${EditorTransition.values.length} transitions and '
+            '${kVideoEffects.length} effects.'),
+        findsOneWidget);
+    expect(find.textContaining('smooth'), findsNothing);
+  });
+
+  testWidgets('with animations turned off the transitions page holds on its '
+      'first photo, Zoom Blur lit', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await pumpOnboarding(tester);
+    await toTransitionsPage(tester);
+    expect(litChip(tester), 'Zoom Blur');
+    await tester.pump(kShowreelLoop ~/ 2);
+    expect(litChip(tester), 'Zoom Blur');
+  });
+
+  Future<void> toLastPage(WidgetTester tester) async {
+    for (var i = 0; i < 3; i++) {
       await tester.tap(find.text('Continue'));
       await _settle(tester);
     }

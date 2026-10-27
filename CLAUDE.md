@@ -4571,14 +4571,15 @@ not the app's `#09090B`, so the colour jumped when the app appeared.
   so it could not be matched at the hand-over.
 - **Home's header still draws `logo.svg`**, the other drawing of the logo.
 
-### Onboarding — three things the app does best, the timeline first
+### Onboarding — four things the app does best, the timeline first
 
-**Awaiting device verification**; designed from mockups the owner picked (2026-10-24).
-`OnboardingScreen` is three pages on Home's light (`ColourFieldBackdrop`), each a picture, a
-headline whose last words are lit in lilac, and one line: **Edit like a pro**, **Clear on
-WhatsApp Status**, **Captions in one tap**. A three-step bar and Skip at the top (Skip gone on the
-last page, its width kept so the steps do not jump), one full-width button at the foot — white
-Continue, then purple Get started. Both Skip and Get started set `hasSeenOnboarding` and go Home.
+**Awaiting device verification**; designed from mockups the owner picked (2026-10-24, the
+transitions page 2026-10-28). `OnboardingScreen` is four pages on Home's light
+(`ColourFieldBackdrop`), each a picture, a headline whose last words are lit in lilac, and one
+line: **Edit like a pro**, **Clear on WhatsApp Status**, **Transitions that wow**, **Captions in
+one tap**. A step per page and Skip at the top (Skip gone on the last page, its width kept so the
+steps do not jump), one full-width button at the foot — white Continue, then purple Get started.
+Both Skip and Get started set `hasSeenOnboarding` and go Home.
 
 - **The first page is the editor's own timeline, drawn** (`_TimelineVisual`, the owner's pick of
   three): a preview with a caption on it, a ruler, three clips as filmstrips with transitions on
@@ -4591,7 +4592,29 @@ Continue, then purple Get started. Both Skip and Get started set `hasSeenOnboard
   of at most 560.
 - **Page 2** uses the New Video card's photo in its white frame: the same picture blurred and
   sharp, tagged.
-- **Page 3 is the finale, the finished video** (`_FinalePage`, the owner's pick, A of four; it
+- **Page 3 plays the app's own moves** (`_TransitionsVisual` over `onboarding_showreel.dart`;
+  the owner's pick, A of three, with **Zoom Blur first, then the glitch**): one 9:16 clip in the
+  white frame, looping the New Video card's three photos — dancer, gamer, neon girl — through
+  **Zoom Blur, Glitch and Cube**, each resting 0.9 s first; the moves play *inside* the frame, as
+  a transition plays inside a video. Under it the chips **Zoom Blur, Glitch, Cube, Swirl, +37**,
+  the one playing or next lit white on purple. **Drawn in Flutter, after the app's own**: the
+  engine's renderer belongs to the editor and is not running at onboarding, so the showreel
+  follows the shaders rather than calling them — CrossZoom's sweeping centre, sine strength (0.4)
+  and exponential swap, its samples as twelve weighted copies; the Glitch effect's torn bands
+  (wrapping, some from the other photo), split channels and a band of swapped red and blue,
+  stepped fifteen times a second while the photo flickers between the two; the Cube in true
+  perspective with the app's 0.3 back-off and floor reflection. **The cube also backs off as far
+  as it must to stay in the frame** (`_cubeFit`): a face turning about the cube's middle swings
+  its far edge outward before depth draws it in, and a test caught it 2.7 px past the frame's
+  border. **The line counts the catalogs** (`EditorTransition.values.length` transitions,
+  `kVideoEffects.length` effects; "41 transitions and 47 effects.") so it cannot fall behind
+  them; "smooth on any phone" was struck at the owner's call. It repaints only when its frame
+  changes — a rest or a glitch tick holds — decodes the photos at 960 tall
+  (`showreelPhoto`, precached a page ahead), and with animations off holds on the first photo,
+  Zoom Blur lit. `onboarding_showreel_test.dart` pins the loop's order and timing, the glitch's
+  plan, the cube's geometry (faces meeting on their nearest edge, the new one from the right,
+  inside the frame throughout) and what the painter draws.
+- **Page 4 is the finale, the finished video** (`_FinalePage`, the owner's pick, A of four; it
   was a framed stock photo with a caption that never moved): the left photo of the New Video card
   edge to edge from the top of the screen, under the status bar and the step bar (a shade at the
   top keeps the bar readable), fading into the black where the words begin. **The photo is the
@@ -4611,6 +4634,7 @@ Continue, then purple Get started. Both Skip and Get started set `hasSeenOnboard
 - **What it replaced**: screenshots of the old editor and generic lines ("Endless possibilities",
   "No cloud needed" — untrue since captions use the server). Their three PNGs are deleted.
 - `onboarding_screen_test.dart` pins the bars, the playhead's foot, the walk through the pages,
+  the transitions page's chips lighting in turn and its counted line,
   both ways out, every page on a small phone at 1.3× text and a tablet both ways up, the
   picture growing on a tablet while a phone's stays as laid out, the finale's photo edge to edge
   on a phone and a tablet, its caption's words lit in order on a pink pill, on the photo and

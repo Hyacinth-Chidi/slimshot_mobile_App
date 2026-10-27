@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -12,6 +13,9 @@ import '../core/theme/sound_effect_icon.dart';
 import '../core/widgets/colour_field_backdrop.dart';
 import '../features/video_editor/logic/captions/caption_highlight.dart';
 import '../features/video_editor/logic/captions/caption_preset_catalog.dart';
+import '../features/video_editor/logic/effects/effect_catalog.dart';
+import '../features/video_editor/logic/transitions/transition_catalog.dart';
+import 'onboarding_showreel.dart';
 
 /// The last page's caption, the owner's line, lit word by word as the app
 /// lights a caption.
@@ -53,9 +57,9 @@ class _OnboardPage {
 const double _kTopBarHeight = 54;
 const double _kButtonAreaHeight = 82;
 
-/// The first launch: three pages, one thing the app does best on each —
+/// The first launch: four pages, one thing the app does best on each —
 /// editing (the editor's own timeline, the owner's pick), WhatsApp-sharp
-/// compression, auto captions — then Home.
+/// compression, transitions and effects, auto captions — then Home.
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -66,16 +70,18 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _page = 0;
+  bool _showreelPrecached = false;
 
-  static const List<_OnboardPage> _pages = [
-    _OnboardPage(
+  // Not const: the transitions page counts what the catalogs hold.
+  static final List<_OnboardPage> _pages = [
+    const _OnboardPage(
       lead: 'Edit like a ',
       accent: 'pro',
       line: 'Clips, text, effects, sound and music, layered on one timeline.',
       visual: _TimelineVisual(),
       visualSize: _TimelineVisual.size,
     ),
-    _OnboardPage(
+    const _OnboardPage(
       lead: 'Clear on ',
       accent: 'WhatsApp Status',
       line: 'Compressed in the shape Status keeps, so your video never blurs.',
@@ -83,6 +89,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       visualSize: Size(360, 380),
     ),
     _OnboardPage(
+      lead: 'Transitions that ',
+      accent: 'wow',
+      line: '${EditorTransition.values.length} transitions and '
+          '${kVideoEffects.length} effects.',
+      visual: const _TransitionsVisual(),
+      visualSize: _TransitionsVisual.size,
+    ),
+    const _OnboardPage(
       lead: 'Captions in ',
       accent: 'one tap',
       line: "Every word on time, lit up as it's spoken.",
@@ -106,6 +120,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       debugPrint('⚠️ Prefs failed: $e');
     }
     if (mounted) context.go('/home');
+  }
+
+  /// The showreel's photos start decoding a page ahead, so its first frame
+  /// is a picture rather than a dark frame waiting for one.
+  void _precacheShowreel() {
+    if (_showreelPrecached) return;
+    _showreelPrecached = true;
+    for (var i = 0; i < kShowreelPhotos.length; i++) {
+      unawaited(precacheImage(showreelPhoto(i), context));
+    }
   }
 
   void _next() {
@@ -133,7 +157,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: PageView.builder(
               controller: _pageController,
               itemCount: _pages.length,
-              onPageChanged: (i) => setState(() => _page = i),
+              onPageChanged: (i) {
+                setState(() => _page = i);
+                if (i >= 1) _precacheShowreel();
+              },
               itemBuilder: (context, i) {
                 final page = _pages[i];
                 return page.finale
@@ -174,7 +201,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-/// Three steps lit up to the current page, and Skip beside them.
+/// A step per page, lit up to the current one, and Skip beside them.
 class _TopBar extends StatelessWidget {
   const _TopBar({required this.page, required this.count, this.onSkip});
 
@@ -899,7 +926,176 @@ class _StatusVisual extends StatelessWidget {
       );
 }
 
-// ── Page 3: the finale ──────────────────────────────────────────────────────
+// ── Page 3: transitions and effects ─────────────────────────────────────────
+
+/// The owner's pick (A, Zoom Blur first, then the glitch): one framed clip
+/// playing the app's own moves between three photos, and the names under
+/// it, the one playing or about to lit. It plays inside the frame, as a
+/// transition plays inside a video. Swirl and the count after it are names
+/// only — a hint of the rest of the shelf.
+class _TransitionsVisual extends StatefulWidget {
+  const _TransitionsVisual();
+
+  static const Size size = Size(360, 380);
+
+  @override
+  State<_TransitionsVisual> createState() => _TransitionsVisualState();
+}
+
+class _TransitionsVisualState extends State<_TransitionsVisual>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _clock = AnimationController(
+    vsync: this,
+    duration: kShowreelLoop,
+  )..addListener(_tick);
+
+  // The clip and the chips listen to the frame, not the clock: through a
+  // rest and within a glitch tick nothing changes, so nothing repaints.
+  final ValueNotifier<ShowreelFrame> _frame =
+      ValueNotifier(showreelFrameAt(Duration.zero));
+
+  final List<ui.Image?> _photos = List.filled(kShowreelPhotos.length, null);
+  final List<ImageStream?> _streams =
+      List.filled(kShowreelPhotos.length, null);
+  late final List<ImageStreamListener> _listeners = [
+    for (var i = 0; i < kShowreelPhotos.length; i++)
+      ImageStreamListener((info, _) {
+        if (!mounted) {
+          info.dispose();
+          return;
+        }
+        setState(() {
+          _photos[i]?.dispose();
+          _photos[i] = info.image;
+        });
+      }),
+  ];
+
+  void _tick() {
+    final frame = showreelFrameAt(kShowreelLoop * _clock.value);
+    if (frame != _frame.value) _frame.value = frame;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final configuration = createLocalImageConfiguration(context);
+    for (var i = 0; i < kShowreelPhotos.length; i++) {
+      final stream = showreelPhoto(i).resolve(configuration);
+      if (stream.key == _streams[i]?.key) continue;
+      _streams[i]?.removeListener(_listeners[i]);
+      _streams[i] = stream..addListener(_listeners[i]);
+    }
+    // With animations off it holds on its first photo, Zoom Blur lit.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _clock.stop();
+      _clock.value = 0;
+    } else if (!_clock.isAnimating) {
+      _clock.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    for (var i = 0; i < kShowreelPhotos.length; i++) {
+      _streams[i]?.removeListener(_listeners[i]);
+      _photos[i]?.dispose();
+    }
+    _clock.dispose();
+    _frame.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        key: const Key('onboarding_showreel'),
+        width: _TransitionsVisual.size.width,
+        height: _TransitionsVisual.size.height,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // 9:16 inside its border, the shape of the app's canvas.
+            _Framed(
+              width: 186,
+              height: 326,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: ShowreelPainter(
+                    frame: _frame,
+                    photos: List.of(_photos),
+                  ),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ValueListenableBuilder<ShowreelFrame>(
+              valueListenable: _frame,
+              builder: (context, frame, _) => _MoveChips(lit: frame.step),
+            ),
+          ],
+        ),
+      );
+}
+
+/// The moves by name, the one playing or about to lit — white on the app's
+/// purple, as everything chosen is.
+class _MoveChips extends StatelessWidget {
+  const _MoveChips({required this.lit});
+
+  final int lit;
+
+  static final List<String> _labels = [
+    for (final step in kShowreelSteps) step.label,
+    EditorTransition.swirl.label,
+    '+${EditorTransition.values.length - 4}',
+  ];
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < _labels.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              AnimatedContainer(
+                key: Key('onboarding_move_$i'),
+                duration: const Duration(milliseconds: 250),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: i == lit
+                      ? AppColors.primaryStart
+                      : AppColors.textPrimary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: i == lit
+                        ? AppColors.primaryStart
+                        : AppColors.textPrimary.withValues(alpha: 0.14),
+                  ),
+                ),
+                // A picture of the app's chips: the phone's text size does
+                // not grow it, as it does not grow the finale's caption.
+                child: Text(
+                  _labels[i],
+                  maxLines: 1,
+                  textScaler: TextScaler.noScaling,
+                  style: TextStyle(
+                    fontFamily: kInterfaceFontFamily,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: i == lit ? Colors.white : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+}
+
+// ── Page 4: the finale ──────────────────────────────────────────────────────
 
 /// The last page is the finished video (the owner's pick, A of four): a photo
 /// edge to edge from the top of the screen — under the status bar and the
