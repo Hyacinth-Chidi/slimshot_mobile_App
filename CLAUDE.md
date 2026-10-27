@@ -4504,7 +4504,9 @@ which every launcher masks to its own shape at the phone's own density. Android 
 whole picture with its own corners; iOS gets a full square (it rounds the corners itself and
 fills a transparent one with black).
 
-- **Every source is drawn from `assets/logo.svg`** by Flutter's own renderer:
+- **Every source is drawn from `assets/logo.png`** (the owner's call — that drawing, bolder with
+  slanted bars, not the SVG's nor the old icon's), at most 481px tall from its 487, so it is only
+  ever made smaller, never stretched:
   `UPDATE_APP_ICON=1 flutter test test/app_icon_test.dart` redraws the four 1024 sources in
   `assets/icon/` (out of the APK — only top-level `assets/` files are bundled; the old
   `assets/app_icon.png` was being shipped for nothing), then `dart run flutter_launcher_icons`
@@ -4513,9 +4515,9 @@ fills a transparent one with black).
   its corners, and the adaptive resources actually generated.
 - **The logo is 47% of the icon's height**, as in the old artwork, and on the adaptive layer the
   same share of the middle 72/108 a launcher shows — so it is the same size on the phone.
-- **`logo.svg` is not the old icon's drawing**, nor `logo.png`'s (the splash screen's — bolder,
-  with slanted bars). The SVG is the one the app's own header draws, and a vector stays sharp.
-  The splash still shows `logo.png`.
+- **Three drawings of the logo exist**: `logo.png` (the icon's and the splash screen's),
+  `logo.svg` (the app's own header — a solid play triangle, rounded bars) and the old icon's
+  thinner artwork. The icon and splash now agree; the header does not.
 
 ### Onboarding — three things the app does best, the timeline first
 

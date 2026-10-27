@@ -4,13 +4,14 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The app icon is drawn from `assets/logo.svg`, never resampled from a
-/// raster: the old 1024 picture was sharp, but it was the only icon there
-/// was, so Android 8+ squeezed the whole square, corners and all, into its
-/// own shape and the logo arrived small and soft.
+/// The app icon is drawn from `assets/logo.png` (the owner's call: that
+/// drawing, not the SVG's nor the old icon's). The old 1024 picture was
+/// sharp, but it was the only icon there was, so Android 8+ squeezed the
+/// whole square, corners and all, into its own shape and the logo arrived
+/// small and soft. The logo is drawn at most 481px tall from its 487, so it
+/// is only ever made smaller, never stretched.
 ///
 /// `UPDATE_APP_ICON=1 flutter test test/app_icon_test.dart` redraws the four
 /// sources in `assets/icon/` (kept out of the APK — only top-level `assets/`
@@ -29,8 +30,11 @@ void main() {
   if (Platform.environment['UPDATE_APP_ICON'] == '1') {
     testWidgets('redraw the icon sources from the logo', (tester) async {
       await tester.runAsync(() async {
-        final svg = File('assets/logo.svg').readAsStringSync();
-        final logo = await vg.loadPicture(SvgStringLoader(svg), null);
+        final codec = await ui.instantiateImageCodec(
+          File('assets/logo.png').readAsBytesSync(),
+        );
+        final logo = (await codec.getNextFrame()).image;
+        final logoSize = Size(logo.width * 1.0, logo.height * 1.0);
         await Directory(dir).create(recursive: true);
 
         // The look the icon has always had: a dark grey fall from top to
@@ -45,16 +49,18 @@ void main() {
         // The logo [height] tall, centred across and a touch above the
         // middle — where it sat in the original artwork.
         void drawLogo(Canvas canvas, double height, double centreY) {
-          final scale = height / logo.size.height;
-          canvas
-            ..save()
-            ..translate(
-              (size - logo.size.width * scale) / 2,
+          final width = height * logoSize.width / logoSize.height;
+          canvas.drawImageRect(
+            logo,
+            Offset.zero & logoSize,
+            Rect.fromLTWH(
+              (size - width) / 2,
               centreY - height / 2,
-            )
-            ..scale(scale)
-            ..drawPicture(logo.picture)
-            ..restore();
+              width,
+              height,
+            ),
+            Paint()..filterQuality = FilterQuality.high,
+          );
         }
 
         Future<void> write(String name, void Function(Canvas) paint) async {
@@ -98,7 +104,7 @@ void main() {
             size / 2 + (fullCentre - size / 2) * visible,
           );
         });
-        logo.picture.dispose();
+        logo.dispose();
       });
     });
   }
