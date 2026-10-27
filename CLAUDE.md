@@ -4493,6 +4493,30 @@ light, not paint.**
   blur the very frame being judged, over a live texture, on low-end GPUs. Purple stays an accent
   in the editor. No light mode: dark is the editing standard.
 
+### The app icon — drawn from the logo, an adaptive icon on Android
+
+**Awaiting device verification** (2026-10-27; device-reported as blurry). The old 1024 picture was
+sharp, but it was the **only** icon: Android 8+ has no use for a single picture, so launchers
+squeezed the whole square, its own rounded corners included, into their shape and the logo
+arrived small and soft. Now `mipmap-anydpi-v26/ic_launcher.xml` is an **adaptive icon** — a
+background layer (the dark grey fall, `#3D3D3E` to `#101011`) and the logo on a layer of its own,
+which every launcher masks to its own shape at the phone's own density. Android 7 and older keep a
+whole picture with its own corners; iOS gets a full square (it rounds the corners itself and
+fills a transparent one with black).
+
+- **Every source is drawn from `assets/logo.svg`** by Flutter's own renderer:
+  `UPDATE_APP_ICON=1 flutter test test/app_icon_test.dart` redraws the four 1024 sources in
+  `assets/icon/` (out of the APK — only top-level `assets/` files are bundled; the old
+  `assets/app_icon.png` was being shipped for nothing), then `dart run flutter_launcher_icons`
+  makes every size. Without the variable the test checks what is committed: the logo inside the
+  66/108 circle every launcher shape keeps, the background with no holes, the iOS icon opaque to
+  its corners, and the adaptive resources actually generated.
+- **The logo is 47% of the icon's height**, as in the old artwork, and on the adaptive layer the
+  same share of the middle 72/108 a launcher shows — so it is the same size on the phone.
+- **`logo.svg` is not the old icon's drawing**, nor `logo.png`'s (the splash screen's — bolder,
+  with slanted bars). The SVG is the one the app's own header draws, and a vector stays sharp.
+  The splash still shows `logo.png`.
+
 ### Onboarding — three things the app does best, the timeline first
 
 **Awaiting device verification**; designed from mockups the owner picked (2026-10-24).

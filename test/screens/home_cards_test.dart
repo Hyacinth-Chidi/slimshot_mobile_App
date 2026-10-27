@@ -49,7 +49,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final dir = Directory.systemTemp.createTempSync('home_cards');
     final photo = File('${dir.path}/a.png')
-      ..writeAsBytesSync(File('assets/app_icon.png').readAsBytesSync());
+      ..writeAsBytesSync(File('assets/logo.png').readAsBytesSync());
     picker = _FakePicker([XFile(photo.path)]);
     ImagePickerPlatform.instance = picker;
   });

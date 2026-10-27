@@ -114,10 +114,17 @@ dev_dependencies:
   # flutter_test has no host implementation for the path_provider channel.
   path_provider_platform_interface: ^2.1.2
 
+# The sources are drawn from assets/logo.svg by test/app_icon_test.dart
+# (UPDATE_APP_ICON=1); run `dart run flutter_launcher_icons` after redrawing.
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/app_icon.png"
+  # Android 7 and older, and iOS, show one whole picture.
+  image_path_android: "assets/icon/app_icon.png"
+  image_path_ios: "assets/icon/app_icon_ios.png"
+  # Android 8+ masks two layers to the launcher's own shape.
+  adaptive_icon_background: "assets/icon/background.png"
+  adaptive_icon_foreground: "assets/icon/foreground.png"
   min_sdk_android: 24 # matches our minSdk
   remove_alpha_ios: true
 
