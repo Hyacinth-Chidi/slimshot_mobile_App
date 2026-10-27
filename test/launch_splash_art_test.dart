@@ -91,8 +91,9 @@ void main() {
               layer(mine.contains));
         }
 
-        // The native splash: the whole logo, dim. The app lights it up.
-        final dim = Uint8List.fromList(logo);
+        // The native splash: the logo's body, dim, without its bars — the
+        // app lights the body and the bars streak in.
+        final dim = layer((p) => logo[p * 4 + 3] > 0 && !isBar(logo, p * 4));
         for (var i = 3; i < dim.length; i += 4) {
           dim[i] = (dim[i] * kLaunchLogoRestingOpacity).round();
         }
@@ -187,15 +188,18 @@ void main() {
     }
   });
 
-  testWidgets('the native splash shows logo.png at the resting opacity',
-      (tester) async {
-    final (w, h, logo) = await pixels(tester, logoPath);
+  // The bars arrive in the app's own frames; on the native splash they
+  // would already be there, and then streak in a second time.
+  testWidgets('the native splash shows the body alone, at the resting '
+      'opacity', (tester) async {
+    final (w, h, body) = await pixels(tester, kLaunchSplashLayers.first);
     final (nw, nh, dim) =
         await pixels(tester, 'assets/native_splash/logo.png');
     expect((nw, nh), (w, h));
-    for (var i = 0; i < logo.length; i += 4) {
+    for (var i = 0; i < body.length; i += 4) {
       expect(dim[i + 3],
-          closeTo(logo[i + 3] * kLaunchLogoRestingOpacity, 1.01));
+          closeTo(body[i + 3] * kLaunchLogoRestingOpacity, 1.01));
+      if (dim[i + 3] > 0) expect(isBar(dim, i), isFalse);
     }
   });
 

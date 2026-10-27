@@ -7,24 +7,27 @@ import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_fonts.dart';
 
-/// The splash: the system's, then the app's (the owner's pick of three).
+/// The splash: the system's, then the app's (the owner's pick, C).
 ///
 /// Android draws the native splash — on 12 and newer it allows nothing but
-/// a centred icon on a flat colour — so the native one shows only the logo,
-/// dim. The app's first frame repeats it exactly, then lights it: a glow
-/// blooms behind it, the three bars light one by one, the name rises under
-/// it, and it all fades into the app, which has been building underneath.
+/// a centred icon on a flat colour — so the native one shows only the logo's
+/// body, dim, without its bars. The app's first frame repeats it exactly,
+/// then finishes the logo: the body lights and the three bars, which are its
+/// speed lines, streak in from the left one after another; the name rises
+/// under it, and it all fades into the app, which has been building
+/// underneath. Nothing glows behind it: a purple glow was built and turned
+/// down by the owner.
 
 /// The logo as the native splash draws it: `logo.png` (399×487) is the
 /// generator's 4x picture, so it lands on screen at a quarter of its pixels.
 /// The app must draw it at exactly this size, or it jumps at the hand-over.
 const Size kLaunchLogoSize = Size(399 / 4, 487 / 4);
 
-/// How bright the logo is before the app lights it — on the native splash
-/// and on the app's first frame alike.
+/// How bright the logo's body is before the app lights it — on the native
+/// splash and on the app's first frame alike.
 const double kLaunchLogoRestingOpacity = 0.35;
 
-const Duration kLaunchSplashDuration = Duration(milliseconds: 880);
+const Duration kLaunchSplashDuration = Duration(milliseconds: 940);
 
 /// With animations turned off in the phone's settings: only a short fade.
 const Duration kLaunchSplashReducedDuration = Duration(milliseconds: 200);
@@ -39,9 +42,19 @@ const double _kNameGap = 14;
 /// How far below its place the name starts rising from.
 const double _kNameRise = 10;
 
+/// A bar sets off this many logo widths left of its place.
+const double _kBarTravel = 0.37;
+
+/// And drawn out this much longer, like a streak.
+const double _kBarStretch = 0.8;
+
+/// The bars' right ends in `logo.png` (they span 34–87 of its 399): a bar
+/// stretches leftward from there, so it lands without its end moving.
+const double _kBarsRightEdge = 88 / 399;
+
 /// The logo in four layers, cut from `logo.png` by
 /// `test/launch_splash_art_test.dart`: the white body and each purple bar,
-/// so the bars can light one at a time.
+/// so each bar can arrive on its own.
 const List<String> kLaunchSplashLayers = [
   'assets/splash/body.png',
   'assets/splash/bar_0.png',
@@ -93,7 +106,6 @@ class LaunchSplashArt {
 /// One moment of the splash.
 class LaunchSplashFrame {
   const LaunchSplashFrame({
-    required this.glow,
     required this.body,
     required this.bars,
     required this.name,
@@ -102,13 +114,11 @@ class LaunchSplashFrame {
     required this.fade,
   });
 
-  /// The purple glow behind the logo, 0..1.
-  final double glow;
-
   /// The logo's white body, from the resting opacity to 1.
   final double body;
 
-  /// Each bar, top first, from the resting opacity to 1.
+  /// Each bar's way in, top first: 0 not yet set off, 1 in place. How that
+  /// is drawn is [launchBarPose].
   final List<double> bars;
 
   /// The name under the logo, 0..1 — its opacity and how far it has risen.
@@ -143,9 +153,8 @@ LaunchSplashFrame launchSplashFrameAt(
   const rest = kLaunchLogoRestingOpacity;
   if (reduced) {
     return LaunchSplashFrame(
-      glow: 0,
       body: rest,
-      bars: const [rest, rest, rest],
+      bars: const [0, 0, 0],
       name: 0,
       lift: 0,
       scale: 1,
@@ -159,19 +168,48 @@ LaunchSplashFrame launchSplashFrameAt(
   }
 
   const lit = Curves.easeOutCubic;
-  final fading = phase(700, 880, Curves.easeInCubic);
+  final fading = phase(760, 940, Curves.easeInCubic);
   return LaunchSplashFrame(
-    glow: phase(0, 380, lit),
-    body: ramp(rest, 1, phase(40, 360, lit)),
-    // Top first, 90ms apart.
+    body: ramp(rest, 1, phase(0, 340, lit)),
+    // Top first, 100ms apart, each fast off the mark and settling in place.
     bars: [
       for (var i = 0; i < 3; i++)
-        ramp(rest, 1, phase(120 + 90.0 * i, 280 + 90.0 * i, lit)),
+        phase(80 + 100.0 * i, 320 + 100.0 * i, Curves.easeOutExpo),
     ],
-    name: phase(500, 700, lit),
-    lift: phase(470, 690, Curves.easeInOutCubic),
+    name: phase(550, 750, lit),
+    lift: phase(520, 740, Curves.easeInOutCubic),
     scale: ramp(1, 1.04, fading),
     fade: ramp(1, 0, fading),
+  );
+}
+
+/// How a bar on its way in is drawn.
+class LaunchBarPose {
+  const LaunchBarPose({
+    required this.opacity,
+    required this.shift,
+    required this.stretch,
+  });
+
+  final double opacity;
+
+  /// Left of its place, in logo widths (negative is left).
+  final double shift;
+
+  /// Drawn out along its length, from its right end; 1 is its own length.
+  final double stretch;
+}
+
+/// A bar at [arrival] (0 not yet set off, 1 in place): it streaks in from
+/// the left drawn out like a speed line, visible almost at once so it reads
+/// as arriving rather than fading in, and lands exactly in place.
+LaunchBarPose launchBarPose(double arrival) {
+  final a = arrival.clamp(0.0, 1.0);
+  if (a >= 1) return const LaunchBarPose(opacity: 1, shift: 0, stretch: 1);
+  return LaunchBarPose(
+    opacity: math.min(1.0, a * 2.5),
+    shift: -_kBarTravel * (1 - a),
+    stretch: 1 + _kBarStretch * (1 - a),
   );
 }
 
@@ -196,7 +234,7 @@ Offset launchLogoCentre(Size view, Size display) {
   return Offset(axis(view.width, display.width), axis(view.height, display.height));
 }
 
-/// Draws the glow and the four layers of the logo.
+/// Draws the logo's body and its bars on their way in.
 class LaunchSplashPainter extends CustomPainter {
   LaunchSplashPainter({
     required this.art,
@@ -214,24 +252,6 @@ class LaunchSplashPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (frame.glow > 0) {
-      final radius = 150 * (0.6 + 0.4 * frame.glow);
-      canvas.drawCircle(
-        logoRect.center,
-        radius,
-        Paint()
-          ..shader = ui.Gradient.radial(
-            logoRect.center,
-            radius,
-            [
-              AppColors.primaryStart.withValues(alpha: 0.45 * frame.glow),
-              AppColors.primaryStart.withValues(alpha: 0.16 * frame.glow),
-              AppColors.primaryStart.withValues(alpha: 0),
-            ],
-            const [0, 0.45, 1],
-          ),
-      );
-    }
     void layer(ui.Image image, double opacity) {
       canvas.drawImageRect(
         image,
@@ -244,8 +264,19 @@ class LaunchSplashPainter extends CustomPainter {
     }
 
     layer(art.body, frame.body);
+    // A bar's layer is the whole logo's size, the bar in its place; moving
+    // and stretching the layer moves and stretches the bar.
+    final rightEnd = logoRect.left + _kBarsRightEdge * logoRect.width;
     for (var i = 0; i < art.bars.length; i++) {
-      layer(art.bars[i], frame.bars[math.min(i, frame.bars.length - 1)]);
+      final pose = launchBarPose(frame.bars[math.min(i, frame.bars.length - 1)]);
+      if (pose.opacity <= 0) continue;
+      canvas
+        ..save()
+        ..translate(rightEnd + pose.shift * logoRect.width, 0)
+        ..scale(pose.stretch, 1)
+        ..translate(-rightEnd, 0);
+      layer(art.bars[i], pose.opacity);
+      canvas.restore();
     }
   }
 

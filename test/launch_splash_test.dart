@@ -5,21 +5,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:slimshotai/core/widgets/launch_splash.dart';
 import 'package:slimshotai/main.dart';
 
-/// The splash is the native one, then the app lighting it up (the owner's
-/// pick, B): the system shows the logo dim; the app's first frame repeats it
-/// exactly, then a glow blooms, the three bars light one by one, the name
-/// rises under the logo, and it all fades into the app.
+/// The splash is the native one, then the app finishing it (the owner's
+/// pick, C): the system shows the logo's body dim, without its bars; the
+/// app's first frame repeats it exactly, then the body lights and the three
+/// bars — the logo's speed lines — streak in from the left one after
+/// another, the name rises under the logo, and it all fades into the app.
+/// No glow: the owner turned it down.
 void main() {
   group('the timeline', () {
     LaunchSplashFrame at(int ms, {bool reduced = false}) =>
         launchSplashFrameAt(Duration(milliseconds: ms), reduced: reduced);
 
+    int firstWhen(bool Function(LaunchSplashFrame) test) {
+      for (var ms = 0; ms <= 2000; ms += 5) {
+        if (test(at(ms))) return ms;
+      }
+      return -1;
+    }
+
     test('it opens on exactly what the native splash shows', () {
       for (final reduced in [false, true]) {
         final f = at(0, reduced: reduced);
         expect(f.body, kLaunchLogoRestingOpacity);
-        expect(f.bars, everyElement(kLaunchLogoRestingOpacity));
-        expect(f.glow, 0);
+        expect(f.bars, everyElement(0.0), reason: 'no bars yet');
         expect(f.name, 0);
         expect(f.lift, 0);
         expect(f.scale, 1);
@@ -27,48 +35,29 @@ void main() {
       }
     });
 
-    test('the bars light one after another, the top one first', () {
-      int firstLit(int bar) {
-        for (var ms = 0; ms <= 1000; ms += 5) {
-          if (at(ms).bars[bar] > kLaunchLogoRestingOpacity + 0.01) return ms;
-        }
-        return -1;
-      }
-
-      expect(firstLit(0), greaterThan(0));
-      expect(firstLit(1), greaterThan(firstLit(0)));
-      expect(firstLit(2), greaterThan(firstLit(1)));
-      // Caught mid-way, each is ahead of the one below it.
-      final middle = at(firstLit(1) + 20);
+    test('the bars arrive one after another, the top one first', () {
+      final starts = [
+        for (var i = 0; i < 3; i++) firstWhen((f) => f.bars[i] > 0),
+      ];
+      expect(starts[0], greaterThan(0));
+      expect(starts[1], greaterThan(starts[0]));
+      expect(starts[2], greaterThan(starts[1]));
+      // Caught on the way, each is further in than the one below it.
+      final middle = at(starts[2] + 10);
       expect(middle.bars[0], greaterThan(middle.bars[1]));
       expect(middle.bars[1], greaterThan(middle.bars[2]));
     });
 
-    test('the logo is fully lit before the name rises under it', () {
-      int firstNamed() {
-        for (var ms = 0; ms <= 1000; ms += 5) {
-          if (at(ms).name > 0) return ms;
-        }
-        return -1;
-      }
-
-      final named = firstNamed();
+    test('the body is lit and every bar in place before the name rises', () {
+      final named = firstWhen((f) => f.name > 0);
       expect(named, greaterThan(0));
-      final lit = at(named);
-      expect(lit.body, 1);
-      expect(lit.bars, everyElement(1.0));
-      expect(lit.glow, 1);
+      final ready = at(named);
+      expect(ready.body, 1);
+      expect(ready.bars, everyElement(1.0));
     });
 
     test('the name is up and the logo lifted before anything fades', () {
-      int firstFading() {
-        for (var ms = 0; ms <= 1000; ms += 5) {
-          if (at(ms).fade < 1) return ms;
-        }
-        return -1;
-      }
-
-      final fading = firstFading();
+      final fading = firstWhen((f) => f.fade < 1);
       expect(fading, greaterThan(0));
       final settled = at(fading);
       expect(settled.name, 1);
@@ -80,7 +69,6 @@ void main() {
       var previous = at(0);
       for (var ms = 5; ms <= kLaunchSplashDuration.inMilliseconds; ms += 5) {
         final f = at(ms);
-        expect(f.glow, greaterThanOrEqualTo(previous.glow), reason: '$ms');
         expect(f.body, greaterThanOrEqualTo(previous.body), reason: '$ms');
         for (var i = 0; i < 3; i++) {
           expect(f.bars[i], greaterThanOrEqualTo(previous.bars[i]),
@@ -96,13 +84,35 @@ void main() {
     test('with animations turned off it only fades, and quickly', () {
       final middle = at(kLaunchSplashReducedDuration.inMilliseconds ~/ 2,
           reduced: true);
-      expect(middle.glow, 0);
       expect(middle.body, kLaunchLogoRestingOpacity);
-      expect(middle.bars, everyElement(kLaunchLogoRestingOpacity));
+      expect(middle.bars, everyElement(0.0));
       expect(middle.name, 0);
       expect(middle.fade, inExclusiveRange(0, 1));
       expect(at(kLaunchSplashReducedDuration.inMilliseconds, reduced: true).fade,
           0);
+    });
+  });
+
+  group('a bar on its way in', () {
+    test('is not drawn before it sets off', () {
+      expect(launchBarPose(0).opacity, 0);
+    });
+
+    test('streaks from the left, stretched, and shows almost at once', () {
+      final early = launchBarPose(0.2);
+      expect(early.shift, lessThan(0), reason: 'to the left of its place');
+      expect(early.stretch, greaterThan(1), reason: 'drawn out like a streak');
+      expect(early.opacity, greaterThan(0.3));
+      final later = launchBarPose(0.6);
+      expect(later.shift, greaterThan(early.shift));
+      expect(later.stretch, lessThan(early.stretch));
+    });
+
+    test('lands exactly in place', () {
+      final landed = launchBarPose(1);
+      expect(landed.opacity, 1);
+      expect(landed.shift, 0);
+      expect(landed.stretch, 1);
     });
   });
 
@@ -122,16 +132,15 @@ void main() {
           ),
         );
 
+    final paint = find.byKey(const Key('launch_splash_paint'));
+
     LaunchSplashPainter painter(WidgetTester tester) =>
-        tester
-                .widget<CustomPaint>(find.byKey(const Key('launch_splash_paint')))
-                .painter!
-            as LaunchSplashPainter;
+        tester.widget<CustomPaint>(paint).painter! as LaunchSplashPainter;
 
     // A phone whose navigation bar sits below the app: the view is shorter
     // than the display. The native splash is centred on the whole display,
     // so the first frame must be too, or the logo jumps at the hand-over.
-    testWidgets('the first frame repeats the native splash: the logo dim, its '
+    testWidgets('the first frame repeats the native splash: the body dim, its '
         'size, at the centre of the display', (tester) async {
       tester.view.physicalSize = const Size(1080, 2208);
       tester.view.devicePixelRatio = 3;
@@ -144,14 +153,34 @@ void main() {
 
       final p = painter(tester);
       expect(p.frame.body, kLaunchLogoRestingOpacity);
-      expect(p.frame.bars, everyElement(kLaunchLogoRestingOpacity));
-      expect(p.frame.glow, 0);
       expect(p.logoRect.size, kLaunchLogoSize);
       expect(p.logoRect.center, const Offset(180, 390));
       final name = tester.widget<Opacity>(
         find.byKey(const Key('launch_splash_name')),
       );
       expect(name.opacity, 0);
+    });
+
+    // The native picture is the body alone; anything more on the first
+    // frame — a bar, a glow — would appear in a flash at the hand-over.
+    testWidgets('the first frame draws the body and nothing else',
+        (tester) async {
+      final art = await loadArt(tester);
+      await tester.pumpWidget(host(art));
+      expect(tester.renderObject(paint),
+          paintsExactlyCountTimes(#drawImageRect, 1));
+      expect(tester.renderObject(paint), isNot(paints..circle()));
+    });
+
+    testWidgets('once the bars are in, it draws the body and three bars, and '
+        'still no glow', (tester) async {
+      final art = await loadArt(tester);
+      await tester.pumpWidget(host(art));
+      await tester.pump(const Duration(milliseconds: 540));
+      expect(painter(tester).frame.bars, everyElement(1.0));
+      expect(tester.renderObject(paint),
+          paintsExactlyCountTimes(#drawImageRect, 4));
+      expect(tester.renderObject(paint), isNot(paints..circle()));
     });
 
     testWidgets('it covers the app and keeps its touches, then hands it over',
@@ -200,7 +229,7 @@ void main() {
       await tester.pumpWidget(host(art));
 
       await tester.pump(kLaunchSplashReducedDuration ~/ 2);
-      expect(painter(tester).frame.glow, 0);
+      expect(painter(tester).frame.bars, everyElement(0.0));
       await tester.pump(kLaunchSplashReducedDuration);
       expect(find.byKey(const Key('launch_splash')), findsNothing);
     });

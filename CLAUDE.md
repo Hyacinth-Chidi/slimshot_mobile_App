@@ -4521,24 +4521,31 @@ fills a transparent one with black).
 
 ### The splash — the system's, then the app's
 
-**Awaiting device verification**; the owner's pick of three (2026-10-27). **The native splash was
+**Awaiting device verification**; the owner's picks (2026-10-27): B of three, then — the purple
+glow it had turned down on the device — C of four replacements. **The native splash was
 always native** (`flutter_native_splash` writes Android's launch theme); what changes on Android
 12+ is that the *system* draws it and allows only a centred icon on a flat colour (and a small
 mark at the foot) — no full-screen art, native or not. It looked broken because no Android 12
 icon was set, so the system fell back to the launcher icon in a circle, on navy (`#020617`) —
 not the app's `#09090B`, so the colour jumped when the app appeared.
 
-- **Native: `logo.png` dim (`kLaunchLogoRestingOpacity`, 35%) on `#09090B`, on every
-  version.** Android 12+ gets a 1152 canvas (288dp at 4x) with the logo 1:1 in its middle, inside
+- **Native: `logo.png`'s body dim (`kLaunchLogoRestingOpacity`, 35%), without its bars, on
+  `#09090B`, on every version** — the bars arrive in the app's frames, and drawn natively they
+  would be there already and then arrive a second time. Android 12+ gets a 1152 canvas (288dp at
+  4x) with the body 1:1 in its middle, inside
   the 768 circle the system keeps, and **no `icon_background_color`** — a colour there draws a
   circle behind the logo. The generator treats its pictures as 4x, so the logo lands at
   `kLaunchLogoSize` (99.75×121.75dp) everywhere.
-- **The app's first frame repeats it exactly, then lights it** (`LaunchSplash`,
-  `core/widgets/launch_splash.dart`, in `MaterialApp.router`'s `builder`): over 880ms a purple
-  glow blooms, the three bars light top first 90ms apart, the logo lifts and the name rises
+- **The app's first frame repeats it exactly, then finishes the logo** (`LaunchSplash`,
+  `core/widgets/launch_splash.dart`, in `MaterialApp.router`'s `builder`): over 940ms the body
+  lights and the three bars — the logo's speed lines — streak in from the left top first, 100ms
+  apart, drawn out and landing exactly in place (`launchBarPose`: a bar's layer moved and
+  stretched from the bars' right end, `_kBarsRightEdge`); the logo lifts and the name rises
   under it — Home's own wordmark — and the whole thing fades into the app, which has been
   building underneath since the first frame. `launchSplashFrameAt` is the timeline as a pure
-  function. **The pictures are decoded in `main()` before the first frame** (beside the
+  function. **Nothing glows behind the logo**: a purple glow shipped first and was turned down
+  on the device; a test pins that the first frame draws the body alone and the finished logo
+  four images and no circle. **The pictures are decoded in `main()` before the first frame** (beside the
   preferences; `preserve` holds the native splash meanwhile): an `Image.asset` would still be
   decoding when the first frame went out and the logo would blink off at the hand-over. Null
   art (tests, or a picture that will not load) means no splash, never no app.
@@ -4552,8 +4559,8 @@ not the app's `#09090B`, so the colour jumped when the app appeared.
   slanted and their rows overlap). `test/launch_splash_art_test.dart` with
   `UPDATE_SPLASH_ART=1` redraws those and the two native pictures (`assets/native_splash/`,
   out of the APK), then `dart run flutter_native_splash:create`. Without the variable it checks
-  the layers lay back together into `logo.png` with no pixel in two, the native logo is
-  `logo.png` at the resting opacity, the Android 12 logo sits in the circle, and the generated
+  the layers lay back together into `logo.png` with no pixel in two, the native picture is the
+  body alone at the resting opacity, the Android 12 one sits in the circle, and the generated
   resources use them.
 - **Animations off in the phone's settings: a 200ms fade only**, the controller on
   `AnimationBehavior.preserve` — a normal controller runs at 5% of its duration with animations
