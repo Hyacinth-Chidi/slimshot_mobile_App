@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/services/media_picker_service.dart';
 import '../core/theme/app_colors.dart';
+import '../core/utils/file_utils.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/permission_dialog.dart';
 import '../features/compression/logic/photo_inspector.dart';
@@ -20,7 +22,13 @@ import '../features/privacy/widgets/privacy_strip_view.dart';
 class PrivacyScreen extends ConsumerStatefulWidget {
   final List<XFile>? initialImages;
 
-  const PrivacyScreen({super.key, this.initialImages});
+  const PrivacyScreen({
+    super.key,
+    this.initialImages,
+    this.deleteFiles = FileUtils.deleteTempFiles,
+  });
+
+  final TempFileDeleter deleteFiles;
 
   @override
   ConsumerState<PrivacyScreen> createState() => _PrivacyScreenState();
@@ -32,6 +40,9 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
 
   /// Which of several photos is on screen.
   int _previewIndex = 0;
+
+  /// The picker's copies of the photos in use, deleted once they are not.
+  List<String> _picked = const [];
 
   @override
   void initState() {
@@ -47,7 +58,20 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    unawaited(widget.deleteFiles(_picked));
+    super.dispose();
+  }
+
   void _use(List<XFile> images) {
+    final paths = [for (final image in images) image.path];
+    final replaced = [
+      for (final path in _picked)
+        if (!paths.contains(path)) path,
+    ];
+    _picked = paths;
+    unawaited(widget.deleteFiles(replaced));
     setState(() => _previewIndex = 0);
     ref.read(privacyProvider.notifier).setInputFiles(images);
     _inspect(images.first.path);

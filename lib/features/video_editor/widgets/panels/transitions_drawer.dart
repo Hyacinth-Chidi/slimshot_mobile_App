@@ -6,6 +6,7 @@ import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../logic/animation/animatable_double.dart';
+import '../../logic/tile_preview_store.dart';
 import '../../logic/transitions/transition_catalog.dart';
 import '../../logic/transitions/transition_preview_frames.dart';
 import '../../providers/transition_preview_provider.dart';
@@ -372,16 +373,35 @@ class _TransitionTile extends StatefulWidget {
 class _TransitionTileState extends State<_TransitionTile> {
   List<Uint8List>? _frames;
 
+  /// Whether the icon stands in for the picture: None, a transition the
+  /// engine is drawing — the first time it is ever shown, since its frames
+  /// are then kept on the phone — or one it could not draw. Frames held or
+  /// read back from the phone show the empty stage instead and simply
+  /// appear; drawn ones fade in over the icon.
+  bool _iconUp = true;
+
   @override
   void initState() {
     super.initState();
     final name = widget.transition?.name;
     if (name == null) return;
     _frames = widget.frames.peek(name);
-    if (_frames != null || widget.frames.hasFailed(name)) return;
+    if (_frames != null) {
+      _iconUp = false;
+      return;
+    }
+    if (widget.frames.hasFailed(name)) return;
+    _iconUp = !widget.frames.isSaved(name);
     // Asked as the grid builds the tile, so what is on screen is drawn first.
     widget.frames.request(name).then((frames) {
-      if (mounted && frames != null) setState(() => _frames = frames);
+      if (!mounted) return;
+      setState(() {
+        if (frames != null) {
+          _frames = frames;
+        } else {
+          _iconUp = true;
+        }
+      });
     });
   }
 
@@ -391,26 +411,37 @@ class _TransitionTileState extends State<_TransitionTile> {
     final frames = _frames;
     final label = transition?.label ?? 'None';
 
-    final Widget stage = frames == null
-        ? Center(
-            child: Icon(
-              transition?.icon ?? LucideIcons.ban,
-              color: widget.isSelected
-                  ? AppColors.primaryStart
-                  : AppColors.textSecondary,
-            ),
-          )
-        : AnimatedBuilder(
-            animation: widget.clock,
-            builder: (context, _) => Image.memory(
-              frames[previewFrameAt(widget.clock.value, frames.length)],
-              fit: BoxFit.cover,
-              // Swapping frames must never flash the stage between them.
-              gaplessPlayback: true,
-              width: double.infinity,
-              height: double.infinity,
-            ),
-          );
+    final Widget picture;
+    if (frames != null) {
+      picture = AnimatedBuilder(
+        key: const ValueKey('picture'),
+        animation: widget.clock,
+        builder: (context, _) => Image.memory(
+          frames[previewFrameAt(widget.clock.value, frames.length)],
+          fit: BoxFit.cover,
+          // Swapping frames must never flash the stage between them.
+          gaplessPlayback: true,
+          width: double.infinity,
+          height: double.infinity,
+        ),
+      );
+    } else if (_iconUp) {
+      picture = Center(
+        key: const ValueKey('icon'),
+        child: Icon(
+          transition?.icon ?? LucideIcons.ban,
+          color: widget.isSelected
+              ? AppColors.primaryStart
+              : AppColors.textSecondary,
+        ),
+      );
+    } else {
+      picture = const SizedBox.expand(key: ValueKey('empty'));
+    }
+    final stage = AnimatedSwitcher(
+      duration: _iconUp ? kTilePictureFadeIn : Duration.zero,
+      child: picture,
+    );
 
     return Semantics(
       button: true,

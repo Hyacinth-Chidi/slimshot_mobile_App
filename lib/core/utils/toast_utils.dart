@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_fonts.dart';
 import '../theme/app_motion.dart';
 import '../theme/lucide_icons.dart';
 
@@ -175,60 +176,73 @@ class _ToastPillState extends State<ToastPill>
         ? AppColors.error
         : (widget.isWarning ? AppColors.warning : AppColors.success);
     final icon = widget.isError
-        ? LucideIcons.alertCircle
-        : (widget.isWarning ? LucideIcons.alertTriangle : LucideIcons.checkCircle);
+        ? LucideIcons.x
+        : (widget.isWarning ? LucideIcons.alertTriangle : LucideIcons.check);
 
+    // The island (the owner's pick): a black pill that drops in and grows
+    // from a little smaller, like the iPhone's Dynamic Island, the severity
+    // a solid disc of its colour with a white glyph.
     return FadeTransition(
       opacity: _curve,
-      // A top toast arrives from its edge: it slides down a little of its
-      // own height on entry and back up on exit (the reversed controller),
-      // on AppMotion's emphasized curves.
       child: SlideTransition(
         position: Tween<Offset>(
           begin: const Offset(0, -0.6),
           end: Offset.zero,
         ).animate(_curve),
-        child: Material(
-          color: Colors.transparent,
-          child: GestureDetector(
-            onTap: _dismissNow,
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.sizeOf(context).width * 0.82,
-              ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: AppColors.border),
-                boxShadow: const [
-                  // Black is the one honest shadow colour on a dark theme.
-                  BoxShadow(
-                    color: Colors.black54,
-                    blurRadius: 18,
-                    offset: Offset(0, 6),
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.85, end: 1).animate(_curve),
+          child: Material(
+            color: Colors.transparent,
+            child: GestureDetector(
+              onTap: _dismissNow,
+              child: Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+                ),
+                padding: const EdgeInsets.fromLTRB(6, 6, 16, 6),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: AppColors.textPrimary.withValues(alpha: 0.08),
                   ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 16, color: accent),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      widget.message,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black54,
+                      blurRadius: 24,
+                      offset: Offset(0, 8),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, size: 15, color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        widget.message,
+                        style: const TextStyle(
+                          fontFamily: kInterfaceFontFamily,
+                          color: AppColors.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

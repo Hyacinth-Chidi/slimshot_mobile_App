@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../logic/effects/effect_preview_atlases.dart';
 import '../services/native_timeline_preview_service.dart';
+import 'tile_preview_store_provider.dart';
 
 /// What draws an effect tile's atlas: the engine, over the preview method
 /// channel. Only that channel — never the preview's event stream, so this
@@ -11,13 +12,17 @@ final effectPreviewRendererProvider = Provider<EffectPreviewRenderer>(
   (ref) => NativeTimelinePreviewService().renderEffectPreview,
 );
 
-/// The Effects sheet's preview atlases, kept for the app's session — not
+/// The Effects sheet's preview atlases, held for the app's session — not
 /// autoDispose, so reopening the sheet shows them at once instead of drawing
-/// them again. Dropped when the system reports memory pressure: tiles on
-/// screen keep the pictures they decoded, and the rest are drawn again when
-/// next asked.
+/// them again — and kept on the phone, so the next launch reads them back
+/// rather than drawing them. Dropped from memory when the system reports
+/// memory pressure: tiles on screen keep the pictures they decoded, and the
+/// rest are read back from the phone when next asked.
 final effectPreviewAtlasesProvider = Provider<EffectPreviewAtlases>((ref) {
-  final atlases = EffectPreviewAtlases(ref.watch(effectPreviewRendererProvider));
+  final atlases = EffectPreviewAtlases(
+    ref.watch(effectPreviewRendererProvider),
+    store: ref.watch(tilePreviewStoreProvider),
+  );
   final observer = _MemoryPressure(atlases.clear);
   WidgetsBinding.instance.addObserver(observer);
   ref.onDispose(() => WidgetsBinding.instance.removeObserver(observer));

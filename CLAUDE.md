@@ -629,7 +629,11 @@ the credit beside the shader in `LayeredTransitions.kt` does not ship in the APK
   screen; a second floated it below the app bar, which read as "inside the
   screen"). What fixes the covering is compactness and tap-through, not
   distance: it drops in 8px below the safe area and slides down/up with a
-  fade on `AppMotion`'s curves. Rules a test pins
+  fade on `AppMotion`'s curves. **It is the island** (the owner's pick of four, 2026-10-24,
+  **awaiting device verification**): a black pill (`background`) with a faint white edge that
+  drops in and grows from 85%, like the iPhone's Dynamic Island, the severity a solid disc of
+  `success`/`warning`/`error` with a white glyph (check, triangle, cross), the words in the
+  interface face — before, a grey pill whose only colour was a 16px icon. Rules a test pins
   (`toast_utils_test.dart`): compact (sized to its text), top-centred, **no
   title** — "Success!" above "Draft deleted" is the echo rule, severity is
   the icon and its `AppColors.error/warning/success` colour — tap to
@@ -1678,6 +1682,39 @@ blur); the canvas does not stutter while tiles draw during playback; the profile
 within ~28 MB of decoded tiles while browsing every category and falls when the sheet closes;
 atlas JPEGs measure ≤ 150 KB (tune `PREVIEW_JPEG_QUALITY` if over); an export run after browsing
 is unaffected, and tiles asked during an export keep icons and fill in afterwards.
+
+### Tile drawings kept on the phone — the icon is seen once
+
+**Awaiting device verification** (2026-10-28; the owner's call: keep the icons, see them once).
+The Transitions and Effects tiles' drawings — a transition's 16 frames, an effect's atlas — were
+held for the session only, so every launch drew them again and every first open of a sheet showed
+the tiles turning from icon to picture one by one. **`TilePreviewStore`**
+(`logic/tile_preview_store.dart`) keeps each drawing on the phone the moment the engine draws it,
+in `<app support>/tile_previews/<build>/<kind>/<name>.bin` beside the font previews (and, like
+them, left alone by Clear Cache), so a later launch reads it back instead of asking the engine.
+
+- **One build's drawings are never another's.** The folder is named for the build — Android's
+  version code **and install time** (`AppBuildChannel.kt`, `slimshot_ai/app_build`,
+  `appBuildStamp`), so a debug rebuild with a changed shader counts as a new build even with the
+  version code unchanged — plus `kTilePreviewFormat` (frame count and size, the atlas layout), so a
+  Dart-only change to those names a new folder too. Every other build's folder is cleared when this
+  one is found: a phone keeps one build's worth — roughly 10–15 MB once every tile has been drawn. No build known (a test, a
+  failed lookup) means nothing kept or served.
+- **Nothing waits on it.** `has` answers at once and is false until `prepare` has read the folder,
+  so a tile asked for before then is simply drawn, as it always was — in widget tests, where an
+  unanswered platform call never completes, that is every tile. The editor screen calls `prepare`
+  in `initState`, long before either sheet can open. A kept drawing is read back **straight away,
+  never queued behind a drawing** (reading a file takes nothing from the GL thread).
+- **Written whole or not at all** (`.part`, then renamed; a leftover `.part` is cleared). A
+  transition's frames are one file, each frame's length then the frame (`packTransitionFrames`);
+  an atlas must read back as a whole JPEG. One that does not is forgotten and drawn again.
+  **A failure or a busy engine is never kept**, so the next launch tries again.
+- **The tiles** (`_TransitionTileState`, `EffectPreviewStage`): the icon stands in only while the
+  engine draws — the first time, since the drawing is then kept — or where it could not, and the
+  picture fades in over it (`kTilePictureFadeIn`, 150ms, the icon held through the decode so the
+  two cross-fade). A drawing held in memory or read back from the phone shows the bare stage and
+  simply appears. None keeps its crossed circle. Tests use `MemoryTileStore`
+  (`test/support/`), since a real file never finishes reading under the test clock.
 
 ### Effects — the multi-pass framework and 47 effects
 
@@ -4008,6 +4045,50 @@ library now opens from the submenu's Music.
 - `SlimshotApi.sendPublicEnvelope` reads a public answer whole — the catalogue's `data` is a
   list and its pages carry `meta` — sharing `_refusal` with `_decode` so the two cannot drift.
 
+### Playback stops when the app leaves the screen, or the audio is taken
+
+**Awaiting device verification** (the owner's report, 2026-10-28: minimised, the video and music
+played on). Nothing in the app listened for it: the engine's ExoPlayers and the `just_audio`
+music never pause themselves, and the playhead froze in the background (Flutter draws no frames
+there) while the sound ran on.
+
+**`PlaybackGuard`** (`services/playback_guard.dart`, `playback_guard_test.dart`) pauses the
+editor **through its own pause** — `setPlaying(false)`, the button's path — so the picture, the
+clips' and overlays' sound, the music, the playhead and a voiceover take stop together:
+
+- **The app leaving the screen** (`AppLifecycleListener.onHide`): Home, another app, the screen
+  locking, a call screen, the gallery picker. Still on screen it plays on — the notifications
+  pulled down or a permission prompt only make the app inactive. **Coming back it stays
+  paused**, as CapCut does. Android silences a background app's microphone anyway, so a take left
+  running would have filled with silence.
+- **Something else taking the audio**: the editor **holds the phone's audio while it plays and
+  gives it back on every pause** (`audio_session`, the session the app's `just_audio` players
+  share — on Android one request for the whole app, so nothing in the app takes the audio from
+  anything else; and releasing on every pause also clears the plugin's stale request after a
+  refusal). A call, another app's sound (`pause`/`unknown` interruptions) or headphones coming
+  out (`becomingNoisy`, Bluetooth included) pause the editor. **A duck does not**: a notification's
+  ping asks the others to dip, the phone lowers the editor for a moment and it plays on — pausing
+  there would stop every edit at every incoming message. An interruption ending resumes nothing.
+- **The guard is the one owner of the editor's sound.** The music players are
+  `AudioPlayer(handleInterruptions: false, handleAudioSessionActivation: false)`: left to
+  itself `just_audio` paused only the music on a call (the video played on), resumed it by itself
+  afterwards, and paused only the music on unplugged headphones (the clip sound carried on from
+  the speaker). A test reads every `AudioPlayer(` under `lib/features/video_editor/` for both
+  flags. Take and release run in order on one queue, so a release can never overtake a slow take
+  and leave the audio held behind a paused editor; a session that cannot be had costs only the
+  interruptions, never playback.
+- **The sound library's listen** stops too (`SoundLibraryController.stopListening`, from the
+  sheet's own `onHide`); a listen still downloading does not start when it lands.
+- Outside the editor, `video_player` already pauses itself in the background (the compress,
+  result, export and extract previews) and resumes on return; left as it is.
+- **Tests send lifecycle the phone's way** (`test/support/app_lifecycle.dart`): one message on
+  the lifecycle channel, from which the binding walks the states between — straight from resumed
+  to hidden is not a move a phone makes, and `AppLifecycleListener` asserts on it.
+
+**Device checks**: minimise while video and music play — silence, and back on the same frame,
+paused; a call while playing; Spotify started over it; headphones out; a WhatsApp ping (the
+volume dips, playback goes on); minimise mid-take; minimise while listening in the Music sheet.
+
 ### Audio — Extract and Record
 
 **Awaiting device verification** (the capture, the remux and the playback alignment only run on a
@@ -4462,6 +4543,10 @@ light, not paint.**
   on a white stand on the right (`_PhotoFan`, `assets/home/new_video_{left,middle,right}.webp`,
   the middle one wearing a play mark) — a picture of making a video from your own clips. The
   photos decode at 360 px tall (`cacheHeight`), not their 1672. The whole card is the tap target.
+- **The three tool cards under it are solid, not glass** (`_GridActionCard`, the owner's call;
+  `home_cards_test.dart`): `AppColors.surface` with a `surfaceLight` hairline, the edge purple
+  while pressed, the circle in each corner soft white (7%), not purple. Beside the New Video card's colour and photos the glass read as washed out. A
+  design of the owner's own is to come.
 - **Accents that sit on purple use `AppColors.lilac`, never the brand purple**, which vanishes
   there; "Video" is `lightAccentGradient` (white into lilac). Grey text on these screens is
   secondary, not tertiary. The coin is **`AppColors.credit`** (amber).
@@ -4485,6 +4570,189 @@ light, not paint.**
   blur the very frame being judged, over a live texture, on low-end GPUs. Purple stays an accent
   in the editor. No light mode: dark is the editing standard.
 
+### The tab bar — one pill, gliding
+
+**Awaiting device verification** (the owner's ask, 2026-10-28: smoother, more premium).
+`FloatingNavBar` (`core/widgets/floating_nav_bar.dart`, tested in
+`floating_nav_bar_test.dart`) is the shell's floating bar, moved out of
+`main_shell_screen.dart` so it could be tested at all. The look is the one it had — glass, the
+chosen tab a tinted pill with its name — and the motion is new. Before, the old tab's tint faded
+out over 200ms while the new one's faded in, its border popped, the name was inserted in one
+frame and every icon jumped sideways (66px in a frame, measured), and a 320dp phone overflowed.
+
+- **One pill travels**, on springs (`withDurationAndBounce`). Its **leading edge is quicker than
+  its trailing edge**, and the trailing edge holds 40ms from rest before it follows: the pill
+  peels away from the tab it leaves, stretches toward the one chosen, and settles. A hold is
+  taken only from rest, never mid-glide, and a second tap mid-glide turns the pill from where it
+  is at the speed it has. Tuned against a model of the bar for every pair of tabs: a move to a
+  narrower or farther tab stretches 1.15–1.6×, one to a wider neighbour hardly at all (the pill
+  is growing into it anyway); all of it settles within about 0.6s, the visible part by ~0.35s.
+- **The edges are springs in tab units, not pixels**: a whole number is exactly that tab's box
+  in the current layout, so at rest the pill is glued to its tab even while the tab is still
+  widening, and the targets never depend on a layout the ticker cannot see.
+- **Names unfold and fold**: a tab widens as its name is revealed (60ms after the pill sets off,
+  so the room opens as it comes), the other icons slide to make room, and a leaving name folds
+  quicker than one arrives. **A name is drawn only inside the pill and inside its own tab, and
+  only once the pill covers its icon** (`_iconCovered`) — rendered frames showed "Home" fading in
+  ahead of the pill, text arriving before its tab; a test now walks every frame for it.
+- **Colours are the app's**: the chosen icon and name `lilac` (accent on purple), the others
+  `textSecondary`, the pill `primaryStart` lit from above. It was a hard-coded violet found
+  nowhere else and Slate grey. The name's style is whole in itself (`inherit: false`): merged
+  into an ambient style it picked up Flutter's yellow no-`Material` underline.
+- **Never wider than the bar**: the tabs' padding narrows to 10, then the names scale down
+  (labels also stop growing at 1.3× text). **A tap between two tabs chooses the nearer**; the
+  gaps used to be dead. Each tab is a button with its name and selected state for screen
+  readers. A press squeezes the tab to 90%, back with a little give; with animations off
+  everything moves at once.
+- **The bar's size is unchanged** (68px), so the screens' bottom padding for it still holds.
+
+### The app icon — drawn from the logo, an adaptive icon on Android
+
+**Awaiting device verification** (2026-10-27; device-reported as blurry). The old 1024 picture was
+sharp, but it was the **only** icon: Android 8+ has no use for a single picture, so launchers
+squeezed the whole square, its own rounded corners included, into their shape and the logo
+arrived small and soft. Now `mipmap-anydpi-v26/ic_launcher.xml` is an **adaptive icon** — a
+background layer (the dark grey fall, `#3D3D3E` to `#101011`) and the logo on a layer of its own,
+which every launcher masks to its own shape at the phone's own density. Android 7 and older keep a
+whole picture with its own corners; iOS gets a full square (it rounds the corners itself and
+fills a transparent one with black).
+
+- **Every source is drawn from `assets/logo.png`** (the owner's call — that drawing, bolder with
+  slanted bars, not the SVG's nor the old icon's), at most 481px tall from its 487, so it is only
+  ever made smaller, never stretched:
+  `UPDATE_APP_ICON=1 flutter test test/app_icon_test.dart` redraws the four 1024 sources in
+  `assets/icon/` (out of the APK — only top-level `assets/` files are bundled; the old
+  `assets/app_icon.png` was being shipped for nothing), then `dart run flutter_launcher_icons`
+  makes every size. Without the variable the test checks what is committed: the logo inside the
+  66/108 circle every launcher shape keeps, the background with no holes, the iOS icon opaque to
+  its corners, and the adaptive resources actually generated.
+- **The logo is 47% of the icon's height**, as in the old artwork, and on the adaptive layer the
+  same share of the middle 72/108 a launcher shows — so it is the same size on the phone.
+- **Three drawings of the logo exist**: `logo.png` (the icon's and the splash screen's),
+  `logo.svg` (the app's own header — a solid play triangle, rounded bars) and the old icon's
+  thinner artwork. The icon and splash now agree; the header does not.
+
+### The splash — the system's, then the app's
+
+**Awaiting device verification**; the owner's picks (2026-10-27): B of three, then — the purple
+glow it had turned down on the device — C of four replacements. **The native splash was
+always native** (`flutter_native_splash` writes Android's launch theme); what changes on Android
+12+ is that the *system* draws it and allows only a centred icon on a flat colour (and a small
+mark at the foot) — no full-screen art, native or not. It looked broken because no Android 12
+icon was set, so the system fell back to the launcher icon in a circle, on navy (`#020617`) —
+not the app's `#09090B`, so the colour jumped when the app appeared.
+
+- **Native: `logo.png`'s body dim (`kLaunchLogoRestingOpacity`, 35%), without its bars, on
+  `#09090B`, on every version** — the bars arrive in the app's frames, and drawn natively they
+  would be there already and then arrive a second time. Android 12+ gets a 1152 canvas (288dp at
+  4x) with the body 1:1 in its middle, inside
+  the 768 circle the system keeps, and **no `icon_background_color`** — a colour there draws a
+  circle behind the logo. The generator treats its pictures as 4x, so the logo lands at
+  `kLaunchLogoSize` (99.75×121.75dp) everywhere.
+- **The app's first frame repeats it exactly, then finishes the logo** (`LaunchSplash`,
+  `core/widgets/launch_splash.dart`, in `MaterialApp.router`'s `builder`): over 940ms the body
+  lights and the three bars — the logo's speed lines — streak in from the left top first, 100ms
+  apart, drawn out and landing exactly in place (`launchBarPose`: a bar's layer moved and
+  stretched from the bars' right end, `_kBarsRightEdge`); the logo lifts and the name rises
+  under it — Home's own wordmark — and the whole thing fades into the app, which has been
+  building underneath since the first frame. `launchSplashFrameAt` is the timeline as a pure
+  function. **Nothing glows behind the logo**: a purple glow shipped first and was turned down
+  on the device; a test pins that the first frame draws the body alone and the finished logo
+  four images and no circle. **The pictures are decoded in `main()` before the first frame** (beside the
+  preferences; `preserve` holds the native splash meanwhile): an `Image.asset` would still be
+  decoding when the first frame went out and the logo would blink off at the hand-over. Null
+  art (tests, or a picture that will not load) means no splash, never no app.
+- **Centred on the display, not the view** (`launchLogoCentre`): the native splash centres on
+  the whole screen, and on many Android phones the app's view stops above the navigation bar,
+  so centring on the view would drop the logo half a bar at the hand-over. A view short of the
+  display by more than 12% (split screen, a window) uses its own centre. **This is the first
+  suspect if the logo jumps at the hand-over on a device**; the size (4x) is the second.
+- **The bars light separately** because `logo.png` is cut into four layers
+  (`assets/splash/`: the white body and each purple bar, found by flood fill — they are
+  slanted and their rows overlap). `test/launch_splash_art_test.dart` with
+  `UPDATE_SPLASH_ART=1` redraws those and the two native pictures (`assets/native_splash/`,
+  out of the APK), then `dart run flutter_native_splash:create`. Without the variable it checks
+  the layers lay back together into `logo.png` with no pixel in two, the native picture is the
+  body alone at the resting opacity, the Android 12 one sits in the circle, and the generated
+  resources use them.
+- **Animations off in the phone's settings: a 200ms fade only**, the controller on
+  `AnimationBehavior.preserve` — a normal controller runs at 5% of its duration with animations
+  off, and the splash already answers that setting itself. **Taps are held** while it covers an
+  app nobody can see yet; its pictures are disposed when it ends.
+- **The mockup's small "SlimShot AI" at the foot of the native splash was left out**: the name
+  rises under the logo a moment later, and on Android 12 the system places a foot mark itself,
+  so it could not be matched at the hand-over.
+- **Home's header still draws `logo.svg`**, the other drawing of the logo.
+
+### Onboarding — four things the app does best, the timeline first
+
+**Awaiting device verification**; designed from mockups the owner picked (2026-10-24, the
+transitions page 2026-10-28). `OnboardingScreen` is four pages on Home's light
+(`ColourFieldBackdrop`), each a picture, a headline whose last words are lit in lilac, and one
+line: **Edit like a pro**, **Transitions that wow**, **Clear on WhatsApp Status**, **Captions in
+one tap** — transitions second, WhatsApp third (the owner's order, 2026-10-28). A step per page and Skip at the top (Skip gone on the last page, its width kept so the
+steps do not jump), one full-width button at the foot — white Continue, then purple Get started.
+Both Skip and Get started set `hasSeenOnboarding` and go Home.
+
+- **The first page is the editor's own timeline, drawn** (`_TimelineVisual`, the owner's pick of
+  three): a preview with a caption on it, a ruler, three clips as filmstrips with transitions on
+  their seams, and a bar of each kind in the editor's colours — text (`border` grey), effect
+  (`effectTrack`), photo (`photoTrack`), sound effect (`soundEffect`, its own glyph), music
+  (`primaryEnd`, a waveform) — with the playhead stopping at the music bar. It says "a real
+  editor" before a word is read. Drawn in code on a 360-wide layout (`_OnboardPage.visualSize`)
+  and scaled to the room it has — down on a short phone rather than overflowing, **up to 1.6× on
+  a tablet** (`_maxVisualScale`) rather than sitting phone-sized in an empty screen, in a column
+  of at most 560.
+- **Page 2 plays the app's own moves** (`_TransitionsVisual` over `onboarding_showreel.dart`;
+  the owner's pick, A of three, with **Zoom Blur first, then the glitch**): one 9:16 clip in the
+  white frame, looping the New Video card's three photos — dancer, gamer, neon girl — through
+  **Zoom Blur, Glitch and Cube**, each resting 0.9 s first; the moves play *inside* the frame, as
+  a transition plays inside a video. Under it the chips **Zoom Blur, Glitch, Cube, Swirl, +37**,
+  the one playing or next lit white on purple. **Drawn in Flutter, after the app's own**: the
+  engine's renderer belongs to the editor and is not running at onboarding, so the showreel
+  follows the shaders rather than calling them — CrossZoom's sweeping centre, sine strength (0.4)
+  and exponential swap, its samples as twelve weighted copies; the Glitch effect's torn bands
+  (wrapping, some from the other photo), split channels and a band of swapped red and blue,
+  stepped fifteen times a second while the photo flickers between the two; the Cube in true
+  perspective with the app's 0.3 back-off and floor reflection. **The cube also backs off as far
+  as it must to stay in the frame** (`_cubeFit`): a face turning about the cube's middle swings
+  its far edge outward before depth draws it in, and a test caught it 2.7 px past the frame's
+  border. **The line counts the catalogs** (`EditorTransition.values.length` transitions,
+  `kVideoEffects.length` effects; "41 transitions and 47 effects.") so it cannot fall behind
+  them; "smooth on any phone" was struck at the owner's call. It repaints only when its frame
+  changes — a rest or a glitch tick holds — decodes the photos at 960 tall
+  (`showreelPhoto`, precached once the first page is up), and with animations off holds on the first photo,
+  Zoom Blur lit. `onboarding_showreel_test.dart` pins the loop's order and timing, the glitch's
+  plan, the cube's geometry (faces meeting on their nearest edge, the new one from the right,
+  inside the frame throughout) and what the painter draws.
+- **Page 3** uses the New Video card's photo in its white frame: the same picture blurred and
+  sharp, tagged.
+- **Page 4 is the finale, the finished video** (`_FinalePage`, the owner's pick, A of four; it
+  was a framed stock photo with a caption that never moved): the left photo of the New Video card
+  edge to edge from the top of the screen, under the status bar and the step bar (a shade at the
+  top keeps the bar readable), fading into the black where the words begin. **The photo is the
+  room the words leave**, so on any screen the two meet and never overlap. Its caption plays
+  word by word in the app's own Bubble look (`kDefaultCaptionLook`: Montserrat Bold, white, the
+  soft shadow), the spoken word on a pill of the highlight row's **pink**
+  (`kCaptionHighlightPink`, the owner's call over Bubble's purple): **"EDIT YOUR VIDEOS WITH
+  PASSION"** (`kOnboardingCaptionWords`, the owner's line, after a Pidgin one read as
+  machine-written). It sits low on the picture, where captions go and where the photo has
+  faded dark enough for white words; it wraps rather than shrinks, is sized from the screen
+  (22 on a phone, up to 38) and, like the app's captions, does not grow with the phone's text
+  size. With animations off it holds still on its first word.
+- **The pages run the whole screen**, with the step bar and the button laid over them
+  (`_Column` keeps each page clear of both): the finale's photo could not otherwise reach the
+  top edge. Only the bar and the button take touches, so a swipe between them still turns the
+  page — a test pins it.
+- **What it replaced**: screenshots of the old editor and generic lines ("Endless possibilities",
+  "No cloud needed" — untrue since captions use the server). Their three PNGs are deleted.
+- `onboarding_screen_test.dart` pins the bars, the playhead's foot, the walk through the pages,
+  the transitions page's chips lighting in turn and its counted line,
+  both ways out, every page on a small phone at 1.3× text and a tablet both ways up, the
+  picture growing on a tablet while a phone's stays as laid out, the finale's photo edge to edge
+  on a phone and a tablet, its caption's words lit in order on a pink pill, on the photo and
+  clear of the headline at 1.3× text, unscaled by the text size, and the swipe.
+
 ### Compress video — Home's light, rows, the sizes left to the result
 
 **Awaiting device verification.** Designed from a rendered mockup the user approved
@@ -4500,7 +4768,7 @@ through Google Fonts.
   where no colour is being judged. The old screen hard-coded Slate (`0xFF334155`, `0xFF0F172A`).
 - **Qualities are rows, not three squeezed tiles**: icon, name, one line, a tick; Smart wears
   **Recommended**. The video presets were renamed to fit (`Best quality` / `Smart` /
-  `Smallest`, one short description each — the history detail line reads the same names).
+  `Smallest`, one short description each).
   **PRO shows only while ads are on** (`showPro: AdService.enabled`): with ads off nothing is
   locked, so the badge promised a lock that was not there.
 - **No before-and-after here — the user's call on the device.** A Now → After card with an
@@ -4521,7 +4789,7 @@ through Google Fonts.
 **awaiting device verification**; designed from an approved mockup). "Done" centred with ✕
 (home) beside it, in place of the bouncing tick and "Ready to Share!" — **no tick beside it** (the
 owner's call; `compress_result_view_test.dart` pins it). The screen keeps the
-player, the history entry, saving and the full-screen views; the view is tested without them.
+player, saving, leaving (below) and the full-screen views; the view is tested without them.
 
 - **Before → After lives here, with real sizes** (`CompressBeforeAfterCard`): the after's share of
   the before as a bar, the saving as a green "75% smaller" tag beside it — the tag shares the
@@ -4636,6 +4904,44 @@ and the photo's shape (`PhotoInspector`, shared with Compress photo).
   them in place. A test plants "secret" in every hiding place and asserts none survives and the
   image bytes are untouched.
 - `CompressionLoaderOverlay` is gone — the three screens that used it share the progress ring.
+
+### Temporary files — gone once off screen, and History with them
+
+**Awaiting device verification** (the owner's call, 2026-10-28: the app should not fill the phone
+with files nobody can reach). A compression, a stripped photo and an export are the app's own
+temporary files (`slimshot_temp_`, `slimshot_export_`), of no use once off screen: a saved one is
+in the gallery and a shared one is a copy (share_plus copies into `cache/share_plus/` before
+handing it over, so the original may go at once).
+
+- **Leaving a result deletes its files** (`ResultExit`, `core/utils/result_exit.dart`) — the
+  compress result, the Privacy Strip report and the export screen alike, by ✕ or Back (each
+  routes Back through the same leave with a `PopScope`). **One nobody saved or shared is asked
+  about first**: "Discard this video?",
+  "Discard these 5 photos?" (`confirmDiscard`, `core/widgets/discard_dialog.dart`, the drafts'
+  Delete Draft? look) — Cancel or a tap outside stays. Saving marks it kept, and so does a share
+  sheet closed on a target: `MediaSaveService.shareFiles` answers whether it was **not** dismissed,
+  so a phone that cannot say how the share went counts as kept and nobody is asked twice. Back
+  on the Privacy report still steps back to the strip screen, asking first.
+- **A result never deletes the files it was made from.** A result handed back as it was
+  (`skippedCompressions`) *is* its picked file, so `ResultExit` leaves out the inputs; the screen
+  they were picked for deletes those **when it closes** — Compress photo, Compress video and
+  Privacy Strip, whose Change photos also deletes the picks it replaces.
+- **`FileUtils.deleteTempFiles` deletes only inside the temporary folder**, by resolved path, and
+  the picker's folder once empty: image_picker copies each pick to `cache/<uuid>/`,
+  receive_sharing_intent a shared file to the cache root, and a file outside the cache is the
+  user's own. **Never sweep the picker's copies by name**: a draft's clips play from them.
+- **The launch clears what a previous session left** (`cleanupStartup`): every app-prefixed file
+  and every share_plus copy written before this launch — exports included, which nothing ever
+  deleted before — so a compression begun the moment the app opened keeps its file. Settings >
+  Clear Cache takes the same set at any time.
+- **History is gone** — the screen, its service and model, the `/history` route and the
+  Workspace header's button (its 44px stays, so the drafts did not move). Its entries pointed at
+  temporary files the launch cleanup had already deleted, so most could not be saved or shown.
+  Its stored list is removed on launch (`forgetRemovedFeatures`).
+- **Back during an export cancels it**, as ✕ always did. It used to pop the screen and leave the
+  export running, with the editor's renderer held by it until it finished.
+- **Known:** a pick or a shared file whose screen never closed — the app killed on it — stays in
+  the cache until the system clears it; nothing can tell it from a draft's clip.
 
 ### Decisions already made â€” don't re-litigate
 

@@ -417,6 +417,17 @@ class SoundLibraryController extends ChangeNotifier {
     _startPlaying(sound.id, entry.filePath);
   }
 
+  /// Stops the sound playing, and a listen still downloading will not play
+  /// when it lands (the download is kept) — the app going to the background.
+  void stopListening() {
+    if (_disposed) return;
+    _listenPending = null;
+    if (_playingId == null) return;
+    _playingId = null;
+    _notify();
+    unawaited(_player.stop().catchError((_) {}));
+  }
+
   /// Plays [path] as [id]'s preview, without waiting for it: the row shows
   /// pause until the sound ends, is stopped, or will not play at all — and
   /// a sound that ends after another row took over leaves that row alone.

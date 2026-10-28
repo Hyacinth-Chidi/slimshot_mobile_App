@@ -7,23 +7,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 
-import '../core/models/history_item.dart';
 import '../core/services/ad_service.dart';
-import '../core/services/history_service.dart';
 import '../core/services/media_save_service.dart';
+import '../core/utils/file_utils.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/lucide_icons.dart';
+import '../core/utils/result_exit.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/before_after_slider.dart';
+import '../core/widgets/discard_dialog.dart';
 import '../features/compression/providers/compression_provider.dart';
 import '../features/compression/widgets/compress_panels.dart';
 import '../features/compression/widgets/compress_result_view.dart';
 import '../features/compression/widgets/video_frame_thumb.dart';
 
 /// The finished compression. The layout is [CompressResultView]; this owns
-/// the player, the history entry and saving.
+/// the player, saving, and leaving — ✕ and the phone's Back go home, asking
+/// first when the result was neither saved nor shared, and its files go
+/// either way ([ResultExit]).
 class ResultScreen extends ConsumerStatefulWidget {
-  const ResultScreen({super.key});
+  const ResultScreen({super.key, this.deleteFiles = FileUtils.deleteTempFiles});
+
+  /// How the result's files are deleted when it is left; a test's stand-in.
+  final TempFileDeleter deleteFiles;
 
   @override
   ConsumerState<ResultScreen> createState() => _ResultScreenState();
@@ -35,7 +41,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   Duration _currentPosition = Duration.zero;
   Duration _totalDuration = Duration.zero;
   int _selectedPreviewIndex = 0;
-  bool _historySaved = false;
+  late final ResultExit _exit = ResultExit(delete: widget.deleteFiles);
 
   @override
   void initState() {
@@ -47,7 +53,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         MediaSaveService.isVideoPath(state.outputPaths.first)) {
       _openVideo(state.outputPaths.first);
     }
-    _saveHistory();
   }
 
   Future<void> _openVideo(String path) async {
@@ -82,33 +87,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         _isVideoPlaying = false;
       }
     });
-  }
-
-  Future<void> _saveHistory() async {
-    if (_historySaved) return;
-    _historySaved = true;
-
-    final state = ref.read(compressionProvider);
-    if (state.outputPaths.isEmpty) return;
-
-    final isVideo = MediaSaveService.isVideoPath(state.outputPaths.first);
-    final detail = state.selectedPreset?.name ?? 'Compression';
-
-    await HistoryService.addItem(
-      HistoryItem(
-        id: state.outputPaths.join('|'),
-        title: state.outputPaths.length == 1
-            ? (isVideo ? 'Compressed video' : 'Compressed photo')
-            : 'Compressed ${state.outputPaths.length} ${isVideo ? 'videos' : 'photos'}',
-        operation: 'Compression',
-        mediaType: isVideo ? 'video' : 'image',
-        outputPaths: state.outputPaths,
-        originalSize: state.originalSize,
-        outputSize: state.compressedSize,
-        detail: detail,
-        createdAt: DateTime.now(),
-      ),
-    );
   }
 
   @override
@@ -206,6 +184,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       onAdDismissed: () async {
         try {
           await MediaSaveService.saveOptimizedMediaToGallery(outputPaths);
+          _exit.markKept();
           HapticFeedback.mediumImpact();
           if (mounted) ToastUtils.show(context, 'Saved to gallery');
         } catch (e) {
@@ -215,6 +194,27 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         }
       },
     );
+  }
+
+  Future<void> _share(List<String> outputPaths) async {
+    if (await MediaSaveService.shareFiles(outputPaths)) _exit.markKept();
+  }
+
+  /// Home — ✕ and the phone's Back alike.
+  Future<void> _leave() async {
+    final state = ref.read(compressionProvider);
+    final outputs = state.outputPaths;
+    final leave = await _exit.leave(
+      outputs: outputs,
+      inputs: [for (final file in state.inputFiles) file.path],
+      confirm: () => confirmDiscard(
+        context,
+        isVideo:
+            outputs.isNotEmpty && MediaSaveService.isVideoPath(outputs.first),
+        count: outputs.length,
+      ),
+    );
+    if (leave && mounted) context.go('/home');
   }
 
   @override
@@ -294,9 +294,9 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       ],
       previewIndex: index,
       onPreview: (i) => _preview(i, isVideo: isVideo),
-      onClose: () => context.go('/home'),
+      onClose: _leave,
       onSave: () => _save(outputs),
-      onShare: () => MediaSaveService.shareFiles(outputs),
+      onShare: () => _share(outputs),
     );
   }
 }

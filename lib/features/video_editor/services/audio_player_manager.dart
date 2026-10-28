@@ -40,7 +40,14 @@ abstract class MusicPlayer {
 }
 
 class _JustAudioMusicPlayer implements MusicPlayer {
-  final AudioPlayer _player = AudioPlayer();
+  /// The editor's `PlaybackGuard` holds the phone's audio and pauses the
+  /// whole editor when a call, another app or unplugged headphones take it.
+  /// Left to itself, a player would pause alone — the video playing on — and
+  /// resume by itself after a call, over an editor the guard had paused.
+  final AudioPlayer _player = AudioPlayer(
+    handleInterruptions: false,
+    handleAudioSessionActivation: false,
+  );
 
   @override
   bool get playing => _player.playing;

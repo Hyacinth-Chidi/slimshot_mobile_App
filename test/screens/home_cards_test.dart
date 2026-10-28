@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:slimshotai/core/theme/app_colors.dart';
 import 'package:slimshotai/core/theme/lucide_icons.dart';
+import 'package:slimshotai/core/widgets/frosted_glass.dart';
 import 'package:slimshotai/main.dart';
 
 /// The gallery, scripted: every pick returns [images].
@@ -47,7 +49,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final dir = Directory.systemTemp.createTempSync('home_cards');
     final photo = File('${dir.path}/a.png')
-      ..writeAsBytesSync(File('assets/app_icon.png').readAsBytesSync());
+      ..writeAsBytesSync(File('assets/logo.png').readAsBytesSync());
     picker = _FakePicker([XFile(photo.path)]);
     ImagePickerPlatform.instance = picker;
   });
@@ -123,5 +125,39 @@ void main() {
     await tester.tapAt(tester.getRect(card).centerRight - const Offset(40, 0));
     await _settle(tester);
     expect(picker.picks, 1);
+  });
+
+  // The owner's call: beside the New Video card, glass did not fit. The three
+  // tools are solid tiles.
+  testWidgets('the three tool cards are solid, not glass', (tester) async {
+    await pumpHome(tester);
+    for (final title in ['Compress\nVideo', 'Compress\nPhoto', 'Privacy\nStrip']) {
+      final text = find.text(title);
+      expect(find.ancestor(of: text, matching: find.byType(FrostedGlass)),
+          findsNothing, reason: title);
+      expect(
+        find.ancestor(
+          of: text,
+          matching: find.byWidgetPredicate((w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).color == AppColors.surface),
+        ),
+        findsOneWidget,
+        reason: title,
+      );
+      // The circle in the corner is white, not purple (the owner's call).
+      final circle = find.descendant(
+        of: find.ancestor(of: text, matching: find.byType(Stack)).first,
+        matching: find.byWidgetPredicate((w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).shape == BoxShape.circle),
+      );
+      final colour =
+          ((tester.widget<Container>(circle).decoration!) as BoxDecoration).color!;
+      expect(colour.r, closeTo(AppColors.textPrimary.r, 0.01), reason: title);
+      expect(colour.b, closeTo(AppColors.textPrimary.b, 0.01), reason: title);
+    }
   });
 }

@@ -36,6 +36,7 @@ import '../features/video_editor/logic/clip_to_overlay.dart';
 import '../features/video_editor/widgets/panels/move_to_overlay_dialog.dart';
 import '../features/video_editor/logic/timeline/playhead_display_clock.dart';
 import '../features/video_editor/logic/timeline/timeline_geometry.dart';
+import '../features/video_editor/providers/tile_preview_store_provider.dart';
 import '../features/video_editor/providers/video_editor_notifier.dart';
 import '../features/video_editor/services/media_import_service.dart';
 import '../features/video_editor/services/effect_bars_sync.dart';
@@ -54,6 +55,7 @@ import '../features/video_editor/widgets/panels/effects_panel.dart';
 import '../features/video_editor/widgets/panels/filters_drawer.dart';
 import '../features/video_editor/widgets/panels/stickers_drawer.dart';
 import '../features/video_editor/services/audio_player_manager.dart';
+import '../features/video_editor/services/playback_guard.dart';
 import '../features/video_editor/models/audio_track_model.dart';
 import '../features/video_editor/widgets/text_overlay/text_editor_dialog.dart';
 import '../features/video_editor/widgets/canvas/native_timeline_preview_view.dart';
@@ -484,6 +486,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       NativeTimelinePreviewService();
   final MediaImportService _mediaImportService = MediaImportService();
 
+  /// Pauses playback when the app leaves the screen or something else takes
+  /// the phone's audio, through the same pause as the button.
+  final SessionPlaybackAudio _playbackAudio = SessionPlaybackAudio();
+  late final PlaybackGuard _playbackGuard;
+
   late final Ticker _ticker;
   DateTime? _lastTick;
   StreamSubscription<NativeTimelinePreviewEvent>? _nativePreviewSubscription;
@@ -580,6 +587,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   @override
   void initState() {
     super.initState();
+    _playbackGuard = PlaybackGuard(
+      audio: _playbackAudio,
+      isPlaying: () => ref.read(videoEditorProvider).isPlaying,
+      pause: () => ref.read(videoEditorProvider.notifier).setPlaying(false),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(videoEditorProvider.notifier).reset();
 
@@ -598,6 +610,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     _nativePreviewSubscription = _nativePreviewService.events.listen(
       _handleNativePreviewEvent,
     );
+
+    // The Transitions and Effects tiles kept from an earlier launch are found
+    // now, long before either sheet can open — a tile asked for before the
+    // store knows what it holds is drawn again and shows its icon.
+    unawaited(ref.read(tilePreviewStoreProvider).prepare());
 
     _ticker = createTicker(_onTick);
   }
@@ -684,6 +701,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
   @override
   void dispose() {
+    // First, so nothing pauses through a screen on its way out; the audio
+    // goes back to other apps.
+    _playbackGuard.dispose();
+    unawaited(_playbackAudio.dispose());
+
     // Save draft when leaving the editor
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(videoEditorProvider.notifier).saveDraft();
@@ -3377,6 +3399,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       prev,
       isPlaying,
     ) {
+      // The phone's audio is the editor's while it plays, and given back the
+      // moment it stops, by whatever stopped it.
+      _playbackGuard.playingChanged(isPlaying);
       if (isPlaying) {
         // Any transport change ends the tail; the engine owns the clock again.
         _isDrivingTail = false;

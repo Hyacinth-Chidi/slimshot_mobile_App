@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
+import 'package:slimshotai/features/video_editor/logic/tile_preview_store.dart';
 import 'package:slimshotai/features/video_editor/logic/transitions/transition_preview_frames.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_segment.dart';
@@ -12,6 +14,8 @@ import 'package:slimshotai/features/video_editor/providers/transition_preview_pr
 import 'package:slimshotai/features/video_editor/providers/video_editor_notifier.dart';
 import 'package:slimshotai/features/video_editor/services/video_editor_service.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/transitions_drawer.dart';
+
+import '../../../../support/memory_tile_store.dart';
 
 /// The transitions sheet: category pills over a grid of tiles that play the
 /// real transition, a tap applying it and asking the canvas to play it.
@@ -42,9 +46,11 @@ void main() {
     WidgetTester tester,
     VideoEditorNotifier n, {
     TransitionPreviewRenderer? render,
+    TilePreviewStore? store,
     ValueChanged<String>? onChosen,
     double width = 400,
     double textScale = 1.0,
+    bool settle = true,
   }) async {
     // Tall, so the sheet — held to a share of the screen — shows every tile.
     tester.view.devicePixelRatio = 1;
@@ -55,7 +61,7 @@ void main() {
         overrides: [
           videoEditorProvider.overrideWith((ref) => n),
           transitionPreviewFramesProvider.overrideWithValue(
-            TransitionPreviewFrames(render ?? (_) async => null),
+            TransitionPreviewFrames(render ?? (_) async => null, store: store),
           ),
         ],
         child: MaterialApp(
@@ -74,7 +80,7 @@ void main() {
       ),
     );
     // Never pumpAndSettle: the tiles loop for as long as the sheet is open.
-    await tester.pump(const Duration(milliseconds: 50));
+    if (settle) await tester.pump(const Duration(milliseconds: 50));
   }
 
   testWidgets('offers every category, in order', (tester) async {
@@ -208,6 +214,64 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  List<Uint8List> sixteenPixels() => [
+        for (var i = 0; i < kTransitionPreviewFrameCount; i++)
+          Uint8List.fromList(pixel),
+      ];
+
+  Finder inTile(String name, Type type) => find.descendant(
+        of: find.byKey(ValueKey('transition_tile_$name')),
+        matching: find.byType(type),
+      );
+
+  // Kept on the phone from an earlier launch: the icon is for a transition
+  // the engine has yet to draw, and this one needs no drawing.
+  testWidgets('a tile kept from an earlier launch shows its picture, never '
+      'its icon, and is not drawn again', (tester) async {
+    final store = MemoryTileStore();
+    store.saved[TilePreviewKind.transitions]!['dissolve'] =
+        packTransitionFrames(sixteenPixels());
+    final asked = <String>[];
+    await pump(
+      tester,
+      notifierWith(),
+      store: store,
+      render: (name) async {
+        asked.add(name);
+        return null;
+      },
+      settle: false,
+    );
+    expect(inTile('dissolve', Icon), findsNothing,
+        reason: 'the bare stage while it is read back');
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(inTile('dissolve', Image), findsOneWidget);
+    expect(inTile('dissolve', Icon), findsNothing);
+    expect(asked, isNot(contains('dissolve')));
+  });
+
+  // Drawn by the engine for the first time: the picture fades in over the
+  // icon that stood in for it, rather than switching in.
+  testWidgets('a tile drawn for the first time fades its picture in over the '
+      'icon', (tester) async {
+    final gate = Completer<List<Uint8List>?>();
+    await pump(
+      tester,
+      notifierWith(),
+      render: (name) => name == 'dissolve' ? gate.future : Future.value(null),
+    );
+    expect(inTile('dissolve', Icon), findsOneWidget);
+    gate.complete(sixteenPixels());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(inTile('dissolve', Image), findsOneWidget);
+    expect(inTile('dissolve', Icon), findsOneWidget,
+        reason: 'fading out under the picture');
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(inTile('dissolve', Icon), findsNothing);
+    expect(inTile('dissolve', Image), findsOneWidget);
   });
 
   testWidgets('a cut has no curve to set', (tester) async {

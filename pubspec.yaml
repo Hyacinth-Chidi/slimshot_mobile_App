@@ -58,6 +58,9 @@ dependencies:
   receive_sharing_intent: ^1.8.1
   google_mobile_ads: ^8.0.0
   just_audio: ^0.10.5
+  # The editor's hold on the phone's audio (`PlaybackGuard`); already
+  # transitive via just_audio.
+  audio_session: ^0.2.3
   file_picker: ^11.0.2
   # Compression feature only. The editor renders natively (Media3 + OpenGL);
   # its last FFmpeg users are the two clip proxies in VideoEditorService.
@@ -73,6 +76,8 @@ flutter:
   assets:
     - assets/
     - assets/home/
+    # The splash's logo in four layers (test/launch_splash_art_test.dart).
+    - assets/splash/
 
   fonts:
     # Vendored from the abandoned lucide_icons package; see
@@ -114,16 +119,30 @@ dev_dependencies:
   # flutter_test has no host implementation for the path_provider channel.
   path_provider_platform_interface: ^2.1.2
 
+# The sources are drawn from assets/logo.svg by test/app_icon_test.dart
+# (UPDATE_APP_ICON=1); run `dart run flutter_launcher_icons` after redrawing.
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/app_icon.png"
+  # Android 7 and older, and iOS, show one whole picture.
+  image_path_android: "assets/icon/app_icon.png"
+  image_path_ios: "assets/icon/app_icon_ios.png"
+  # Android 8+ masks two layers to the launcher's own shape.
+  adaptive_icon_background: "assets/icon/background.png"
+  adaptive_icon_foreground: "assets/icon/foreground.png"
   min_sdk_android: 24 # matches our minSdk
   remove_alpha_ios: true
 
+# The native half of the splash: the logo dim on the app's own black, the
+# same on every Android version (12+ allows only a centred icon). The app's
+# first frame repeats it and lights it up (lib/core/widgets/launch_splash.dart).
+# Pictures from test/launch_splash_art_test.dart (UPDATE_SPLASH_ART=1); run
+# `dart run flutter_native_splash:create` after redrawing them.
 flutter_native_splash:
-  color: "#020617"
-  image: assets/logo.png
+  color: "#09090B"
+  image: assets/native_splash/logo.png
   android_12:
-    icon_background_color: "#020617"
-    color: "#020617"
+    # No icon_background_color: a circle of colour behind the logo would show.
+    image: assets/native_splash/logo_android12.png
+    color: "#09090B"
+  web: false
