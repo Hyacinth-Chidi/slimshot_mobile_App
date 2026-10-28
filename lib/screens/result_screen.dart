@@ -46,6 +46,9 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   @override
   void initState() {
     super.initState();
+    // Nobody has kept the result yet: a tap on the home screen widget only
+    // brings the app forward until somebody does.
+    _exit.hold();
     AdService.loadInterstitialAd();
     HapticFeedback.mediumImpact();
     final state = ref.read(compressionProvider);
@@ -91,6 +94,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
 
   @override
   void dispose() {
+    _exit.release();
     _videoController?.removeListener(_onVideoTick);
     _videoController?.dispose();
     super.dispose();

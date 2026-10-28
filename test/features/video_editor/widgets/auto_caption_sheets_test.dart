@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/utils/held_work.dart';
 import 'package:slimshotai/features/account/models/account_models.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_settings.dart';
@@ -236,6 +237,24 @@ void main() {
       await tapKey(tester, 'caption_cancel');
       expect(popped.single, isNull);
       expect(cancels, 1);
+    });
+
+    // A tap on the home screen widget only brings the app forward while a
+    // caption run is under way: going Home would close the sheet and stop it.
+    testWidgets('a caption run holds the app until its sheet closes',
+        (tester) async {
+      await open(
+        tester,
+        (_) => CaptionProgressSheet(
+          pipeline: pipelineWith(
+            render: () => Completer<CaptionAudioResult>().future,
+          ),
+          request: const CaptionRequest(),
+        ),
+      );
+      expect(HeldWork.instance.isHeld, isTrue);
+      await tapKey(tester, 'caption_cancel');
+      expect(HeldWork.instance.isHeld, isFalse);
     });
 
     testWidgets('enough credits: no price, no question, straight on',

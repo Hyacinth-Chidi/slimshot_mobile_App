@@ -43,12 +43,21 @@ class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
   @override
   void initState() {
     super.initState();
+    // Nobody has kept the cleaned photos yet: a tap on the home screen
+    // widget only brings the app forward until somebody does.
+    _exit.hold();
     AdService.loadInterstitialAd();
     HapticFeedback.mediumImpact();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final outputs = ref.read(privacyProvider).outputPaths;
       if (outputs.isNotEmpty) _inspect(outputs.first);
     });
+  }
+
+  @override
+  void dispose() {
+    _exit.release();
+    super.dispose();
   }
 
   void _inspect(String path) => _photos.inspect(path, () {

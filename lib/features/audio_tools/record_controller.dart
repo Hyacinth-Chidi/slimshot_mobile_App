@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/utils/held_work.dart';
 import 'voice_recorder_service.dart';
 
 enum RecordPhase { idle, recording, paused }
@@ -48,7 +49,12 @@ class RecordController extends ChangeNotifier {
     required this.setMonitorMuted,
     required this.playhead,
     required this.projectEnd,
-  });
+    HeldWork? held,
+  }) : _held = held ?? HeldWork.instance;
+
+  /// Held from [enter] until the mode ends: a tap on the home screen widget
+  /// would otherwise take the editor away, and the take with it.
+  final HeldWork _held;
 
   final VoiceRecorder recorder;
   final Future<MicPermission> Function() requestMic;
@@ -103,6 +109,7 @@ class RecordController extends ChangeNotifier {
   static const double _motionEpsilon = 0.001;
 
   Future<void> enter() async {
+    _held.hold(this);
     _monitorMuted = true;
     setMonitorMuted(true);
     _notify();
@@ -236,6 +243,7 @@ class RecordController extends ChangeNotifier {
   }
 
   void _leave() {
+    _held.release(this);
     _opened = false;
     _phase = RecordPhase.idle;
     _takeStart = null;
@@ -258,6 +266,7 @@ class RecordController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _held.release(this);
     _disposed = true;
     _attempt++;
     super.dispose();

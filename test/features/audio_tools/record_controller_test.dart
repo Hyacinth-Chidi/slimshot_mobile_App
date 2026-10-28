@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/utils/held_work.dart';
 import 'package:slimshotai/features/audio_tools/record_controller.dart';
 import 'package:slimshotai/features/audio_tools/voice_recorder_service.dart';
 
@@ -41,8 +42,9 @@ void main() {
   late List<String> phasesSeen;
   late Future<String> Function() takePath;
 
-  RecordController controller() {
+  RecordController controller({HeldWork? held}) {
     final c = RecordController(
+      held: held,
       recorder: recorder,
       requestMic: () async {
         log.add('ask mic');
@@ -79,6 +81,28 @@ void main() {
     expect(c.monitorMuted, isTrue);
     await c.discard();
     expect(log.where((l) => l.startsWith('monitor')), ['monitor muted=true', 'monitor muted=false']);
+  });
+
+  // A tap on the home screen widget only brings the app forward while the
+  // editor is in recording mode: going Home would throw the take away.
+  test('recording mode holds the app from enter until Done, ✕ or dispose',
+      () async {
+    final held = HeldWork();
+    final done = controller(held: held);
+    await done.enter();
+    expect(held.isHeld, isTrue);
+    await done.finish();
+    expect(held.isHeld, isFalse);
+
+    final cancelled = controller(held: held);
+    await cancelled.enter();
+    await cancelled.discard();
+    expect(held.isHeld, isFalse);
+
+    final dropped = controller(held: held);
+    await dropped.enter();
+    dropped.dispose();
+    expect(held.isHeld, isFalse);
   });
 
   test('the toggle unmutes and mutes again', () async {

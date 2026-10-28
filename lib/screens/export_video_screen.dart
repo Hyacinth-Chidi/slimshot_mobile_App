@@ -64,11 +64,15 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
   @override
   void initState() {
     super.initState();
+    // An export under way, then a file nobody has kept: a tap on the home
+    // screen widget only brings the app forward meanwhile.
+    _exit.hold();
     _startExport();
   }
 
   @override
   void dispose() {
+    _exit.release();
     _progressSub?.cancel();
     _playerController?.dispose();
     super.dispose();
@@ -120,6 +124,8 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
       });
       _initExportedVideo(result.outputPath);
     } catch (e) {
+      // Nothing came of it, so nothing is held.
+      _exit.release();
       if (!mounted) return;
       setState(() => _isExporting = false);
       ToastUtils.show(context, 'Export failed: $e', isError: true);
