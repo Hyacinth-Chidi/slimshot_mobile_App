@@ -6,8 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/features/video_editor/logic/effects/effect_preview_atlases.dart';
+import 'package:slimshotai/features/video_editor/logic/tile_preview_store.dart';
 import 'package:slimshotai/features/video_editor/models/editor_timeline.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/effect_preview_stage.dart';
+
+import '../../../support/memory_tile_store.dart';
 
 /// A tile's stage decodes and **owns** its picture: a decode that lands after
 /// the tile is gone, or for an effect the tile no longer shows, disposes what
@@ -130,6 +133,67 @@ void main() {
     expect(identical(painter.frameIndex, frameIndex), isTrue);
     expect(painter.shouldRepaint(EffectPreviewPainter(image, frameIndex)),
         isFalse);
+  });
+
+  // An atlas is a JPEG: it opens on FF D8 and closes on FF D9.
+  final jpeg = Uint8List.fromList([0xFF, 0xD8, 9, 0xFF, 0xD9]);
+
+  /// How present the painted picture is: the product of every fade above it.
+  double pictureOpacity(WidgetTester tester) => tester
+      .widgetList<FadeTransition>(find.ancestor(
+        of: find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is EffectPreviewPainter,
+        ),
+        matching: find.byType(FadeTransition),
+      ))
+      .fold(1.0, (opacity, fade) => opacity * fade.opacity.value);
+
+  // Kept on the phone from an earlier launch: the icon is for an effect the
+  // engine has yet to draw, and this one needs no drawing.
+  testWidgets('a kept effect shows the bare stage, never the icon, while it '
+      'is read back', (tester) async {
+    final store = MemoryTileStore()
+      ..saved[TilePreviewKind.effects]!['vignette'] = jpeg;
+    atlases = EffectPreviewAtlases(render, store: store);
+    await tester.pumpWidget(stage());
+    expect(find.byIcon(LucideIcons.circleDot), findsNothing);
+    await tester.pump();
+    expect(find.byIcon(LucideIcons.circleDot), findsNothing);
+    expect(rendered, isEmpty, reason: 'read back, not drawn');
+    expect(decodes, hasLength(1));
+  });
+
+  testWidgets('a picture read back appears at once, not faded in',
+      (tester) async {
+    final store = MemoryTileStore()
+      ..saved[TilePreviewKind.effects]!['vignette'] = jpeg;
+    atlases = EffectPreviewAtlases(render, store: store);
+    await tester.pumpWidget(stage());
+    await tester.pump();
+    decodes.single.complete(await makeImage(tester));
+    await tester.pump();
+    await tester.pump();
+    expect(painterOf(tester), isNotNull);
+    expect(pictureOpacity(tester), 1.0);
+  });
+
+  // Drawn by the engine for the first time: the picture fades in over the
+  // icon that stood in for it, rather than switching in.
+  testWidgets('a picture drawn for the first time fades in over its icon',
+      (tester) async {
+    await tester.pumpWidget(stage());
+    expect(find.byIcon(LucideIcons.circleDot), findsOneWidget);
+    pending['vignette']!.complete(EffectPreviewAtlas(bytes(1)));
+    await tester.pump();
+    decodes.single.complete(await makeImage(tester));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(find.byIcon(LucideIcons.circleDot), findsOneWidget,
+        reason: 'fading out under the picture');
+    expect(pictureOpacity(tester), inExclusiveRange(0.0, 1.0));
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(find.byIcon(LucideIcons.circleDot), findsNothing);
+    expect(pictureOpacity(tester), 1.0);
   });
 
   testWidgets('a decode landing after dispose disposes its image',

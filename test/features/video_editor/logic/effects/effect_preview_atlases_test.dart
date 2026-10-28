@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/effects/effect_preview_atlases.dart';
+import 'package:slimshotai/features/video_editor/logic/tile_preview_store.dart';
 import 'package:slimshotai/features/video_editor/models/editor_timeline.dart';
 import 'package:slimshotai/features/video_editor/providers/effect_preview_provider.dart';
 
@@ -190,5 +192,128 @@ void main() {
     container.dispose();
     TestWidgetsFlutterBinding.instance.handleMemoryPressure();
     expect(atlases.peek('vignette'), isNotNull);
+  });
+
+  // Drawn once per build of the app, not once per launch: the icon a tile
+  // shows while the engine draws it is then seen the first time only.
+  group('kept on the phone', () {
+    late Directory support;
+
+    setUp(() async {
+      support = await Directory.systemTemp.createTemp('effect_atlases_test');
+    });
+
+    tearDown(() async {
+      if (await support.exists()) await support.delete(recursive: true);
+    });
+
+    TilePreviewStore store() => TilePreviewStore(
+          version: () async => '7-100',
+          supportDirectory: () async => support,
+        );
+
+    // An atlas is a JPEG: it opens on FF D8 and closes on FF D9.
+    Uint8List jpeg(int n) => Uint8List.fromList([0xFF, 0xD8, n, 0xFF, 0xD9]);
+
+    // Reading a real file takes real time; wait for what follows it.
+    Future<void> until(bool Function() done) async {
+      for (var i = 0; i < 200 && !done(); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    }
+
+    test('an atlas drawn once is kept, and the next launch shows it without '
+        'drawing', () async {
+      final firstStore = store();
+      final first = EffectPreviewAtlases(render, store: firstStore);
+      final ticket = first.request('vignette');
+      await settle();
+      pending['vignette']!.complete(EffectPreviewAtlas(jpeg(1)));
+      await ticket.atlas;
+      await firstStore.flush();
+
+      final nextStore = store();
+      await nextStore.prepare();
+      rendered.clear();
+      final next = EffectPreviewAtlases(render, store: nextStore);
+      expect(next.isSaved('vignette'), isTrue);
+      expect(next.isSaved('grain'), isFalse);
+      expect(await next.request('vignette').atlas, jpeg(1));
+      expect(next.peek('vignette'), jpeg(1));
+      expect(rendered, isEmpty);
+    });
+
+    test('a failed or busy effect is not kept', () async {
+      final firstStore = store();
+      final atlases = EffectPreviewAtlases(render, store: firstStore);
+      final failed = atlases.request('vignette');
+      final busy = atlases.request('grain');
+      await settle();
+      pending['vignette']!.complete(const EffectPreviewFailed());
+      await failed.atlas;
+      await settle();
+      pending['grain']!.complete(const EffectPreviewBusy());
+      await busy.atlas;
+      await firstStore.flush();
+
+      final nextStore = store();
+      await nextStore.prepare();
+      final next = EffectPreviewAtlases(render, store: nextStore);
+      expect(next.isSaved('vignette'), isFalse,
+          reason: 'the next launch tries again');
+      expect(next.isSaved('grain'), isFalse);
+    });
+
+    test('an atlas on the phone is not kept waiting behind a drawing',
+        () async {
+      final kept = store();
+      await kept.write(TilePreviewKind.effects, 'vignette', jpeg(2));
+      await kept.flush();
+      final atlases = EffectPreviewAtlases(render, store: kept);
+      atlases.request('grain');
+      await settle();
+      expect(await atlases.request('vignette').atlas, jpeg(2));
+      expect(rendered, ['grain']);
+      pending['grain']!.complete(const EffectPreviewBusy());
+    });
+
+    test('a kept atlas that is not a picture is drawn again, and kept anew',
+        () async {
+      final kept = store();
+      await kept.write(
+          TilePreviewKind.effects, 'vignette', Uint8List.fromList([1, 2, 3]));
+      await kept.flush();
+      final atlases = EffectPreviewAtlases(render, store: kept);
+      final ticket = atlases.request('vignette');
+      await until(() => pending.containsKey('vignette'));
+      pending['vignette']!.complete(EffectPreviewAtlas(jpeg(3)));
+      expect(await ticket.atlas, jpeg(3));
+      await kept.flush();
+
+      final nextStore = store();
+      await nextStore.prepare();
+      expect(
+        await EffectPreviewAtlases(render, store: nextStore)
+            .request('vignette')
+            .atlas,
+        jpeg(3),
+      );
+    });
+
+    test('after memory pressure an atlas comes back from the phone, not the '
+        'engine', () async {
+      final kept = store();
+      final atlases = EffectPreviewAtlases(render, store: kept);
+      final first = atlases.request('vignette');
+      await settle();
+      pending['vignette']!.complete(EffectPreviewAtlas(jpeg(4)));
+      await first.atlas;
+      await kept.flush();
+      atlases.clear();
+      rendered.clear();
+      expect(atlases.peek('vignette'), isNull);
+      expect(await atlases.request('vignette').atlas, jpeg(4));
+      expect(rendered, isEmpty);
+    });
   });
 }

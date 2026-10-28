@@ -50,6 +50,11 @@ class MainActivity : FlutterActivity() {
             VoiceRecorderChannel.channelName,
         ).setMethodCallHandler(voice)
 
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            AppBuildChannel.channelName,
+        ).setMethodCallHandler(AppBuildChannel(applicationContext))
+
         // The preview renders into a Flutter texture rather than a PlatformView,
         // so the engine's renderer (the TextureRegistry) is what it needs.
         val manager = NativeTimelinePreviewManager(

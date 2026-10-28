@@ -36,6 +36,7 @@ import '../features/video_editor/logic/clip_to_overlay.dart';
 import '../features/video_editor/widgets/panels/move_to_overlay_dialog.dart';
 import '../features/video_editor/logic/timeline/playhead_display_clock.dart';
 import '../features/video_editor/logic/timeline/timeline_geometry.dart';
+import '../features/video_editor/providers/tile_preview_store_provider.dart';
 import '../features/video_editor/providers/video_editor_notifier.dart';
 import '../features/video_editor/services/media_import_service.dart';
 import '../features/video_editor/services/effect_bars_sync.dart';
@@ -598,6 +599,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     _nativePreviewSubscription = _nativePreviewService.events.listen(
       _handleNativePreviewEvent,
     );
+
+    // The Transitions and Effects tiles kept from an earlier launch are found
+    // now, long before either sheet can open — a tile asked for before the
+    // store knows what it holds is drawn again and shows its icon.
+    unawaited(ref.read(tilePreviewStoreProvider).prepare());
 
     _ticker = createTicker(_onTick);
   }

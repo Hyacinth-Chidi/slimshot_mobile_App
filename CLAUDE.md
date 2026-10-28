@@ -1683,6 +1683,39 @@ within ~28 MB of decoded tiles while browsing every category and falls when the 
 atlas JPEGs measure ≤ 150 KB (tune `PREVIEW_JPEG_QUALITY` if over); an export run after browsing
 is unaffected, and tiles asked during an export keep icons and fill in afterwards.
 
+### Tile drawings kept on the phone — the icon is seen once
+
+**Awaiting device verification** (2026-10-28; the owner's call: keep the icons, see them once).
+The Transitions and Effects tiles' drawings — a transition's 16 frames, an effect's atlas — were
+held for the session only, so every launch drew them again and every first open of a sheet showed
+the tiles turning from icon to picture one by one. **`TilePreviewStore`**
+(`logic/tile_preview_store.dart`) keeps each drawing on the phone the moment the engine draws it,
+in `<app support>/tile_previews/<build>/<kind>/<name>.bin` beside the font previews (and, like
+them, left alone by Clear Cache), so a later launch reads it back instead of asking the engine.
+
+- **One build's drawings are never another's.** The folder is named for the build — Android's
+  version code **and install time** (`AppBuildChannel.kt`, `slimshot_ai/app_build`,
+  `appBuildStamp`), so a debug rebuild with a changed shader counts as a new build even with the
+  version code unchanged — plus `kTilePreviewFormat` (frame count and size, the atlas layout), so a
+  Dart-only change to those names a new folder too. Every other build's folder is cleared when this
+  one is found: a phone keeps one build's worth — roughly 10–15 MB once every tile has been drawn. No build known (a test, a
+  failed lookup) means nothing kept or served.
+- **Nothing waits on it.** `has` answers at once and is false until `prepare` has read the folder,
+  so a tile asked for before then is simply drawn, as it always was — in widget tests, where an
+  unanswered platform call never completes, that is every tile. The editor screen calls `prepare`
+  in `initState`, long before either sheet can open. A kept drawing is read back **straight away,
+  never queued behind a drawing** (reading a file takes nothing from the GL thread).
+- **Written whole or not at all** (`.part`, then renamed; a leftover `.part` is cleared). A
+  transition's frames are one file, each frame's length then the frame (`packTransitionFrames`);
+  an atlas must read back as a whole JPEG. One that does not is forgotten and drawn again.
+  **A failure or a busy engine is never kept**, so the next launch tries again.
+- **The tiles** (`_TransitionTileState`, `EffectPreviewStage`): the icon stands in only while the
+  engine draws — the first time, since the drawing is then kept — or where it could not, and the
+  picture fades in over it (`kTilePictureFadeIn`, 150ms, the icon held through the decode so the
+  two cross-fade). A drawing held in memory or read back from the phone shows the bare stage and
+  simply appears. None keeps its crossed circle. Tests use `MemoryTileStore`
+  (`test/support/`), since a real file never finishes reading under the test clock.
+
 ### Effects — the multi-pass framework and 47 effects
 
 **Awaiting device verification** beyond the four already checked (`fisheye` perfect, `vignette`
