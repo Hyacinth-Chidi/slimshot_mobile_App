@@ -78,7 +78,10 @@ void main() {
     expect(_parts(l), [12, 138, 12, 108, 16, 10, 124]);
     expect(_sixDrafts(l, 80), room);
     expect(l.height, room);
-    expect(l.emptyCard, 2 * 124 + kHomeDraftSpacing);
+    // The card standing in for no edits keeps more room above the nav than
+    // the cards do: one large frame that close crowds it.
+    expect(l.emptyCard, room - _top(l) - kHomeEmptyCardNavGap - 80);
+    expect(l.emptyCard, lessThan(2 * 124 + kHomeDraftSpacing));
   });
 
   test('at the least room the six still fit, every part at its least', () {
@@ -102,15 +105,16 @@ void main() {
         greaterThanOrEqualTo(l.draftRow + kHomeDraftNavGap + 128));
     // The card standing in for no edits is never under the nav: it takes
     // what room there is above it.
-    expect(l.emptyCard, l.draftsBox - kHomeDraftNavGap - 128);
+    expect(l.emptyCard, l.draftsBox - kHomeEmptyCardNavGap - 128);
   });
 
   test('where not even one row fits above the nav, the page grows to hold one',
       () {
     final l = HomeLayout.fit(room: 300, title: 20, navClearance: 128);
     expect(l.fits, isFalse);
-    // The empty card at its least is the taller of the two.
-    expect(l.draftsBox, kHomeEmptyCardLeast + kHomeDraftNavGap + 128);
+    // The empty card at its least, with its room above the nav, is the
+    // taller of the two.
+    expect(l.draftsBox, kHomeEmptyCardLeast + kHomeEmptyCardNavGap + 128);
     expect(l.emptyCard, kHomeEmptyCardLeast);
     expect(l.height, _top(l) + l.draftsBox);
   });
@@ -158,10 +162,11 @@ void main() {
               reason: '$what: a card is a whole number of dp tall');
           expect(l.fits, room >= least, reason: what);
           expect(l.height, closeTo(_top(l) + l.draftsBox, 1e-6), reason: what);
-          // The card standing in for no edits: never under the nav, never
-          // under its least, never past the two rows it stands in for.
-          expect(l.emptyCard,
-              lessThanOrEqualTo(l.draftsBox - kHomeDraftNavGap - nav + 1e-6),
+          // The card standing in for no edits: its room kept above the nav,
+          // never under its least, never past the two rows it stands in
+          // for, and as much of their place as that room allows.
+          final emptyRoom = l.draftsBox - kHomeEmptyCardNavGap - nav;
+          expect(l.emptyCard, lessThanOrEqualTo(emptyRoom + 1e-6),
               reason: what);
           expect(
             l.emptyCard,
@@ -174,8 +179,12 @@ void main() {
             expect(_sixDrafts(l, nav), lessThanOrEqualTo(room + 1e-6),
                 reason: what);
             expect(l.height, room, reason: what);
-            expect(l.emptyCard, 2 * l.draftRow + kHomeDraftSpacing,
-                reason: '$what: the empty card is the two rows');
+            expect(
+              l.emptyCard,
+              closeTo(
+                math.min(2 * l.draftRow + kHomeDraftSpacing, emptyRoom), 1e-6),
+              reason: '$what: the empty card takes the two rows\' place',
+            );
             // While the cards are short of full size, nothing is left over
             // but the rounding to whole dp.
             if (l.draftRow < kHomeDraftRowHeight.full) {
@@ -187,12 +196,12 @@ void main() {
             expect(
               l.draftsBox,
               greaterThanOrEqualTo(
-                math.max(l.draftRow, kHomeEmptyCardLeast) +
-                    kHomeDraftNavGap +
+                math.max(l.draftRow + kHomeDraftNavGap,
+                        kHomeEmptyCardLeast + kHomeEmptyCardNavGap) +
                     nav -
                     1e-6,
               ),
-              reason: '$what: one row above the nav',
+              reason: '$what: one row, or the empty card, above the nav',
             );
             expect(l.height, greaterThanOrEqualTo(room), reason: what);
           }

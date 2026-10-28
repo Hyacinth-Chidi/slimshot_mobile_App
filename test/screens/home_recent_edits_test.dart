@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -251,10 +253,14 @@ void main() {
 
   for (final phone in [_tall, const _Phone(360, 806, top: 36), const _Phone(360, 720)]) {
     testWidgets('on a $phone, before any edit, the card standing in takes '
-        'exactly the six\'s place, and nothing blurs', (tester) async {
+        'the six\'s place, keeping more room above the nav than they do, and '
+        'nothing blurs', (tester) async {
       await pumpHome(tester, phone);
+      final nav = tester.getRect(find.byType(FloatingNavBar));
       final empty = tester.getRect(_emptyCard);
       expect(find.byKey(const ValueKey('recent_drafts_blur')), findsNothing);
+      expect(empty.bottom,
+          lessThanOrEqualTo(nav.top - kHomeEmptyCardNavGap + 1e-3));
 
       await tester.runAsync(() async {
         for (var i = 0; i < 6; i++) {
@@ -268,8 +274,11 @@ void main() {
       final last = tester.getRect(_card(5));
       expect(first.top, closeTo(empty.top, 1e-3));
       expect(first.left, closeTo(empty.left, 1e-3));
-      expect(last.bottom, closeTo(empty.bottom, 1e-3));
       expect(last.right, closeTo(empty.right, 1e-3));
+      // Down to the second row's foot, or its own room above the nav,
+      // whichever comes first.
+      expect(empty.bottom,
+          closeTo(math.min(last.bottom, nav.top - kHomeEmptyCardNavGap), 1e-3));
     });
   }
 
@@ -300,7 +309,8 @@ void main() {
     await pumpHome(tester, _short);
     final nav = tester.getRect(find.byType(FloatingNavBar));
     final empty = tester.getRect(_emptyCard);
-    expect(empty.bottom, lessThanOrEqualTo(nav.top - kHomeDraftNavGap + 1e-3));
+    expect(empty.bottom,
+        lessThanOrEqualTo(nav.top - kHomeEmptyCardNavGap + 1e-3));
     expect(empty.height, greaterThanOrEqualTo(kHomeEmptyCardLeast - 1e-3));
   });
 

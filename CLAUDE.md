@@ -4607,9 +4607,11 @@ light, not paint.**
 
   **Before any edit, a dashed card takes the six's place** (`recent_drafts_empty`,
   `HomeLayout.emptyCard`; the owner's call, 2026-10-28, replacing the 120dp glass card they had
-  first asked to keep): exactly the two rows' height wherever they fit — a test adds six edits
-  to an empty Home and finds them on the card's edges — else the room above the nav, never
-  under it and never under 120dp (`kHomeEmptyCardLeast`). It is **the home screen widget's empty
+  first asked to keep): where the six's first row would start and as wide as the rows — a test
+  adds six edits to an empty Home and finds them on the card's edges — down to the second row's
+  foot or **20dp above the nav, whichever comes first** (`kHomeEmptyCardNavGap`; the owner's
+  call: at the cards' 8dp, one large frame crowded the nav), never under 120dp
+  (`kHomeEmptyCardLeast`). It is **the home screen widget's empty
   frame**: dashed lilac at 45% over a 4% white fill, 1.5dp, the inbox glyph and "Your recent
   edits will appear here" centred. The dashes are `DashedFramePainter` (`core/widgets/`), moved
   out of the Background sheet's empty photo tile so the two draw one frame.

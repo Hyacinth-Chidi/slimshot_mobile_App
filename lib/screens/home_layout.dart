@@ -36,6 +36,11 @@ const double kHomeDraftNavGap = 8;
 /// place, and this much where there is not that room above the nav.
 const double kHomeEmptyCardLeast = 120;
 
+/// The room the card standing in for no edits keeps above the nav: more than
+/// the cards' [kHomeDraftNavGap], since one large frame that close crowded
+/// the nav (the owner's call).
+const double kHomeEmptyCardNavGap = 20;
+
 /// "Recent Edits": its size, and a line height of its own, so the line is
 /// the same height whatever the theme's text style says.
 const double kHomeTitleFontSize = 16;
@@ -128,18 +133,17 @@ class HomeLayout {
         : kHomeDraftRowHeight.least;
 
     // At the least, one row — or the empty card — above the nav.
-    final oneRow = math.max(draftRow, kHomeEmptyCardLeast) +
-        kHomeDraftNavGap +
+    final oneRow = math.max(draftRow + kHomeDraftNavGap,
+            kHomeEmptyCardLeast + kHomeEmptyCardNavGap) +
         navClearance;
     final height = math.max(room, top + oneRow);
 
-    // Before any edit, a card takes the six's place: exactly the two rows
-    // where they fit, else what room there is above the nav.
+    // Before any edit, a card takes the six's place: the two rows, as far as
+    // its own room above the nav allows.
     final twoRowsTall = 2 * draftRow + kHomeDraftSpacing;
-    final aboveNav = height - top - kHomeDraftNavGap - navClearance;
-    final emptyCard = fits
-        ? twoRowsTall
-        : math.max(kHomeEmptyCardLeast, math.min(twoRowsTall, aboveNav));
+    final aboveNav = height - top - kHomeEmptyCardNavGap - navClearance;
+    final emptyCard =
+        math.max(kHomeEmptyCardLeast, math.min(twoRowsTall, aboveNav));
     return HomeLayout._(
       scale: scale,
       fits: fits,
@@ -173,8 +177,9 @@ class HomeLayout {
   /// A draft card's height.
   final double draftRow;
 
-  /// The card standing in before any edit: the two rows' height wherever
-  /// they fit, never under the nav, never under [kHomeEmptyCardLeast].
+  /// The card standing in before any edit: the two rows' place, ending at
+  /// least [kHomeEmptyCardNavGap] above the nav, never under
+  /// [kHomeEmptyCardLeast].
   final double emptyCard;
 
   /// From under the header to the bottom of the page: the room, unless the
