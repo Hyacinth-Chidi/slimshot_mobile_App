@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:slimshotai/core/models/draft_project.dart';
 import 'package:slimshotai/core/services/draft_service.dart';
+import 'package:slimshotai/core/theme/app_fonts.dart';
 import 'package:slimshotai/core/widgets/floating_nav_bar.dart';
 import 'package:slimshotai/main.dart';
+import 'package:slimshotai/screens/home_screen.dart';
 
 const _tall = Size(412, 915);
 const _short = Size(360, 720);
@@ -55,12 +58,34 @@ Future<void> _settle(WidgetTester tester) async {
 /// they scroll up out from under it inside their own box — the rest of Home
 /// stays put.
 void main() {
+  // Home's own face, so text measures as it does on a phone: the test font
+  // draws every letter a full em wide, and at 110% text "Compress" no longer
+  // fits its card.
+  setUpAll(() async {
+    final loader = FontLoader(kInterfaceFontFamily);
+    for (final weight in ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold']) {
+      loader.addFont(rootBundle.load('assets/fonts/PlusJakartaSans-$weight.ttf'));
+    }
+    await loader.load();
+  });
+
   setUp(() => SharedPreferences.setMockInitialValues({'hasSeenOnboarding': true}));
 
-  Future<void> pumpHome(WidgetTester tester, Size size, {int drafts = 0}) async {
+  Future<void> pumpHome(
+    WidgetTester tester,
+    Size size, {
+    int drafts = 0,
+    double pixelRatio = 1,
+    FakeViewPadding padding = FakeViewPadding.zero,
+    double textScale = 1,
+  }) async {
     tester.view.physicalSize = size;
-    tester.view.devicePixelRatio = 1;
+    tester.view.devicePixelRatio = pixelRatio;
+    tester.view.padding = padding;
+    tester.view.viewPadding = padding;
+    tester.platformDispatcher.textScaleFactorTestValue = textScale;
     addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await tester.runAsync(() async {
       for (var i = 0; i < drafts; i++) {
         await DraftService.saveDraft(_draft(i));
@@ -72,6 +97,25 @@ void main() {
     );
     await _settle(tester);
   }
+
+  group('draftRowHeight', () {
+    test('one row never gives up height', () {
+      expect(draftRowHeight(drafts: 3, room: 100), 140);
+    });
+    test('two rows with room to spare keep their full height', () {
+      expect(draftRowHeight(drafts: 6, room: 400), 140);
+    });
+    test('two rows give up what they must to sit above the nav', () {
+      // A Note 10: 288dp between the title and the nav.
+      expect(draftRowHeight(drafts: 6, room: 288), 134);
+      expect(draftRowHeight(drafts: 4, room: 288), 134);
+    });
+    test('never below 120: where that will not fit, full height and scroll', () {
+      // Two 120dp rows, the 12dp between them and 8dp above the nav: 260.
+      expect(draftRowHeight(drafts: 6, room: 260), 120);
+      expect(draftRowHeight(drafts: 6, room: 259), 140);
+    });
+  });
 
   testWidgets('Home shows the six latest drafts', (tester) async {
     await pumpHome(tester, _tall, drafts: 7);
@@ -88,6 +132,32 @@ void main() {
     expect(tester.getRect(_card(5)).bottom, lessThanOrEqualTo(nav.top));
     expect(_scroll(tester, const ValueKey('recent_drafts')).maxScrollExtent, 0);
     expect(_scroll(tester, const ValueKey('home_page')).maxScrollExtent, 0);
+  });
+
+  // The owner's Galaxy Note 10, measured over adb: 1080 x 2280 at 420 dpi,
+  // a 90 px status bar, a 126 px three-button bar, text at 110%.
+  testWidgets('on a Galaxy Note 10 the six fit above the nav, the cards giving '
+      'up a little height, and nothing scrolls', (tester) async {
+    await pumpHome(
+      tester,
+      const Size(1080, 2280),
+      drafts: 6,
+      pixelRatio: 2.625,
+      padding: const FakeViewPadding(top: 90, bottom: 126),
+      textScale: 1.1,
+    );
+    final nav = tester.getRect(find.byType(FloatingNavBar));
+    final last = tester.getRect(_card(5));
+    expect(last.bottom, lessThanOrEqualTo(nav.top));
+    expect(last.height, inInclusiveRange(120, 139));
+    expect(_scroll(tester, const ValueKey('recent_drafts')).maxScrollExtent, 0);
+    expect(_scroll(tester, const ValueKey('home_page')).maxScrollExtent, 0);
+  });
+
+  testWidgets('on a tall phone the cards keep their full height',
+      (tester) async {
+    await pumpHome(tester, _tall, drafts: 6);
+    expect(tester.getRect(_card(5)).height, 140);
   });
 
   testWidgets('on a shorter phone the second row runs on under the nav, and '

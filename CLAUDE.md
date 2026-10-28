@@ -4573,14 +4573,24 @@ light, not paint.**
   device verification**; the owner's design after rejecting three mockups). Three left a tall
   phone ~160dp of nothing above the nav. The drafts, three to a row, take everything from under
   their title to the bottom of the screen and scroll **inside their own box — never the page**.
-  On a tall phone both rows sit above the nav and nothing scrolls. On a shorter one the second
-  row runs on **under** the nav rather than being cut off, through a full-width blur band
-  (`recent_drafts_blur`, the nav's top edge to the screen's foot), and scrolling brings it up
-  clear of the nav, where it can be tapped. The padding under the last row is what lets it clear
-  the nav. The page itself scrolls only where the box would not hold one row above the nav: a
-  phone on its side, very large text (`SliverLayoutBuilder` on `precedingScrollExtent`, so the
-  box's size never follows the scroll). **The empty placeholder keeps its 120dp** (the owner's
-  call). The nav's reach is `kFloatingNavClearance` (its 32dp margin plus the 68dp bar).
+  **Two rows sit above the nav wherever they can**, the cards giving up a little height to do it
+  (`draftRowHeight`: 140dp, never below 120). Where even 120dp would not fit, they keep 140dp,
+  and the second row runs on **under** the nav rather than being cut off. It passes through a
+  full-width blur band (`recent_drafts_blur`, from the nav's top edge to the screen's foot), and
+  scrolling brings it up clear of the nav, where it can be tapped. The padding under the last
+  row is what lets it clear the nav. The page itself scrolls only where the box would not hold
+  one row above the nav: a phone on its side, very large text (`SliverLayoutBuilder` on
+  `precedingScrollExtent`, so the box's size never follows the scroll). **The empty placeholder
+  keeps its 120dp** (the owner's call).
+
+  **The room was found, not assumed: the owner's Galaxy Note 10, measured over adb** (411 × 869dp,
+  a 34dp status bar, a 48dp three-button bar, text at 110%). There the two rows were 76dp short.
+  The nav came down from 32dp to 12dp above the system's bar, for every tab
+  (`kFloatingNavBottomMargin`; `kFloatingNavClearance` is that plus the 68dp bar). Home's top
+  tightened: 16dp above the logo, 16dp to New Video, 20dp from the tools to "Recent Drafts". The
+  cards there are 134dp. A test pins the Note 10, and the test file loads Plus Jakarta Sans,
+  because the test font draws every letter a full em wide and overflows the tool cards at 110%.
+  **The blur band may go once the owner has seen the six fit** — their call, pending.
 - **Account sheets sit on the same light**, everywhere (`AccountSheetFrame.glows`, the home
   composition moved closer in for a shorter shape; the top glow is wide because over a near-black
   screen that light is what shows where the sheet begins). **Light, not glass**: a glass version

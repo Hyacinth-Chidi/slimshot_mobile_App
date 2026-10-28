@@ -65,7 +65,9 @@ class FloatingNavBar extends StatefulWidget {
 }
 
 /// The gap the shell leaves under the bar, above the system's own inset.
-const double kFloatingNavBottomMargin = 32;
+/// It was 32 until Home's six recent drafts needed the room (the owner's
+/// call, 2026-10-28).
+const double kFloatingNavBottomMargin = 12;
 
 /// The bar's height: its tabs and the glass around them.
 const double kFloatingNavBarHeight = 68;

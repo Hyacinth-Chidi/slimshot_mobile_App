@@ -31,9 +31,30 @@ import 'home_header.dart';
 /// How many recent drafts Home shows; Workspace has them all.
 const int _kRecentDrafts = 6;
 
-/// A draft card's height and the gap between cards, both ways.
+/// A draft card's height, the gap between cards both ways, and the gap the
+/// last row keeps above the nav.
 const double _kDraftRowHeight = 140;
 const double _kDraftSpacing = 12;
+const double _kDraftNavGap = 8;
+
+/// The shortest a draft card gets to fit two rows above the nav.
+const double _kMinDraftRowHeight = 120;
+
+/// How tall the draft cards are, given how many drafts there are and the
+/// [room] between the drafts' title and the nav's top edge.
+///
+/// Two rows give up a little height to sit above the nav together — on a
+/// Galaxy Note 10 they need 6dp each — but never below
+/// [_kMinDraftRowHeight]. Where even that would not fit, the cards keep their
+/// full height and the second row runs on under the nav until scrolled up.
+/// One row never needs to give anything.
+double draftRowHeight({required int drafts, required double room}) {
+  if (drafts <= 3) return _kDraftRowHeight;
+  final twoRows = (room - _kDraftSpacing - _kDraftNavGap) / 2;
+  if (twoRows >= _kDraftRowHeight) return _kDraftRowHeight;
+  if (twoRows >= _kMinDraftRowHeight) return twoRows.floorToDouble();
+  return _kDraftRowHeight;
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -241,7 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 SliverToBoxAdapter(
                   child: ResponsiveCenter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
+                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -279,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ).animate().fadeIn().slideY(begin: -0.2, end: 0),
 
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 16),
 
                           // Edit Video Hero Card
                           _HeroActionCard(onTap: _handleEditVideo, delay: 200),
@@ -318,7 +339,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
 
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 20),
 
                           // Recent Drafts Placeholder Section
                           const Padding(
@@ -354,16 +375,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 // itself scroll.
                 SliverLayoutBuilder(
                   builder: (context, constraints) {
-                    final room = constraints.viewportMainAxisExtent -
-                        constraints.precedingScrollExtent;
+                    final box = math.max(
+                      constraints.viewportMainAxisExtent -
+                          constraints.precedingScrollExtent,
+                      _kDraftRowHeight + _kDraftNavGap + navClearance,
+                    );
                     return SliverToBoxAdapter(
                       child: SizedBox(
-                        height: math.max(
-                          room,
-                          _kDraftRowHeight + _kDraftSpacing + navClearance,
-                        ),
+                        height: box,
                         child: ResponsiveCenter(
-                          child: _recentDraftsArea(navClearance),
+                          child: _recentDraftsArea(
+                            navClearance,
+                            draftRowHeight(
+                              drafts: _recentDrafts.length,
+                              room: box - navClearance,
+                            ),
+                          ),
                         ),
                       ),
                     );
@@ -397,11 +424,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// The recent drafts, in the room from under their title to the bottom of
   /// the screen: up to six, three to a row, scrolling inside their own box.
-  /// On a tall phone both rows sit above the nav and nothing scrolls; on a
-  /// shorter one the second row runs on under the nav, blurred, until the
-  /// drafts are scrolled up out from under it — the padding under the last
-  /// row is what lets it clear the nav. The empty placeholder keeps its size.
-  Widget _recentDraftsArea(double navClearance) {
+  /// Where two rows can sit above the nav, they do, the cards giving up a
+  /// little height if they must ([draftRowHeight]); where they cannot, the
+  /// second row runs on under the nav, blurred, until the drafts are scrolled
+  /// up out from under it — the padding under the last row is what lets it
+  /// clear the nav. The empty placeholder keeps its size.
+  Widget _recentDraftsArea(double navClearance, double rowHeight) {
     if (_isLoadingDrafts) {
       return const Align(
         alignment: Alignment.topCenter,
@@ -447,10 +475,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     return GridView.builder(
           key: const ValueKey('recent_drafts'),
-          padding: EdgeInsets.fromLTRB(24, 0, 24, navClearance + _kDraftSpacing),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          padding: EdgeInsets.fromLTRB(24, 0, 24, navClearance + _kDraftNavGap),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
-            mainAxisExtent: _kDraftRowHeight,
+            mainAxisExtent: rowHeight,
             mainAxisSpacing: _kDraftSpacing,
             crossAxisSpacing: _kDraftSpacing,
           ),
