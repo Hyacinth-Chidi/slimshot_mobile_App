@@ -33,7 +33,13 @@ import 'screens/main_shell_screen.dart';
 
 import 'features/sharing/share_intent_service.dart';
 import 'core/legal/third_party_licences.dart';
+import 'core/utils/held_work.dart';
 import 'core/widgets/launch_splash.dart';
+import 'features/compression/providers/compression_provider.dart';
+import 'features/home_widget/home_widget_sync.dart';
+import 'features/home_widget/launch_actions.dart';
+import 'features/privacy/providers/privacy_provider.dart';
+import 'features/video_editor/providers/video_editor_notifier.dart';
 
 Future<void> main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -247,6 +253,11 @@ GoRouter createAppRouter(String initialRoute) {
 class SlimShotApp extends ConsumerStatefulWidget {
   final bool enableShareIntents;
 
+  /// Keeps the home screen widget on the last edit and takes the taps on it
+  /// and on the icon's menu. Where the platform has neither, nothing answers
+  /// and nothing happens.
+  final bool enableHomeWidget;
+
   /// The splash's pictures, decoded before the first frame; null shows no
   /// splash (tests, or pictures that failed to load).
   final LaunchSplashArt? launchArt;
@@ -254,6 +265,7 @@ class SlimShotApp extends ConsumerStatefulWidget {
   const SlimShotApp({
     super.key,
     this.enableShareIntents = true,
+    this.enableHomeWidget = true,
     this.launchArt,
   });
 
@@ -263,6 +275,8 @@ class SlimShotApp extends ConsumerStatefulWidget {
 
 class _SlimShotAppState extends ConsumerState<SlimShotApp> {
   late final ShareIntentService _shareService;
+  HomeWidgetSync? _homeWidget;
+  LaunchChannel? _launches;
 
   @override
   void initState() {
@@ -271,6 +285,60 @@ class _SlimShotAppState extends ConsumerState<SlimShotApp> {
       _shareService = ShareIntentService(ref);
       _shareService.initialize();
     }
+    if (widget.enableHomeWidget) {
+      _homeWidget = HomeWidgetSync()..start();
+      final router = LaunchRouter(
+        busy: _holdsWork,
+        openDraftId: () => ref.exists(videoEditorProvider)
+            ? ref.read(videoEditorProvider).draftId
+            : null,
+        onboardingSeen: () async =>
+            (await SharedPreferences.getInstance())
+                .getBool('hasSeenOnboarding') ??
+            false,
+        // Explicit: the editor's own save as it closes runs a frame after the
+        // screen has gone.
+        saveOpenEdit: () async {
+          if (ref.exists(videoEditorProvider)) {
+            await ref.read(videoEditorProvider.notifier).saveDraft();
+          }
+        },
+        goHome: () => appRouter.go('/home'),
+        untilEditorGone: _untilEditorGone,
+      );
+      _launches = LaunchChannel(
+        onAction: (action) => unawaited(router.handle(action)),
+      );
+      unawaited(_launches!.start());
+    }
+  }
+
+  /// Whether going Home now would throw something away: an export, a
+  /// compression or a strip under way, a result nobody kept, a caption run,
+  /// a voice take ([HeldWork]) — or skip the update screen, which a forced
+  /// update keeps on screen.
+  bool _holdsWork() {
+    if (HeldWork.instance.isHeld) return true;
+    if (ref.exists(compressionProvider) &&
+        ref.read(compressionProvider).isProcessing) {
+      return true;
+    }
+    if (ref.exists(privacyProvider) &&
+        ref.read(privacyProvider).isProcessing) {
+      return true;
+    }
+    return appRouter.routerDelegate.currentConfiguration.uri.path ==
+        '/update';
+  }
+
+  /// The editor leaves through its route's exit; its state goes with the
+  /// last frame of it.
+  Future<void> _untilEditorGone() async {
+    for (var frame = 0;
+        frame < 120 && ref.exists(videoEditorProvider);
+        frame++) {
+      await WidgetsBinding.instance.endOfFrame;
+    }
   }
 
   @override
@@ -278,6 +346,8 @@ class _SlimShotAppState extends ConsumerState<SlimShotApp> {
     if (widget.enableShareIntents) {
       _shareService.dispose();
     }
+    _homeWidget?.dispose();
+    _launches?.dispose();
     super.dispose();
   }
 

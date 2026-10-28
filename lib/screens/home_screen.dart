@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/theme/app_fonts.dart';
@@ -20,6 +22,7 @@ import '../core/utils/toast_utils.dart';
 import '../core/widgets/frosted_glass.dart';
 import '../core/widgets/permission_dialog.dart';
 import '../core/widgets/colour_field_backdrop.dart';
+import '../features/home_widget/launch_actions.dart';
 import 'home_header.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -38,15 +41,53 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadDrafts();
     DraftRefreshNotifier.instance.addListener(_loadDrafts);
+    LaunchActions.instance.addListener(_runLaunchAction);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForUpdate();
+      // A tap that arrived before Home was up (the splash, onboarding).
+      _runLaunchAction();
     });
   }
 
   @override
   void dispose() {
+    LaunchActions.instance.removeListener(_runLaunchAction);
     DraftRefreshNotifier.instance.removeListener(_loadDrafts);
     super.dispose();
+  }
+
+  /// A tap on the home screen widget or the icon's menu, run with the
+  /// handler Home's own button runs, so the gallery, its permission dialog
+  /// and its errors are exactly Home's.
+  void _runLaunchAction() {
+    if (!mounted) return;
+    switch (LaunchActions.instance.take()) {
+      case null:
+        return;
+      case NewVideo():
+        unawaited(_handleEditVideo());
+      case CompressVideo():
+        unawaited(_handleCompressVideo());
+      case ContinueEdit(:final draftId):
+        unawaited(_continueEdit(draftId));
+    }
+  }
+
+  Future<void> _continueEdit(String draftId) async {
+    final draft = await DraftService.getDraftById(draftId);
+    if (!mounted) return;
+    if (draft == null) {
+      ToastUtils.show(context, 'That edit was deleted.', isWarning: true);
+      // The widget may still show it: send it the edit that is last now.
+      DraftRefreshNotifier.instance.refresh();
+      return;
+    }
+    await _openDraft(draft);
+  }
+
+  Future<void> _openDraft(DraftProject draft) async {
+    await context.push('/edit/video', extra: draft);
+    _loadDrafts();
   }
 
   Future<void> _loadDrafts() async {
@@ -367,8 +408,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: () async {
         HapticFeedback.selectionClick();
-        await context.push('/edit/video', extra: draft);
-        _loadDrafts();
+        await _openDraft(draft);
       },
       child: FrostedGlass(
         borderRadius: BorderRadius.circular(12),
