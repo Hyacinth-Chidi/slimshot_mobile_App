@@ -50,6 +50,20 @@ logcat). We already shipped Impeller before this upgrade, and the opt-out
 long-term escape. **`Color.value` is deprecated** in favour of `toARGB32()`; ten call sites,
 still functional, not yet migrated.
 
+**16 KB pages: every native library is 16 KB-aligned, and Play also checks which NDK built
+each one.** Play Console warned on the release built before media_kit went ("compiled for 16 KB
+devices, but some of its libraries were compiled using an older Android NDK version that can
+still cause crashes"). The old libraries were media_kit's `libmpv.so` (r25) and
+`libmediakitandroidhelper.so` (r26), gone with media_kit, and AndroidX DataStore's
+`libdatastore_shared_counter.so` — **NDK r20**, 2019 — which `shared_preferences` and Google's ads
+SDK pull in. `android/app/build.gradle.kts` pins DataStore to **1.3.0**, the first release whose
+copy is built with r27 (1.2.1 still carried r20). The pin also lifts `androidx.tracing` to 2.0.1
+(every public member of 1.2.0 checked present) and `androidx.collection` to 1.6.0. Drop it once
+the plugins ask for 1.3.0 themselves. Now: FFmpeg r29-beta1, Flutter r28c, `libc++_shared`
+r27-beta1 (the FFmpeg kit's), DataStore r27. **To check a build**, read each `.so`'s
+`.note.android.ident` — the NDK version is the 64 bytes after the API level, and `llvm-readelf -n`
+prints the note undecoded — and its LOAD alignment, which must be 0x4000 or more.
+
 **`SLIMSHOT_NATIVE_PREVIEW` is gone.** The native engine is the only engine, so a plain
 `flutter run` is the editor as it ships. The flag existed while `media_kit` was a live fallback;
 keeping it after everything moved native would have meant shipping a second, untested preview
