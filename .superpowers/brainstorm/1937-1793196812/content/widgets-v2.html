@@ -1,0 +1,151 @@
+<style>
+@font-face { font-family: 'PJS'; src: url('/files/PlusJakartaSans-Bold.ttf'); font-weight: 700; }
+@font-face { font-family: 'PJS'; src: url('/files/PlusJakartaSans-Medium.ttf'); font-weight: 500; }
+.ss-wrap { display: flex; gap: 34px; flex-wrap: wrap; justify-content: center; padding: 6px 0 28px;
+  font-family: 'PJS', 'Segoe UI', Roboto, sans-serif; }
+.ss-col { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 300px; }
+.ss-phone { width: 300px; height: 600px; border-radius: 42px; border: 9px solid #0c0c0f; position: relative;
+  overflow: hidden; box-shadow: 0 30px 70px rgba(0,0,0,.5), 0 0 0 1px #2b2b31; box-sizing: border-box;
+  background:
+    radial-gradient(120% 70% at 88% 6%, rgba(88,28,135,.55), transparent 60%),
+    radial-gradient(90% 60% at 6% 88%, rgba(59,7,100,.65), transparent 60%),
+    linear-gradient(180deg, #121019 0%, #09090b 100%); }
+.ss-status { display: flex; justify-content: space-between; padding: 11px 20px 0; color: #fafafa;
+  font-size: 11px; font-weight: 700; }
+.ss-screen { padding: 16px 13px 0; }
+.ss-wg { background: rgba(24,24,27,.88); border: 1px solid rgba(255,255,255,.08); border-radius: 24px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.4); padding: 12px; display: flex; gap: 12px; }
+.ss-cover { width: 62px; height: 110px; border-radius: 14px; background-size: cover;
+  background-position: center; position: relative; flex: none;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+.ss-cover.empty { background: rgba(255,255,255,.04); box-shadow: none; border: 1.5px dashed rgba(216,180,254,.45);
+  display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.ss-chip { position: absolute; left: 5px; bottom: 5px; background: rgba(0,0,0,.62); color: #fff;
+  font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; }
+.ss-info { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; }
+.ss-kicker { color: #d8b4fe; font-size: 9.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+.ss-title { color: #fafafa; font-size: 15px; font-weight: 700; }
+.ss-sub { color: #a1a1aa; font-size: 11px; font-weight: 500; }
+.ss-continue { margin-top: 9px; align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, #9333ea, #6b21a8); color: #fff; font-size: 12px; font-weight: 700;
+  padding: 7px 15px 7px 11px; border-radius: 999px; box-shadow: 0 6px 18px rgba(147,51,234,.38); }
+.ss-apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 4px; margin-top: 22px; }
+.ss-app { display: flex; flex-direction: column; align-items: center; gap: 5px; color: #e4e4e7;
+  font-size: 9.5px; font-weight: 500; }
+.ss-icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.ss-dock { position: absolute; left: 13px; right: 13px; bottom: 16px; display: flex; justify-content: space-around;
+  padding: 10px 6px; border-radius: 30px; background: rgba(255,255,255,.07); }
+.ss-dim { filter: brightness(.45) blur(1px); }
+.ss-menu { position: absolute; left: 50%; transform: translateX(-50%); bottom: 112px; width: 210px;
+  background: #232329; border: 1px solid rgba(255,255,255,.09); border-radius: 22px; padding: 6px;
+  box-shadow: 0 18px 40px rgba(0,0,0,.6); }
+.ss-item { display: flex; align-items: center; gap: 11px; padding: 9px; border-radius: 14px; color: #fafafa;
+  font-size: 13px; font-weight: 700; }
+.ss-item + .ss-item { border-top: 1px solid rgba(255,255,255,.05); }
+.ss-ico { width: 32px; height: 32px; border-radius: 50%; background: #3b0764; display: flex;
+  align-items: center; justify-content: center; flex: none; }
+.ss-held { position: absolute; left: 50%; transform: translateX(-50%); bottom: 32px; display: flex;
+  flex-direction: column; align-items: center; gap: 5px; color: #fafafa; font-size: 10px; font-weight: 700; }
+.ss-cap { color: #d4d4d8; font-size: 13px; line-height: 1.5; text-align: left; width: 100%; }
+.ss-cap b { color: #fafafa; }
+.ss-guess { color: #d8b4fe; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+</style>
+
+<h2>SlimShot on the home screen — your picks</h2>
+<p class="subtitle">The widget is the "Continue editing" card alone; the long-press menu keeps New video and Compress video.</p>
+
+<div class="ss-wrap">
+
+  <!-- 1. The widget with an edit -->
+  <div class="ss-col">
+    <div class="ss-phone">
+      <div class="ss-status"><span>9:41</span><span>5G &nbsp;84%</span></div>
+      <div class="ss-screen">
+        <div class="ss-wg">
+          <div class="ss-cover" style="background-image:url('/files/cover_left.jpg')"><span class="ss-chip">0:42</span></div>
+          <div class="ss-info">
+            <span class="ss-kicker">Continue editing</span>
+            <span class="ss-title">Dance reel</span>
+            <span class="ss-sub">Edited today · 4 clips</span>
+            <span class="ss-continue"><svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><path d="M7 4.5v15l12-7.5z"/></svg>Continue</span>
+          </div>
+        </div>
+        <div class="ss-apps">
+          <div class="ss-app"><div class="ss-icon" style="background:#2f3640"></div>Phone</div>
+          <div class="ss-app"><div class="ss-icon" style="background:#37323f"></div>Camera</div>
+          <div class="ss-app"><div class="ss-icon" style="background:#2e3a36"></div>Gallery</div>
+          <div class="ss-app"><div class="ss-icon" style="background:#3a3330"></div>Chrome</div>
+        </div>
+      </div>
+      <div class="ss-dock">
+        <div class="ss-icon" style="background:#26262c"></div>
+        <div class="ss-icon" style="background:#26262c"></div>
+        <div class="ss-icon" style="background:linear-gradient(160deg,#3d3d3e,#101011)"><svg width="26" height="26" viewBox="0 0 24 24"><path d="M3 9h5M2 12h5M3 15h5" stroke="#9333ea" stroke-width="2" stroke-linecap="round"/><path d="M9.5 5.5v13l10-6.5z" fill="#fafafa"/></svg></div>
+        <div class="ss-icon" style="background:#26262c"></div>
+      </div>
+    </div>
+    <div class="ss-cap"><b>Your last edit.</b> A tap anywhere on the card, or on Continue, opens it in the editor where you left it.</div>
+  </div>
+
+  <!-- 2. The widget before any edit -->
+  <div class="ss-col">
+    <div class="ss-phone">
+      <div class="ss-status"><span>9:41</span><span>5G &nbsp;84%</span></div>
+      <div class="ss-screen">
+        <div class="ss-wg">
+          <div class="ss-cover empty"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d8b4fe" stroke-width="2.2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg></div>
+          <div class="ss-info">
+            <span class="ss-kicker">SlimShot</span>
+            <span class="ss-title">No edits yet</span>
+            <span class="ss-sub">Your last edit will wait here</span>
+            <span class="ss-continue"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg>Start editing</span>
+          </div>
+        </div>
+        <div class="ss-apps">
+          <div class="ss-app"><div class="ss-icon" style="background:#2f3640"></div>Phone</div>
+          <div class="ss-app"><div class="ss-icon" style="background:#37323f"></div>Camera</div>
+          <div class="ss-app"><div class="ss-icon" style="background:#2e3a36"></div>Gallery</div>
+          <div class="ss-app"><div class="ss-icon" style="background:#3a3330"></div>Chrome</div>
+        </div>
+      </div>
+      <div class="ss-dock">
+        <div class="ss-icon" style="background:#26262c"></div>
+        <div class="ss-icon" style="background:#26262c"></div>
+        <div class="ss-icon" style="background:linear-gradient(160deg,#3d3d3e,#101011)"><svg width="26" height="26" viewBox="0 0 24 24"><path d="M3 9h5M2 12h5M3 15h5" stroke="#9333ea" stroke-width="2" stroke-linecap="round"/><path d="M9.5 5.5v13l10-6.5z" fill="#fafafa"/></svg></div>
+        <div class="ss-icon" style="background:#26262c"></div>
+      </div>
+    </div>
+    <div class="ss-cap"><span class="ss-guess">My guess</span><br><b>Before any edit</b> (or after the last one is deleted): Start editing opens your gallery, then the editor.</div>
+  </div>
+
+  <!-- 3. Long-press menu -->
+  <div class="ss-col">
+    <div class="ss-phone">
+      <div class="ss-dim">
+        <div class="ss-status"><span>9:41</span><span>5G &nbsp;84%</span></div>
+        <div class="ss-screen">
+          <div class="ss-apps" style="margin-top:6px">
+            <div class="ss-app"><div class="ss-icon" style="background:#2f3640"></div>Phone</div>
+            <div class="ss-app"><div class="ss-icon" style="background:#37323f"></div>Camera</div>
+            <div class="ss-app"><div class="ss-icon" style="background:#2e3a36"></div>Gallery</div>
+            <div class="ss-app"><div class="ss-icon" style="background:#3a3330"></div>Chrome</div>
+            <div class="ss-app"><div class="ss-icon" style="background:#30303a"></div>Files</div>
+            <div class="ss-app"><div class="ss-icon" style="background:#2f3a3f"></div>Maps</div>
+            <div class="ss-app"><div class="ss-icon" style="background:#3a2f38"></div>Music</div>
+            <div class="ss-app"><div class="ss-icon" style="background:#33392f"></div>Notes</div>
+          </div>
+        </div>
+      </div>
+      <div class="ss-menu">
+        <div class="ss-item"><span class="ss-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d8b4fe" stroke-width="2.4" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg></span>New video</div>
+        <div class="ss-item"><span class="ss-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d8b4fe" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg></span>Compress video</div>
+      </div>
+      <div class="ss-held">
+        <div class="ss-icon" style="width:52px;height:52px;background:linear-gradient(160deg,#3d3d3e,#101011);box-shadow:0 0 0 3px rgba(216,180,254,.35)"><svg width="30" height="30" viewBox="0 0 24 24"><path d="M3 9h5M2 12h5M3 15h5" stroke="#9333ea" stroke-width="2" stroke-linecap="round"/><path d="M9.5 5.5v13l10-6.5z" fill="#fafafa"/></svg></div>
+        SlimShot
+      </div>
+    </div>
+    <div class="ss-cap"><b>Long-press the icon.</b> New video opens your gallery, then the editor; Compress video opens your videos, then the compress screen.</div>
+  </div>
+
+</div>
