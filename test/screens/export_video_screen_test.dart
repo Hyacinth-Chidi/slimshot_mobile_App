@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:slimshotai/core/utils/held_work.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/services/native_timeline_preview_service.dart';
 import 'package:slimshotai/screens/export_video_screen.dart';
@@ -102,6 +103,53 @@ void main() {
       expect(find.text('Discard this video?'), findsNothing);
       expect(find.byType(ExportVideoScreen), findsNothing);
       expect(deleted, [exported]);
+    });
+  });
+
+  // A tap on the home screen widget only brings the app forward while an
+  // export runs or a finished one nobody kept is on screen.
+  group('holding the app where it is', () {
+    const result = NativeExportResult(
+      outputPath: exported,
+      durationSeconds: 3,
+      frameCount: 90,
+      degradedTransitions: 0,
+    );
+
+    testWidgets('an export holds the app while it runs and until it is kept',
+        (tester) async {
+      const share = MethodChannel('dev.fluttercommunity.plus/share');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(share, (_) async => 'com.whatsapp');
+      addTearDown(() => messenger.setMockMethodCallHandler(share, null));
+      engine.finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true);
+      expect(HeldWork.instance.isHeld, isTrue);
+      engine.finish!.complete(result);
+      await tester.pumpAndSettle();
+      expect(find.text('Share'), findsOneWidget);
+      expect(HeldWork.instance.isHeld, isTrue);
+      await tester.tap(find.text('Share'));
+      await tester.pumpAndSettle();
+      expect(HeldWork.instance.isHeld, isFalse);
+    });
+
+    testWidgets('a failed export holds nothing', (tester) async {
+      engine.finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true);
+      engine.finish!.completeError(StateError('no encoder'));
+      await tester.pumpAndSettle();
+      expect(HeldWork.instance.isHeld, isFalse);
+    });
+
+    testWidgets('a cancelled export holds nothing', (tester) async {
+      engine.finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true);
+      await tester.tap(find.byKey(const Key('export_close')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ExportVideoScreen), findsNothing);
+      expect(HeldWork.instance.isHeld, isFalse);
     });
   });
 

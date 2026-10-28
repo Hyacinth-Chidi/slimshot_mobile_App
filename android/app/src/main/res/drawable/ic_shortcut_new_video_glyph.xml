@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- New video's plus, sized for an adaptive icon: half the 72dp a launcher
+     shows of the 108dp layer, centred. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="1.5"
+        android:scaleY="1.5"
+        android:translateX="36"
+        android:translateY="36">
+        <path
+            android:pathData="M12,6v12M6,12h12"
+            android:strokeWidth="2.4"
+            android:strokeColor="#FFD8B4FE"
+            android:strokeLineCap="round" />
+    </group>
+</vector>

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/held_work.dart';
 import '../../../account/logic/account_copy.dart';
 import '../../../account/models/account_models.dart';
 import '../../services/caption_errors.dart';
@@ -50,11 +51,15 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
   @override
   void initState() {
     super.initState();
+    // Closing the sheet stops the run, so a tap on the home screen widget
+    // only brings the app forward while it is open.
+    HeldWork.instance.hold(this);
     unawaited(_run());
   }
 
   @override
   void dispose() {
+    HeldWork.instance.release(this);
     if (!_finished) widget.pipeline.cancel();
     // Closed on the shortfall — Close, Back, a tap outside: the run stops.
     final decision = _decision;

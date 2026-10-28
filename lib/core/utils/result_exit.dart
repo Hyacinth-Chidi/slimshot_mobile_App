@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'file_utils.dart';
+import 'held_work.dart';
 
 /// Leaving a finished result — a compression, a privacy strip, an export —
 /// throws its files away: they are the app's temporary copies, of no use once
@@ -12,15 +13,32 @@ import 'file_utils.dart';
 /// handed back as it was *is* its picked file, and the screen it was picked
 /// for deletes those when it closes.
 class ResultExit {
-  ResultExit({TempFileDeleter delete = FileUtils.deleteTempFiles})
-      : _delete = delete;
+  ResultExit({
+    TempFileDeleter delete = FileUtils.deleteTempFiles,
+    HeldWork? held,
+  })  : _delete = delete,
+        _held = held ?? HeldWork.instance;
 
   final TempFileDeleter _delete;
+  final HeldWork _held;
   bool _kept = false;
   bool _leaving = false;
 
+  /// Holds the app where it is ([HeldWork]) until the result is kept or
+  /// [release]d: a tap on the home screen widget must not throw away a
+  /// result nobody has saved or shared.
+  void hold() {
+    if (!_kept) _held.hold(this);
+  }
+
+  /// The screen is going, or has nothing left to keep.
+  void release() => _held.release(this);
+
   /// The result was saved, or sent somewhere: leaving it asks nothing.
-  void markKept() => _kept = true;
+  void markKept() {
+    _kept = true;
+    _held.release(this);
+  }
 
   /// Whether to leave. Asks through [confirm] when nothing was kept, then
   /// deletes [outputs] — never [inputs] — without waiting for the files to

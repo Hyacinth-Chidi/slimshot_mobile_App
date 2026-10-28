@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/utils/held_work.dart';
 import 'package:slimshotai/core/utils/result_exit.dart';
 
 /// Leaving a finished result — a compression, a privacy strip, an export —
@@ -94,5 +95,26 @@ void main() {
       await exit.leave(outputs: outputs, confirm: answer(true)),
       isTrue,
     );
+  });
+
+  // A tap on the home screen widget only brings the app forward while a
+  // result nobody kept is on screen, rather than throwing it away.
+  test('a result holds the app until it is kept, or released', () {
+    final held = HeldWork();
+    final kept = ResultExit(delete: delete, held: held)..hold();
+    final gone = ResultExit(delete: delete, held: held)..hold();
+    expect(held.isHeld, isTrue);
+    kept.markKept();
+    expect(held.isHeld, isTrue);
+    gone.release();
+    expect(held.isHeld, isFalse);
+  });
+
+  test('a result already kept holds nothing', () {
+    final held = HeldWork();
+    ResultExit(delete: delete, held: held)
+      ..markKept()
+      ..hold();
+    expect(held.isHeld, isFalse);
   });
 }

@@ -315,6 +315,16 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
             DateTime.now(), // Real creation time would need to be tracked, but this is fine for updating
         updatedAt: DateTime.now(),
         durationSeconds: state.durationSeconds,
+        // The length the editor shows (`totalEditedDurationProvider`), for
+        // the home screen widget.
+        editedSeconds: projectEndSeconds(
+          segments: state.segments,
+          audios: state.audioTracks,
+          texts: state.textOverlays,
+          images: state.imageOverlays,
+          videos: state.videoOverlays,
+          effects: state.effectBars,
+        ),
         thumbnailPath: thumbnailPath,
         assets: state.assets.map((e) => e.toJson()).toList(),
         segments: state.segments.map((e) => e.toJson()).toList(),

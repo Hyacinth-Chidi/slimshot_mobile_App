@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:slimshotai/core/utils/held_work.dart';
 import 'package:slimshotai/features/compression/providers/compression_provider.dart';
 import 'package:slimshotai/features/compression/services/image_compression_service.dart';
 import 'package:slimshotai/features/compression/services/video_compression_service.dart';
@@ -123,6 +124,63 @@ void main() {
       expect(find.text('home'), findsOneWidget);
       expect(deleted, [output]);
     });
+
+    // A tap on the home screen widget only brings the app forward while a
+    // result nobody kept is on screen.
+    testWidgets('a compression result holds the app until it is shared',
+        (tester) async {
+      const share = MethodChannel('dev.fluttercommunity.plus/share');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(share, (_) async => 'com.whatsapp');
+      addTearDown(() => messenger.setMockMethodCallHandler(share, null));
+      await openResult(tester);
+      expect(HeldWork.instance.isHeld, isTrue);
+      await tester.tap(find.text('Share'));
+      await tester.pumpAndSettle();
+      expect(HeldWork.instance.isHeld, isFalse);
+    });
+  });
+
+  testWidgets("a strip's result holds the app until Discard takes it away",
+      (tester) async {
+    final router = await pumpRouter(
+      tester,
+      initial: '/strip',
+      routes: [
+        GoRoute(
+          path: '/strip',
+          builder: (_, __) => const Scaffold(body: Text('strip screen')),
+        ),
+        GoRoute(
+          path: '/privacy/result',
+          builder: (_, __) => PrivacyResultScreen(deleteFiles: record),
+        ),
+      ],
+      overrides: [
+        privacyProvider.overrideWith(
+          (ref) => PrivacyNotifier(
+            reader: ChannelPhotoMetadataService(),
+            stripper: DefaultPhotoStripper(),
+          )..state = PrivacyState(
+              inputFiles: [XFile(picked)],
+              outputPaths: const [output],
+              originalSize: 1000,
+              strippedSize: 900,
+            ),
+        ),
+      ],
+    );
+    expect(HeldWork.instance.isHeld, isFalse);
+    router.push('/privacy/result');
+    await tester.pumpAndSettle();
+    expect(HeldWork.instance.isHeld, isTrue);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('discard_confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('strip screen'), findsOneWidget);
+    expect(HeldWork.instance.isHeld, isFalse);
   });
 
   // Back from the report steps back to the strip screen, as it always has;
