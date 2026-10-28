@@ -81,6 +81,19 @@ dependencies {
     // PlayerView), media3-effect and media3-transformer (nothing references
     // them now that the Transformer export route is ruled out).
 
+    constraints {
+        // AndroidX DataStore arrives through shared_preferences and Google's ads
+        // SDK, and ships a native library, libdatastore_shared_counter.so. Up to
+        // 1.2.1 that library was built with NDK r20 (2019), which Play flags as
+        // "compiled using an older Android NDK version that can still cause
+        // crashes" on 16 KB page devices; 1.3.0 is the first built with r27. The
+        // DataStore artifacts align their own versions, so this one pulls the
+        // whole group up. Drop it once the plugins ask for 1.3.0 themselves.
+        implementation("androidx.datastore:datastore-core:1.3.0") {
+            because("1.2.x ships libdatastore_shared_counter.so built with NDK r20")
+        }
+    }
+
     // Local JVM unit tests. These run on the host, not a device, so they can
     // only cover pure arithmetic — which is exactly what they are here for:
     // the text animation curves exist twice, once in Dart for the preview and
