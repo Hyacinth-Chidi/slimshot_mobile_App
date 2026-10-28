@@ -4688,7 +4688,7 @@ through Google Fonts.
   where no colour is being judged. The old screen hard-coded Slate (`0xFF334155`, `0xFF0F172A`).
 - **Qualities are rows, not three squeezed tiles**: icon, name, one line, a tick; Smart wears
   **Recommended**. The video presets were renamed to fit (`Best quality` / `Smart` /
-  `Smallest`, one short description each — the history detail line reads the same names).
+  `Smallest`, one short description each).
   **PRO shows only while ads are on** (`showPro: AdService.enabled`): with ads off nothing is
   locked, so the badge promised a lock that was not there.
 - **No before-and-after here — the user's call on the device.** A Now → After card with an
@@ -4709,7 +4709,7 @@ through Google Fonts.
 **awaiting device verification**; designed from an approved mockup). "Done" centred with ✕
 (home) beside it, in place of the bouncing tick and "Ready to Share!" — **no tick beside it** (the
 owner's call; `compress_result_view_test.dart` pins it). The screen keeps the
-player, the history entry, saving and the full-screen views; the view is tested without them.
+player, saving, leaving (below) and the full-screen views; the view is tested without them.
 
 - **Before → After lives here, with real sizes** (`CompressBeforeAfterCard`): the after's share of
   the before as a bar, the saving as a green "75% smaller" tag beside it — the tag shares the
@@ -4824,6 +4824,44 @@ and the photo's shape (`PhotoInspector`, shared with Compress photo).
   them in place. A test plants "secret" in every hiding place and asserts none survives and the
   image bytes are untouched.
 - `CompressionLoaderOverlay` is gone — the three screens that used it share the progress ring.
+
+### Temporary files — gone once off screen, and History with them
+
+**Awaiting device verification** (the owner's call, 2026-10-28: the app should not fill the phone
+with files nobody can reach). A compression, a stripped photo and an export are the app's own
+temporary files (`slimshot_temp_`, `slimshot_export_`), of no use once off screen: a saved one is
+in the gallery and a shared one is a copy (share_plus copies into `cache/share_plus/` before
+handing it over, so the original may go at once).
+
+- **Leaving a result deletes its files** (`ResultExit`, `core/utils/result_exit.dart`) — the
+  compress result, the Privacy Strip report and the export screen alike, by ✕ or Back (each
+  routes Back through the same leave with a `PopScope`). **One nobody saved or shared is asked
+  about first**: "Discard this video?",
+  "Discard these 5 photos?" (`confirmDiscard`, `core/widgets/discard_dialog.dart`, the drafts'
+  Delete Draft? look) — Cancel or a tap outside stays. Saving marks it kept, and so does a share
+  sheet closed on a target: `MediaSaveService.shareFiles` answers whether it was **not** dismissed,
+  so a phone that cannot say how the share went counts as kept and nobody is asked twice. Back
+  on the Privacy report still steps back to the strip screen, asking first.
+- **A result never deletes the files it was made from.** A result handed back as it was
+  (`skippedCompressions`) *is* its picked file, so `ResultExit` leaves out the inputs; the screen
+  they were picked for deletes those **when it closes** — Compress photo, Compress video and
+  Privacy Strip, whose Change photos also deletes the picks it replaces.
+- **`FileUtils.deleteTempFiles` deletes only inside the temporary folder**, by resolved path, and
+  the picker's folder once empty: image_picker copies each pick to `cache/<uuid>/`,
+  receive_sharing_intent a shared file to the cache root, and a file outside the cache is the
+  user's own. **Never sweep the picker's copies by name**: a draft's clips play from them.
+- **The launch clears what a previous session left** (`cleanupStartup`): every app-prefixed file
+  and every share_plus copy written before this launch — exports included, which nothing ever
+  deleted before — so a compression begun the moment the app opened keeps its file. Settings >
+  Clear Cache takes the same set at any time.
+- **History is gone** — the screen, its service and model, the `/history` route and the
+  Workspace header's button (its 44px stays, so the drafts did not move). Its entries pointed at
+  temporary files the launch cleanup had already deleted, so most could not be saved or shown.
+  Its stored list is removed on launch (`forgetRemovedFeatures`).
+- **Back during an export cancels it**, as ✕ always did. It used to pop the screen and leave the
+  export running, with the editor's renderer held by it until it finished.
+- **Known:** a pick or a shared file whose screen never closed — the app killed on it — stays in
+  the cache until the system clears it; nothing can tell it from a draft's clip.
 
 ### Decisions already made â€” don't re-litigate
 

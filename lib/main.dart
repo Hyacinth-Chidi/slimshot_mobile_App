@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +15,7 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/services/ad_service.dart';
 import 'core/services/media_picker_service.dart';
+import 'core/services/removed_features.dart';
 import 'core/models/update_info.dart';
 import 'core/models/draft_project.dart';
 import 'screens/onboarding_screen.dart';
@@ -24,7 +27,6 @@ import 'screens/settings_screen.dart';
 import 'screens/update_screen.dart';
 import 'screens/privacy_screen.dart';
 import 'screens/privacy_result_screen.dart';
-import 'screens/history_screen.dart';
 import 'screens/video_editor_screen.dart';
 import 'screens/workspace_screen.dart';
 import 'screens/main_shell_screen.dart';
@@ -64,7 +66,8 @@ Future<void> main() async {
   runApp(ProviderScope(child: SlimShotApp(launchArt: launchArt)));
 
   FlutterNativeSplash.remove();
-  FileUtils.cleanupStartup();
+  unawaited(FileUtils.cleanupStartup());
+  unawaited(forgetRemovedFeatures(prefs));
 }
 
 late GoRouter appRouter;
@@ -214,13 +217,6 @@ GoRouter createAppRouter(String initialRoute) {
         pageBuilder: (context, state) => _buildTransitionPage(
           state: state,
           child: const PrivacyResultScreen(),
-        ),
-      ),
-      GoRoute(
-        path: '/history',
-        pageBuilder: (context, state) => _buildTransitionPage(
-          state: state,
-          child: const HistoryScreen(),
         ),
       ),
 

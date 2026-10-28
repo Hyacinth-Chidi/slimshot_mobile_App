@@ -9,7 +9,10 @@ import 'package:video_player/video_player.dart';
 import '../core/services/media_save_service.dart';
 import '../core/services/ad_service.dart';
 import '../core/theme/app_colors.dart';
+import '../core/utils/file_utils.dart';
+import '../core/utils/result_exit.dart';
 import '../core/utils/toast_utils.dart';
+import '../core/widgets/discard_dialog.dart';
 import '../features/video_editor/models/media_asset.dart';
 import '../features/video_editor/models/video_editor_state.dart';
 import '../features/video_editor/services/native_timeline_preview_service.dart';
@@ -29,12 +32,19 @@ class ExportVideoScreen extends StatefulWidget {
   final int targetHeight;
   final int targetFps;
 
+  /// The engine that renders; a test's stand-in.
+  final NativeTimelinePreviewService? preview;
+
+  final TempFileDeleter deleteFiles;
+
   const ExportVideoScreen({
     super.key,
     required this.exportState,
     required this.previewCanvasSize,
     required this.targetHeight,
     required this.targetFps,
+    this.preview,
+    this.deleteFiles = FileUtils.deleteTempFiles,
   });
 
   @override
@@ -42,7 +52,9 @@ class ExportVideoScreen extends StatefulWidget {
 }
 
 class _ExportVideoScreenState extends State<ExportVideoScreen> {
-  final _nativePreview = NativeTimelinePreviewService();
+  late final NativeTimelinePreviewService _nativePreview =
+      widget.preview ?? NativeTimelinePreviewService();
+  late final ResultExit _exit = ResultExit(delete: widget.deleteFiles);
   StreamSubscription? _progressSub;
   double _progress = 0.0;
   bool _isExporting = true;
@@ -114,20 +126,46 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
     }
   }
 
-  void _initExportedVideo(String path) {
-    _playerController = VideoPlayerController.file(File(path))
-      ..initialize().then((_) {
-        if (!mounted) return;
-        setState(() {});
-        _playerController?.setLooping(true);
-        _playerController?.play();
-      });
+  Future<void> _initExportedVideo(String path) async {
+    final controller = VideoPlayerController.file(File(path));
+    _playerController = controller;
+    try {
+      await controller.initialize();
+    } catch (e) {
+      // The file is fine — it can still be saved and shared — only the
+      // preview of it is missing.
+      debugPrint('Export preview failed: $e');
+      return;
+    }
+    if (!mounted) return;
+    setState(() {});
+    controller.setLooping(true);
+    controller.play();
   }
 
   void _cancelExport() {
     // The engine deletes the partial file when it sees the flag; nothing is
     // awaited here because the screen is leaving either way.
     unawaited(_nativePreview.cancelExport());
+    Navigator.pop(context);
+  }
+
+  /// ✕ and Back. An export under way is cancelled; a finished one is left
+  /// the way a compression's result is — asked about when nobody saved or
+  /// shared it, and its file deleted, since the editor can render it again.
+  Future<void> _close() async {
+    if (_isExporting) {
+      _cancelExport();
+      return;
+    }
+    final path = _exportedVideoPath;
+    if (path != null) {
+      final leave = await _exit.leave(
+        outputs: [path],
+        confirm: () => confirmDiscard(context, isVideo: true, count: 1),
+      );
+      if (!leave || !mounted) return;
+    }
     Navigator.pop(context);
   }
 
@@ -143,6 +181,7 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
             [_exportedVideoPath!],
             album: 'SlimShotAI',
           );
+          _exit.markKept();
           if (mounted) ToastUtils.show(context, 'Saved to gallery!');
         } catch (e) {
           if (mounted) ToastUtils.show(context, 'Failed to save: $e', isError: true);
@@ -151,9 +190,10 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
     );
   }
 
-  void _shareVideo() {
-    if (_exportedVideoPath == null) return;
-    MediaSaveService.shareFiles([_exportedVideoPath!]);
+  Future<void> _shareVideo() async {
+    final path = _exportedVideoPath;
+    if (path == null) return;
+    if (await MediaSaveService.shareFiles([path])) _exit.markKept();
   }
 
   /// Shape of the result preview box.
@@ -167,7 +207,16 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PopScope(
+        // Back goes where ✕ goes.
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _close();
+        },
+        child: _buildScreen(context),
+      );
+
+  Widget _buildScreen(BuildContext context) {
     final double displayAspectRatio = _resolveDisplayAspectRatio();
 
     return Scaffold(
@@ -186,14 +235,9 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
               child: Row(
                 children: [
                   IconButton(
+                    key: const Key('export_close'),
                     icon: const Icon(LucideIcons.x, color: AppColors.textPrimary, size: 28),
-                    onPressed: () {
-                      if (_isExporting) {
-                        _cancelExport();
-                      } else {
-                        Navigator.pop(context);
-                      }
-                    },
+                    onPressed: _close,
                   ),
                 ],
               ),

@@ -5,20 +5,30 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/models/history_item.dart';
 import '../core/services/ad_service.dart';
-import '../core/services/history_service.dart';
 import '../core/services/media_save_service.dart';
+import '../core/utils/file_utils.dart';
 import '../core/theme/app_colors.dart';
+import '../core/utils/result_exit.dart';
 import '../core/utils/toast_utils.dart';
+import '../core/widgets/discard_dialog.dart';
 import '../features/compression/logic/photo_inspector.dart';
 import '../features/privacy/providers/privacy_provider.dart';
 import '../features/privacy/widgets/privacy_report_view.dart';
 
-/// The Privacy report. The layout is [PrivacyReportView]; this owns the
-/// history entry and saving.
+/// The Privacy report. The layout is [PrivacyReportView]; this owns saving
+/// and leaving — ✕ and New photos go home, the phone's Back steps back to
+/// the strip screen, each asking first when the cleaned photos were neither
+/// saved nor shared; their files go either way ([ResultExit]).
 class PrivacyResultScreen extends ConsumerStatefulWidget {
-  const PrivacyResultScreen({super.key});
+  const PrivacyResultScreen({
+    super.key,
+    this.deleteFiles = FileUtils.deleteTempFiles,
+  });
+
+  /// How the cleaned photos are deleted when the report is left; a test's
+  /// stand-in.
+  final TempFileDeleter deleteFiles;
 
   @override
   ConsumerState<PrivacyResultScreen> createState() =>
@@ -28,7 +38,7 @@ class PrivacyResultScreen extends ConsumerStatefulWidget {
 class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
   final PhotoInspector _photos = PhotoInspector();
   int _selectedIndex = 0;
-  bool _historySaved = false;
+  late final ResultExit _exit = ResultExit(delete: widget.deleteFiles);
 
   @override
   void initState() {
@@ -36,39 +46,14 @@ class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
     AdService.loadInterstitialAd();
     HapticFeedback.mediumImpact();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _saveHistory();
       final outputs = ref.read(privacyProvider).outputPaths;
       if (outputs.isNotEmpty) _inspect(outputs.first);
     });
   }
 
   void _inspect(String path) => _photos.inspect(path, () {
-        if (mounted) setState(() {});
-      });
-
-  Future<void> _saveHistory() async {
-    if (_historySaved) return;
-    _historySaved = true;
-
-    final state = ref.read(privacyProvider);
-    if (state.outputPaths.isEmpty) return;
-
-    await HistoryService.addItem(
-      HistoryItem(
-        id: state.outputPaths.join('|'),
-        title: state.outputPaths.length == 1
-            ? 'Privacy-clean photo'
-            : 'Privacy-cleaned ${state.outputPaths.length} photos',
-        operation: 'Privacy Strip',
-        mediaType: 'image',
-        outputPaths: state.outputPaths,
-        originalSize: state.originalSize,
-        outputSize: state.strippedSize,
-        detail: 'Metadata removed',
-        createdAt: DateTime.now(),
-      ),
-    );
-  }
+    if (mounted) setState(() {});
+  });
 
   void _save(List<String> outputs) {
     AdService.showInterstitialAd(
@@ -76,6 +61,7 @@ class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
       onAdDismissed: () async {
         try {
           await MediaSaveService.saveImagesToGallery(outputs);
+          _exit.markKept();
           HapticFeedback.mediumImpact();
           if (mounted) {
             ToastUtils.show(
@@ -92,6 +78,29 @@ class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
         }
       },
     );
+  }
+
+  Future<void> _share(List<String> outputs) async {
+    if (await MediaSaveService.shareFiles(outputs)) _exit.markKept();
+  }
+
+  /// Home for ✕ and New photos; for the phone's Back, the strip screen it
+  /// came from.
+  Future<void> _leave({required bool home}) async {
+    final state = ref.read(privacyProvider);
+    final outputs = state.outputPaths;
+    final leave = await _exit.leave(
+      outputs: outputs,
+      inputs: [for (final file in state.inputFiles) file.path],
+      confirm: () =>
+          confirmDiscard(context, isVideo: false, count: outputs.length),
+    );
+    if (!leave || !mounted) return;
+    if (home || !context.canPop()) {
+      context.go('/home');
+    } else {
+      context.pop();
+    }
   }
 
   void _preview(int index) {
@@ -119,33 +128,39 @@ class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
     final index = _selectedIndex.clamp(0, outputs.length - 1);
     final path = outputs[index];
 
-    return PrivacyReportView(
-      state: state,
-      photo: Image(
-        key: ValueKey(path),
-        image: _photos.imageFor(path),
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _leave(home: false);
+      },
+      child: PrivacyReportView(
+        state: state,
+        photo: Image(
+          key: ValueKey(path),
+          image: _photos.imageFor(path),
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+        ),
+        photoAspectRatio: _photos.aspect[path],
+        thumbnails: [
+          for (final output in outputs)
+            Image.file(
+              File(output),
+              key: ValueKey(output),
+              fit: BoxFit.cover,
+              cacheWidth: 160,
+            ),
+        ],
+        previewIndex: index,
+        onPreview: _preview,
+        onClose: () => _leave(home: true),
+        // Every cleaned photo, not only the one on screen: the old screen
+        // saved just the shown one when there was a single result and all of
+        // them otherwise, which is the same rule.
+        onSave: () => _save(outputs),
+        onShare: () => _share(outputs),
+        onNew: () => _leave(home: true),
       ),
-      photoAspectRatio: _photos.aspect[path],
-      thumbnails: [
-        for (final output in outputs)
-          Image.file(
-            File(output),
-            key: ValueKey(output),
-            fit: BoxFit.cover,
-            cacheWidth: 160,
-          ),
-      ],
-      previewIndex: index,
-      onPreview: _preview,
-      onClose: () => context.go('/home'),
-      // Every cleaned photo, not only the one on screen: the old screen
-      // saved just the shown one when there was a single result and all of
-      // them otherwise, which is the same rule.
-      onSave: () => _save(outputs),
-      onShare: () => MediaSaveService.shareFiles(outputs),
-      onNew: () => context.go('/home'),
     );
   }
 }

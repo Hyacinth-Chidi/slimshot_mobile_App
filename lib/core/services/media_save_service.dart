@@ -32,8 +32,19 @@ class MediaSaveService {
     }
   }
 
-  static Future<void> shareFiles(List<String> paths) async {
-    await Share.shareXFiles(paths.map((path) => XFile(path)).toList());
+  /// Opens the share sheet. True unless it was closed without choosing where
+  /// to send — what a result counts as kept. A phone that cannot say how the
+  /// share went counts as kept, so nobody is asked twice; a share that
+  /// failed does not.
+  static Future<bool> shareFiles(List<String> paths) async {
+    try {
+      final result = await Share.shareXFiles(
+        paths.map((path) => XFile(path)).toList(),
+      );
+      return result.status != ShareResultStatus.dismissed;
+    } catch (_) {
+      return false;
+    }
   }
 
   static bool isVideoPath(String path) {

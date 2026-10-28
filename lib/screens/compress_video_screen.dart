@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:video_player/video_player.dart';
 
 import '../core/services/ad_service.dart';
 import '../core/theme/app_colors.dart';
+import '../core/utils/file_utils.dart';
 import '../core/utils/toast_utils.dart';
 import '../features/compression/logic/compression_presets.dart';
 import '../features/compression/providers/compression_provider.dart';
@@ -17,9 +19,15 @@ import '../features/compression/widgets/video_frame_thumb.dart';
 /// Compress one video, or several shared from another app. The layout is
 /// [CompressVideoView]; this owns the player and the provider.
 class CompressVideoScreen extends ConsumerStatefulWidget {
-  const CompressVideoScreen({super.key, this.initialVideos = const []});
+  const CompressVideoScreen({
+    super.key,
+    this.initialVideos = const [],
+    this.deleteFiles = FileUtils.deleteTempFiles,
+  });
 
   final List<XFile> initialVideos;
+
+  final TempFileDeleter deleteFiles;
 
   @override
   ConsumerState<CompressVideoScreen> createState() =>
@@ -50,6 +58,10 @@ class _CompressVideoScreenState extends ConsumerState<CompressVideoScreen> {
   @override
   void dispose() {
     _videoController?.dispose();
+    // The picker's copies of the videos, of no use once the screen is gone.
+    unawaited(widget.deleteFiles([
+      for (final video in widget.initialVideos) video.path,
+    ]));
     super.dispose();
   }
 
@@ -67,7 +79,15 @@ class _CompressVideoScreenState extends ConsumerState<CompressVideoScreen> {
   Future<void> _initVideoController(File file) async {
     final oldController = _videoController;
     final controller = VideoPlayerController.file(file);
-    await controller.initialize();
+    try {
+      await controller.initialize();
+    } catch (e) {
+      // A video the phone's player cannot open still compresses — FFmpeg
+      // reads more than the player does — so the preview is all it costs.
+      debugPrint('Video preview failed: $e');
+      await controller.dispose();
+      return;
+    }
     await oldController?.dispose();
     if (mounted) {
       setState(() {

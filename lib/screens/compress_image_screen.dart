@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/services/ad_service.dart';
 import '../core/theme/app_colors.dart';
+import '../core/utils/file_utils.dart';
 import '../core/utils/toast_utils.dart';
 import '../features/compression/logic/photo_inspector.dart';
 import '../features/compression/logic/compression_presets.dart';
@@ -16,9 +18,15 @@ import '../features/compression/widgets/compress_photo_view.dart';
 /// Compress one photo, or several. The layout is [CompressPhotoView]; this
 /// owns the provider and reads each photo's shape and size.
 class CompressImageScreen extends ConsumerStatefulWidget {
-  const CompressImageScreen({super.key, this.initialImages});
+  const CompressImageScreen({
+    super.key,
+    this.initialImages,
+    this.deleteFiles = FileUtils.deleteTempFiles,
+  });
 
   final List<XFile>? initialImages;
+
+  final TempFileDeleter deleteFiles;
 
   @override
   ConsumerState<CompressImageScreen> createState() =>
@@ -47,6 +55,15 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
         _leave();
       }
     });
+  }
+
+  @override
+  void dispose() {
+    // The picker's copies of the photos, of no use once the screen is gone.
+    unawaited(widget.deleteFiles([
+      for (final image in widget.initialImages ?? const <XFile>[]) image.path,
+    ]));
+    super.dispose();
   }
 
   /// Back where the user came from — or home, when the screen was opened

@@ -168,42 +168,23 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               child: Column(
                 children: [
                   // Custom AppBar
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 44),
-                        const Expanded(
-                          child: Text(
-                            'Workspace',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                            ),
+                  // The height of the History button that stood beside the
+                  // title, so the drafts did not move up when it went.
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: SizedBox(
+                      height: 44,
+                      child: Center(
+                        child: Text(
+                          'Workspace',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontFamily: kInterfaceFontFamily,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
                           ),
                         ),
-                        GestureDetector(
-                          onTap: () => context.push('/history'),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: AppColors.border.withValues(alpha: 0.5),
-                              ),
-                            ),
-                            child: const Icon(
-                              LucideIcons.history,
-                              color: AppColors.textSecondary,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ).animate().fadeIn().slideY(begin: -0.2, end: 0),
 
