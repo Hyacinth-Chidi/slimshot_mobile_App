@@ -7,8 +7,14 @@ class DraftProject {
   final DateTime createdAt;
   final DateTime updatedAt;
   final double durationSeconds;
+
+  /// The edit's own length — where its last clip, track, overlay or effect
+  /// ends — as the editor shows it. [durationSeconds] is only the first
+  /// imported file's. Null for a draft saved before this was kept; absent
+  /// from the JSON then.
+  final double? editedSeconds;
   final String? thumbnailPath;
-  
+
   /// Every imported file in the project.
   ///
   /// Empty for drafts written before projects could hold more than one file;
@@ -57,6 +63,7 @@ class DraftProject {
     required this.createdAt,
     required this.updatedAt,
     required this.durationSeconds,
+    this.editedSeconds,
     this.thumbnailPath,
     this.assets = const [],
     required this.segments,
@@ -88,6 +95,7 @@ class DraftProject {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'durationSeconds': durationSeconds,
+      if (editedSeconds != null) 'editedSeconds': editedSeconds,
       'thumbnailPath': thumbnailPath,
       'assets': assets,
       'segments': segments,
@@ -120,6 +128,7 @@ class DraftProject {
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       durationSeconds: (json['durationSeconds'] as num).toDouble(),
+      editedSeconds: (json['editedSeconds'] as num?)?.toDouble(),
       thumbnailPath: json['thumbnailPath'] as String?,
       assets: List<Map<String, dynamic>>.from(json['assets'] as List? ?? []),
       segments: List<Map<String, dynamic>>.from(json['segments'] as List? ?? []),
