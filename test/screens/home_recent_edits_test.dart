@@ -4,9 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:slimshotai/core/models/draft_project.dart';
+import 'package:slimshotai/core/services/draft_refresh_notifier.dart';
 import 'package:slimshotai/core/services/draft_service.dart';
+import 'package:slimshotai/core/theme/app_colors.dart';
 import 'package:slimshotai/core/theme/app_fonts.dart';
+import 'package:slimshotai/core/widgets/dashed_frame_painter.dart';
 import 'package:slimshotai/core/widgets/floating_nav_bar.dart';
+import 'package:slimshotai/core/widgets/frosted_glass.dart';
 import 'package:slimshotai/main.dart';
 import 'package:slimshotai/screens/home_layout.dart';
 
@@ -80,6 +84,9 @@ DraftProject _draft(int i) => DraftProject(
     );
 
 Finder _card(int i) => find.byKey(ValueKey('recent_draft_d$i'));
+
+/// What Home shows in the drafts' place before any edit.
+final _emptyCard = find.byKey(const ValueKey('recent_drafts_empty'));
 
 ScrollPosition _scroll(WidgetTester tester, String key) => tester
     .state<ScrollableState>(
@@ -242,15 +249,59 @@ void main() {
     expect(band.width, _short.width);
   });
 
-  testWidgets('with no edits the placeholder keeps its size, and nothing blurs',
-      (tester) async {
+  for (final phone in [_tall, const _Phone(360, 806, top: 36), const _Phone(360, 720)]) {
+    testWidgets('on a $phone, before any edit, the card standing in takes '
+        'exactly the six\'s place, and nothing blurs', (tester) async {
+      await pumpHome(tester, phone);
+      final empty = tester.getRect(_emptyCard);
+      expect(find.byKey(const ValueKey('recent_drafts_blur')), findsNothing);
+
+      await tester.runAsync(() async {
+        for (var i = 0; i < 6; i++) {
+          await DraftService.saveDraft(_draft(i));
+        }
+      });
+      DraftRefreshNotifier.instance.refresh();
+      await _settle(tester);
+      expect(_emptyCard, findsNothing);
+      final first = tester.getRect(_card(0));
+      final last = tester.getRect(_card(5));
+      expect(first.top, closeTo(empty.top, 1e-3));
+      expect(first.left, closeTo(empty.left, 1e-3));
+      expect(last.bottom, closeTo(empty.bottom, 1e-3));
+      expect(last.right, closeTo(empty.right, 1e-3));
+    });
+  }
+
+  testWidgets('the card standing in for no edits is a dashed frame, the home '
+      'screen widget\'s, not glass', (tester) async {
     await pumpHome(tester, _tall);
-    final placeholder = find.ancestor(
-      of: find.text('Your recent edits will appear here'),
-      matching: find.byType(SizedBox),
+    final frames = tester
+        .widgetList<CustomPaint>(
+          find.descendant(of: _emptyCard, matching: find.byType(CustomPaint)),
+        )
+        .map((p) => p.foregroundPainter)
+        .whereType<DashedFramePainter>();
+    expect(frames, hasLength(1));
+    expect(frames.single.colour, AppColors.lilac.withValues(alpha: 0.45));
+    expect(find.descendant(of: _emptyCard, matching: find.byType(FrostedGlass)),
+        findsNothing);
+    expect(
+      find.descendant(
+        of: _emptyCard,
+        matching: find.text('Your recent edits will appear here'),
+      ),
+      findsOneWidget,
     );
-    expect(tester.getSize(placeholder.first).height, kHomeDraftsPlaceholderHeight);
-    expect(find.byKey(const ValueKey('recent_drafts_blur')), findsNothing);
+  });
+
+  testWidgets('on a 16:9 phone the card standing in stops above the nav',
+      (tester) async {
+    await pumpHome(tester, _short);
+    final nav = tester.getRect(find.byType(FloatingNavBar));
+    final empty = tester.getRect(_emptyCard);
+    expect(empty.bottom, lessThanOrEqualTo(nav.top - kHomeDraftNavGap + 1e-3));
+    expect(empty.height, greaterThanOrEqualTo(kHomeEmptyCardLeast - 1e-3));
   });
 
   for (final (what, phone) in [

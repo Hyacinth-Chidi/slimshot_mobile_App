@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +8,7 @@ import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/toast_utils.dart';
+import '../../../../core/widgets/dashed_frame_painter.dart';
 import '../../models/video_editor_state.dart';
 import '../../providers/video_editor_notifier.dart';
 import 'editor_sheet.dart';
@@ -292,7 +292,7 @@ class _EmptyPhotoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: const _DashedFramePainter(
+      painter: const DashedFramePainter(
         colour: AppColors.border,
         radius: 12,
         strokeWidth: 1.5,
@@ -490,41 +490,3 @@ class _ColourTile extends StatelessWidget {
   }
 }
 
-/// A rounded rectangle drawn as dashes: the empty photo tile's frame.
-class _DashedFramePainter extends CustomPainter {
-  const _DashedFramePainter({
-    required this.colour,
-    required this.radius,
-    required this.strokeWidth,
-  });
-
-  final Color colour;
-  final double radius;
-  final double strokeWidth;
-
-  static const double _dash = 5;
-  static const double _gap = 4;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = colour
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth;
-    final rect = (Offset.zero & size).deflate(strokeWidth / 2);
-    final outline = Path()
-      ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
-    for (final ui.PathMetric metric in outline.computeMetrics()) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        final end = (distance + _dash).clamp(0.0, metric.length);
-        canvas.drawPath(metric.extractPath(distance, end), paint);
-        distance = end + _gap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DashedFramePainter old) =>
-      old.colour != colour || old.radius != radius || old.strokeWidth != strokeWidth;
-}

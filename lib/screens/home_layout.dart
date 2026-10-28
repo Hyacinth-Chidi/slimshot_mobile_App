@@ -32,8 +32,9 @@ const HomeGive kHomeDraftRowHeight = HomeGive(140, 108);
 const double kHomeDraftSpacing = 12;
 const double kHomeDraftNavGap = 8;
 
-/// The card that stands in for the drafts while there are none.
-const double kHomeDraftsPlaceholderHeight = 120;
+/// The least the card standing in for no edits is: it takes the two rows'
+/// place, and this much where there is not that room above the nav.
+const double kHomeEmptyCardLeast = 120;
 
 /// "Recent Edits": its size, and a line height of its own, so the line is
 /// the same height whatever the theme's text style says.
@@ -81,6 +82,7 @@ class HomeLayout {
     required this.title,
     required this.gapAboveDrafts,
     required this.draftRow,
+    required this.emptyCard,
     required this.height,
   });
 
@@ -125,10 +127,19 @@ class HomeLayout {
         ? math.min(row, kHomeDraftRowHeight.full)
         : kHomeDraftRowHeight.least;
 
-    // At the least, one row — or the placeholder — above the nav.
-    final oneRow = math.max(draftRow, kHomeDraftsPlaceholderHeight) +
+    // At the least, one row — or the empty card — above the nav.
+    final oneRow = math.max(draftRow, kHomeEmptyCardLeast) +
         kHomeDraftNavGap +
         navClearance;
+    final height = math.max(room, top + oneRow);
+
+    // Before any edit, a card takes the six's place: exactly the two rows
+    // where they fit, else what room there is above the nav.
+    final twoRowsTall = 2 * draftRow + kHomeDraftSpacing;
+    final aboveNav = height - top - kHomeDraftNavGap - navClearance;
+    final emptyCard = fits
+        ? twoRowsTall
+        : math.max(kHomeEmptyCardLeast, math.min(twoRowsTall, aboveNav));
     return HomeLayout._(
       scale: scale,
       fits: fits,
@@ -140,7 +151,8 @@ class HomeLayout {
       title: title,
       gapAboveDrafts: gapAboveDrafts,
       draftRow: draftRow,
-      height: math.max(room, top + oneRow),
+      emptyCard: emptyCard,
+      height: height,
     );
   }
 
@@ -160,6 +172,10 @@ class HomeLayout {
 
   /// A draft card's height.
   final double draftRow;
+
+  /// The card standing in before any edit: the two rows' height wherever
+  /// they fit, never under the nav, never under [kHomeEmptyCardLeast].
+  final double emptyCard;
 
   /// From under the header to the bottom of the page: the room, unless the
   /// page must be taller to hold one row above the nav.

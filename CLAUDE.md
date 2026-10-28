@@ -4602,9 +4602,17 @@ light, not paint.**
   goes under its least: the first row sits above the nav and the second runs on **under** it,
   through a full-width blur band (`recent_drafts_blur`, from the nav's top edge to the screen's
   foot), and scrolling the drafts brings it up clear of the nav. The page itself scrolls only
-  where not even one row fits above the nav — a phone on its side. **The empty placeholder
-  keeps its 120dp** (the owner's call), and the layout is the same whatever the number of
-  edits, so nothing moves when the fourth one is made.
+  where not even one row fits above the nav — a phone on its side. The layout is the same
+  whatever the number of edits, so nothing moves when the fourth one is made.
+
+  **Before any edit, a dashed card takes the six's place** (`recent_drafts_empty`,
+  `HomeLayout.emptyCard`; the owner's call, 2026-10-28, replacing the 120dp glass card they had
+  first asked to keep): exactly the two rows' height wherever they fit — a test adds six edits
+  to an empty Home and finds them on the card's edges — else the room above the nav, never
+  under it and never under 120dp (`kHomeEmptyCardLeast`). It is **the home screen widget's empty
+  frame**: dashed lilac at 45% over a 4% white fill, 1.5dp, the inbox glyph and "Your recent
+  edits will appear here" centred. The dashes are `DashedFramePainter` (`core/widgets/`), moved
+  out of the Background sheet's empty photo tile so the two draw one frame.
 
   **The tests sweep, they do not name phones**: every room from 250 to 1250dp at four text sizes
   and four nav heights against the rules (each part within its range, both rows above the nav

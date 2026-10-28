@@ -23,6 +23,7 @@ import '../core/utils/toast_utils.dart';
 import '../core/widgets/frosted_glass.dart';
 import '../core/widgets/permission_dialog.dart';
 import '../core/widgets/colour_field_backdrop.dart';
+import '../core/widgets/dashed_frame_painter.dart';
 import '../core/widgets/floating_nav_bar.dart';
 import '../features/home_widget/launch_actions.dart';
 import 'home_header.dart';
@@ -307,7 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: ResponsiveCenter(
                                 child: _recentDraftsArea(
                                   navClearance,
-                                  layout.draftRow,
+                                  layout,
                                 ),
                               ),
                             ),
@@ -423,8 +424,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Where two rows fit above the nav, they sit there ([HomeLayout]); where
   /// they cannot, the second row runs on under the nav, blurred, until the
   /// drafts are scrolled up out from under it — the padding under the last
-  /// row is what lets it clear the nav. The empty placeholder keeps its size.
-  Widget _recentDraftsArea(double navClearance, double rowHeight) {
+  /// row is what lets it clear the nav. Before any edit, a dashed card takes
+  /// the six's place ([HomeLayout.emptyCard]).
+  Widget _recentDraftsArea(double navClearance, HomeLayout layout) {
     if (_isLoadingDrafts) {
       return const Align(
         alignment: Alignment.topCenter,
@@ -436,28 +438,47 @@ class _HomeScreenState extends State<HomeScreen> {
         alignment: Alignment.topCenter,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: FrostedGlass(
-                borderRadius: BorderRadius.circular(16),
-                child: const SizedBox(
-                  height: kHomeDraftsPlaceholderHeight,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          LucideIcons.inbox,
-                          color: AppColors.textTertiary,
-                          size: 32,
+          // The home screen widget's empty frame, here too: dashed lilac
+          // over a breath of white — a place kept for the edits to come.
+          child: SizedBox(
+                key: const ValueKey('recent_drafts_empty'),
+                width: double.infinity,
+                height: layout.emptyCard,
+                child: CustomPaint(
+                  foregroundPainter: DashedFramePainter(
+                    colour: AppColors.lilac.withValues(alpha: 0.45),
+                    radius: 16,
+                    strokeWidth: 1.5,
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.textPrimary.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              LucideIcons.inbox,
+                              color: AppColors.textTertiary,
+                              size: 32,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Your recent edits will appear here',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontFamily: kInterfaceFontFamily,
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Your recent edits will appear here',
-                          style: TextStyle(fontFamily: kInterfaceFontFamily,
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -473,7 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: EdgeInsets.fromLTRB(24, 0, 24, navClearance + kHomeDraftNavGap),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
-            mainAxisExtent: rowHeight,
+            mainAxisExtent: layout.draftRow,
             mainAxisSpacing: kHomeDraftSpacing,
             crossAxisSpacing: kHomeDraftSpacing,
           ),
