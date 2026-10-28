@@ -30,7 +30,10 @@ Three things the upgrade turned up, none of them optional:
   `assets/fonts/lucide.ttf`. The subclass added no behaviour and nothing here ever referenced
   `LucideIconData`, so all 326 call sites across 54 files are untouched; only the import moved.
   `fontPackage` is **null**, because the font is this app's asset now and naming a package Flutter
-  cannot find resolves to no glyph.
+  cannot find resolves to no glyph. **Its ISC notice is the app's to carry now**: the package
+  listed it on the licences page itself, and once vendored nothing did — found by a font licence
+  audit (2026-10-28) and registered in `core/legal/third_party_licences.dart` (`kLucidePackage`),
+  pinned by `third_party_licences_test.dart`.
 - **`android.builtInKotlin=false` and `android.newDsl=false`** were written into
   `android/gradle.properties` by Flutter's own migrator. They opt *out* of 3.44's built-in Kotlin
   and the new Gradle DSL, keeping the existing build. A real migration, deliberately deferred —

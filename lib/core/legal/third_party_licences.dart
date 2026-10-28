@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 /// The package name the ported transitions are listed under.
 const String kGlTransitionsPackage = 'gl-transitions';
 
+/// The name the icons' notice is listed under.
+const String kLucidePackage = 'Lucide';
+
 /// Every author whose GL Transitions shader is ported into the engine
 /// (`LayeredTransitions.kt`, which credits each beside its port). A port added
 /// there adds its author here.
@@ -48,6 +51,27 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.''';
+
+/// The icons' licence, word for word from the `lucide_icons` 0.257.0 package
+/// the icons were vendored from (`core/theme/lucide_icons.dart`, its font
+/// `assets/fonts/lucide.ttf`). The package brought this notice with it; once
+/// vendored, nothing did, and ISC asks for it in every copy.
+const String _lucideIscText = '''
+ISC License
+
+Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.''';
 
 /// The fonts bundled in the app, each with the copyright line from its own
 /// file. The SIL Open Font License asks that its notice travel with a font
@@ -157,8 +181,8 @@ bool _registered = false;
 /// Puts the notices for what the app ships but no package declares on
 /// Flutter's licences page — the ported transitions, whose shaders are
 /// compiled into the app while the credit beside them in the source is not,
-/// and the bundled fonts. Packages from pub list themselves. Safe to call
-/// more than once.
+/// the vendored Lucide icons, and the bundled fonts. Packages from pub list
+/// themselves. Safe to call more than once.
 void registerThirdPartyLicences() {
   if (_registered) return;
   _registered = true;
@@ -169,6 +193,9 @@ void registerThirdPartyLicences() {
           'each modified for this app.\n\n'
           '${kGlTransitionsAuthors.join('\n')}\n\n$_mitText',
         ),
+      ));
+  LicenseRegistry.addLicense(() => Stream.value(
+        const LicenseEntryWithLineBreaks([kLucidePackage], _lucideIscText),
       ));
   for (final font in kBundledFontCopyrights.entries) {
     LicenseRegistry.addLicense(() => Stream.value(

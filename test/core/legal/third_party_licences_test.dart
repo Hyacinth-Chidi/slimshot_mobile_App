@@ -36,6 +36,22 @@ void main() {
     }
   });
 
+  // The icons ship as a font in the app since they were vendored (the
+  // Flutter 3.47 upgrade), and the package that used to bring this notice
+  // went with it. ISC asks for the notice in every copy.
+  test('the Lucide icons carry their ISC notice', () async {
+    registerThirdPartyLicences();
+    final entries = await LicenseRegistry.licenses.toList();
+    final notices =
+        entries.where((e) => e.packages.contains(kLucidePackage)).toList();
+    expect(notices, hasLength(1));
+    final text = notices.single.paragraphs.map((p) => p.text).join('\n');
+    expect(text, contains('ISC License'));
+    expect(text, contains('held by Cole Bemis 2013-2022 as part of Feather (MIT)'));
+    expect(text, contains('held by Lucide Contributors 2022'));
+    expect(text, contains('Permission to use, copy, modify, and/or distribute this software'));
+  });
+
   testWidgets('the licences open on the root navigator, over the tabs', (tester) async {
     final root = GlobalKey<NavigatorState>();
     await tester.pumpWidget(MaterialApp(
