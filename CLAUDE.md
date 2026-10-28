@@ -4576,8 +4576,8 @@ not the app's `#09090B`, so the colour jumped when the app appeared.
 **Awaiting device verification**; designed from mockups the owner picked (2026-10-24, the
 transitions page 2026-10-28). `OnboardingScreen` is four pages on Home's light
 (`ColourFieldBackdrop`), each a picture, a headline whose last words are lit in lilac, and one
-line: **Edit like a pro**, **Clear on WhatsApp Status**, **Transitions that wow**, **Captions in
-one tap**. A step per page and Skip at the top (Skip gone on the last page, its width kept so the
+line: **Edit like a pro**, **Transitions that wow**, **Clear on WhatsApp Status**, **Captions in
+one tap** — transitions second, WhatsApp third (the owner's order, 2026-10-28). A step per page and Skip at the top (Skip gone on the last page, its width kept so the
 steps do not jump), one full-width button at the foot — white Continue, then purple Get started.
 Both Skip and Get started set `hasSeenOnboarding` and go Home.
 
@@ -4590,9 +4590,7 @@ Both Skip and Get started set `hasSeenOnboarding` and go Home.
   and scaled to the room it has — down on a short phone rather than overflowing, **up to 1.6× on
   a tablet** (`_maxVisualScale`) rather than sitting phone-sized in an empty screen, in a column
   of at most 560.
-- **Page 2** uses the New Video card's photo in its white frame: the same picture blurred and
-  sharp, tagged.
-- **Page 3 plays the app's own moves** (`_TransitionsVisual` over `onboarding_showreel.dart`;
+- **Page 2 plays the app's own moves** (`_TransitionsVisual` over `onboarding_showreel.dart`;
   the owner's pick, A of three, with **Zoom Blur first, then the glitch**): one 9:16 clip in the
   white frame, looping the New Video card's three photos — dancer, gamer, neon girl — through
   **Zoom Blur, Glitch and Cube**, each resting 0.9 s first; the moves play *inside* the frame, as
@@ -4610,10 +4608,12 @@ Both Skip and Get started set `hasSeenOnboarding` and go Home.
   `kVideoEffects.length` effects; "41 transitions and 47 effects.") so it cannot fall behind
   them; "smooth on any phone" was struck at the owner's call. It repaints only when its frame
   changes — a rest or a glitch tick holds — decodes the photos at 960 tall
-  (`showreelPhoto`, precached a page ahead), and with animations off holds on the first photo,
+  (`showreelPhoto`, precached once the first page is up), and with animations off holds on the first photo,
   Zoom Blur lit. `onboarding_showreel_test.dart` pins the loop's order and timing, the glitch's
   plan, the cube's geometry (faces meeting on their nearest edge, the new one from the right,
   inside the frame throughout) and what the painter draws.
+- **Page 3** uses the New Video card's photo in its white frame: the same picture blurred and
+  sharp, tagged.
 - **Page 4 is the finale, the finished video** (`_FinalePage`, the owner's pick, A of four; it
   was a framed stock photo with a caption that never moved): the left photo of the New Video card
   edge to edge from the top of the screen, under the status bar and the step bar (a shade at the

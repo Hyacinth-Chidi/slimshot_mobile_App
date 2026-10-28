@@ -58,8 +58,8 @@ const double _kTopBarHeight = 54;
 const double _kButtonAreaHeight = 82;
 
 /// The first launch: four pages, one thing the app does best on each —
-/// editing (the editor's own timeline, the owner's pick), WhatsApp-sharp
-/// compression, transitions and effects, auto captions — then Home.
+/// editing (the editor's own timeline, the owner's pick), transitions and
+/// effects, WhatsApp-sharp compression, auto captions — then Home.
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -70,7 +70,6 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _page = 0;
-  bool _showreelPrecached = false;
 
   // Not const: the transitions page counts what the catalogs hold.
   static final List<_OnboardPage> _pages = [
@@ -81,13 +80,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       visual: _TimelineVisual(),
       visualSize: _TimelineVisual.size,
     ),
-    const _OnboardPage(
-      lead: 'Clear on ',
-      accent: 'WhatsApp Status',
-      line: 'Compressed in the shape Status keeps, so your video never blurs.',
-      visual: _StatusVisual(),
-      visualSize: Size(360, 380),
-    ),
     _OnboardPage(
       lead: 'Transitions that ',
       accent: 'wow',
@@ -95,6 +87,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           '${kVideoEffects.length} effects.',
       visual: const _TransitionsVisual(),
       visualSize: _TransitionsVisual.size,
+    ),
+    const _OnboardPage(
+      lead: 'Clear on ',
+      accent: 'WhatsApp Status',
+      line: 'Compressed in the shape Status keeps, so your video never blurs.',
+      visual: _StatusVisual(),
+      visualSize: Size(360, 380),
     ),
     const _OnboardPage(
       lead: 'Captions in ',
@@ -122,11 +121,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (mounted) context.go('/home');
   }
 
-  /// The showreel's photos start decoding a page ahead, so its first frame
-  /// is a picture rather than a dark frame waiting for one.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _precacheShowreel());
+  }
+
+  /// The showreel's photos start decoding once the first page is up, so the
+  /// next page's first frame is a picture rather than a dark frame waiting
+  /// for one.
   void _precacheShowreel() {
-    if (_showreelPrecached) return;
-    _showreelPrecached = true;
+    if (!mounted) return;
     for (var i = 0; i < kShowreelPhotos.length; i++) {
       unawaited(precacheImage(showreelPhoto(i), context));
     }
@@ -157,10 +162,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: PageView.builder(
               controller: _pageController,
               itemCount: _pages.length,
-              onPageChanged: (i) {
-                setState(() => _page = i);
-                if (i >= 1) _precacheShowreel();
-              },
+              onPageChanged: (i) => setState(() => _page = i),
               itemBuilder: (context, i) {
                 final page = _pages[i];
                 return page.finale
@@ -862,71 +864,7 @@ class _Playhead extends StatelessWidget {
       );
 }
 
-// ── Page 2: sharp on WhatsApp Status ────────────────────────────────────────
-
-/// The same picture twice: blurred as WhatsApp shrinks an ordinary upload,
-/// sharp as SlimShot's Status file arrives.
-class _StatusVisual extends StatelessWidget {
-  const _StatusVisual();
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 360,
-        height: 380,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _side(
-              blurred: true,
-              tag: 'Blurred',
-              tagColor: AppColors.border,
-            ),
-            const SizedBox(width: 16),
-            _side(blurred: false, tag: 'Sharp', tagColor: AppColors.success),
-          ],
-        ),
-      );
-
-  Widget _side({
-    required bool blurred,
-    required String tag,
-    required Color tagColor,
-  }) =>
-      Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _Framed(
-            width: 148,
-            height: 290,
-            child: blurred
-                ? ImageFiltered(
-                    imageFilter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-                    child: _photo(_middle),
-                  )
-                : _photo(_middle),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: tagColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              tag,
-              style: const TextStyle(
-                fontFamily: kInterfaceFontFamily,
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-        ],
-      );
-}
-
-// ── Page 3: transitions and effects ─────────────────────────────────────────
+// ── Page 2: transitions and effects ─────────────────────────────────────────
 
 /// The owner's pick (A, Zoom Blur first, then the glitch): one framed clip
 /// playing the app's own moves between three photos, and the names under
@@ -1092,6 +1030,70 @@ class _MoveChips extends StatelessWidget {
             ],
           ],
         ),
+      );
+}
+
+// ── Page 3: sharp on WhatsApp Status ────────────────────────────────────────
+
+/// The same picture twice: blurred as WhatsApp shrinks an ordinary upload,
+/// sharp as SlimShot's Status file arrives.
+class _StatusVisual extends StatelessWidget {
+  const _StatusVisual();
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 360,
+        height: 380,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _side(
+              blurred: true,
+              tag: 'Blurred',
+              tagColor: AppColors.border,
+            ),
+            const SizedBox(width: 16),
+            _side(blurred: false, tag: 'Sharp', tagColor: AppColors.success),
+          ],
+        ),
+      );
+
+  Widget _side({
+    required bool blurred,
+    required String tag,
+    required Color tagColor,
+  }) =>
+      Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _Framed(
+            width: 148,
+            height: 290,
+            child: blurred
+                ? ImageFiltered(
+                    imageFilter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                    child: _photo(_middle),
+                  )
+                : _photo(_middle),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: tagColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              tag,
+              style: const TextStyle(
+                fontFamily: kInterfaceFontFamily,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
       );
 }
 

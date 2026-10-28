@@ -60,16 +60,18 @@ void main() {
         lessThan(tester.getRect(_headline('Edit like a pro')).top));
   });
 
+  // The owner's order: editing, then transitions, then WhatsApp, then the
+  // captions finale.
   testWidgets('Continue walks four pages; the last says Get started',
       (tester) async {
     await pumpOnboarding(tester);
     expect(find.text('Skip'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await _settle(tester);
-    expect(_headline('Clear on WhatsApp Status'), findsOneWidget);
+    expect(_headline('Transitions that wow'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await _settle(tester);
-    expect(_headline('Transitions that wow'), findsOneWidget);
+    expect(_headline('Clear on WhatsApp Status'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await _settle(tester);
     expect(_headline('Captions in one tap'), findsOneWidget);
@@ -144,10 +146,8 @@ void main() {
   });
 
   Future<void> toTransitionsPage(WidgetTester tester) async {
-    for (var i = 0; i < 2; i++) {
-      await tester.tap(find.text('Continue'));
-      await _settle(tester);
-    }
+    await tester.tap(find.text('Continue'));
+    await _settle(tester);
   }
 
   List<String> chipLabels(WidgetTester tester) => [
@@ -321,7 +321,7 @@ void main() {
     await pumpOnboarding(tester);
     await tester.fling(find.byType(PageView), const Offset(-300, 0), 1200);
     await _settle(tester);
-    expect(_headline('Clear on WhatsApp Status'), findsOneWidget);
+    expect(_headline('Transitions that wow'), findsOneWidget);
   });
 
   testWidgets('with animations turned off the caption holds still',
