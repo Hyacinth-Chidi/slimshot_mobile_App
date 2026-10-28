@@ -257,6 +257,34 @@ void main() {
       expect(c.playingId, isNull);
     });
 
+    // The app going to the background: what is playing stops, and a listen
+    // still on its way does not start once the app is out of sight.
+    test('stopListening stops the sound playing', () async {
+      await opened();
+      await c.tapRow(_a);
+      await settle();
+      expect(c.playingId, 'a');
+      final stops = h.player.stops;
+      c.stopListening();
+      await settle();
+      expect(c.playingId, isNull);
+      expect(h.player.stops, greaterThan(stops));
+    });
+
+    test('stopListening keeps a listen still downloading from playing',
+        () async {
+      await opened();
+      h.server.gates['file:a'] = Completer();
+      unawaited(c.tapRow(_a));
+      await settle();
+      c.stopListening();
+      h.server.gates['file:a']!.complete();
+      await settle();
+      expect(c.inLibrary('a'), isTrue, reason: 'the download is kept');
+      expect(h.player.played, isEmpty);
+      expect(c.playingId, isNull);
+    });
+
     test('a file that will not play is not left playing and throws nothing', () async {
       await opened();
       h.player.failPlays = true;

@@ -58,6 +58,9 @@ dependencies:
   receive_sharing_intent: ^1.8.1
   google_mobile_ads: ^8.0.0
   just_audio: ^0.10.5
+  # The editor's hold on the phone's audio (`PlaybackGuard`); already
+  # transitive via just_audio.
+  audio_session: ^0.2.3
   file_picker: ^11.0.2
   # Compression feature only. The editor renders natively (Media3 + OpenGL);
   # its last FFmpeg users are the two clip proxies in VideoEditorService.

@@ -57,17 +57,23 @@ class _SoundLibrarySheetState extends State<SoundLibrarySheet> {
   final Map<String, GlobalKey> _tabKeys = {};
   String? _shownTab;
 
+  /// The app leaving the screen stops the sound being listened to, as the
+  /// editor's own playback stops (`PlaybackGuard`).
+  late final AppLifecycleListener _lifecycle;
+
   @override
   void initState() {
     super.initState();
     _c.addListener(_changed);
     _notices = _c.notices.listen(_tell);
+    _lifecycle = AppLifecycleListener(onHide: _c.stopListening);
     unawaited(_c.open());
     WidgetsBinding.instance.addPostFrameCallback((_) => _followSelection());
   }
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _search.dispose();
     _pages.dispose();
     _notices.cancel();

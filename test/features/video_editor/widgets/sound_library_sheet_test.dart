@@ -8,6 +8,7 @@ import 'package:slimshotai/features/sound_library/sound_library_controller.dart'
 import 'package:slimshotai/features/video_editor/widgets/panels/editor_sheet.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/sound_library_sheet.dart';
 
+import '../../../support/app_lifecycle.dart';
 import '../../sound_library/support.dart';
 
 void main() {
@@ -142,6 +143,19 @@ void main() {
         until_: () => h.player.played.isNotEmpty);
     expect(h.player.played.single, endsWith('a.mp3'));
     expect(find.byIcon(LucideIcons.pause), findsOneWidget);
+  });
+
+  testWidgets('minimising the app stops the sound playing', (tester) async {
+    await openSheet(tester);
+    await tapAndWork(tester, find.text('Sound a'),
+        until_: () => h.player.played.isNotEmpty);
+    expect(find.byIcon(LucideIcons.pause), findsOneWidget);
+    final stops = h.player.stops;
+    addTearDown(() => sendAppLifecycle(tester, AppLifecycleState.resumed));
+    await sendAppLifecycle(tester, AppLifecycleState.hidden);
+    await tester.pump();
+    expect(h.player.stops, greaterThan(stops));
+    expect(find.byIcon(LucideIcons.pause), findsNothing);
   });
 
   testWidgets('offline shows the line and Retry asks again', (tester) async {

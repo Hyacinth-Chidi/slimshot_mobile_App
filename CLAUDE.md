@@ -4045,6 +4045,50 @@ library now opens from the submenu's Music.
 - `SlimshotApi.sendPublicEnvelope` reads a public answer whole — the catalogue's `data` is a
   list and its pages carry `meta` — sharing `_refusal` with `_decode` so the two cannot drift.
 
+### Playback stops when the app leaves the screen, or the audio is taken
+
+**Awaiting device verification** (the owner's report, 2026-10-28: minimised, the video and music
+played on). Nothing in the app listened for it: the engine's ExoPlayers and the `just_audio`
+music never pause themselves, and the playhead froze in the background (Flutter draws no frames
+there) while the sound ran on.
+
+**`PlaybackGuard`** (`services/playback_guard.dart`, `playback_guard_test.dart`) pauses the
+editor **through its own pause** — `setPlaying(false)`, the button's path — so the picture, the
+clips' and overlays' sound, the music, the playhead and a voiceover take stop together:
+
+- **The app leaving the screen** (`AppLifecycleListener.onHide`): Home, another app, the screen
+  locking, a call screen, the gallery picker. Still on screen it plays on — the notifications
+  pulled down or a permission prompt only make the app inactive. **Coming back it stays
+  paused**, as CapCut does. Android silences a background app's microphone anyway, so a take left
+  running would have filled with silence.
+- **Something else taking the audio**: the editor **holds the phone's audio while it plays and
+  gives it back on every pause** (`audio_session`, the session the app's `just_audio` players
+  share — on Android one request for the whole app, so nothing in the app takes the audio from
+  anything else; and releasing on every pause also clears the plugin's stale request after a
+  refusal). A call, another app's sound (`pause`/`unknown` interruptions) or headphones coming
+  out (`becomingNoisy`, Bluetooth included) pause the editor. **A duck does not**: a notification's
+  ping asks the others to dip, the phone lowers the editor for a moment and it plays on — pausing
+  there would stop every edit at every incoming message. An interruption ending resumes nothing.
+- **The guard is the one owner of the editor's sound.** The music players are
+  `AudioPlayer(handleInterruptions: false, handleAudioSessionActivation: false)`: left to
+  itself `just_audio` paused only the music on a call (the video played on), resumed it by itself
+  afterwards, and paused only the music on unplugged headphones (the clip sound carried on from
+  the speaker). A test reads every `AudioPlayer(` under `lib/features/video_editor/` for both
+  flags. Take and release run in order on one queue, so a release can never overtake a slow take
+  and leave the audio held behind a paused editor; a session that cannot be had costs only the
+  interruptions, never playback.
+- **The sound library's listen** stops too (`SoundLibraryController.stopListening`, from the
+  sheet's own `onHide`); a listen still downloading does not start when it lands.
+- Outside the editor, `video_player` already pauses itself in the background (the compress,
+  result, export and extract previews) and resumes on return; left as it is.
+- **Tests send lifecycle the phone's way** (`test/support/app_lifecycle.dart`): one message on
+  the lifecycle channel, from which the binding walks the states between — straight from resumed
+  to hidden is not a move a phone makes, and `AppLifecycleListener` asserts on it.
+
+**Device checks**: minimise while video and music play — silence, and back on the same frame,
+paused; a call while playing; Spotify started over it; headphones out; a WhatsApp ping (the
+volume dips, playback goes on); minimise mid-take; minimise while listening in the Music sheet.
+
 ### Audio — Extract and Record
 
 **Awaiting device verification** (the capture, the remux and the playback alignment only run on a
