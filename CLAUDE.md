@@ -4569,6 +4569,18 @@ light, not paint.**
   secondary, not tertiary. The coin is **`AppColors.credit`** (amber).
 - **The credits pill is pinned to the right edge** (`HomeHeader`'s brand is `Expanded`): a
   `Flexible` brand let a short balance sit against it.
+- **Six recent drafts fill the room down to the nav** (`home_recent_drafts_test.dart`, **awaiting
+  device verification**; the owner's design after rejecting three mockups). Three left a tall
+  phone ~160dp of nothing above the nav. The drafts, three to a row, take everything from under
+  their title to the bottom of the screen and scroll **inside their own box — never the page**.
+  On a tall phone both rows sit above the nav and nothing scrolls. On a shorter one the second
+  row runs on **under** the nav rather than being cut off, through a full-width blur band
+  (`recent_drafts_blur`, the nav's top edge to the screen's foot), and scrolling brings it up
+  clear of the nav, where it can be tapped. The padding under the last row is what lets it clear
+  the nav. The page itself scrolls only where the box would not hold one row above the nav: a
+  phone on its side, very large text (`SliverLayoutBuilder` on `precedingScrollExtent`, so the
+  box's size never follows the scroll). **The empty placeholder keeps its 120dp** (the owner's
+  call). The nav's reach is `kFloatingNavClearance` (its 32dp margin plus the 68dp bar).
 - **Account sheets sit on the same light**, everywhere (`AccountSheetFrame.glows`, the home
   composition moved closer in for a shorter shape; the top glow is wide because over a near-black
   screen that light is what shows where the sheet begins). **Light, not glass**: a glass version

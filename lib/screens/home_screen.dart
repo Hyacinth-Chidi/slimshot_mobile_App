@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,8 +24,16 @@ import '../core/utils/toast_utils.dart';
 import '../core/widgets/frosted_glass.dart';
 import '../core/widgets/permission_dialog.dart';
 import '../core/widgets/colour_field_backdrop.dart';
+import '../core/widgets/floating_nav_bar.dart';
 import '../features/home_widget/launch_actions.dart';
 import 'home_header.dart';
+
+/// How many recent drafts Home shows; Workspace has them all.
+const int _kRecentDrafts = 6;
+
+/// A draft card's height and the gap between cards, both ways.
+const double _kDraftRowHeight = 140;
+const double _kDraftSpacing = 12;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -92,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadDrafts() async {
     try {
-      final drafts = await DraftService.getRecentDrafts(3);
+      final drafts = await DraftService.getRecentDrafts(_kRecentDrafts);
       if (mounted) {
         setState(() {
           _recentDrafts = drafts;
@@ -212,25 +222,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Where the floating nav's top edge is, up from the bottom of the screen.
+    final navClearance =
+        kFloatingNavClearance + MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
           const Positioned.fill(child: ColourFieldBackdrop()),
 
+          // Down to the bottom of the screen: the drafts run on under the
+          // floating nav rather than stopping above it.
           SafeArea(
+            bottom: false,
             child: CustomScrollView(
+              key: const ValueKey('home_page'),
               slivers: [
-                SliverFillRemaining(
-                  hasScrollBody: false,
+                SliverToBoxAdapter(
                   child: ResponsiveCenter(
                     child: Padding(
-                      padding: const EdgeInsets.only(
-                        left: 24,
-                        right: 24,
-                        top: 32,
-                        bottom: 100, // Extra padding for the floating nav bar
-                      ),
+                      padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -332,80 +343,128 @@ class _HomeScreenState extends State<HomeScreen> {
                               .slideY(begin: 0.1, end: 0),
 
                           const SizedBox(height: 12),
-
-                          if (_isLoadingDrafts)
-                            const Center(
-                              child: CircularProgressIndicator(
-                                color: AppColors.primaryStart,
-                              ),
-                            )
-                          else if (_recentDrafts.isEmpty)
-                            FrostedGlass(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: const SizedBox(
-                                    height: 120,
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            LucideIcons.inbox,
-                                            color: AppColors.textTertiary,
-                                            size: 32,
-                                          ),
-                                          SizedBox(height: 8),
-                                          Text(
-                                            'Your recent video drafts will appear here',
-                                            style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                              fontSize: 13,
-                                              color: AppColors.textSecondary,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                )
-                                .animate()
-                                .fadeIn(delay: 450.ms)
-                                .slideY(begin: 0.1, end: 0)
-                          else
-                            SizedBox(
-                                  height: 140,
-                                  child: Row(
-                                    children: [
-                                      for (int i = 0; i < 3; i++) ...[
-                                        Expanded(
-                                          child: i < _recentDrafts.length
-                                              ? _buildDraftCard(
-                                                  _recentDrafts[i],
-                                                )
-                                              : const SizedBox(),
-                                        ),
-                                        if (i < 2) const SizedBox(width: 12),
-                                      ],
-                                    ],
-                                  ),
-                                )
-                                .animate()
-                                .fadeIn(delay: 450.ms)
-                                .slideY(begin: 0.1, end: 0),
                         ],
                       ),
                     ),
                   ),
                 ),
+                // The rest of the screen, under the nav included, is the
+                // drafts'. Only where that would not hold one row above the
+                // nav — a phone on its side, very large text — does the page
+                // itself scroll.
+                SliverLayoutBuilder(
+                  builder: (context, constraints) {
+                    final room = constraints.viewportMainAxisExtent -
+                        constraints.precedingScrollExtent;
+                    return SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: math.max(
+                          room,
+                          _kDraftRowHeight + _kDraftSpacing + navClearance,
+                        ),
+                        child: ResponsiveCenter(
+                          child: _recentDraftsArea(navClearance),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
           ),
+
+          // What runs on under the nav passes under a blur across the full
+          // width, never a hard edge. Over the bare background it shows
+          // nothing, since the glows are already soft.
+          if (!_isLoadingDrafts && _recentDrafts.isNotEmpty)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: navClearance,
+              child: ClipRect(
+                key: const ValueKey('recent_drafts_blur'),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
+  /// The recent drafts, in the room from under their title to the bottom of
+  /// the screen: up to six, three to a row, scrolling inside their own box.
+  /// On a tall phone both rows sit above the nav and nothing scrolls; on a
+  /// shorter one the second row runs on under the nav, blurred, until the
+  /// drafts are scrolled up out from under it — the padding under the last
+  /// row is what lets it clear the nav. The empty placeholder keeps its size.
+  Widget _recentDraftsArea(double navClearance) {
+    if (_isLoadingDrafts) {
+      return const Align(
+        alignment: Alignment.topCenter,
+        child: CircularProgressIndicator(color: AppColors.primaryStart),
+      );
+    }
+    if (_recentDrafts.isEmpty) {
+      return Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: FrostedGlass(
+                borderRadius: BorderRadius.circular(16),
+                child: const SizedBox(
+                  height: 120,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          LucideIcons.inbox,
+                          color: AppColors.textTertiary,
+                          size: 32,
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Your recent video drafts will appear here',
+                          style: TextStyle(fontFamily: kInterfaceFontFamily,
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+              .animate()
+              .fadeIn(delay: 450.ms)
+              .slideY(begin: 0.1, end: 0),
+        ),
+      );
+    }
+    return GridView.builder(
+          key: const ValueKey('recent_drafts'),
+          padding: EdgeInsets.fromLTRB(24, 0, 24, navClearance + _kDraftSpacing),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisExtent: _kDraftRowHeight,
+            mainAxisSpacing: _kDraftSpacing,
+            crossAxisSpacing: _kDraftSpacing,
+          ),
+          itemCount: _recentDrafts.length,
+          itemBuilder: (context, i) => _buildDraftCard(_recentDrafts[i]),
+        )
+        .animate()
+        .fadeIn(delay: 450.ms)
+        .slideY(begin: 0.1, end: 0);
+  }
+
   Widget _buildDraftCard(DraftProject draft) {
     return GestureDetector(
+      key: ValueKey('recent_draft_${draft.id}'),
       onTap: () async {
         HapticFeedback.selectionClick();
         await _openDraft(draft);

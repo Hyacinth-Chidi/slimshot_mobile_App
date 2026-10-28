@@ -34,7 +34,7 @@ class MainShellScreen extends StatelessWidget {
           Positioned(
             left: 0,
             right: 0,
-            bottom: 32, // Padding from bottom
+            bottom: kFloatingNavBottomMargin,
             child: SafeArea(
               child: Center(
                 child: ConstrainedBox(
