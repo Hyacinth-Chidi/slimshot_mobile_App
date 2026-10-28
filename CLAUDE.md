@@ -4526,6 +4526,42 @@ light, not paint.**
   blur the very frame being judged, over a live texture, on low-end GPUs. Purple stays an accent
   in the editor. No light mode: dark is the editing standard.
 
+### The tab bar — one pill, gliding
+
+**Awaiting device verification** (the owner's ask, 2026-10-28: smoother, more premium).
+`FloatingNavBar` (`core/widgets/floating_nav_bar.dart`, tested in
+`floating_nav_bar_test.dart`) is the shell's floating bar, moved out of
+`main_shell_screen.dart` so it could be tested at all. The look is the one it had — glass, the
+chosen tab a tinted pill with its name — and the motion is new. Before, the old tab's tint faded
+out over 200ms while the new one's faded in, its border popped, the name was inserted in one
+frame and every icon jumped sideways (66px in a frame, measured), and a 320dp phone overflowed.
+
+- **One pill travels**, on springs (`withDurationAndBounce`). Its **leading edge is quicker than
+  its trailing edge**, and the trailing edge holds 40ms from rest before it follows: the pill
+  peels away from the tab it leaves, stretches toward the one chosen, and settles. A hold is
+  taken only from rest, never mid-glide, and a second tap mid-glide turns the pill from where it
+  is at the speed it has. Tuned against a model of the bar for every pair of tabs: a move to a
+  narrower or farther tab stretches 1.15–1.6×, one to a wider neighbour hardly at all (the pill
+  is growing into it anyway); all of it settles within about 0.6s, the visible part by ~0.35s.
+- **The edges are springs in tab units, not pixels**: a whole number is exactly that tab's box
+  in the current layout, so at rest the pill is glued to its tab even while the tab is still
+  widening, and the targets never depend on a layout the ticker cannot see.
+- **Names unfold and fold**: a tab widens as its name is revealed (60ms after the pill sets off,
+  so the room opens as it comes), the other icons slide to make room, and a leaving name folds
+  quicker than one arrives. **A name is drawn only inside the pill and inside its own tab, and
+  only once the pill covers its icon** (`_iconCovered`) — rendered frames showed "Home" fading in
+  ahead of the pill, text arriving before its tab; a test now walks every frame for it.
+- **Colours are the app's**: the chosen icon and name `lilac` (accent on purple), the others
+  `textSecondary`, the pill `primaryStart` lit from above. It was a hard-coded violet found
+  nowhere else and Slate grey. The name's style is whole in itself (`inherit: false`): merged
+  into an ambient style it picked up Flutter's yellow no-`Material` underline.
+- **Never wider than the bar**: the tabs' padding narrows to 10, then the names scale down
+  (labels also stop growing at 1.3× text). **A tap between two tabs chooses the nearer**; the
+  gaps used to be dead. Each tab is a button with its name and selected state for screen
+  readers. A press squeezes the tab to 90%, back with a little give; with animations off
+  everything moves at once.
+- **The bar's size is unchanged** (68px), so the screens' bottom padding for it still holds.
+
 ### The app icon — drawn from the logo, an adaptive icon on Android
 
 **Awaiting device verification** (2026-10-27; device-reported as blurry). The old 1024 picture was
