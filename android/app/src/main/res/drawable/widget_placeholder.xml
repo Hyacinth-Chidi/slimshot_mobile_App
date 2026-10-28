@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Where the cover goes when there is none: a dashed lilac frame. Sized 9:16
+     so the widget's cover slot keeps its shape. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <size
+        android:width="62dp"
+        android:height="110dp" />
+    <solid android:color="#0AFFFFFF" />
+    <stroke
+        android:width="1.5dp"
+        android:color="#73D8B4FE"
+        android:dashGap="3dp"
+        android:dashWidth="4dp" />
+    <corners android:radius="14dp" />
+</shape>

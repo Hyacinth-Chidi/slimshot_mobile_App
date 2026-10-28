@@ -10,6 +10,8 @@ import 'draft_files.dart';
 class DraftService {
   static const _storageKey = 'video_drafts';
   static const _maxItems = 20;
+  /// The home screen widget expires an edit by the same rule
+  /// (`DraftAge.kt`): if one changes, the other must.
   static const _maxAgeDays = 20;
 
   static Future<List<DraftProject>> getDrafts() async {

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget's purple pill, lit from its top left. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="315"
+        android:endColor="#FF6B21A8"
+        android:startColor="#FF9333EA" />
+    <corners android:radius="999dp" />
+</shape>

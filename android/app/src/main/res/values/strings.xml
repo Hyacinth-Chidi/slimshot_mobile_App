@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The "Continue editing" home screen widget. -->
+    <string name="widget_continue_editing_label">Continue editing</string>
+    <string name="widget_continue_editing_description">Your last edit, one tap away</string>
+    <string name="widget_kicker">CONTINUE EDITING</string>
+    <string name="widget_button_continue">Continue</string>
+    <string name="widget_kicker_no_edit">SLIMSHOT</string>
+    <string name="widget_title_no_edit">No edits yet</string>
+    <string name="widget_sub_no_edit">Your last edit will wait here</string>
+    <string name="widget_button_start">Start editing</string>
+
+    <!-- The sample edit the widget picker shows. -->
+    <string name="widget_preview_title">Edited today</string>
+    <string name="widget_preview_clips">4 clips</string>
+    <string name="widget_preview_length">0:42</string>
+</resources>
