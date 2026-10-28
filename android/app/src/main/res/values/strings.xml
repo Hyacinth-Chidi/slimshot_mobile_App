@@ -10,6 +10,10 @@
     <string name="widget_sub_no_edit">Your last edit will wait here</string>
     <string name="widget_button_start">Start editing</string>
 
+    <!-- The icon's long-press menu. -->
+    <string name="shortcut_new_video">New video</string>
+    <string name="shortcut_compress_video">Compress video</string>
+
     <!-- The sample edit the widget picker shows. -->
     <string name="widget_preview_title">Edited today</string>
     <string name="widget_preview_clips">4 clips</string>

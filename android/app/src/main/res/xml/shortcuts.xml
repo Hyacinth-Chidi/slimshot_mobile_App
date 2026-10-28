@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The icon's long-press menu. Both land on LaunchTrampolineActivity, never
+     MainActivity: Android starts a static shortcut with CLEAR_TASK, which would
+     destroy the running app (and an export in it) before the tap arrived. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_new_video"
+        android:shortcutId="new_video"
+        android:shortcutShortLabel="@string/shortcut_new_video">
+        <intent
+            android:action="com.techfamz.slimshotai.action.NEW_VIDEO"
+            android:targetClass="com.techfamz.slimshotai.homewidget.LaunchTrampolineActivity"
+            android:targetPackage="com.techfamz.slimshotai" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_compress_video"
+        android:shortcutId="compress_video"
+        android:shortcutShortLabel="@string/shortcut_compress_video">
+        <intent
+            android:action="com.techfamz.slimshotai.action.COMPRESS_VIDEO"
+            android:targetClass="com.techfamz.slimshotai.homewidget.LaunchTrampolineActivity"
+            android:targetPackage="com.techfamz.slimshotai" />
+    </shortcut>
+</shortcuts>

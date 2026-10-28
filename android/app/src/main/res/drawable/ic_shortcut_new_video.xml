@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 7.1: the glyph on its deep-purple circle, drawn whole. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FF3B0764"
+        android:pathData="M24,0a24,24 0,1 1,0 48a24,24 0,1 1,0 -48z" />
+    <group
+        android:translateX="12"
+        android:translateY="12">
+        <path
+            android:pathData="M12,6v12M6,12h12"
+            android:strokeWidth="2.4"
+            android:strokeColor="#FFD8B4FE"
+            android:strokeLineCap="round" />
+    </group>
+</vector>
