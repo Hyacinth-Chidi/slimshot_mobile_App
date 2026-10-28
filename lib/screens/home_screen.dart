@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -27,34 +26,10 @@ import '../core/widgets/colour_field_backdrop.dart';
 import '../core/widgets/floating_nav_bar.dart';
 import '../features/home_widget/launch_actions.dart';
 import 'home_header.dart';
+import 'home_layout.dart';
 
-/// How many recent drafts Home shows; Workspace has them all.
+/// How many recent edits Home shows; Workspace has them all.
 const int _kRecentDrafts = 6;
-
-/// A draft card's height, the gap between cards both ways, and the gap the
-/// last row keeps above the nav.
-const double _kDraftRowHeight = 140;
-const double _kDraftSpacing = 12;
-const double _kDraftNavGap = 8;
-
-/// The shortest a draft card gets to fit two rows above the nav.
-const double _kMinDraftRowHeight = 120;
-
-/// How tall the draft cards are, given how many drafts there are and the
-/// [room] between the drafts' title and the nav's top edge.
-///
-/// Two rows give up a little height to sit above the nav together — on a
-/// Galaxy Note 10 they need 6dp each — but never below
-/// [_kMinDraftRowHeight]. Where even that would not fit, the cards keep their
-/// full height and the second row runs on under the nav until scrolled up.
-/// One row never needs to give anything.
-double draftRowHeight({required int drafts, required double room}) {
-  if (drafts <= 3) return _kDraftRowHeight;
-  final twoRows = (room - _kDraftSpacing - _kDraftNavGap) / 2;
-  if (twoRows >= _kDraftRowHeight) return _kDraftRowHeight;
-  if (twoRows >= _kMinDraftRowHeight) return twoRows.floorToDouble();
-  return _kDraftRowHeight;
-}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -259,138 +234,84 @@ class _HomeScreenState extends State<HomeScreen> {
             child: CustomScrollView(
               key: const ValueKey('home_page'),
               slivers: [
+                // The header is measured, never assumed: its height follows
+                // the phone's width and text size.
                 SliverToBoxAdapter(
                   child: ResponsiveCenter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          HomeHeader(
-                            brand: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SvgPicture.asset(
-                                  'assets/logo.svg',
-                                  width: 44,
-                                  height: 44,
-                                ),
-                                const SizedBox(width: 8),
-                                ShaderMask(
-                                  blendMode: BlendMode.srcIn,
-                                  shaderCallback: (bounds) =>
-                                      const LinearGradient(
-                                        colors: [
-                                          AppColors.textPrimary,
-                                          AppColors.textSecondary,
-                                        ],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ).createShader(bounds),
-                                  child: const Text(
-                                    'SlimShot AI',
-                                    style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: -0.5,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                      padding: const EdgeInsets.fromLTRB(
+                          24, kHomeTopPadding, 24, 0),
+                      child: HomeHeader(
+                        brand: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SvgPicture.asset(
+                              'assets/logo.svg',
+                              width: 44,
+                              height: 44,
                             ),
-                          ).animate().fadeIn().slideY(begin: -0.2, end: 0),
-
-                          const SizedBox(height: 16),
-
-                          // Edit Video Hero Card
-                          _HeroActionCard(onTap: _handleEditVideo, delay: 200),
-
-                          const SizedBox(height: 16),
-
-                          // 3 Square Tool Buttons
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _GridActionCard(
-                                  title: 'Compress\nVideo',
-                                  icon: LucideIcons.video,
-                                  onTap: _handleCompressVideo,
-                                  delay: 250,
+                            const SizedBox(width: 8),
+                            ShaderMask(
+                              blendMode: BlendMode.srcIn,
+                              shaderCallback: (bounds) =>
+                                  const LinearGradient(
+                                    colors: [
+                                      AppColors.textPrimary,
+                                      AppColors.textSecondary,
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ).createShader(bounds),
+                              child: const Text(
+                                'SlimShot AI',
+                                style: TextStyle(fontFamily: kInterfaceFontFamily, 
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _GridActionCard(
-                                  title: 'Compress\nPhoto',
-                                  icon: LucideIcons.image,
-                                  onTap: _handleCompressPhoto,
-                                  delay: 300,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _GridActionCard(
-                                  title: 'Privacy\nStrip',
-                                  icon: LucideIcons.shield,
-                                  onTap: _handlePrivacyStrip,
-                                  delay: 350,
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          // Recent Drafts Placeholder Section
-                          const Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      'Recent Drafts',
-                                      style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                              .animate()
-                              .fadeIn(delay: 400.ms)
-                              .slideY(begin: 0.1, end: 0),
-
-                          const SizedBox(height: 12),
-                        ],
-                      ),
+                            ),
+                          ],
+                        ),
+                      ).animate().fadeIn().slideY(begin: -0.2, end: 0),
                     ),
                   ),
                 ),
-                // The rest of the screen, under the nav included, is the
-                // drafts'. Only where that would not hold one row above the
-                // nav — a phone on its side, very large text — does the page
-                // itself scroll.
+                // Everything under the header is sized from the room the
+                // phone leaves ([HomeLayout]): the rest of the screen, under
+                // the nav included, ending in the drafts' box. Only where that
+                // will not hold one row above the nav — a phone on its side —
+                // does the page itself scroll.
                 SliverLayoutBuilder(
                   builder: (context, constraints) {
-                    final box = math.max(
-                      constraints.viewportMainAxisExtent -
+                    final layout = HomeLayout.fit(
+                      room: constraints.viewportMainAxisExtent -
                           constraints.precedingScrollExtent,
-                      _kDraftRowHeight + _kDraftNavGap + navClearance,
+                      title: homeTitleHeight(MediaQuery.textScalerOf(context)),
+                      navClearance: navClearance,
                     );
                     return SliverToBoxAdapter(
                       child: SizedBox(
-                        height: box,
-                        child: ResponsiveCenter(
-                          child: _recentDraftsArea(
-                            navClearance,
-                            draftRowHeight(
-                              drafts: _recentDrafts.length,
-                              room: box - navClearance,
+                        height: layout.height,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            ResponsiveCenter(
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 24),
+                                child: _toolsAndTitle(layout),
+                              ),
                             ),
-                          ),
+                            Expanded(
+                              child: ResponsiveCenter(
+                                child: _recentDraftsArea(
+                                  navClearance,
+                                  layout.draftRow,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -422,13 +343,87 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// The recent drafts, in the room from under their title to the bottom of
+  /// New Video, the three tools and the "Recent Edits" line, each at the
+  /// height the phone's room gives it ([HomeLayout]).
+  Widget _toolsAndTitle(HomeLayout layout) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(height: layout.gapAboveHero),
+          _HeroActionCard(
+            height: layout.hero,
+            onTap: _handleEditVideo,
+            delay: 200,
+          ),
+          SizedBox(height: layout.gapAboveTools),
+          Row(
+            children: [
+              Expanded(
+                child: _GridActionCard(
+                  key: const ValueKey('home_compress_video'),
+                  title: 'Compress\nVideo',
+                  icon: LucideIcons.video,
+                  height: layout.tools,
+                  onTap: _handleCompressVideo,
+                  delay: 250,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _GridActionCard(
+                  key: const ValueKey('home_compress_photo'),
+                  title: 'Compress\nPhoto',
+                  icon: LucideIcons.image,
+                  height: layout.tools,
+                  onTap: _handleCompressPhoto,
+                  delay: 300,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _GridActionCard(
+                  key: const ValueKey('home_privacy_strip'),
+                  title: 'Privacy\nStrip',
+                  icon: LucideIcons.shield,
+                  height: layout.tools,
+                  onTap: _handlePrivacyStrip,
+                  delay: 350,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: layout.gapAboveTitle),
+          // One line at a line height of its own, so it is exactly the
+          // height the layout made room for.
+          SizedBox(
+            height: layout.title,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Recent Edits',
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontFamily: kInterfaceFontFamily,
+                    fontSize: kHomeTitleFontSize,
+                    height: kHomeTitleLineHeight,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.1, end: 0),
+          ),
+          SizedBox(height: layout.gapAboveDrafts),
+        ],
+      );
+
+  /// The recent edits, in the room from under their title to the bottom of
   /// the screen: up to six, three to a row, scrolling inside their own box.
-  /// Where two rows can sit above the nav, they do, the cards giving up a
-  /// little height if they must ([draftRowHeight]); where they cannot, the
-  /// second row runs on under the nav, blurred, until the drafts are scrolled
-  /// up out from under it — the padding under the last row is what lets it
-  /// clear the nav. The empty placeholder keeps its size.
+  /// Where two rows fit above the nav, they sit there ([HomeLayout]); where
+  /// they cannot, the second row runs on under the nav, blurred, until the
+  /// drafts are scrolled up out from under it — the padding under the last
+  /// row is what lets it clear the nav. The empty placeholder keeps its size.
   Widget _recentDraftsArea(double navClearance, double rowHeight) {
     if (_isLoadingDrafts) {
       return const Align(
@@ -444,7 +439,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: FrostedGlass(
                 borderRadius: BorderRadius.circular(16),
                 child: const SizedBox(
-                  height: 120,
+                  height: kHomeDraftsPlaceholderHeight,
                   child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -456,7 +451,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         SizedBox(height: 8),
                         Text(
-                          'Your recent video drafts will appear here',
+                          'Your recent edits will appear here',
                           style: TextStyle(fontFamily: kInterfaceFontFamily,
                             fontSize: 13,
                             color: AppColors.textSecondary,
@@ -475,12 +470,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     return GridView.builder(
           key: const ValueKey('recent_drafts'),
-          padding: EdgeInsets.fromLTRB(24, 0, 24, navClearance + _kDraftNavGap),
+          padding: EdgeInsets.fromLTRB(24, 0, 24, navClearance + kHomeDraftNavGap),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
             mainAxisExtent: rowHeight,
-            mainAxisSpacing: _kDraftSpacing,
-            crossAxisSpacing: _kDraftSpacing,
+            mainAxisSpacing: kHomeDraftSpacing,
+            crossAxisSpacing: kHomeDraftSpacing,
           ),
           itemCount: _recentDrafts.length,
           itemBuilder: (context, i) => _buildDraftCard(_recentDrafts[i]),
@@ -538,12 +533,15 @@ class _HomeScreenState extends State<HomeScreen> {
 class _GridActionCard extends StatefulWidget {
   final String title;
   final IconData icon;
+  final double height;
   final VoidCallback onTap;
   final int delay;
 
   const _GridActionCard({
+    super.key,
     required this.title,
     required this.icon,
+    required this.height,
     required this.onTap,
     required this.delay,
   });
@@ -557,6 +555,8 @@ class _GridActionCardState extends State<_GridActionCard> {
 
   @override
   Widget build(BuildContext context) {
+    // The corner circle keeps its share of a shorter card.
+    final corner = widget.height / kHomeToolsHeight.full;
     return GestureDetector(
       onTapDown: (_) => setState(() => _isPressed = true),
       onTapUp: (_) {
@@ -569,6 +569,10 @@ class _GridActionCardState extends State<_GridActionCard> {
       // photos, glass read as washed out.
       child: AnimatedContainer(
         duration: 150.ms,
+        // The height includes the border: a border is padding inside a
+        // container, so a height given to its child would grow the card
+        // past what the layout made room for.
+        height: widget.height,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: AppColors.surface,
@@ -577,13 +581,12 @@ class _GridActionCardState extends State<_GridActionCard> {
             color: _isPressed ? AppColors.primaryStart : AppColors.surfaceLight,
           ),
         ),
-        child: SizedBox(
-          height: 120, // Square proportion
+        child: SizedBox.expand(
           child: Stack(
             children: [
               Positioned(
-                right: -30,
-                bottom: -30,
+                right: -30 * corner,
+                bottom: -30 * corner,
                 // Decoration only. It was an `OpenContainer` — a widget that
                 // opens a page when tapped — so a tap on this corner opened
                 // an empty page inside the home tab, leaving only the
@@ -592,8 +595,8 @@ class _GridActionCardState extends State<_GridActionCard> {
                   scale: _isPressed ? 1.2 : 1.0,
                   duration: 150.ms,
                   child: Container(
-                    width: 100,
-                    height: 100,
+                    width: 100 * corner,
+                    height: 100 * corner,
                     decoration: BoxDecoration(
                       color: AppColors.textPrimary.withValues(alpha: 0.07),
                       shape: BoxShape.circle,
@@ -602,52 +605,55 @@ class _GridActionCardState extends State<_GridActionCard> {
                 ),
               ),
 
+              // The icon and its words keep their size until the card is
+              // too short for them, then shrink together rather than
+              // overflow it.
               Padding(
-                padding: const EdgeInsets.all(12),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    mainAxisAlignment: MainAxisAlignment
-                        .center, // Center items to keep them together
-                    children: [
-                      AnimatedContainer(
-                        duration: 150.ms,
-                        transformAlignment: Alignment.center,
-                        transform: _isPressed
-                            ? Matrix4.diagonal3Values(0.9, 0.9, 1.0)
-                            : Matrix4.identity(),
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: AppColors.textPrimary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.textPrimary.withValues(
-                              alpha: 0.14,
+                padding: const EdgeInsets.all(10),
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedContainer(
+                          duration: 150.ms,
+                          transformAlignment: Alignment.center,
+                          transform: _isPressed
+                              ? Matrix4.diagonal3Values(0.9, 0.9, 1.0)
+                              : Matrix4.identity(),
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppColors.textPrimary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.textPrimary.withValues(
+                                alpha: 0.14,
+                              ),
                             ),
                           ),
+                          child: Icon(
+                            widget.icon,
+                            color: _isPressed
+                                ? AppColors.primaryStart
+                                : AppColors.textPrimary,
+                            size: 20,
+                          ),
                         ),
-                        child: Icon(
-                          widget.icon,
-                          color: _isPressed
-                              ? AppColors.primaryStart
-                              : AppColors.textPrimary,
-                          size: 20,
+                        const SizedBox(height: 8), // Added spacing
+                        Text(
+                          widget.title,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontFamily: kInterfaceFontFamily, 
+                            fontSize: 13,
+                            height: 1.2, // Tighter line height for multiline text
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8), // Added spacing
-                      Text(
-                        widget.title,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontFamily: kInterfaceFontFamily, 
-                          fontSize: 13,
-                          height: 1.2, // Tighter line height for multiline text
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -660,10 +666,15 @@ class _GridActionCardState extends State<_GridActionCard> {
 }
 
 class _HeroActionCard extends StatefulWidget {
+  final double height;
   final VoidCallback onTap;
   final int delay;
 
-  const _HeroActionCard({required this.onTap, required this.delay});
+  const _HeroActionCard({
+    required this.height,
+    required this.onTap,
+    required this.delay,
+  });
 
   @override
   State<_HeroActionCard> createState() => _HeroActionCardState();
@@ -697,7 +708,7 @@ class _HeroActionCardState extends State<_HeroActionCard> {
           scale: _isPressed ? 0.98 : 1,
           duration: 120.ms,
           child: Container(
-            height: 156,
+            height: widget.height,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
               gradient: const LinearGradient(
@@ -719,13 +730,25 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                     width: box.maxWidth * 0.5,
                     child: const _PhotoFan(),
                   ),
-                  // The plus and its words, on the left.
+                  // The plus and its words, on the left: laid out for the
+                  // card's full height and scaled to the height it has, so a
+                  // shorter card shows the same plus smaller, never
+                  // squeezed against its edges.
                   Positioned(
                     left: 0,
                     top: 0,
                     bottom: 0,
                     width: box.maxWidth * 0.42,
-                    child: const _NewVideoPlus(),
+                    child: FittedBox(
+                      child: SizedBox(
+                        width: box.maxWidth *
+                            0.42 *
+                            kHomeHeroHeight.full /
+                            box.maxHeight,
+                        height: kHomeHeroHeight.full,
+                        child: const _NewVideoPlus(),
+                      ),
+                    ),
                   ),
                 ]),
               ),

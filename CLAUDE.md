@@ -4569,28 +4569,50 @@ light, not paint.**
   secondary, not tertiary. The coin is **`AppColors.credit`** (amber).
 - **The credits pill is pinned to the right edge** (`HomeHeader`'s brand is `Expanded`): a
   `Flexible` brand let a short balance sit against it.
-- **Six recent drafts fill the room down to the nav** (`home_recent_drafts_test.dart`, **awaiting
-  device verification**; the owner's design after rejecting three mockups). Three left a tall
-  phone ~160dp of nothing above the nav. The drafts, three to a row, take everything from under
-  their title to the bottom of the screen and scroll **inside their own box — never the page**.
-  **Two rows sit above the nav wherever they can**, the cards giving up a little height to do it
-  (`draftRowHeight`: 140dp, never below 120). Where even 120dp would not fit, they keep 140dp,
-  and the second row runs on **under** the nav rather than being cut off. It passes through a
-  full-width blur band (`recent_drafts_blur`, from the nav's top edge to the screen's foot), and
-  scrolling brings it up clear of the nav, where it can be tapped. The padding under the last
-  row is what lets it clear the nav. The page itself scrolls only where the box would not hold
-  one row above the nav: a phone on its side, very large text (`SliverLayoutBuilder` on
-  `precedingScrollExtent`, so the box's size never follows the scroll). **The empty placeholder
-  keeps its 120dp** (the owner's call).
+- **Six recent edits fill the room down to the nav, on every phone** (`home_layout.dart`,
+  `home_layout_test.dart`, `home_recent_edits_test.dart`, **awaiting device verification**; the
+  owner's design after rejecting three mockups). The section is **"Recent Edits"** (the owner's
+  word, matching the home screen widget's "Continue editing"; the empty card says "Your recent
+  edits will appear here"); the code still says drafts. The six, three to a row, take
+  everything from under the title to the bottom of the screen and scroll **inside their own box
+  — never the page**. The nav sits 12dp above the system's bar on every tab
+  (`kFloatingNavBottomMargin`; `kFloatingNavClearance` is that plus the 68dp bar).
 
-  **The room was found, not assumed: the owner's Galaxy Note 10, measured over adb** (411 × 869dp,
-  a 34dp status bar, a 48dp three-button bar, text at 110%). There the two rows were 76dp short.
-  The nav came down from 32dp to 12dp above the system's bar, for every tab
-  (`kFloatingNavBottomMargin`; `kFloatingNavClearance` is that plus the 68dp bar). Home's top
-  tightened: 16dp above the logo, 16dp to New Video, 20dp from the tools to "Recent Drafts". The
-  cards there are 134dp. A test pins the Note 10, and the test file loads Plus Jakarta Sans,
-  because the test font draws every letter a full em wide and overflows the tool cards at 110%.
-  **The blur band may go once the owner has seen the six fit** — their call, pending.
+  **Home's heights come from the room a phone gives it, never from which phone it is**
+  (`HomeLayout.fit`). A first pass was tuned to one test phone (a Note 10, 411 × 869dp) and
+  scrolled on another (an Infinix, 360 × 806dp — physically larger, fewer dp): the owner's rule
+  against designing for one phone, broken. Now every part under the header — the four gaps,
+  New Video, the tool cards and the draft rows — gives up **the same share** of what it can,
+  from its full size to its least (`HomeGive`: New Video 156→120, tools 120→96, rows 140→108,
+  gaps 16/16/20/12 → 8/8/12/8), as far as it takes for both rows to end at the 8dp gap above
+  the nav. A shorter phone shows the same page smaller rather than one part squeezed: the
+  plus and "New Video" are laid out at full height and scaled to the card's
+  (`FittedBox` over a 156dp box); a tool card's icon and words shrink only once the card cannot
+  hold them. Rows are whole dp, the rounding left under them, never past the nav. That fits
+  every 18:9 or longer phone with ordinary bars and text — 360 × 720dp is the shortest — and a
+  360 × 800dp phone at 1.3× text. **Measured, not assumed**: the header is its own sliver and the
+  layout reads `precedingScrollExtent`, since its height follows the phone's width and text
+  size (on a 360dp phone the brand scales down beside the credits pill); "Recent Edits" has a
+  line height of its own (`homeTitleHeight`), because the theme gives body text 1.43 and the
+  layout must know the line exactly. **A tool card is exactly its height**: its 1dp border is
+  padding inside a `Container`, so the height goes on the container, not its child — it was
+  2dp taller than its 120 by accident, which here pushed the grid down until it scrolled.
+
+  **Where even every part at its least will not hold both rows** (16:9, 360 × 640dp), nothing
+  goes under its least: the first row sits above the nav and the second runs on **under** it,
+  through a full-width blur band (`recent_drafts_blur`, from the nav's top edge to the screen's
+  foot), and scrolling the drafts brings it up clear of the nav. The page itself scrolls only
+  where not even one row fits above the nav — a phone on its side. **The empty placeholder
+  keeps its 120dp** (the owner's call), and the layout is the same whatever the number of
+  edits, so nothing moves when the fourth one is made.
+
+  **The tests sweep, they do not name phones**: every room from 250 to 1250dp at four text sizes
+  and four nav heights against the rules (each part within its range, both rows above the nav
+  exactly when the least fits, nothing left over but the rounding, more room never shrinking
+  anything), and the real Home on eleven phone shapes, 360 × 720 to 600 × 960, three densities
+  and three text sizes. The test file loads Plus Jakarta Sans: the test font draws every letter
+  a full em wide. **The blur band may go once the owner has seen the six fit** — their call,
+  pending.
 - **Account sheets sit on the same light**, everywhere (`AccountSheetFrame.glows`, the home
   composition moved closer in for a shorter shape; the top glow is wide because over a near-black
   screen that light is what shows where the sheet begins). **Light, not glass**: a glass version
