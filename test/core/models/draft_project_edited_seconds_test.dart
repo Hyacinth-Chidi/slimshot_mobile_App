@@ -72,7 +72,7 @@ void main() {
         segments: [
           VideoSegment(id: 'a', assetId: 'a', sourceStart: 0, sourceEnd: 5),
         ],
-        audioTracks: [
+        audioTracks: const [
           AudioTrackModel(
             id: 'm',
             filePath: '/m.mp3',

@@ -4943,6 +4943,70 @@ handing it over, so the original may go at once).
 - **Known:** a pick or a shared file whose screen never closed — the app killed on it — stays in
   the cache until the system clears it; nothing can tell it from a draft's clip.
 
+### The home screen widget and the icon's menu
+
+**Awaiting device verification** (the owner's picks from mockups, 2026-10-28). Spec:
+`docs/superpowers/specs/2026-10-28-home-screen-widget-design.md`, plan beside it in `plans/`.
+**Continue editing** is one 4 × 2 widget: the last edit's cover (a length chip on it when known),
+"CONTINUE EDITING", "Edited today" / "Edited yesterday" / "Edited 12 Oct", "4 clips" and a purple
+**Continue**; before any edit, a dashed frame, "No edits yet" and **Start editing**. Buttons are
+text only (the owner's call). A tap anywhere on the card does what its button says. Long-pressing
+the icon offers **New video** and **Compress video**.
+
+**The widget draws from its own store, so it draws with the app closed.** `HomeWidgetSync`
+(`features/home_widget/`) sends the latest draft — by `updatedAt`, whatever the list order — over
+`slimshot_ai/home_widget` at every launch and on every `DraftRefreshNotifier` change; a read that
+lands after a newer one began is dropped, or a slow read could put back a draft just deleted.
+`HomeWidgetChannel.kt` keeps it in `HomeWidgetStore` and redraws (`ContinueEditingWidget.updateAll`),
+in order on a thread of its own. **The cover is prepared again on every call, never skipped for
+the same draft id** — a new cover for an edit keeps its id — through `StillImageDecoder` (so a
+gallery cover's EXIF turn is honoured), cut 9:16, ≤ 320 px tall, corners rounded in the bitmap
+(`CoverPicture`, `CoverCrop`): RemoteViews cannot clip a picture on older Android, and a large
+bitmap breaks a widget's memory limit. **Dates are worked out when the widget draws** (`WidgetText`,
+calendar days in the phone's zone, the locale's best `dMMM`), and it redraws hourly
+(`updatePeriodMillis`) and on a change, nothing else. An edit older than the app keeps a draft
+(`DraftAge`, the twin of `DraftService._maxAgeDays` — if one changes the other must) draws as no
+edit. **The length is `DraftProject.editedSeconds`** — `projectEndSeconds`, what the editor's
+duration shows, saved by `saveDraft` — and never `durationSeconds`, which is the first imported
+file's; a draft saved before it has no chip until next saved.
+
+**A tap is read once and run by Home's own handler.** The widget starts `MainActivity`
+(`NEW_TASK | CLEAR_TOP | SINGLE_TOP`, so a running app gets `onNewIntent`, not a second engine).
+**The menu goes through `LaunchTrampolineActivity`**: Android starts a static shortcut with
+`NEW_TASK | CLEAR_TASK`, which aimed at `MainActivity` would destroy the running app — the editor's
+unsaved changes, an export under way — before the tap arrived; the trampoline has a task of its own
+(`taskAffinity=""`), hands the tap on and finishes unseen. `MainActivity` reads the intent it
+started with **only on a fresh start and never one reopened from Recents**
+(`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`), or backing out and reopening would repeat the tap;
+`LaunchMailbox` keeps a tap until Dart listens (`takeLaunchAction`), then sends later ones
+(`launchAction`). Dart's `LaunchChannel` hands each to `LaunchRouter`, which decides by one pure
+rule (`routeFor`): busy → the app only comes forward; Continue on the edit already open → the same;
+onboarding not yet seen → `LaunchActions` keeps it for Home; otherwise Home. `HomeScreen` takes
+the action once, on its first frame and on every post, and runs `_handleEditVideo`,
+`_handleCompressVideo` or `_openDraft` (the draft card's own tap) — so the picker, its permission
+dialog and its errors are exactly Home's. A Continue whose draft is gone says "That edit was
+deleted." and redraws the widget.
+
+**Work in progress is never thrown away by a tap** (`HeldWork`, `core/utils/held_work.dart`): an
+export (from start until its file is saved or shared, or it fails), a compression or a privacy
+strip under way, a compress or strip result nobody kept (`ResultExit.hold`), a caption run (the
+progress sheet) and recording mode (`RecordController`) — and the update screen, which a forced
+update keeps on screen. **Going Home with the editor open saves the draft explicitly first** (the
+editor's own save in `dispose` runs a frame after the screen has gone), **and Home acts only once
+the editor's provider is gone** (≤ 120 frames): two editors at once would share one
+`videoEditorProvider` and one native preview. Anything new that would lose work if the screen
+were torn down from outside holds `HeldWork` while it has something to lose.
+
+Kotlin tests with a filter run as `:app:testDebugUnitTest --tests "…"` — unscoped, the filter
+reaches every plugin module and one fails with "No tests found".
+
+**Device checks**: the widget with and without an edit, at the largest text size, Android 12+
+corners, the picker's preview (12+ live, older a picture); Continue opening the edit shown; the
+card following an edit, a new cover and a delete; both menu items from a cold start and with the
+app open — during an export too, which must keep running; a tap from the editor on another edit
+(its changes saved), from a result nobody saved (the app only comes forward), after rotating, and
+reopened from Recents after backing out (nothing repeats).
+
 ### Decisions already made â€” don't re-litigate
 
 | Question | Decision |
