@@ -183,6 +183,7 @@ class _ExportOptionsDialogState extends State<ExportOptionsDialog> {
                     if (_selectedHeight == 2160) {
                       AdService.showRewardedAd(
                         context,
+                        placement: AdPlacement.export,
                         onRewardEarned: () {
                           if (context.mounted) {
                             Navigator.pop(context, {

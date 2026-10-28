@@ -180,6 +180,7 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
     
     AdService.showInterstitialAd(
       context,
+      placement: AdPlacement.export,
       onAdDismissed: () async {
         if (!mounted) return;
         try {

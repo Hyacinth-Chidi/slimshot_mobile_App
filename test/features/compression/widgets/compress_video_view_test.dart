@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/services/ad_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:slimshotai/features/compression/logic/compression_presets.dart';
 import 'package:slimshotai/features/compression/providers/compression_provider.dart';
@@ -106,10 +107,13 @@ void main() {
     expect(find.text('WebM'), findsOneWidget);
   });
 
-  testWidgets('no PRO badge while ads are off: there is nothing to unlock',
+  // Best quality is unlocked by a rewarded ad while video compression's ads
+  // are on, and its row says so; with them off there is nothing to unlock.
+  testWidgets('Best quality wears PRO exactly while an ad unlocks it',
       (tester) async {
     await pump(tester, _state());
-    expect(find.text('PRO'), findsNothing);
+    expect(find.text('PRO'),
+        AdService.videoCompressionAds ? findsOneWidget : findsNothing);
   });
 
   testWidgets('no before-and-after here: the result screen shows the sizes',

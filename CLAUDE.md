@@ -4505,9 +4505,10 @@ it showed **Back tomorrow** to someone with every ad still to watch, until `/me`
 offers a plain **Watch an ad** with no count, and is not written back into the cache as a number.
 Opening the Credits screen reads `/me` again, so a reward that landed while it was closed shows.
 
-**Credit ads have their own switch** (`AdService.creditAdsEnabled`, on); `AdService.enabled` —
-interstitials and the Pro-unlock ads — stays off. **Credit ads start the SDK themselves, when an
-earning block first shows, after Google's consent step** (UMP: `requestConsentInfoUpdate`, then
+**Credit ads have their own switch** (`AdService.creditAdsEnabled`, on); the other ads have one
+per placement (the ads section below). **Credit ads start the SDK themselves, when an
+earning block first shows, after Google's consent step** (`AdsSdk`, shared with every other ad
+since; UMP: `requestConsentInfoUpdate`, then
 `loadAndShowConsentFormIfRequired`, then `canRequestAds`) — the EEA, the UK and Switzerland need
 consent for ads to serve, and a user who never earns credits never starts the SDK. **The last
 answer is used first**, Google's own pattern: where an earlier check already allowed ads the SDK
@@ -4840,8 +4841,9 @@ through Google Fonts.
 - **Qualities are rows, not three squeezed tiles**: icon, name, one line, a tick; Smart wears
   **Recommended**. The video presets were renamed to fit (`Best quality` / `Smart` /
   `Smallest`, one short description each).
-  **PRO shows only while ads are on** (`showPro: AdService.enabled`): with ads off nothing is
-  locked, so the badge promised a lock that was not there.
+  **PRO shows exactly while Best quality's ad unlocks it** (`showPro:
+  AdService.videoCompressionAds`, on since 2026-10-28; photos' `photoCompressionAds`, off): with
+  a placement's ads off nothing is locked, so the badge would promise a lock that is not there.
 - **No before-and-after here — the user's call on the device.** A Now → After card with an
   estimated range was built and removed: the sizes belong to the result screen, where "after" is
   the real file rather than a guess from a preset's "50-80%". The result screen's
@@ -4975,6 +4977,56 @@ and the photo's shape (`PhotoInspector`, shared with Compress photo).
   them in place. A test plants "secret" in every hiding place and asserts none survives and the
   image bytes are untouched.
 - `CompressionLoaderOverlay` is gone — the three screens that used it share the progress ring.
+
+### Ads — back one placement at a time
+
+**Awaiting device verification** (the owner's calls, 2026-10-28). Every ad but the credit ads was
+off from 2026-10-03 behind one switch, `AdService.enabled`, which would have brought every old
+placement back at once — including an interstitial in front of **Save**, which made the user
+wait for their own file. It is gone: **each placement has its own switch** (`AdPlacement`,
+`AdService.isOn`), and off, a placement waits on no ad and keeps nothing locked (its step goes
+ahead, its unlock is granted, its views show no badge).
+
+- **Video compression, on**: an interstitial **over the running compression**, in the wait
+  rather than added to it (`kVideoCompressionAdRule`): two seconds of the compression's own
+  progress first (AdMob recommends a "please wait" moment before an interstitial, so a quick
+  second tap cannot land on the ad), and only when about ten seconds or more are left, judged
+  from the progress — a 30-second ad over a 5-second job would make the ad the wait.
+  **Best quality is unlocked by a rewarded ad** the user chooses to watch — the owner first
+  asked for a rewarded ad *during* the compression, but rewarded ads must be opted into, one by
+  one, so it stays an unlock — and a compression at Best quality gets no interstitial
+  (`compressionGetsInterstitial`).
+- **Privacy Strip, on**: an interstitial on **every strip, however small or fast**
+  (`kPrivacyStripAdRule`), a second in; a strip done inside that second gets its ad then,
+  **before the report, never on top of it** (an ad appearing over a page that has just loaded is
+  one AdMob disallows).
+- **How often** (`AdPacing`): one compression ad per **four minutes** at most, one strip ad per
+  **six** (the owner's ranges were 3–5 and 5–7), and never two ads within a minute of each other,
+  whichever placements — a rewarded unlock counts. Kept for the session.
+- **Photo compression's Best quality unlock and the editor's export, off**: export is the next
+  to be talked through; the export's interstitial no longer waits on an ad to load (the old
+  3-second "Preparing…" loader is gone), so it is ready to be designed rather than revived.
+
+**One function decides an ad over a job** (`adOverWork`, `work_ad.dart`, `work_ad_test.dart`):
+never before the lead-in, never holding the job up, **only an ad already loaded** (none is
+waited for), only when it is due, and **only while the job still counts** — on screen, not
+cancelled, not failed (`wanted`): an ad after Back, a cancel or an error would land where nobody
+is waiting. It completes once the job has ended **and** the ad has closed, so the screens move on
+— the result, the report, an error — only after it; the compression and the strip run on
+underneath meanwhile. **Save shows no ad** anywhere, and a test reads both result screens for it.
+
+**No ad is asked for before Google's consent step has started the SDK** (`AdsSdk.started`): the
+consent-then-start code moved out of the credit ads (`PluginRewardedAdPlayer`) into `AdsSdk`, and
+a screen with a placement starts it when it opens (`AdService.prepare`), so the EEA's consent
+form appears there the first time. `main.dart` starts nothing. A loaded ad is dropped after 50
+minutes (AdMob keeps one an hour), and a failed load waits for the next ask instead of retrying
+every ten seconds for as long as the app runs.
+
+**Device checks**: a long compression shows an interstitial two seconds in and the result after
+it closes; a short clip shows none; a second compression within four minutes shows none; Best
+quality asks for its ad and then compresses with none; a strip — one photo — shows its ad before
+the report; Back or Cancel during the first seconds shows nothing; Save never shows an ad; the
+EEA consent form (a VPN to Europe) appears once.
 
 ### Temporary files — gone once off screen, and History with them
 

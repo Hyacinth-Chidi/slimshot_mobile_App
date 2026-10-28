@@ -107,9 +107,11 @@ class _CompressImageScreenState extends ConsumerState<CompressImageScreen> {
     final notifier = ref.read(compressionProvider.notifier);
     final selected = ref.read(compressionProvider).selectedPreset;
     if (preset.isPro && selected?.id != preset.id) {
-      // With ads off this grants at once (`AdService.enabled`).
+      // With this placement's ads off this grants at once
+      // (`AdService.photoCompressionAds`).
       AdService.showRewardedAd(
         context,
+        placement: AdPlacement.photoCompression,
         onRewardEarned: () {
           if (mounted) notifier.selectPreset(preset);
         },

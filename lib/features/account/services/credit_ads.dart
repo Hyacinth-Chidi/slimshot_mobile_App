@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import '../../../core/services/ads_sdk.dart';
 import '../../../core/services/slimshot_api.dart';
 import '../logic/account_copy.dart';
 import '../models/account_models.dart';
@@ -61,16 +62,10 @@ class PluginRewardedAdPlayer implements RewardedAdPlayer {
   /// outlasts it is kept for the next tap, not thrown away.
   static const Duration loadTimeout = Duration(seconds: 15);
 
-  static const Duration consentTimeout = Duration(seconds: 10);
-
   /// AdMob keeps a loaded rewarded ad showable for an hour.
   static const Duration adLifetime = Duration(minutes: 50);
 
   static const String _tag = 'SlimshotAds';
-
-  /// The consent step, then the SDK: null once ads may be requested,
-  /// otherwise why not. Cleared on a failure so the next ask tries again.
-  static Future<String?>? _sdk;
 
   RewardedAd? _ad;
   DateTime? _adLoadedAt;
@@ -79,77 +74,9 @@ class PluginRewardedAdPlayer implements RewardedAdPlayer {
   @override
   Future<void> prepare() async {
     try {
-      if (await _startSdk() == null) unawaited(_load());
+      if (await AdsSdk.start() == null) unawaited(_load());
     } catch (e) {
       debugPrint('$_tag: prepare failed: $e');
-    }
-  }
-
-  static Future<String?> _startSdk() => _sdk ??= _consentThenStart();
-
-  /// Google's consent step (UMP), then the SDK — once per launch, and only
-  /// when credit ads are on screen, so a user who never earns credits never
-  /// starts the ads SDK. In the EEA, the UK and Switzerland ads need consent
-  /// to serve; elsewhere Google answers that none is required.
-  ///
-  /// **The last answer is used first** (Google's own pattern): where an
-  /// earlier check already allowed ads, the SDK starts at once and the check
-  /// is refreshed alongside, so a weak connection does not hold every ad
-  /// behind a network round trip. Only with no answer yet is it waited for.
-  static Future<String?> _consentThenStart() async {
-    try {
-      final consent = ConsentInformation.instance;
-      if (await consent.canRequestAds()) {
-        unawaited(_checkConsent());
-      } else {
-        final failed = await _checkConsent();
-        if (!await consent.canRequestAds()) {
-          _sdk = null;
-          return failed ?? 'consent not given';
-        }
-      }
-      await MobileAds.instance.initialize();
-      return null;
-    } catch (e) {
-      _sdk = null;
-      return 'ads SDK: $e';
-    }
-  }
-
-  /// Asks Google whether a consent form is needed and shows it if so.
-  /// Null when the check answered; otherwise why it did not.
-  static Future<String?> _checkConsent() async {
-    try {
-      final updated = Completer<String?>();
-      ConsentInformation.instance.requestConsentInfoUpdate(
-        ConsentRequestParameters(),
-        () {
-          if (!updated.isCompleted) updated.complete(null);
-        },
-        (error) {
-          if (!updated.isCompleted) {
-            updated.complete(
-                'consent check failed (${error.errorCode}: ${error.message})');
-          }
-        },
-      );
-      final failed = await updated.future.timeout(
-        consentTimeout,
-        onTimeout: () => 'consent check timed out',
-      );
-      if (failed != null) {
-        debugPrint('$_tag: $failed');
-        return failed;
-      }
-      final dismissed = Completer<void>();
-      unawaited(ConsentForm.loadAndShowConsentFormIfRequired((_) {
-        if (!dismissed.isCompleted) dismissed.complete();
-      }));
-      await dismissed.future;
-      return null;
-    } catch (e) {
-      debugPrint('$_tag: consent check: $e');
-      return 'consent check: $e';
     }
   }
 
@@ -212,7 +139,7 @@ class PluginRewardedAdPlayer implements RewardedAdPlayer {
     required String customData,
   }) async {
     try {
-      final blocked = await _startSdk();
+      final blocked = await AdsSdk.start();
       if (blocked != null) return AdPlay.notShown(blocked);
       var ad = _take();
       if (ad == null) {

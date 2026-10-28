@@ -32,7 +32,7 @@ class CompressVideoView extends StatelessWidget {
     this.previewAspectRatio,
     this.isPlaying = false,
     this.onTogglePlay,
-    this.showPro = AdService.enabled,
+    this.showPro = AdService.videoCompressionAds,
     this.thumbnails = const [],
     this.previewIndex = 0,
     this.onPreview,

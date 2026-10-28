@@ -25,7 +25,7 @@ class CompressPhotoView extends StatelessWidget {
     required this.onCancel,
     this.photoAspectRatio,
     this.photoInfo,
-    this.showPro = AdService.enabled,
+    this.showPro = AdService.photoCompressionAds,
     this.thumbnails = const [],
     this.previewIndex = 0,
     this.onPreview,

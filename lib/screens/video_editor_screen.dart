@@ -1738,7 +1738,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       if (targetHeight == 2160) {
         navigateToExport();
       } else {
-        AdService.showInterstitialAd(context, onAdDismissed: navigateToExport);
+        AdService.showInterstitialAd(
+          context,
+          placement: AdPlacement.export,
+          onAdDismissed: navigateToExport,
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -1837,6 +1841,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                                       !isSelected) {
                                     AdService.showRewardedAd(
                                       context,
+                                      placement: AdPlacement.export,
                                       onRewardEarned: () {
                                         if (context.mounted) {
                                           onChanged(val);

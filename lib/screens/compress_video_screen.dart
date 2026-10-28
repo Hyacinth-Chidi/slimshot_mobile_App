@@ -11,6 +11,7 @@ import '../core/services/ad_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/utils/file_utils.dart';
 import '../core/utils/toast_utils.dart';
+import '../features/compression/logic/compression_ads.dart';
 import '../features/compression/logic/compression_presets.dart';
 import '../features/compression/providers/compression_provider.dart';
 import '../features/compression/widgets/compress_video_view.dart';
@@ -44,6 +45,8 @@ class _CompressVideoScreenState extends ConsumerState<CompressVideoScreen> {
   @override
   void initState() {
     super.initState();
+    // The consent step, the SDK and this placement's ads, ahead of the tap.
+    unawaited(AdService.prepare(AdPlacement.videoCompression));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(compressionProvider.notifier).reset();
       final videos = widget.initialVideos;
@@ -136,7 +139,19 @@ class _CompressVideoScreenState extends ConsumerState<CompressVideoScreen> {
     // Compressing replaces the preview with the progress; a playing video
     // would carry on under it.
     if (_isVideoPlaying) _toggleVideoPlay();
-    await ref.read(compressionProvider.notifier).compressVideo();
+    final preset = ref.read(compressionProvider).selectedPreset;
+    final work = ref.read(compressionProvider.notifier).compressVideo();
+    // An interstitial over the compression while the user waits — never at
+    // Best quality, already paid for with a rewarded ad — and the result
+    // only once it has closed.
+    await (compressionGetsInterstitial(preset)
+        ? AdService.overWork(
+            AdPlacement.videoCompression,
+            work: work,
+            progress: _batchProgress,
+            wanted: () => mounted,
+          )
+        : work);
 
     if (!mounted) return;
     final state = ref.read(compressionProvider);
@@ -150,13 +165,26 @@ class _CompressVideoScreenState extends ConsumerState<CompressVideoScreen> {
     }
   }
 
+  /// How far through the whole batch the compression is, 0 to 1.
+  double _batchProgress() {
+    if (!mounted) return 1;
+    final state = ref.read(compressionProvider);
+    final count = state.inputFiles.length;
+    if (count == 0) return 1;
+    return ((state.currentProcessingIndex + state.progress / 100) / count)
+        .clamp(0.0, 1.0);
+  }
+
   void _selectPreset(CompressionPreset preset) {
     final notifier = ref.read(compressionProvider.notifier);
     final selected = ref.read(compressionProvider).selectedPreset;
     if (preset.isPro && selected?.id != preset.id) {
-      // With ads off this grants at once (`AdService.enabled`).
+      // Best quality is unlocked by a rewarded ad the user chooses to
+      // watch (rewarded ads must be opted into); its compressions get no
+      // interstitial (`compressionGetsInterstitial`).
       AdService.showRewardedAd(
         context,
+        placement: AdPlacement.videoCompression,
         onRewardEarned: () {
           if (mounted) notifier.selectPreset(preset);
         },

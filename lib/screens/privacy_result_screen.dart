@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../core/services/ad_service.dart';
 import '../core/services/media_save_service.dart';
 import '../core/utils/file_utils.dart';
 import '../core/theme/app_colors.dart';
@@ -46,7 +45,6 @@ class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
     // Nobody has kept the cleaned photos yet: a tap on the home screen
     // widget only brings the app forward until somebody does.
     _exit.hold();
-    AdService.loadInterstitialAd();
     HapticFeedback.mediumImpact();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final outputs = ref.read(privacyProvider).outputPaths;
@@ -64,29 +62,24 @@ class _PrivacyResultScreenState extends ConsumerState<PrivacyResultScreen> {
     if (mounted) setState(() {});
   });
 
-  void _save(List<String> outputs) {
-    AdService.showInterstitialAd(
-      context,
-      onAdDismissed: () async {
-        try {
-          await MediaSaveService.saveImagesToGallery(outputs);
-          _exit.markKept();
-          HapticFeedback.mediumImpact();
-          if (mounted) {
-            ToastUtils.show(
-              context,
-              outputs.length > 1
-                  ? '${outputs.length} photos saved'
-                  : 'Saved to gallery',
-            );
-          }
-        } catch (e) {
-          if (mounted) {
-            ToastUtils.show(context, 'Could not save: $e', isError: true);
-          }
-        }
-      },
-    );
+  /// Saves at once: an ad in front of Save made the user wait for their own
+  /// photos (the ad comes when stripping starts instead).
+  Future<void> _save(List<String> outputs) async {
+    try {
+      await MediaSaveService.saveImagesToGallery(outputs);
+      _exit.markKept();
+      HapticFeedback.mediumImpact();
+      if (mounted) {
+        ToastUtils.show(
+          context,
+          outputs.length > 1 ? '${outputs.length} photos saved' : 'Saved to gallery',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ToastUtils.show(context, 'Could not save: $e', isError: true);
+      }
+    }
   }
 
   Future<void> _share(List<String> outputs) async {

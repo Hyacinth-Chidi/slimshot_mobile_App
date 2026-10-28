@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../core/services/ad_service.dart';
 import '../core/services/media_picker_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/utils/file_utils.dart';
@@ -47,6 +48,8 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
   @override
   void initState() {
     super.initState();
+    // The consent step, the SDK and this placement's ad, ahead of the tap.
+    unawaited(AdService.prepare(AdPlacement.privacyStrip));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(privacyProvider.notifier).reset();
       final images = widget.initialImages;
@@ -117,22 +120,44 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
     _inspect(files[index].path);
   }
 
+  /// Strips, with this placement's interstitial — on every strip, however
+  /// small or fast — and the report, or the error, only once it has closed.
+  Future<void> _strip() async {
+    HapticFeedback.mediumImpact();
+    await AdService.overWork(
+      AdPlacement.privacyStrip,
+      work: ref.read(privacyProvider.notifier).stripMetadata(),
+      progress: _stripProgress,
+      wanted: _stripCounts,
+    );
+    if (!mounted) return;
+    final state = ref.read(privacyProvider);
+    if (state.error != null) {
+      ToastUtils.show(context, state.error!, isError: true);
+    } else if (!state.isProcessing && state.outputPaths.isNotEmpty) {
+      context.push('/privacy/result');
+    }
+  }
+
+  /// How far through its photos the strip is, 0 to 1.
+  double _stripProgress() {
+    if (!mounted) return 1;
+    return (ref.read(privacyProvider).progress / 100).clamp(0.0, 1.0);
+  }
+
+  /// Whether the strip still earns its ad: on screen, and running or done
+  /// with photos to show — not cancelled, not failed.
+  bool _stripCounts() {
+    if (!mounted) return false;
+    final state = ref.read(privacyProvider);
+    if (state.error != null) return false;
+    return state.isProcessing || state.outputPaths.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(privacyProvider);
     final notifier = ref.read(privacyProvider.notifier);
-
-    ref.listen<PrivacyState>(privacyProvider, (previous, next) {
-      if (previous?.isProcessing == true &&
-          !next.isProcessing &&
-          next.outputPaths.isNotEmpty &&
-          next.error == null) {
-        context.push('/privacy/result');
-      }
-      if (next.error != null && previous?.error == null && mounted) {
-        ToastUtils.show(context, next.error!, isError: true);
-      }
-    });
 
     if (state.inputFiles.isEmpty) {
       return const Scaffold(
@@ -173,10 +198,7 @@ class _PrivacyScreenState extends ConsumerState<PrivacyScreen> {
       onPreview: _preview,
       onBack: _leave,
       onChangePhotos: _changePhotos,
-      onStrip: () {
-        HapticFeedback.mediumImpact();
-        notifier.stripMetadata();
-      },
+      onStrip: _strip,
       onCancel: notifier.cancel,
     );
   }

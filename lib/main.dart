@@ -9,11 +9,9 @@ import 'features/compression/logic/compress_inputs.dart';
 import 'package:animations/animations.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/file_utils.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'core/services/ad_service.dart';
 import 'core/services/media_picker_service.dart';
 import 'core/services/removed_features.dart';
 import 'core/models/update_info.dart';
@@ -49,14 +47,10 @@ Future<void> main() async {
   // Notices for code the app ships that no package declares (the ported
   // transitions), on Flutter's licences page in Settings.
   registerThirdPartyLicences();
-  // `AdService.enabled` (interstitials, Pro-unlock ads) is off. Credit ads
-  // start the SDK themselves, after Google's consent step, on the first
-  // Watch an ad (`PluginRewardedAdPlayer`).
-  if (AdService.enabled) {
-    MobileAds.instance.initialize();
-    AdService.loadInterstitialAd(); // Start background preload immediately
-    AdService.loadRewardedAd(); // Start background preload for Rewarded Ads
-  }
+  // The ads SDK is not started here: whatever shows an ad starts it, after
+  // Google's consent step (`AdsSdk`) — a screen with an ad placement when it
+  // opens (`AdService.prepare`), credit ads on the first Watch an ad. A user
+  // who never meets an ad never starts it.
 
   // The splash's pictures are decoded while the native splash still shows,
   // so the app's first frame can repeat it exactly (LaunchSplash).
