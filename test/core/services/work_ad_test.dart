@@ -124,20 +124,20 @@ void main() {
     });
   });
 
-  group('Privacy Strip', () {
-    test('a strip done inside the lead-in still gets its ad, before what '
-        'follows', () async {
-      start(AdPlacement.privacyStrip, kPrivacyStripAdRule);
+  group('photo compression', () {
+    test('a compression done inside the lead-in still gets its ad, before '
+        'what follows', () async {
+      start(AdPlacement.photoCompression, kPhotoCompressionAdRule);
       await workEnds();
       expect(ad.shows, 1);
-      expect(done, isFalse, reason: 'the report waits for the ad');
+      expect(done, isFalse, reason: 'the result waits for the ad');
       await ad.close();
       expect(done, isTrue);
     });
 
-    test('a strip still running after the lead-in gets its ad over it, '
-        'however near done', () async {
-      start(AdPlacement.privacyStrip, kPrivacyStripAdRule);
+    test('a compression still running after the lead-in gets its ad over '
+        'it, however near done', () async {
+      start(AdPlacement.photoCompression, kPhotoCompressionAdRule);
       progress = 0.95;
       await leadInEnds(const Duration(seconds: 1));
       expect(ad.shows, 1);
@@ -146,11 +146,10 @@ void main() {
 
   // Photos compress in a second or two: the video rule — only with about
   // ten seconds to go — would almost never show one.
-  test('photo compression is timed as Privacy Strip is: every job, however '
-      'fast', () {
+  test('photo compression: every job, however fast, a second in', () {
     expect(kPhotoCompressionAdRule.evenIfQuick, isTrue);
     expect(kPhotoCompressionAdRule.minRemaining, isNull);
-    expect(kPhotoCompressionAdRule.leadIn, kPrivacyStripAdRule.leadIn);
+    expect(kPhotoCompressionAdRule.leadIn, const Duration(seconds: 1));
   });
 
   group('after a job', () {
@@ -206,7 +205,7 @@ void main() {
 
   test('an ad not loaded is skipped, never waited for', () async {
     ad.ready = false;
-    start(AdPlacement.privacyStrip, kPrivacyStripAdRule);
+    start(AdPlacement.photoCompression, kPhotoCompressionAdRule);
     await workEnds();
     expect(ad.shows, 0);
     expect(done, isTrue);
@@ -216,7 +215,7 @@ void main() {
   // ad then lands somewhere the user never asked to wait — the unexpected
   // interstitial Google disallows.
   test('a job no longer wanted when its ad is due gets none', () async {
-    start(AdPlacement.privacyStrip, kPrivacyStripAdRule);
+    start(AdPlacement.photoCompression, kPhotoCompressionAdRule);
     wanted = false;
     await workEnds();
     expect(ad.shows, 0);
@@ -233,9 +232,9 @@ void main() {
   });
 
   test('a placement not due shows nothing', () async {
-    pacing.shown(AdPlacement.privacyStrip);
+    pacing.shown(AdPlacement.photoCompression);
     now = now.add(const Duration(minutes: 5));
-    start(AdPlacement.privacyStrip, kPrivacyStripAdRule);
+    start(AdPlacement.photoCompression, kPhotoCompressionAdRule);
     await workEnds();
     expect(ad.shows, 0);
     expect(done, isTrue);

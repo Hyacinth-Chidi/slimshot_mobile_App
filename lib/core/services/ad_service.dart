@@ -27,13 +27,9 @@ class AdService {
   /// interstitial.
   static const bool videoCompressionAds = true;
 
-  /// Privacy Strip: an interstitial on every strip, however small or fast
-  /// ([kPrivacyStripAdRule]; one per six minutes at most).
-  static const bool privacyStripAds = true;
-
   /// Photo compression (2026-10-29): an interstitial on every compression,
-  /// however fast, timed as Privacy Strip's ([kPhotoCompressionAdRule]; one
-  /// per six minutes at most); Best quality unlocked by a rewarded ad, its
+  /// however fast, a second in ([kPhotoCompressionAdRule]; one per six
+  /// minutes at most); Best quality unlocked by a rewarded ad, its
   /// compressions getting no interstitial.
   static const bool photoCompressionAds = true;
 
@@ -46,7 +42,6 @@ class AdService {
 
   static bool isOn(AdPlacement placement) => switch (placement) {
         AdPlacement.videoCompression => videoCompressionAds,
-        AdPlacement.privacyStrip => privacyStripAds,
         AdPlacement.photoCompression => photoCompressionAds,
         AdPlacement.export => exportAds,
       };
@@ -64,7 +59,6 @@ class AdService {
   /// it ([afterWork]).
   static const Map<AdPlacement, WorkAdRule> _workAdRules = {
     AdPlacement.videoCompression: kVideoCompressionAdRule,
-    AdPlacement.privacyStrip: kPrivacyStripAdRule,
     AdPlacement.photoCompression: kPhotoCompressionAdRule,
   };
 

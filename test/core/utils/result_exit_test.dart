@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/utils/held_work.dart';
 import 'package:slimshotai/core/utils/result_exit.dart';
 
-/// Leaving a finished result — a compression, a privacy strip, an export —
+/// Leaving a finished result — a compression, an export —
 /// throws its files away; one nobody saved or shared is asked about first.
 void main() {
   late List<String> deleted;

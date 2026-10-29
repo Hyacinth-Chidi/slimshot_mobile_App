@@ -43,17 +43,13 @@ const kVideoCompressionAdRule = WorkAdRule(
   minRemaining: Duration(seconds: 10),
 );
 
-/// Privacy Strip (the owner's call): every strip, however small or fast, a
-/// second in.
-const kPrivacyStripAdRule = WorkAdRule(
+/// Photo compression: every compression, however small or fast, a second
+/// in. Photos compress in a second or two, so the video rule — only with
+/// about ten seconds to go — would almost never show one.
+const kPhotoCompressionAdRule = WorkAdRule(
   leadIn: Duration(seconds: 1),
   evenIfQuick: true,
 );
-
-/// Photo compression: timed as Privacy Strip is. Photos compress in a
-/// second or two, so the video rule — only with about ten seconds to go —
-/// would almost never show one.
-const kPhotoCompressionAdRule = kPrivacyStripAdRule;
 
 /// Shows [placement]'s interstitial after a finished job, before what
 /// follows it — the export's, before the finished video: only an ad already

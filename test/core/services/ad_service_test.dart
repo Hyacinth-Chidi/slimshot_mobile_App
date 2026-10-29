@@ -13,7 +13,7 @@ import 'package:slimshotai/features/compression/logic/compression_presets.dart';
 /// [AdService], so where a placement is off nothing waits on an ad and
 /// nothing an ad used to unlock stays locked.
 void main() {
-  test('every placement is on: the compressions, Privacy Strip and export',
+  test('every placement is on: the compressions and export',
       () {
     for (final placement in AdPlacement.values) {
       expect(AdService.isOn(placement), isTrue, reason: '$placement');
@@ -49,7 +49,6 @@ void main() {
   test('saving a result never waits on an ad', () {
     for (final screen in [
       'lib/screens/result_screen.dart',
-      'lib/screens/privacy_result_screen.dart',
       // Its ad comes between the export and the finished video
       // (`showExportAd`), never on Save.
       'lib/screens/export_video_screen.dart',

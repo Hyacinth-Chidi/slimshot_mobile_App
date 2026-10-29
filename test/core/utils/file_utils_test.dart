@@ -36,7 +36,7 @@ void main() {
         'photos, exports and the share sheet copies', () async {
       final left = [
         make('${temp.path}/slimshot_temp_0b1c.mp4', modified: lastSession),
-        make('${temp.path}/slimshot_temp_privacy_9a.jpg',
+        make('${temp.path}/slimshot_temp_photo_9a.jpg',
             modified: lastSession),
         make('${temp.path}/slimshot_export_1793141004000.mp4',
             modified: lastSession),
