@@ -1,13 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/utils/held_work.dart';
 import '../../../account/logic/account_copy.dart';
 import '../../../account/models/account_models.dart';
-import '../../services/caption_errors.dart';
 import '../../services/caption_pipeline.dart';
+import '../../services/caption_run.dart';
 import 'caption_sheet_parts.dart';
 
 /// Runs [pipeline] and says where it is. Pops the caption drafts on success.
@@ -39,111 +36,46 @@ class CaptionProgressSheet extends StatefulWidget {
 }
 
 class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
-  CaptionStage _stage = CaptionStage.preparing;
-  double? _progress = 0;
-  String? _error;
-  bool _finished = false;
-
-  /// The price the balance does not cover, while it is shown; else null.
-  CreditQuote? _quote;
-  Completer<bool>? _decision;
+  late final CaptionRun _run = CaptionRun(
+    pipeline: widget.pipeline,
+    request: widget.request,
+  );
+  bool _popped = false;
 
   @override
   void initState() {
     super.initState();
-    // Closing the sheet stops the run, so a tap on the home screen widget
-    // only brings the app forward while it is open.
-    HeldWork.instance.hold(this);
-    unawaited(_run());
+    // The run holds the app while the sheet is open: closing the sheet stops
+    // it, so a tap on the home screen widget only brings the app forward.
+    _run
+      ..addListener(_changed)
+      ..start();
   }
 
   @override
   void dispose() {
-    HeldWork.instance.release(this);
-    if (!_finished) widget.pipeline.cancel();
-    // Closed on the shortfall — Close, Back, a tap outside: the run stops.
-    final decision = _decision;
-    if (decision != null && !decision.isCompleted) decision.complete(false);
+    _run
+      ..removeListener(_changed)
+      ..dispose();
     super.dispose();
   }
 
-  /// A balance the user just earned: enough carries the run on, too little
-  /// updates the line.
-  void _earned(int balance) {
-    final quote = _quote;
-    final decision = _decision;
-    if (quote == null || decision == null || decision.isCompleted) return;
-    if (balance >= quote.credits) {
-      setState(() {
-        _quote = null;
-        _decision = null;
-      });
-      decision.complete(true);
-    } else {
-      setState(() => _quote = CreditQuote(
-            credits: quote.credits,
-            balance: balance,
-            enough: false,
-          ));
+  void _changed() {
+    final drafts = _run.drafts;
+    if (drafts != null) {
+      if (!_popped && mounted) {
+        _popped = true;
+        Navigator.of(context).pop(drafts);
+      }
+      return;
     }
+    if (mounted) setState(() {});
   }
-
-  Future<bool> _showShortfall(CreditQuote quote) {
-    final decision = Completer<bool>();
-    setState(() {
-      _quote = quote;
-      _decision = decision;
-    });
-    return decision.future;
-  }
-
-  Future<void> _run() async {
-    try {
-      final drafts = await widget.pipeline.run(
-        widget.request,
-        onProgress: (stage, progress) {
-          if (!mounted) return;
-          setState(() {
-            _stage = stage;
-            _progress = progress;
-          });
-        },
-        onShortfall: _showShortfall,
-      );
-      _finished = true;
-      if (mounted) Navigator.of(context).pop(drafts);
-    } on CaptionCancelled {
-      // Closed by the user; the sheet is already on its way out.
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = captionErrorMessage(error));
-    }
-  }
-
-  void _retry() {
-    setState(() {
-      _error = null;
-      _quote = null;
-      _decision = null;
-      _stage = CaptionStage.preparing;
-      _progress = 0;
-    });
-    unawaited(_run());
-  }
-
-  static String _label(CaptionStage stage) => switch (stage) {
-        CaptionStage.preparing => 'Preparing audio',
-        // The upload is never named (the user's call): it reads as the
-        // listening it leads straight into.
-        CaptionStage.uploading => 'Listening',
-        CaptionStage.listening => 'Listening',
-        CaptionStage.placing => 'Placing captions',
-      };
 
   @override
   Widget build(BuildContext context) {
-    final error = _error;
-    final quote = _quote;
+    final error = _run.error;
+    final quote = _run.shortfall;
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.background,
@@ -185,7 +117,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
                         key: const Key('caption_retry'),
                         label: 'Try again',
                         filled: true,
-                        onTap: _retry,
+                        onTap: _run.retry,
                       ),
                     ),
                   ],
@@ -203,7 +135,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
                 ),
                 const SizedBox(height: 20),
                 if (widget.earnCredits != null) ...[
-                  widget.earnCredits!(quote, _earned),
+                  widget.earnCredits!(quote, _run.earned),
                   const SizedBox(height: 12),
                 ],
                 SheetActionButton(
@@ -213,7 +145,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
                 ),
               ] else ...[
                 Text(
-                  _label(_stage),
+                  captionStageLabel(_run.stage),
                   key: const Key('caption_progress_stage'),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
@@ -226,7 +158,7 @@ class _CaptionProgressSheetState extends State<CaptionProgressSheet> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(2),
                   child: LinearProgressIndicator(
-                    value: _progress,
+                    value: _run.progress,
                     minHeight: 4,
                     color: AppColors.primaryStart,
                     backgroundColor: AppColors.surfaceLight,
