@@ -195,24 +195,27 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _handlePrivacyStrip() async {
+  /// Auto captions without the timeline: one video, then the editor in its
+  /// captions mode. ✎ there makes it an editor project, so Recent Edits is
+  /// read again on the way back.
+  Future<void> _handleAutoCaptions() async {
     try {
       final picker = MediaPickerService();
-      final images = await picker.pickImages();
-      if (images.isNotEmpty && mounted) {
-        context.push('/privacy', extra: images);
+      final video = await picker.pickVideo();
+      if (video != null && mounted) {
+        await context.push('/edit/captions', extra: video);
+        _loadDrafts();
       }
     } catch (e) {
       if (!mounted) return;
       if (MediaPickerService.isPermissionError(e)) {
         PermissionDialog.showGalleryAccessRequired(
           context: context,
-          message:
-              'Please grant storage access to pick photos for privacy stripping.',
+          message: 'Please grant storage access to pick a video for captions.',
           onCancel: () {},
         );
       } else {
-        ToastUtils.show(context, 'Error picking photo: $e', isError: true);
+        ToastUtils.show(context, 'Error picking video: $e', isError: true);
       }
     }
   }
@@ -360,12 +363,23 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Expanded(
                 child: _GridActionCard(
+                  key: const ValueKey('home_auto_captions'),
+                  title: 'Auto\ncaptions',
+                  icon: LucideIcons.subtitles,
+                  height: layout.tools,
+                  onTap: _handleAutoCaptions,
+                  delay: 250,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _GridActionCard(
                   key: const ValueKey('home_compress_video'),
                   title: 'Compress\nVideo',
                   icon: LucideIcons.video,
                   height: layout.tools,
                   onTap: _handleCompressVideo,
-                  delay: 250,
+                  delay: 300,
                 ),
               ),
               const SizedBox(width: 12),
@@ -376,17 +390,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: LucideIcons.image,
                   height: layout.tools,
                   onTap: _handleCompressPhoto,
-                  delay: 300,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _GridActionCard(
-                  key: const ValueKey('home_privacy_strip'),
-                  title: 'Privacy\nStrip',
-                  icon: LucideIcons.shield,
-                  height: layout.tools,
-                  onTap: _handlePrivacyStrip,
                   delay: 350,
                 ),
               ),
