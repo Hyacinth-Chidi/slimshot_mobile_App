@@ -182,6 +182,21 @@ GoRouter createAppRouter(String initialRoute) {
           );
         },
       ),
+      // Auto captions from Home: the editor in its captions mode, on one
+      // picked video.
+      GoRoute(
+        path: '/edit/captions',
+        pageBuilder: (context, state) {
+          final extra = state.extra;
+          return _buildTransitionPage(
+            state: state,
+            child: VideoEditorScreen(
+              initialMedia: [if (extra is XFile) extra],
+              captionsMode: true,
+            ),
+          );
+        },
+      ),
       GoRoute(
         path: '/compress/image',
         pageBuilder: (context, state) {

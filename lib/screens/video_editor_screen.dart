@@ -15,7 +15,10 @@ import '../core/theme/sound_effect_icon.dart';
 
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_motion.dart';
+import '../core/utils/file_utils.dart';
+import '../core/utils/held_work.dart';
 import '../core/utils/toast_utils.dart';
+import '../core/widgets/discard_dialog.dart';
 import '../core/widgets/permission_dialog.dart';
 import '../core/services/ad_service.dart';
 import 'export_video_screen.dart';
@@ -77,15 +80,18 @@ import '../core/services/slimshot_api.dart';
 import '../features/video_editor/logic/captions/caption_grouping.dart';
 import '../features/video_editor/logic/captions/caption_preset_catalog.dart';
 import '../features/video_editor/logic/captions/caption_settings.dart';
+import '../features/video_editor/logic/captions/captions_mode.dart';
 import '../features/video_editor/logic/new_text.dart';
 import '../features/video_editor/logic/text_look.dart';
 import '../features/video_editor/services/caption_access.dart';
 import '../features/video_editor/services/caption_pipeline.dart';
+import '../features/video_editor/services/caption_run.dart';
 import '../features/video_editor/services/caption_service.dart';
 import '../features/video_editor/widgets/panels/auto_caption_sheet.dart';
 import '../features/video_editor/widgets/panels/caption_style_sheet.dart';
 import '../features/video_editor/widgets/panels/caption_batch_sheet.dart';
 import '../features/video_editor/widgets/panels/caption_progress_sheet.dart';
+import '../features/video_editor/widgets/captions_mode/captions_mode_view.dart';
 import '../features/video_editor/widgets/panels/replace_captions_dialog.dart';
 import '../features/video_editor/widgets/editor_tool_tile.dart';
 import '../features/video_editor/widgets/panels/adjust_sheet.dart';
@@ -464,10 +470,16 @@ class VideoEditorScreen extends ConsumerStatefulWidget {
   final List<XFile> initialMedia;
   final DraftProject? draft;
 
+  /// Auto captions from Home: the editor in its captions mode — the video in
+  /// a card, no timeline, no draft — until ✎ opens the full editor on the
+  /// same project.
+  final bool captionsMode;
+
   const VideoEditorScreen({
     super.key,
     this.initialMedia = const [],
     this.draft,
+    this.captionsMode = false,
   });
 
   @override
@@ -571,6 +583,23 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// Recording mode's rules while the mode is on; null otherwise.
   RecordController? _recordController;
 
+  /// Captions mode (Auto captions from Home). Off for good once ✎ opens the
+  /// full editor on the same project.
+  late bool _captionsMode = widget.captionsMode;
+  final CaptionsModeSession _captionsSession = CaptionsModeSession();
+  CaptionRun? _captionRun;
+  void Function()? _closeCaptionClient;
+  bool _startingCaptions = false;
+  String? _captionsLanguage;
+  CaptionLength _captionsLength = CaptionLength.phrase;
+
+  /// A line under the card on Ready: why a run came back.
+  String? _captionsNotice;
+
+  /// The canvas keeps its state across ✎: the full editor takes it over
+  /// rather than building the preview again.
+  final GlobalKey _previewKey = GlobalKey();
+
   /// Set while the mode is ending, so ✓ and an outside close arriving
   /// together end it once — not two closes and two disposes.
   bool _endingRecording = false;
@@ -587,6 +616,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   @override
   void initState() {
     super.initState();
+    // Captions made from Home keep no draft — nothing in Recent Edits — until
+    // ✎ makes them an editor project.
+    if (widget.captionsMode) {
+      ref.read(videoEditorProvider.notifier).setSavesDraft(false);
+    }
     // Export's ads ahead of their moment: the consent step, the SDK, the 4K
     // unlock's rewarded ad and the interstitial after an export.
     unawaited(AdService.prepare(AdPlacement.export));
@@ -709,7 +743,20 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     _playbackGuard.dispose();
     unawaited(_playbackAudio.dispose());
 
-    // Save draft when leaving the editor
+    // Captions mode: a run still going stops; the picked video goes with the
+    // screen unless ✎ made it an editor project's.
+    _endCaptionRun(disposing: true);
+    HeldWork.instance.release(_captionsSession);
+    if (widget.captionsMode) {
+      unawaited(FileUtils.deleteTempFiles(
+        _captionsSession.picksToDeleteOnLeave(
+          [for (final file in widget.initialMedia) file.path],
+        ),
+      ));
+    }
+
+    // Save draft when leaving the editor (nothing while captions mode keeps
+    // no draft)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(videoEditorProvider.notifier).saveDraft();
     });
@@ -1335,6 +1382,12 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     );
     if (!mounted) return;
     notifier.removeEmptyCaptions();
+    if (_captionsMode) {
+      // A row tap selects its caption; captions mode has no selection. An
+      // emptied set is Ready again.
+      notifier.deselectAll();
+      _syncCaptionsHold();
+    }
   }
 
   /// Text → Auto captions: sign in if needed, choose, wait for the words,
@@ -1363,6 +1416,27 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     _audioPlayerManager.pauseAll();
     unawaited(_nativePreviewService.pause());
 
+    final client = _newCaptionPipeline();
+    final drafts = await showEditorSheet<List<CaptionDraft>>(
+      context,
+      builder: (_) => CaptionProgressSheet(
+        pipeline: client.pipeline,
+        request: request,
+        earnCredits: (quote, onEarned) => EarnCreditsBlock(onEarned: onEarned),
+      ),
+    );
+    client.close();
+    // The run may have spent credits, or had them refunded: the balance on
+    // the home screen follows.
+    unawaited(ref.read(accountProvider.notifier).refresh());
+    if (drafts == null || !mounted) return;
+    _placeCaptionDrafts(drafts, request);
+  }
+
+  /// A caption run's pipeline on a client of its own — the editor's Auto
+  /// captions and captions mode build theirs alike. `close` lets the client
+  /// go once the run is over.
+  ({CaptionPipeline pipeline, void Function() close}) _newCaptionPipeline() {
     final api = SlimshotApi(
       baseUrl: SlimshotApi.configuredBaseUrl,
       session: ref.read(accountSessionProvider),
@@ -1398,39 +1472,264 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         api.close();
       },
     );
-    final drafts = await showEditorSheet<List<CaptionDraft>>(
-      context,
-      builder: (_) => CaptionProgressSheet(
-        pipeline: pipeline,
-        request: request,
-        earnCredits: (quote, onEarned) => EarnCreditsBlock(onEarned: onEarned),
-      ),
-    );
-    api.close();
-    // The run may have spent credits, or had them refunded: the balance on
-    // the home screen follows.
-    unawaited(ref.read(accountProvider.notifier).refresh());
-    if (drafts == null || !mounted) return;
+    return (pipeline: pipeline, close: api.close);
+  }
 
+  /// Puts [drafts] on the project as one undo step, replacing any set.
+  void _placeCaptionDrafts(List<CaptionDraft> drafts, CaptionRequest request) {
     // Read before the old set is replaced: a regeneration keeps the set's
     // style, and a project's first set wears the default one.
     final style = captionStyleForNewSet(
       ref.read(videoEditorProvider).textOverlays,
     );
-    notifier.placeCaptions(
-      drafts,
-      CaptionSettings(
-        setId: 'captions_${DateTime.now().millisecondsSinceEpoch}',
-        source: request.source,
-        language: request.language,
-        length: request.length,
-        highlight: style.highlight,
+    ref.read(videoEditorProvider.notifier).placeCaptions(
+          drafts,
+          CaptionSettings(
+            setId: 'captions_${DateTime.now().millisecondsSinceEpoch}',
+            source: request.source,
+            language: request.language,
+            length: request.length,
+            highlight: style.highlight,
+          ),
+          canvasSize: ref.read(videoCanvasSizeProvider),
+          look: style.look,
+          fontSize: style.fontSize,
+        );
+  }
+
+  // --- Captions mode: Auto captions from Home ---
+  //
+  // The editor with another face, the way recording mode is: the project,
+  // the preview, the caption run, the styles and the export are the editor's
+  // own, so the captions are the editor's. Its rules are
+  // `logic/captions/captions_mode.dart`; its face is `CaptionsModeView`.
+
+  CaptionsStep get _captionsStep => captionsStepFor(
+        running: _captionRun != null,
+        hasCaptions: ref.read(videoEditorProvider).hasCaptions,
+      );
+
+  /// Captions on screen that no kept export holds hold the app, so a tap on
+  /// the home screen widget only brings it forward; the run holds it itself
+  /// while it lasts.
+  void _syncCaptionsHold() {
+    if (_captionsMode && _captionsSession.holdsWorkAt(_captionsStep)) {
+      HeldWork.instance.hold(_captionsSession);
+    } else {
+      HeldWork.instance.release(_captionsSession);
+    }
+  }
+
+  /// Generate, on Ready: the editor's own door — sign-in and claim — then a
+  /// run on the video's own sound, drawn on the card. The price is checked
+  /// silently inside the run, as in the editor.
+  Future<void> _generateCaptions() async {
+    if (_captionRun != null || _startingCaptions) return;
+    setState(() => _startingCaptions = true);
+    try {
+      if (!await CaptionAccess.ensureAllowed(context, ref) || !mounted) return;
+      if (_captionRun != null) return;
+      ref.read(videoEditorProvider.notifier).setPlaying(false);
+      _audioPlayerManager.pauseAll();
+      unawaited(_nativePreviewService.pause());
+
+      final client = _newCaptionPipeline();
+      final run = CaptionRun(
+        pipeline: client.pipeline,
+        request: CaptionRequest(
+          language: _captionsLanguage,
+          length: _captionsLength,
+        ),
+      )..addListener(_onCaptionRunChanged);
+      setState(() {
+        _captionRun = run;
+        _closeCaptionClient = client.close;
+        _captionsNotice = null;
+      });
+      run.start();
+    } finally {
+      if (mounted) setState(() => _startingCaptions = false);
+    }
+  }
+
+  void _onCaptionRunChanged() {
+    final run = _captionRun;
+    if (run == null || !mounted) return;
+    if (run.drafts != null || runFailureReturnsToReady(run.failure)) {
+      // Settled after the run's own notification: a notifier may not be
+      // disposed while it notifies.
+      scheduleMicrotask(() => _settleCaptionRun(run));
+      return;
+    }
+    setState(() {});
+  }
+
+  /// The words landed — placed, the playhead parked in the first caption,
+  /// paused — or a soundless video goes back to Ready with its line.
+  void _settleCaptionRun(CaptionRun run) {
+    if (!mounted || run != _captionRun) return;
+    final drafts = run.drafts;
+    if (drafts != null) {
+      _endCaptionRun();
+      _placeCaptionDrafts(drafts, run.request);
+      _showFirstCaption();
+      _prefetchFonts(captionPresetFontNames(kCaptionPresets));
+    } else {
+      final notice = run.error;
+      _endCaptionRun();
+      setState(() => _captionsNotice = notice);
+    }
+    _syncCaptionsHold();
+  }
+
+  /// Stops and lets go of the run: Cancel, Back while it runs, the words
+  /// landing, the screen closing.
+  void _endCaptionRun({bool disposing = false}) {
+    final run = _captionRun;
+    if (run == null) return;
+    run
+      ..removeListener(_onCaptionRunChanged)
+      ..dispose();
+    _closeCaptionClient?.call();
+    _captionRun = null;
+    _closeCaptionClient = null;
+    if (disposing) return;
+    // The run may have spent credits, or had them refunded: the balance on
+    // the home screen follows.
+    unawaited(ref.read(accountProvider.notifier).refresh());
+    setState(() {});
+  }
+
+  /// Parks the playhead, paused, in the set's first caption, so the words
+  /// are on the picture the moment they land; a tap plays.
+  void _showFirstCaption() {
+    final captions = [
+      for (final t in ref.read(videoEditorProvider).textOverlays)
+        if (t.isCaption) t,
+    ];
+    if (captions.isEmpty) return;
+    final first = captions.reduce((a, b) => a.startTime <= b.startTime ? a : b);
+    final middle = (first.startTime + first.endTime).inMicroseconds / 2e6;
+    ref.read(videoEditorProvider.notifier).updatePlaybackPosition(middle);
+    unawaited(_seekNativePreviewToTimeline(ref.read(videoEditorProvider)));
+  }
+
+  /// Back in captions mode: Ready leaves, a run stops (as Cancel), and Done
+  /// asks first until an export of the captions was kept.
+  Future<void> _captionsBack() async {
+    switch (_captionsSession.backAt(_captionsStep)) {
+      case CaptionsBack.stopRun:
+        _endCaptionRun();
+        _syncCaptionsHold();
+        return;
+      case CaptionsBack.askDiscard:
+        if (!await confirmDiscardCaptions(context) || !mounted) return;
+      case CaptionsBack.leave:
+        break;
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Export, on Done: the editor's own export at its defaults, HD 1080 at
+  /// 30 fps — captions mode offers no options.
+  Future<void> _exportCaptions() async {
+    final kept = await _exportVideo();
+    if (!mounted) return;
+    if (kept) _captionsSession.exportKept = true;
+    _syncCaptionsHold();
+  }
+
+  /// ✎: the full editor on this project, in place — from now on an ordinary
+  /// editor project, saved as any is, its picked video its draft's.
+  void _openCaptionsInEditor() {
+    ref.read(videoEditorProvider.notifier).setSavesDraft(true);
+    _captionsSession.openedInEditor = true;
+    _syncCaptionsHold();
+    setState(() => _captionsMode = false);
+  }
+
+  Widget _buildCaptionsMode(VideoEditorState editorState) {
+    final notifier = ref.read(videoEditorProvider.notifier);
+    final style = captionStyleForNewSet(editorState.textOverlays);
+    final busy = _startingCaptions || _captionRun != null;
+    return CaptionsModeView(
+      step: captionsStepFor(
+        running: _captionRun != null,
+        hasCaptions: editorState.hasCaptions,
       ),
-      canvasSize: ref.read(videoCanvasSizeProvider),
-      look: style.look,
-      fontSize: style.fontSize,
+      // The editor's canvas, captions drawn as the editor draws them; only a
+      // tap reaches it, to play and pause — nothing here is moved by hand.
+      preview: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _togglePreview,
+        child: IgnorePointer(child: _previewCanvas()),
+      ),
+      aspectRatio: editorState.projectAspectRatio,
+      onBack: () => unawaited(_captionsBack()),
+      language: _captionsLanguage,
+      length: _captionsLength,
+      onLanguage: (code) => setState(() => _captionsLanguage = code),
+      onLength: (length) => setState(() => _captionsLength = length),
+      onGenerate: editorState.segments.isEmpty || busy
+          ? null
+          : () => unawaited(_generateCaptions()),
+      notice: _captionsNotice,
+      run: _captionRun,
+      onCancel: () {
+        _endCaptionRun();
+        _syncCaptionsHold();
+      },
+      earnCredits: (quote, onEarned) => EarnCreditsBlock(onEarned: onEarned),
+      style: (look: style.look, highlight: style.highlight),
+      onPreset: (preset) =>
+          notifier.restyleCaptions(preset.look, preset.highlight),
+      onColor: (color) =>
+          notifier.setCaptionHighlight(style.highlight.copyWith(color: color)),
+      onEditWords: () => unawaited(_showCaptionList()),
+      onExport: editorState.isExporting
+          ? null
+          : () => unawaited(_exportCaptions()),
+      onOpenEditor: _openCaptionsInEditor,
     );
   }
+
+  /// The editor's canvas — the native preview and every layer drawn over
+  /// it. Captions mode lays the same one out in its card, keyed so ✎ hands
+  /// it to the full editor rather than building the preview again.
+  Widget _previewCanvas() => VideoPreviewCanvas(
+        key: _previewKey,
+        videoSurface: NativeTimelinePreviewView(
+          service: _nativePreviewService,
+        ),
+        playhead: _drawnPlayhead,
+        onTogglePreview: _togglePreview,
+        // The space beside the picture is "done here",
+        // one level per tap: an open panel closes
+        // keeping its edits (✓'s and Back's own close)
+        // with the selection left as it was; with none
+        // open, the selection clears.
+        onOutsidePictureTapped: () {
+          switch (outsideTapActionFor(
+            activeToolId: ref.read(videoEditorProvider).activeToolId,
+          )) {
+            case OutsideTapAction.closePanel:
+              _commitAndCloseActiveTool();
+            case OutsideTapAction.deselect:
+              ref.read(videoEditorProvider.notifier).deselectAll();
+          }
+        },
+        onShowTextEditor: (TextOverlayModel overlay, bool showKeyboard) =>
+            showTextEditor(
+          context: context,
+          overlay: overlay,
+          ref: ref,
+          initialTool:
+              showKeyboard ? TextEditorTool.keyboard : TextEditorTool.style,
+        ),
+        onCanvasSizeChanged: (size) {
+          ref.read(videoCanvasSizeProvider.notifier).state = size;
+        },
+      );
 
   /// Drops [emoji] on the canvas as a text overlay.
   ///
@@ -1682,7 +1981,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     HapticFeedback.selectionClick();
   }
 
-  Future<void> _exportVideo() async {
+  /// Opens the export at the editor's settings. Completes with whether its
+  /// file was kept — saved or shared — which captions mode needs to know.
+  Future<bool> _exportVideo() async {
     final notifier = ref.read(videoEditorProvider.notifier);
     final previewCanvasSize = ref.read(exportCanvasSizeProvider);
 
@@ -1692,7 +1993,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         "Cannot export video. Missing parameters.",
         isError: true,
       );
-      return;
+      return false;
     }
 
     final targetHeight = _exportHeight;
@@ -1709,42 +2010,36 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         'A reversed clip is still preparing. Try again in a moment.',
         isError: true,
       );
-      return;
+      return false;
     }
 
     try {
       notifier.setExporting(true);
-
-      void navigateToExport() {
-        if (!mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            // Native export renders through the preview engine, so the file
-            // matches what was previewed — correct per-clip filters, all
-            // eleven transitions, and the right source file for every clip.
-            builder: (context) => ExportVideoScreen(
-              exportState: exportState,
-              previewCanvasSize: previewCanvasSize,
-              targetHeight: targetHeight,
-              targetFps: targetFps,
-            ),
-          ),
-        ).then((_) {
-          if (mounted) {
-            notifier.setExporting(false);
-          }
-        });
-      }
-
+      if (!mounted) return false;
       // Straight to the export: its interstitial, now and then, comes after
       // it, before the finished video (`showExportAd`), never before.
-      navigateToExport();
+      final kept = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          // Native export renders through the preview engine, so the file
+          // matches what was previewed — correct per-clip filters, all
+          // eleven transitions, and the right source file for every clip.
+          builder: (context) => ExportVideoScreen(
+            exportState: exportState,
+            previewCanvasSize: previewCanvasSize,
+            targetHeight: targetHeight,
+            targetFps: targetFps,
+          ),
+        ),
+      );
+      if (mounted) notifier.setExporting(false);
+      return kept ?? false;
     } catch (e) {
       if (mounted) {
         ToastUtils.show(context, e.toString(), isError: true);
         notifier.setExporting(false);
       }
+      return false;
     }
   }
 
@@ -3548,6 +3843,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       },
     );
 
+    // Captions mode: the same editor — its listeners above keep the engine,
+    // the playhead and the overlays in step — with another face.
+    if (_captionsMode) return _buildCaptionsMode(editorState);
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -3587,49 +3886,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: VideoPreviewCanvas(
-                              videoSurface: NativeTimelinePreviewView(
-                                service: _nativePreviewService,
-                              ),
-                              playhead: _drawnPlayhead,
-                              onTogglePreview: _togglePreview,
-                              // The space beside the picture is "done here",
-                              // one level per tap: an open panel closes
-                              // keeping its edits (✓'s and Back's own close)
-                              // with the selection left as it was; with none
-                              // open, the selection clears.
-                              onOutsidePictureTapped: () {
-                                switch (outsideTapActionFor(
-                                  activeToolId:
-                                      ref.read(videoEditorProvider).activeToolId,
-                                )) {
-                                  case OutsideTapAction.closePanel:
-                                    _commitAndCloseActiveTool();
-                                  case OutsideTapAction.deselect:
-                                    ref
-                                        .read(videoEditorProvider.notifier)
-                                        .deselectAll();
-                                }
-                              },
-                              onShowTextEditor:
-                                  (
-                                    TextOverlayModel overlay,
-                                    bool showKeyboard,
-                                  ) => showTextEditor(
-                                    context: context,
-                                    overlay: overlay,
-                                    ref: ref,
-                                    initialTool: showKeyboard
-                                        ? TextEditorTool.keyboard
-                                        : TextEditorTool.style,
-                                  ),
-                              onCanvasSizeChanged: (size) {
-                                ref
-                                        .read(videoCanvasSizeProvider.notifier)
-                                        .state =
-                                    size;
-                              },
-                            ),
+                      child: _previewCanvas(),
                     ),
                     if (_isFullscreen)
                       Positioned(

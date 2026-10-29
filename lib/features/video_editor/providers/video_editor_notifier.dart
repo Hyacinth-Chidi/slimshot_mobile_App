@@ -291,7 +291,16 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     }
   }
 
+  /// Whether [saveDraft] writes anything. A notifier field, not state: an
+  /// undo snapshot must never turn saving back off after ✎.
+  bool _savesDraft = true;
+
+  /// Captions made from Home keep no draft — nothing in Recent Edits — until
+  /// ✎ makes them an ordinary editor project (the owner's call).
+  void setSavesDraft(bool value) => _savesDraft = value;
+
   Future<void> saveDraft() async {
+    if (!_savesDraft) return;
     if (state.sourceVideo == null || state.draftId == null) return;
 
     String? thumbnailPath = state.thumbnailPath;
