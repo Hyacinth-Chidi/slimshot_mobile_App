@@ -5049,12 +5049,17 @@ ahead, its unlock is granted, its views show no badge).
   hardware decoders and encoder, which a video ad needs too — on a low-end phone (the Infinix
   decodes about 105 fps of 1080p across every decoder) an ad over it would slow it, or have
   Android take a codec away, as already happened to video overlays. **Not every export** (the
-  owner's call): by chance, about half (`kExportAdChance`), **never a user's first export**
-  (`ExportHistory`, a count of finished exports kept in preferences, so it outlasts a launch;
-  a cancelled or failed export is not counted), and never a 4K one — 4K is unlocked by a rewarded
-  ad. Nothing before the export any more (an interstitial used to stand between the Export tap
-  and the export starting), nothing on Save. Export's ads get ready when the editor opens
-  (`AdService.prepare`), the 4K unlock's included. Whatever becomes of the ad, the video
+  owner's calls): **never on a user's first three exports after installing the app**
+  (`kExportsWithoutAds`; `ExportHistory`, a count of finished exports kept in the app's
+  preferences, so it outlasts a launch and starts from none after a fresh install; a cancelled
+  or failed export is not counted), then by chance, about half (`kExportAdChance`). **The
+  resolution is chosen freely** (2026-10-29): 4K was unlocked by a rewarded ad, and an export at
+  4K was spared the interstitial for it; both went together, so a 4K export follows the same rule
+  as any — no size is a way round the ad. The orphaned `ExportOptionsDialog`, which carried the
+  same gate and was opened from nowhere, is deleted. Nothing before the export any more (an
+  interstitial used to stand between the Export tap and the export starting), nothing on Save.
+  Export's interstitial gets ready when the editor opens (`AdService.prepare`; no rewarded ad
+  is loaded for it — `AdService.unlocksWithRewardedAd`). Whatever becomes of the ad, the video
   follows: the step never throws, and the screen catches anything that would.
 - **How often** (`AdPacing`): one ad per **four minutes** at most for video compression, **six**
   for photo compression, **five** for export (the owner's ranges were 3–5 and
@@ -5079,8 +5084,8 @@ ad…"** on screen — a card, since a toast leaves after two seconds; a tap out
 waiting, quietly, and the ad stays loading for next time. A failure is said for what it was:
 **"No internet connection."** only on AdMob's network error, **"No ad right now. Try again in a
 moment."** for no fill, no consent yet or no answer in time, and **"Watch the ad to the end to
-unlock …"** for an ad closed early. All four unlocks (both Best qualities, 4K in the editor and
-in the export dialog) use the one message.
+unlock …"** for an ad closed early. Both unlocks (the two Best qualities) use the one
+message.
 
 **No ad is asked for before Google's consent step has started the SDK** (`AdsSdk.started`): the
 consent-then-start code moved out of the credit ads (`PluginRewardedAdPlayer`) into `AdsSdk`, and
@@ -5092,10 +5097,10 @@ every ten seconds for as long as the app runs.
 **Device checks**: a long compression shows an interstitial two seconds in and the result after
 it closes; a short clip shows none; a second compression within four minutes shows none; Best
 quality asks for its ad and then compresses with none; Back or Cancel during the first seconds shows nothing; Save never shows an ad; the
-EEA consent form (a VPN to Europe) appears once. Export: the first export ever shows none, later
-ones about half the time, a 4K one never, and the finished video appears only once the ad has
-closed; photo compression shows its ad before the result; 4K and photos' Best quality ask for
-their ad.
+EEA consent form (a VPN to Europe) appears once. Export: the first three exports after
+installing show none, later ones about half the time (4K included), 4K is picked with no ad, and
+the finished video appears only once the ad has closed; photo compression shows its ad before
+the result; photos' Best quality asks for its ad.
 
 ### Temporary files — gone once off screen, and History with them
 

@@ -136,8 +136,7 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
     // video ad would share. Whatever becomes of the ad, the video follows.
     setState(() => _progress = 1.0);
     try {
-      await (widget.exportAd ?? showExportAd)(
-          widget.targetHeight, () => mounted);
+      await (widget.exportAd ?? showExportAd)(() => mounted);
     } catch (e) {
       debugPrint('Export ad: $e');
     }

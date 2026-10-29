@@ -621,8 +621,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     if (widget.captionsMode) {
       ref.read(videoEditorProvider.notifier).setSavesDraft(false);
     }
-    // Export's ads ahead of their moment: the consent step, the SDK, the 4K
-    // unlock's rewarded ad and the interstitial after an export.
+    // Export's ad ahead of its moment: the consent step, the SDK and the
+    // interstitial after an export.
     unawaited(AdService.prepare(AdPlacement.export));
     _playbackGuard = PlaybackGuard(
       audio: _playbackAudio,
@@ -2111,9 +2111,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                       List<int> values,
                       int currentValue,
                       String Function(int) labelBuilder,
-                      void Function(int) onChanged, {
-                      bool Function(int)? isProBuilder,
-                    }) {
+                      void Function(int) onChanged,
+                    ) {
                       return Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
@@ -2129,42 +2128,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                                 behavior: HitTestBehavior.opaque,
                                 onTap: () {
                                   HapticFeedback.selectionClick();
-                                  if (isProBuilder != null &&
-                                      isProBuilder(val) &&
-                                      !isSelected) {
-                                    AdService.showRewardedAd(
-                                      context,
-                                      placement: AdPlacement.export,
-                                      onRewardEarned: () {
-                                        if (context.mounted) {
-                                          onChanged(val);
-                                          setPopupState(() {});
-                                          setState(() {});
-                                          ToastUtils.show(
-                                            context,
-                                            '${labelBuilder(val)} Unlocked!',
-                                            isError: false,
-                                          );
-                                        }
-                                      },
-                                      onFailed: (failure) {
-                                        if (context.mounted) {
-                                          ToastUtils.show(
-                                            context,
-                                            unlockFailureMessage(
-                                              failure,
-                                              labelBuilder(val),
-                                            ),
-                                            isWarning: true,
-                                          );
-                                        }
-                                      },
-                                    );
-                                  } else {
-                                    onChanged(val);
-                                    setPopupState(() {});
-                                    setState(() {});
-                                  }
+                                  onChanged(val);
+                                  setPopupState(() {});
+                                  setState(() {});
                                 },
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
@@ -2193,47 +2159,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                                           fontSize: 13,
                                         ),
                                       ),
-                                      if (isProBuilder != null &&
-                                          isProBuilder(val)) ...[
-                                        const SizedBox(width: 4),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 4,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            gradient: const LinearGradient(
-                                              colors: [
-                                                Color(0xFF8B5CF6),
-                                                Color(0xFFD946EF),
-                                              ],
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              4,
-                                            ),
-                                          ),
-                                          child: const Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                'PRO',
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 8,
-                                                  fontWeight: FontWeight.w900,
-                                                  letterSpacing: 0.5,
-                                                ),
-                                              ),
-                                              SizedBox(width: 2),
-                                              Icon(
-                                                LucideIcons.play,
-                                                color: Colors.white,
-                                                size: 8,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
                                     ],
                                   ),
                                 ),
@@ -2295,7 +2220,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                                           ? 'HD'
                                           : '4K',
                                       (val) => _exportHeight = val,
-                                      isProBuilder: (val) => val == 2160,
                                     ),
                                     const SizedBox(height: 20),
                                     const Text(

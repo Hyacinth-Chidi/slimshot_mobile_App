@@ -36,8 +36,8 @@ class AdService {
   /// The editor's export (2026-10-29): an interstitial **after** it, before
   /// the finished video — never over it, which would share the hardware
   /// codecs it runs on — and only now and then (`showExportAd`: never a
-  /// user's first export, never 4K, otherwise by chance; one per five
-  /// minutes at most). 4K is unlocked by a rewarded ad.
+  /// user's first three exports after installing the app, then by chance;
+  /// one per five minutes at most). Its resolution is chosen freely.
   static const bool exportAds = true;
 
   static bool isOn(AdPlacement placement) => switch (placement) {
@@ -66,8 +66,13 @@ class AdService {
   static const Set<AdPlacement> _rewardedUnlocks = {
     AdPlacement.videoCompression,
     AdPlacement.photoCompression,
-    AdPlacement.export,
   };
+
+  /// Whether [placement] unlocks something with a rewarded ad — Best quality
+  /// in the compressions; nothing in the export (the owner's call,
+  /// 2026-10-29: its resolution is chosen freely).
+  static bool unlocksWithRewardedAd(AdPlacement placement) =>
+      _rewardedUnlocks.contains(placement);
 
   /// AdMob keeps a loaded ad showable for an hour.
   static const Duration adLifetime = Duration(minutes: 50);

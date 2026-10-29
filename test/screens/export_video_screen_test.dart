@@ -51,7 +51,7 @@ void main() {
                 targetFps: 30,
                 preview: engine,
                 deleteFiles: record,
-                exportAd: exportAd ?? (_, _) async {},
+                exportAd: exportAd ?? (_) async {},
               ),
             ))),
             child: const Text('editor'),
@@ -214,18 +214,15 @@ void main() {
     testWidgets('the finished video appears only once the ad has closed',
         (tester) async {
       final ad = Completer<void>();
-      int? height;
       bool Function()? wanted;
       engine.finish = Completer<NativeExportResult>();
-      await openExport(tester, exporting: true, exportAd: (h, w) {
-        height = h;
+      await openExport(tester, exporting: true, exportAd: (w) {
         wanted = w;
         return ad.future;
       });
       engine.finish!.complete(result);
       await tester.pump();
       await tester.pump();
-      expect(height, 1080);
       expect(wanted!(), isTrue, reason: 'the screen is still there');
       expect(find.text('Share'), findsNothing, reason: 'the ad comes first');
 
@@ -237,7 +234,7 @@ void main() {
     testWidgets('a failed export asks for no ad', (tester) async {
       var asked = 0;
       engine.finish = Completer<NativeExportResult>();
-      await openExport(tester, exporting: true, exportAd: (_, _) async {
+      await openExport(tester, exporting: true, exportAd: (_) async {
         asked++;
       });
       engine.finish!.completeError(StateError('no encoder'));

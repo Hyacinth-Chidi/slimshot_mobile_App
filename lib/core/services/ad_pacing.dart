@@ -10,7 +10,7 @@ enum AdPlacement {
   photoCompression,
 
   /// The editor's export: now and then an interstitial after it, before the
-  /// finished video; 4K is unlocked by a rewarded ad.
+  /// finished video, never on a user's first three exports.
   export,
 }
 

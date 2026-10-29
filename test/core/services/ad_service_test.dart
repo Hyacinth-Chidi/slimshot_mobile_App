@@ -127,4 +127,33 @@ void main() {
     await pumpEventQueue();
     expect(done, isTrue);
   });
+
+  // The owner's call (2026-10-29): the export's resolution is chosen freely.
+  // 4K asked for a rewarded ad; nothing about an export is unlocked now.
+  test("choosing the export's resolution asks for no ad", () {
+    final source = File('lib/screens/video_editor_screen.dart')
+        .readAsStringSync()
+        .replaceAll('\r\n', '\n');
+    final start = source.indexOf('void _showExportOptionsPopup()');
+    expect(start, isNot(-1));
+    final popup = source.substring(start, source.indexOf('\n  }\n', start));
+    expect(popup, isNot(contains('showRewardedAd')));
+    expect(popup, isNot(contains("'PRO'")));
+    // The old export options dialog, opened from nowhere, carried the same
+    // gate.
+    expect(
+      File('lib/features/video_editor/widgets/dialogs/export_options_dialog.dart')
+          .existsSync(),
+      isFalse,
+    );
+  });
+
+  test('only the compressions are unlocked by a rewarded ad', () {
+    expect(AdService.unlocksWithRewardedAd(AdPlacement.videoCompression),
+        isTrue);
+    expect(AdService.unlocksWithRewardedAd(AdPlacement.photoCompression),
+        isTrue);
+    // So the editor no longer loads one it would never show.
+    expect(AdService.unlocksWithRewardedAd(AdPlacement.export), isFalse);
+  });
 }
