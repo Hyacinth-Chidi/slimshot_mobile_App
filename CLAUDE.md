@@ -4925,6 +4925,9 @@ through Google Fonts.
 - **The preview hugs the video's shape** (capped at 42% of the height for a tall one) and carries
   `videoInfoLabel` ("1080p · 0:42") and the size — the metadata was read and never shown.
   Compressing grows it and puts a progress ring on it (per-file %, "2 of 5" for a batch).
+  **The two labels share the picture's foot through `CompressInfoChipRow`** (the photo screen's
+  too): the label takes the room it needs and the size keeps the right edge. A `Spacer` beside
+  the label's `Flexible` split the free room in half, so on a 360dp phone it read "1080p · 0…".
 - **Several videos** get a thumbnail row (`VideoThumbnailService`, the filmstrip's extractor); a
   tap plays that one in the preview.
 - **From 700 px wide, two columns** (`kCompressTwoColumnWidth`): video left, settings right.

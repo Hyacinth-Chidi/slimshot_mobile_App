@@ -194,13 +194,11 @@ class _PhotoFrame extends StatelessWidget {
               left: 12,
               right: 12,
               bottom: 12,
-              child: Row(children: [
-                if (infoLabel != null && infoLabel!.isNotEmpty)
-                  Flexible(child: CompressInfoChip(infoLabel!, icon: infoIcon)),
-                const Spacer(),
-                if (sizeLabel != null)
-                  CompressInfoChip(sizeLabel!, icon: LucideIcons.hardDrive),
-              ]),
+              child: CompressInfoChipRow(
+                label: infoLabel,
+                labelIcon: infoIcon,
+                size: sizeLabel,
+              ),
             ),
         ]),
       );

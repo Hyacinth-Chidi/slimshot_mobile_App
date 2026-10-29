@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/services/ad_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:slimshotai/features/compression/logic/compression_presets.dart';
 import 'package:slimshotai/features/compression/providers/compression_provider.dart';
+import 'package:slimshotai/features/compression/widgets/compress_panels.dart';
 import 'package:slimshotai/features/compression/widgets/compress_video_view.dart';
 
 const _mb = 1024 * 1024;
@@ -186,6 +188,37 @@ void main() {
   testWidgets('one video has no thumbnail row', (tester) async {
     await pump(tester, _state());
     expect(find.byKey(const Key('compress_thumb_0')), findsNothing);
+  });
+
+  // What the video is and its size share the picture's foot: the label takes
+  // the room it needs and the size keeps the right edge. A Spacer beside the
+  // label split the free room in half, so on a 360-wide phone "1080p · 0:42"
+  // read "1080p · 0…" with room to spare.
+  testWidgets('the label is cut only when the row is full', (tester) async {
+    Rect picture() => tester.getRect(find.byKey(const Key('compress_preview')));
+    Rect sizeChip() => tester.getRect(find.ancestor(
+        of: find.text('48.2 MB'), matching: find.byType(CompressInfoChip)));
+
+    await pump(tester, _state());
+    expect(
+      tester
+          .renderObject<RenderParagraph>(find.text('1080p · 0:42'))
+          .didExceedMaxLines,
+      isFalse,
+    );
+    expect(sizeChip().right, closeTo(picture().right - 12, 0.5));
+
+    // Alone, the size still keeps the right edge.
+    await pump(
+      tester,
+      CompressionState(
+        inputFiles: [XFile('v.mp4')],
+        originalSize: (48.2 * _mb).round(),
+        selectedPreset: _smart,
+      ),
+    );
+    expect(find.text('1080p · 0:42'), findsNothing);
+    expect(sizeChip().right, closeTo(picture().right - 12, 0.5));
   });
 
   group('WhatsApp Status', () {
