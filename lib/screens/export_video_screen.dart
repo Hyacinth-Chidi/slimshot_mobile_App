@@ -170,7 +170,7 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
     // The engine deletes the partial file when it sees the flag; nothing is
     // awaited here because the screen is leaving either way.
     unawaited(_nativePreview.cancelExport());
-    Navigator.pop(context);
+    Navigator.pop(context, false);
   }
 
   /// ✕ and Back. An export under way is cancelled; a finished one is left
@@ -189,7 +189,9 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
       );
       if (!leave || !mounted) return;
     }
-    Navigator.pop(context);
+    // Says whether the file was kept: captions made from Home are asked
+    // about on leaving until an export of them was.
+    Navigator.pop(context, _exit.kept);
   }
 
   /// Saves at once: an ad in front of Save made the user wait for their own

@@ -25,6 +25,13 @@ void main() {
   const outputs = ['/cache/slimshot_temp_a.mp4', '/cache/slimshot_temp_b.mp4'];
   const inputs = ['/cache/3f2a/VID_1.mp4', '/cache/3f2b/VID_2.mp4'];
 
+  test('kept is false until something is kept', () {
+    final exit = ResultExit(delete: delete);
+    expect(exit.kept, isFalse);
+    exit.markKept();
+    expect(exit.kept, isTrue);
+  });
+
   test('nothing kept: it asks, and staying keeps every file', () async {
     final exit = ResultExit(delete: delete);
     expect(

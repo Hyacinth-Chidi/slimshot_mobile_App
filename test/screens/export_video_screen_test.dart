@@ -17,6 +17,8 @@ void main() {
   const exported = '/cache/slimshot_export_1.mp4';
   late List<String> deleted;
   late _FakeExport engine;
+  // What the export route completed with: whether its file was kept.
+  late List<Object?> results;
 
   Future<void> record(Iterable<String> paths) async => deleted.addAll(paths);
 
@@ -25,6 +27,7 @@ void main() {
   setUp(() {
     deleted = [];
     engine = _FakeExport();
+    results = [];
   });
 
   /// The editor beneath, and the export screen pushed over it. While
@@ -38,7 +41,9 @@ void main() {
       home: Builder(
         builder: (context) => Scaffold(
           body: TextButton(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            onPressed: () async =>
+                results.add(await Navigator.of(context).push<bool>(
+                    MaterialPageRoute(
               builder: (_) => ExportVideoScreen(
                 exportState: const VideoEditorState(),
                 previewCanvasSize: const Size(720, 1280),
@@ -48,7 +53,7 @@ void main() {
                 deleteFiles: record,
                 exportAd: exportAd ?? (_, _) async {},
               ),
-            )),
+            ))),
             child: const Text('editor'),
           ),
         ),
@@ -109,6 +114,42 @@ void main() {
       expect(find.text('Discard this video?'), findsNothing);
       expect(find.byType(ExportVideoScreen), findsNothing);
       expect(deleted, [exported]);
+    });
+  });
+
+  // Captions made from Home ask before they are left unless an export of
+  // them was kept, so the export says whether its file was.
+  group('what the export says it kept', () {
+    testWidgets('a shared export closes saying it was kept', (tester) async {
+      const share = MethodChannel('dev.fluttercommunity.plus/share');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(share, (_) async => 'com.whatsapp');
+      addTearDown(() => messenger.setMockMethodCallHandler(share, null));
+      await openExport(tester);
+      await tester.tap(find.text('Share'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('export_close')));
+      await tester.pumpAndSettle();
+      expect(results, [true]);
+    });
+
+    testWidgets('a discarded export closes saying nothing was kept',
+        (tester) async {
+      await openExport(tester);
+      await tester.tap(find.byKey(const Key('export_close')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('discard_confirm')));
+      await tester.pumpAndSettle();
+      expect(results, [false]);
+    });
+
+    testWidgets('a cancelled export says nothing was kept', (tester) async {
+      engine.finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(results, [false]);
     });
   });
 

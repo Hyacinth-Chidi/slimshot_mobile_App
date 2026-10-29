@@ -35,6 +35,10 @@ class ResultExit {
   void release() => _held.release(this);
 
   /// The result was saved, or sent somewhere: leaving it asks nothing.
+  /// Whether the result was saved or shared — kept somewhere off this
+  /// screen.
+  bool get kept => _kept;
+
   void markKept() {
     _kept = true;
     _held.release(this);
