@@ -144,6 +144,59 @@ void main() {
     });
   });
 
+  // Photos compress in a second or two: the video rule — only with about
+  // ten seconds to go — would almost never show one.
+  test('photo compression is timed as Privacy Strip is: every job, however '
+      'fast', () {
+    expect(kPhotoCompressionAdRule.evenIfQuick, isTrue);
+    expect(kPhotoCompressionAdRule.minRemaining, isNull);
+    expect(kPhotoCompressionAdRule.leadIn, kPrivacyStripAdRule.leadIn);
+  });
+
+  group('after a job', () {
+    void finish(AdPlacement placement) {
+      adAfterWork(
+        placement: placement,
+        pacing: pacing,
+        presenter: ad,
+        wanted: () => wanted,
+      ).then((_) => done = true);
+    }
+
+    test('a finished job gets its ad, and what follows waits for it',
+        () async {
+      finish(AdPlacement.export);
+      await pumpEventQueue();
+      expect(ad.shows, 1);
+      expect(pacing.isDue(AdPlacement.export), isFalse);
+      expect(done, isFalse, reason: 'the result waits for the ad');
+      await ad.close();
+      expect(done, isTrue);
+    });
+
+    test('an ad not due, not loaded or no longer wanted: nothing, at once',
+        () async {
+      ad.ready = false;
+      finish(AdPlacement.export);
+      await pumpEventQueue();
+      expect((ad.shows, done), (0, true));
+
+      ad.ready = true;
+      done = false;
+      wanted = false;
+      finish(AdPlacement.export);
+      await pumpEventQueue();
+      expect((ad.shows, done), (0, true));
+
+      wanted = true;
+      done = false;
+      pacing.shown(AdPlacement.export);
+      finish(AdPlacement.export);
+      await pumpEventQueue();
+      expect((ad.shows, done), (0, true));
+    });
+  });
+
   test('nothing shows before the lead-in ends', () async {
     start(AdPlacement.videoCompression, kVideoCompressionAdRule);
     progress = 0.1;

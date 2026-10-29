@@ -50,6 +50,26 @@ const kPrivacyStripAdRule = WorkAdRule(
   evenIfQuick: true,
 );
 
+/// Photo compression: timed as Privacy Strip is. Photos compress in a
+/// second or two, so the video rule — only with about ten seconds to go —
+/// would almost never show one.
+const kPhotoCompressionAdRule = kPrivacyStripAdRule;
+
+/// Shows [placement]'s interstitial after a finished job, before what
+/// follows it — the export's, before the finished video: only an ad already
+/// loaded, only when [pacing] says one is due, only while [wanted]. Completes
+/// once it has closed, or at once when none shows.
+Future<void> adAfterWork({
+  required AdPlacement placement,
+  required AdPacing pacing,
+  required InterstitialPresenter presenter,
+  required bool Function() wanted,
+}) async {
+  if (!wanted() || !presenter.ready || !pacing.isDue(placement)) return;
+  pacing.shown(placement);
+  await presenter.show();
+}
+
 /// Shows [placement]'s interstitial over [work], a job already running, by
 /// [rule]: never before the lead-in, never holding the job up, only an ad
 /// already loaded, and only when [pacing] says one is due.

@@ -4980,7 +4980,7 @@ and the photo's shape (`PhotoInspector`, shared with Compress photo).
 
 ### Ads — back one placement at a time
 
-**Awaiting device verification** (the owner's calls, 2026-10-28). Every ad but the credit ads was
+**Awaiting device verification** (the owner's calls, 2026-10-28 and -29). Every ad but the credit ads was
 off from 2026-10-03 behind one switch, `AdService.enabled`, which would have brought every old
 placement back at once — including an interstitial in front of **Save**, which made the user
 wait for their own file. It is gone: **each placement has its own switch** (`AdPlacement`,
@@ -5000,12 +5000,27 @@ ahead, its unlock is granted, its views show no badge).
   (`kPrivacyStripAdRule`), a second in; a strip done inside that second gets its ad then,
   **before the report, never on top of it** (an ad appearing over a page that has just loaded is
   one AdMob disallows).
-- **How often** (`AdPacing`): one compression ad per **four minutes** at most, one strip ad per
-  **six** (the owner's ranges were 3–5 and 5–7), and never two ads within a minute of each other,
-  whichever placements — a rewarded unlock counts. Kept for the session.
-- **Photo compression's Best quality unlock and the editor's export, off**: export is the next
-  to be talked through; the export's interstitial no longer waits on an ad to load (the old
-  3-second "Preparing…" loader is gone), so it is ready to be designed rather than revived.
+- **Photo compression, on**: timed as Privacy Strip is (`kPhotoCompressionAdRule`) — photos
+  compress in a second or two, so the video rule would almost never show one — with Best quality
+  unlocked by a rewarded ad and its compressions getting no interstitial, as for video.
+- **Export, on — after it, never during it, and only now and then** (`showExportAd`,
+  `export_ads.dart`). The interstitial comes **between the finished export and its video**: the
+  progress holds at 100% until it closes (`ExportVideoScreen.exportAd`). **Never during the
+  export**, unlike a compression: compression is FFmpeg on the CPU, but export runs on the
+  hardware decoders and encoder, which a video ad needs too — on a low-end phone (the Infinix
+  decodes about 105 fps of 1080p across every decoder) an ad over it would slow it, or have
+  Android take a codec away, as already happened to video overlays. **Not every export** (the
+  owner's call): by chance, about half (`kExportAdChance`), **never a user's first export**
+  (`ExportHistory`, a count of finished exports kept in preferences, so it outlasts a launch;
+  a cancelled or failed export is not counted), and never a 4K one — 4K is unlocked by a rewarded
+  ad. Nothing before the export any more (an interstitial used to stand between the Export tap
+  and the export starting), nothing on Save. Export's ads get ready when the editor opens
+  (`AdService.prepare`), the 4K unlock's included. Whatever becomes of the ad, the video
+  follows: the step never throws, and the screen catches anything that would.
+- **How often** (`AdPacing`): one ad per **four minutes** at most for video compression, **six**
+  for Privacy Strip and photo compression, **five** for export (the owner's ranges were 3–5 and
+  5–7), and never two ads within a minute of each other, whichever placements — a rewarded unlock
+  counts. Kept for the session.
 
 **One function decides an ad over a job** (`adOverWork`, `work_ad.dart`, `work_ad_test.dart`):
 never before the lead-in, never holding the job up, **only an ad already loaded** (none is
@@ -5013,7 +5028,8 @@ waited for), only when it is due, and **only while the job still counts** — on
 cancelled, not failed (`wanted`): an ad after Back, a cancel or an error would land where nobody
 is waiting. It completes once the job has ended **and** the ad has closed, so the screens move on
 — the result, the report, an error — only after it; the compression and the strip run on
-underneath meanwhile. **Save shows no ad** anywhere, and a test reads both result screens for it.
+underneath meanwhile. Export's ad is the same rule after the job (`adAfterWork`). **Save shows no
+ad** anywhere, and a test reads the three result screens for it.
 
 **No ad is asked for before Google's consent step has started the SDK** (`AdsSdk.started`): the
 consent-then-start code moved out of the credit ads (`PluginRewardedAdPlayer`) into `AdsSdk`, and
@@ -5026,7 +5042,10 @@ every ten seconds for as long as the app runs.
 it closes; a short clip shows none; a second compression within four minutes shows none; Best
 quality asks for its ad and then compresses with none; a strip — one photo — shows its ad before
 the report; Back or Cancel during the first seconds shows nothing; Save never shows an ad; the
-EEA consent form (a VPN to Europe) appears once.
+EEA consent form (a VPN to Europe) appears once. Export: the first export ever shows none, later
+ones about half the time, a 4K one never, and the finished video appears only once the ad has
+closed; photo compression shows its ad before the result; 4K and photos' Best quality ask for
+their ad.
 
 ### Temporary files — gone once off screen, and History with them
 

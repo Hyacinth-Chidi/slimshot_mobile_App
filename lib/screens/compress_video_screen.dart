@@ -149,7 +149,7 @@ class _CompressVideoScreenState extends ConsumerState<CompressVideoScreen> {
             AdPlacement.videoCompression,
             work: work,
             progress: _batchProgress,
-            wanted: () => mounted,
+            wanted: _compressionCounts,
           )
         : work);
 
@@ -173,6 +173,15 @@ class _CompressVideoScreenState extends ConsumerState<CompressVideoScreen> {
     if (count == 0) return 1;
     return ((state.currentProcessingIndex + state.progress / 100) / count)
         .clamp(0.0, 1.0);
+  }
+
+  /// Whether the compression still earns its ad: on screen, and running or
+  /// done with something to show — not cancelled, not failed.
+  bool _compressionCounts() {
+    if (!mounted) return false;
+    final state = ref.read(compressionProvider);
+    if (state.error != null) return false;
+    return state.isProcessing || state.outputPaths.isNotEmpty;
   }
 
   void _selectPreset(CompressionPreset preset) {

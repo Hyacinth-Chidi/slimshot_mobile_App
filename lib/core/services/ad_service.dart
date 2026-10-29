@@ -27,12 +27,18 @@ class AdService {
   /// ([kPrivacyStripAdRule]; one per six minutes at most).
   static const bool privacyStripAds = true;
 
-  /// Photo compression's Best quality unlock: off until talked through.
-  static const bool photoCompressionAds = false;
+  /// Photo compression (2026-10-29): an interstitial on every compression,
+  /// however fast, timed as Privacy Strip's ([kPhotoCompressionAdRule]; one
+  /// per six minutes at most); Best quality unlocked by a rewarded ad, its
+  /// compressions getting no interstitial.
+  static const bool photoCompressionAds = true;
 
-  /// The editor's export — its interstitials and its 4K unlock: off, the
-  /// next to be talked through.
-  static const bool exportAds = false;
+  /// The editor's export (2026-10-29): an interstitial **after** it, before
+  /// the finished video — never over it, which would share the hardware
+  /// codecs it runs on — and only now and then (`showExportAd`: never a
+  /// user's first export, never 4K, otherwise by chance; one per five
+  /// minutes at most). 4K is unlocked by a rewarded ad.
+  static const bool exportAds = true;
 
   static bool isOn(AdPlacement placement) => switch (placement) {
         AdPlacement.videoCompression => videoCompressionAds,
@@ -50,9 +56,19 @@ class AdService {
   /// How often an interstitial may show, across the app.
   static final AdPacing pacing = AdPacing();
 
+  /// The placements whose ad shows over their job; export's comes after
+  /// it ([afterWork]).
   static const Map<AdPlacement, WorkAdRule> _workAdRules = {
     AdPlacement.videoCompression: kVideoCompressionAdRule,
     AdPlacement.privacyStrip: kPrivacyStripAdRule,
+    AdPlacement.photoCompression: kPhotoCompressionAdRule,
+  };
+
+  /// The placements with something a rewarded ad unlocks: Best quality, 4K.
+  static const Set<AdPlacement> _rewardedUnlocks = {
+    AdPlacement.videoCompression,
+    AdPlacement.photoCompression,
+    AdPlacement.export,
   };
 
   /// AdMob keeps a loaded ad showable for an hour.
@@ -96,13 +112,29 @@ class AdService {
 
   /// Gets [placement]'s ads ready ahead of its moment: Google's consent
   /// step and the SDK (once a launch, [AdsSdk]), then an interstitial loaded
-  /// — and for video compression the rewarded ad that unlocks Best quality.
-  /// Called when its screen opens. Never throws; nothing waits on it.
+  /// — and, where something is unlocked by one, a rewarded ad. Called when
+  /// its screen opens. Never throws; nothing waits on it.
   static Future<void> prepare(AdPlacement placement) async {
     if (!isOn(placement)) return;
     if (await AdsSdk.start() != null) return;
-    if (_workAdRules.containsKey(placement)) loadInterstitialAd();
-    if (placement == AdPlacement.videoCompression) loadRewardedAd();
+    loadInterstitialAd();
+    if (_rewardedUnlocks.contains(placement)) loadRewardedAd();
+  }
+
+  /// [placement]'s interstitial after its job, before what follows it
+  /// ([adAfterWork]): completes once it has closed, or at once when none
+  /// shows. Off, nothing.
+  static Future<void> afterWork(
+    AdPlacement placement, {
+    bool Function()? wanted,
+  }) {
+    if (!isOn(placement)) return Future.value();
+    return adAfterWork(
+      placement: placement,
+      pacing: pacing,
+      presenter: const _PluginInterstitial(),
+      wanted: wanted ?? () => true,
+    );
   }
 
   /// [placement]'s interstitial over [work], a job already running
@@ -200,20 +232,6 @@ class AdService {
     );
     ad.show();
     return closed.future;
-  }
-
-  /// An interstitial before [onAdDismissed] — the editor's export, off for
-  /// now. Shows a loaded ad if there is one and never waits for one to
-  /// load; [onAdDismissed] runs exactly once either way.
-  static Future<void> showInterstitialAd(
-    BuildContext context, {
-    required AdPlacement placement,
-    required VoidCallback onAdDismissed,
-  }) async {
-    if (isOn(placement) && _interstitialReady()) {
-      await _showInterstitial();
-    }
-    onAdDismissed();
   }
 
   // --- REWARDED ADS ---

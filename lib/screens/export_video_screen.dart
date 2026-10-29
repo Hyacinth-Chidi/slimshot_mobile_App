@@ -7,7 +7,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../core/services/media_save_service.dart';
-import '../core/services/ad_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/utils/file_utils.dart';
 import '../core/utils/result_exit.dart';
@@ -15,6 +14,7 @@ import '../core/utils/toast_utils.dart';
 import '../core/widgets/discard_dialog.dart';
 import '../features/video_editor/models/media_asset.dart';
 import '../features/video_editor/models/video_editor_state.dart';
+import '../features/video_editor/services/export_ads.dart';
 import '../features/video_editor/services/native_timeline_preview_service.dart';
 
 /// Renders the project and previews the result.
@@ -37,6 +37,10 @@ class ExportVideoScreen extends StatefulWidget {
 
   final TempFileDeleter deleteFiles;
 
+  /// What plays between the finished export and its video: the export's
+  /// interstitial, now and then ([showExportAd]); a test's stand-in.
+  final ExportAd? exportAd;
+
   const ExportVideoScreen({
     super.key,
     required this.exportState,
@@ -45,6 +49,7 @@ class ExportVideoScreen extends StatefulWidget {
     required this.targetFps,
     this.preview,
     this.deleteFiles = FileUtils.deleteTempFiles,
+    this.exportAd,
   });
 
   @override
@@ -95,12 +100,13 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
       }
     });
 
+    final NativeExportResult result;
     try {
       final directory = await getTemporaryDirectory();
       final outputPath =
           '${directory.path}/slimshot_export_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
-      final result = await _nativePreview.exportVideo(
+      result = await _nativePreview.exportVideo(
         state,
         outputPath: outputPath,
         previewCanvasSize: widget.previewCanvasSize,
@@ -115,21 +121,32 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
           ToastUtils.show(context, message, isWarning: true);
         },
       );
-
-      if (!mounted) return;
-      setState(() {
-        _isExporting = false;
-        _progress = 1.0;
-        _exportedVideoPath = result.outputPath;
-      });
-      _initExportedVideo(result.outputPath);
     } catch (e) {
       // Nothing came of it, so nothing is held.
       _exit.release();
       if (!mounted) return;
       setState(() => _isExporting = false);
       ToastUtils.show(context, 'Export failed: $e', isError: true);
+      return;
     }
+
+    if (!mounted) return;
+    // The export's ad, now and then, between the finished export and its
+    // video — never during the export, which runs on the hardware codecs a
+    // video ad would share. Whatever becomes of the ad, the video follows.
+    setState(() => _progress = 1.0);
+    try {
+      await (widget.exportAd ?? showExportAd)(
+          widget.targetHeight, () => mounted);
+    } catch (e) {
+      debugPrint('Export ad: $e');
+    }
+    if (!mounted) return;
+    setState(() {
+      _isExporting = false;
+      _exportedVideoPath = result.outputPath;
+    });
+    _initExportedVideo(result.outputPath);
   }
 
   Future<void> _initExportedVideo(String path) async {
@@ -175,26 +192,21 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
     Navigator.pop(context);
   }
 
+  /// Saves at once: an ad in front of Save made the user wait for their own
+  /// video (the export's ad comes before the finished video instead).
   Future<void> _saveVideo() async {
-    if (_exportedVideoPath == null) return;
-    
-    AdService.showInterstitialAd(
-      context,
-      placement: AdPlacement.export,
-      onAdDismissed: () async {
-        if (!mounted) return;
-        try {
-          await MediaSaveService.saveOptimizedMediaToGallery(
-            [_exportedVideoPath!],
-            album: 'SlimShotAI',
-          );
-          _exit.markKept();
-          if (mounted) ToastUtils.show(context, 'Saved to gallery!');
-        } catch (e) {
-          if (mounted) ToastUtils.show(context, 'Failed to save: $e', isError: true);
-        }
-      },
-    );
+    final path = _exportedVideoPath;
+    if (path == null) return;
+    try {
+      await MediaSaveService.saveOptimizedMediaToGallery(
+        [path],
+        album: 'SlimShotAI',
+      );
+      _exit.markKept();
+      if (mounted) ToastUtils.show(context, 'Saved to gallery!');
+    } catch (e) {
+      if (mounted) ToastUtils.show(context, 'Failed to save: $e', isError: true);
+    }
   }
 
   Future<void> _shareVideo() async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:slimshotai/core/services/ad_service.dart';
 import 'package:slimshotai/features/compression/logic/compression_presets.dart';
 import 'package:slimshotai/features/compression/providers/compression_provider.dart';
 import 'package:slimshotai/features/compression/widgets/compress_photo_view.dart';
@@ -88,7 +89,9 @@ void main() {
     expect(find.text('WebP'), findsOneWidget);
     // Photos have no WhatsApp option: the photo compressor has none.
     expect(find.text('WhatsApp ready'), findsNothing);
-    expect(find.text('PRO'), findsNothing);
+    // Best quality wears PRO exactly while an ad unlocks it.
+    expect(find.text('PRO'),
+        AdService.photoCompressionAds ? findsOneWidget : findsNothing);
     expect(find.byKey(const Key('compress_thumb_0')), findsNothing);
   });
 

@@ -34,6 +34,22 @@ void main() {
     expect(p.isDue(AdPlacement.privacyStrip), isTrue);
   });
 
+  test('after a photo compression ad, none for six minutes', () {
+    final p = pacing()..shown(AdPlacement.photoCompression);
+    wait(const Duration(minutes: 5, seconds: 59));
+    expect(p.isDue(AdPlacement.photoCompression), isFalse);
+    wait(const Duration(seconds: 1));
+    expect(p.isDue(AdPlacement.photoCompression), isTrue);
+  });
+
+  test('after an export ad, none for five minutes', () {
+    final p = pacing()..shown(AdPlacement.export);
+    wait(const Duration(minutes: 4, seconds: 59));
+    expect(p.isDue(AdPlacement.export), isFalse);
+    wait(const Duration(seconds: 1));
+    expect(p.isDue(AdPlacement.export), isTrue);
+  });
+
   test('each placement keeps its own gap, but no ad comes within a minute '
       'of another', () {
     final p = pacing()..shown(AdPlacement.videoCompression);

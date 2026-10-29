@@ -13,13 +13,11 @@ import 'package:slimshotai/features/compression/logic/compression_presets.dart';
 /// [AdService], so where a placement is off nothing waits on an ad and
 /// nothing an ad used to unlock stays locked.
 void main() {
-  test('video compression and Privacy Strip are on; the rest wait their turn',
+  test('every placement is on: the compressions, Privacy Strip and export',
       () {
-    expect(AdService.isOn(AdPlacement.videoCompression), isTrue);
-    expect(AdService.isOn(AdPlacement.privacyStrip), isTrue);
-    // Next to be talked through: the editor's export.
-    expect(AdService.isOn(AdPlacement.export), isFalse);
-    expect(AdService.isOn(AdPlacement.photoCompression), isFalse);
+    for (final placement in AdPlacement.values) {
+      expect(AdService.isOn(placement), isTrue, reason: '$placement');
+    }
   });
 
   test('credit ads play the unit whose verification calls the server', () {
@@ -31,16 +29,19 @@ void main() {
 
   // The owner's call: Best quality is unlocked by a rewarded ad, so a
   // compression at Best quality has already had its ad.
-  test('a video compression gets an interstitial unless it is at Best quality',
+  test('a compression gets an interstitial unless it is at Best quality',
       () {
-    for (final preset in CompressionPresets.videoPresets) {
-      expect(compressionGetsInterstitial(preset), !preset.isPro,
-          reason: preset.name);
+    for (final presets in [
+      CompressionPresets.videoPresets,
+      CompressionPresets.imagePresets,
+    ]) {
+      for (final preset in presets) {
+        expect(compressionGetsInterstitial(preset), !preset.isPro,
+            reason: preset.name);
+      }
+      expect(presets.where((p) => p.isPro).map((p) => p.name),
+          ['Best quality']);
     }
-    expect(
-      CompressionPresets.videoPresets.where((p) => p.isPro).map((p) => p.name),
-      ['Best quality'],
-    );
   });
 
   // Save is the moment the user gets what they came for: an ad in front of
@@ -49,6 +50,9 @@ void main() {
     for (final screen in [
       'lib/screens/result_screen.dart',
       'lib/screens/privacy_result_screen.dart',
+      // Its ad comes between the export and the finished video
+      // (`showExportAd`), never on Save.
+      'lib/screens/export_video_screen.dart',
     ]) {
       expect(File(screen).readAsStringSync(), isNot(contains('AdService')),
           reason: screen);
@@ -66,36 +70,30 @@ void main() {
     return captured;
   }
 
-  testWidgets('where ads are off, a step that waited on an interstitial goes '
-      'ahead at once', (tester) async {
+  // No "Preparing..." loader waiting on an ad: with none loaded, the unlock
+  // says so at once (and asks for one for next time).
+  testWidgets('with no rewarded ad loaded, an unlock fails at once rather '
+      'than waiting', (tester) async {
     final context = await host(tester);
-    var dismissed = 0;
-    await AdService.showInterstitialAd(
+    var earned = 0;
+    var failed = 0;
+    await AdService.showRewardedAd(
       context,
       placement: AdPlacement.export,
-      onAdDismissed: () => dismissed++,
+      onRewardEarned: () => earned++,
+      onFailed: () => failed++,
     );
     await tester.pump();
-    expect(dismissed, 1);
-    // No "Preparing..." loader waiting on an ad that will never come.
+    expect((earned, failed), (0, 1));
     expect(find.byType(Dialog), findsNothing);
-    expect(find.text('Preparing...'), findsNothing);
   });
 
-  testWidgets('where ads are off, what a rewarded ad unlocked is unlocked '
-      'without one', (tester) async {
-    final context = await host(tester);
-    for (final placement in [AdPlacement.export, AdPlacement.photoCompression]) {
-      var earned = 0;
-      var failed = 0;
-      await AdService.showRewardedAd(
-        context,
-        placement: placement,
-        onRewardEarned: () => earned++,
-        onFailed: () => failed++,
-      );
-      expect((earned, failed), (1, 0), reason: '$placement');
-    }
+  test('an interstitial after a job, with none loaded, lets what follows go '
+      'ahead at once', () async {
+    var done = false;
+    unawaited(AdService.afterWork(AdPlacement.export).then((_) => done = true));
+    await pumpEventQueue();
+    expect(done, isTrue);
   });
 
   // In the EEA, the UK and Switzerland an ad may be asked for only once
@@ -109,14 +107,9 @@ void main() {
     await pumpEventQueue();
   });
 
-  test('a placement that is off loads nothing', () async {
-    // Off, these return before reaching the ads plugin, which a test has no
-    // platform side for.
-    await AdService.prepare(AdPlacement.export);
-    await AdService.prepare(AdPlacement.photoCompression);
-  });
-
-  test('a job under a placement that is off is the job alone', () async {
+  // Export's ad comes after it, never over it: the export runs on the
+  // hardware codecs a video ad would share.
+  test('nothing shows over an export while it runs', () async {
     final work = Completer<void>();
     var done = false;
     unawaited(AdService.overWork(

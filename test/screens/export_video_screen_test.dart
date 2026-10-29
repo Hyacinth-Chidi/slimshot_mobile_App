@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:slimshotai/core/utils/held_work.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
+import 'package:slimshotai/features/video_editor/services/export_ads.dart';
 import 'package:slimshotai/features/video_editor/services/native_timeline_preview_service.dart';
 import 'package:slimshotai/screens/export_video_screen.dart';
 
@@ -28,7 +29,11 @@ void main() {
 
   /// The editor beneath, and the export screen pushed over it. While
   /// [exporting], its spinner never settles, so frames are pumped instead.
-  Future<void> openExport(WidgetTester tester, {bool exporting = false}) async {
+  Future<void> openExport(
+    WidgetTester tester, {
+    bool exporting = false,
+    ExportAd? exportAd,
+  }) async {
     await tester.pumpWidget(MaterialApp(
       home: Builder(
         builder: (context) => Scaffold(
@@ -41,6 +46,7 @@ void main() {
                 targetFps: 30,
                 preview: engine,
                 deleteFiles: record,
+                exportAd: exportAd ?? (_, _) async {},
               ),
             )),
             child: const Text('editor'),
@@ -150,6 +156,52 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ExportVideoScreen), findsNothing);
       expect(HeldWork.instance.isHeld, isFalse);
+    });
+  });
+
+  // The owner's call: an export's interstitial comes after it, before the
+  // finished video — never during it, which would share the hardware video
+  // codecs the export runs on, and never on Save.
+  group("the export's ad", () {
+    const result = NativeExportResult(
+      outputPath: exported,
+      durationSeconds: 3,
+      frameCount: 90,
+      degradedTransitions: 0,
+    );
+
+    testWidgets('the finished video appears only once the ad has closed',
+        (tester) async {
+      final ad = Completer<void>();
+      int? height;
+      bool Function()? wanted;
+      engine.finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true, exportAd: (h, w) {
+        height = h;
+        wanted = w;
+        return ad.future;
+      });
+      engine.finish!.complete(result);
+      await tester.pump();
+      await tester.pump();
+      expect(height, 1080);
+      expect(wanted!(), isTrue, reason: 'the screen is still there');
+      expect(find.text('Share'), findsNothing, reason: 'the ad comes first');
+
+      ad.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Share'), findsOneWidget);
+    });
+
+    testWidgets('a failed export asks for no ad', (tester) async {
+      var asked = 0;
+      engine.finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true, exportAd: (_, _) async {
+        asked++;
+      });
+      engine.finish!.completeError(StateError('no encoder'));
+      await tester.pumpAndSettle();
+      expect(asked, 0);
     });
   });
 

@@ -587,6 +587,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   @override
   void initState() {
     super.initState();
+    // Export's ads ahead of their moment: the consent step, the SDK, the 4K
+    // unlock's rewarded ad and the interstitial after an export.
+    unawaited(AdService.prepare(AdPlacement.export));
     _playbackGuard = PlaybackGuard(
       audio: _playbackAudio,
       isPlaying: () => ref.read(videoEditorProvider).isPlaying,
@@ -1734,16 +1737,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         });
       }
 
-      // If they unlocked 4K, they already watched a Rewarded Ad. Skip Interstitial.
-      if (targetHeight == 2160) {
-        navigateToExport();
-      } else {
-        AdService.showInterstitialAd(
-          context,
-          placement: AdPlacement.export,
-          onAdDismissed: navigateToExport,
-        );
-      }
+      // Straight to the export: its interstitial, now and then, comes after
+      // it, before the finished video (`showExportAd`), never before.
+      navigateToExport();
     } catch (e) {
       if (mounted) {
         ToastUtils.show(context, e.toString(), isError: true);

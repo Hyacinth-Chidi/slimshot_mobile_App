@@ -8,10 +8,12 @@ enum AdPlacement {
   /// An interstitial when stripping starts.
   privacyStrip,
 
-  /// Photo compression's Best quality unlock.
+  /// An interstitial over a running photo compression, timed as Privacy
+  /// Strip's; Best quality is unlocked by a rewarded ad instead.
   photoCompression,
 
-  /// The editor's export.
+  /// The editor's export: now and then an interstitial after it, before the
+  /// finished video; 4K is unlocked by a rewarded ad.
   export,
 }
 
@@ -29,6 +31,8 @@ class AdPacing {
   static const Map<AdPlacement, Duration> gaps = {
     AdPlacement.videoCompression: Duration(minutes: 4),
     AdPlacement.privacyStrip: Duration(minutes: 6),
+    AdPlacement.photoCompression: Duration(minutes: 6),
+    AdPlacement.export: Duration(minutes: 5),
   };
 
   static const Duration minApart = Duration(minutes: 1);
