@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_highlight.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_preset_catalog.dart';
 import 'package:slimshotai/features/video_editor/logic/text_look.dart';
+import 'package:slimshotai/features/video_editor/widgets/panels/caption_sheet_parts.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/caption_style_sheet.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/editor_sheet.dart';
 import 'package:slimshotai/features/video_editor/widgets/text_overlay/caption_preset_tile.dart';
@@ -76,7 +77,8 @@ void main() {
   }
 
   Future<void> tapKey(WidgetTester tester, String key) async {
-    await tester.ensureVisible(find.byKey(Key(key)));
+    await tester.ensureVisible(find.byKey(Key(key), skipOffstage: false));
+    await tester.pump();
     await tester.tap(find.byKey(Key(key)));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
@@ -87,6 +89,12 @@ void main() {
       .isSelected;
 
   const swatch = Key('caption_highlight_color_0');
+
+  /// Whether the colours can be chosen: they stay on the sheet either way,
+  /// dimmed where the highlight lights in no colour.
+  bool coloursOffered(WidgetTester tester) => tester
+      .widget<CaptionColorRow>(find.byType(CaptionColorRow, skipOffstage: false))
+      .enabled;
 
   test('offers the real catalog unless told otherwise', () {
     const sheet = CaptionStyleSheet(
@@ -106,32 +114,38 @@ void main() {
     expect(marked(tester, 'a'), isFalse);
   });
 
-  testWidgets('no title, and the styles come before the highlight', (tester) async {
-    // The user tapped Caption style to get here; a style is a whole look,
-    // highlight included, so it is picked first and tuned after.
+  // The owner's call (2026-10-29): under the styles, the highlight's colours
+  // sat below the fold of a sheet capped at 45% of the screen, where most
+  // users would never find them. They come first now, the highlights under
+  // them, and the styles after.
+  testWidgets('no title; the highlight colours first, then the highlights, '
+      'then the styles', (tester) async {
     await open(tester, preset: testPresets[0]);
     expect(find.text('Caption style'), findsNothing);
-    expect(
-      tester.getTopLeft(find.byKey(const Key('caption_preset_a'))).dy,
-      lessThan(tester.getTopLeft(find.text('Highlight', skipOffstage: false)).dy),
-    );
+    double top(Finder f) => tester.getTopLeft(f).dy;
+    expect(top(find.text('Highlight')), lessThan(top(find.byKey(swatch))));
+    expect(top(find.byKey(swatch)),
+        lessThan(top(find.byKey(const Key('caption_highlight_pop')))));
+    expect(top(find.byKey(const Key('caption_highlight_pop'))),
+        lessThan(top(find.text('Styles'))));
+    expect(top(find.text('Styles')),
+        lessThan(top(find.byKey(const Key('caption_preset_a')))));
   });
 
   testWidgets('a style reaches the set, and the Highlight row follows it',
       (tester) async {
     await open(tester, preset: testPresets[0]);
-    expect(find.byKey(swatch), findsNothing);
+    expect(coloursOffered(tester), isFalse);
 
     await tapKey(tester, 'caption_preset_b');
     expect(chosen, ['b']);
     expect(marked(tester, 'b'), isTrue);
     // Karaoke lights in a colour, so its colours are offered to tune it.
-    await tester.ensureVisible(find.byKey(swatch, skipOffstage: false));
-    expect(find.byKey(swatch), findsOneWidget);
+    expect(coloursOffered(tester), isTrue);
 
     await tapKey(tester, 'caption_preset_c');
     expect(chosen, ['b', 'c']);
-    expect(find.byKey(swatch, skipOffstage: false), findsNothing);
+    expect(coloursOffered(tester), isFalse);
   });
 
   testWidgets('a highlight reaches the set, the look kept', (tester) async {
@@ -161,9 +175,31 @@ void main() {
       );
     }
     await tapKey(tester, 'caption_highlight_pill');
-    expect(find.byKey(swatch, skipOffstage: false), findsOneWidget);
+    expect(coloursOffered(tester), isTrue);
     await tapKey(tester, 'caption_highlight_focus');
-    expect(find.byKey(swatch, skipOffstage: false), findsNothing);
+    expect(coloursOffered(tester), isFalse);
+    // A dimmed colour does nothing when tapped.
+    applied.clear();
+    await tester.tap(find.byKey(const Key('caption_highlight_color_3')),
+        warnIfMissed: false);
+    await tester.pump();
+    expect(applied, isEmpty);
+  });
+
+  // At the top of the sheet, a row that came and went would move every row
+  // under it the moment a style was picked — under the finger.
+  testWidgets('the colours stay where they are whatever the highlight',
+      (tester) async {
+    await open(tester, preset: testPresets[1]);
+    // From the top of the highlight rows to the styles: what a row coming
+    // and going would change, whatever the sheet is scrolled to.
+    double span() =>
+        tester.getTopLeft(find.text('Styles', skipOffstage: false)).dy -
+        tester.getTopLeft(find.text('Highlight', skipOffstage: false)).dy;
+    final before = span();
+    await tapKey(tester, 'caption_highlight_focus');
+    expect(coloursOffered(tester), isFalse);
+    expect(span(), before);
   });
 
   testWidgets('a hand-tuned caption marks no style', (tester) async {

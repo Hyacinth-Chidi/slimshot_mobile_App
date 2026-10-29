@@ -121,7 +121,8 @@ class SheetActionButton extends StatelessWidget {
 
 /// A horizontal row of colour swatches; the current one is ringed in the
 /// accent, the rest in the border colour — which is also what keeps a black
-/// swatch visible on the sheet.
+/// swatch visible on the sheet. Not [enabled], it stays where it is, dimmed
+/// and deaf to taps: disabled, not hidden.
 class CaptionColorRow extends StatelessWidget {
   const CaptionColorRow({
     super.key,
@@ -129,15 +130,27 @@ class CaptionColorRow extends StatelessWidget {
     required this.selected,
     required this.keyFor,
     required this.onSelected,
+    this.enabled = true,
   });
 
   final List<Color> colors;
   final Color selected;
   final Key Function(int index) keyFor;
   final ValueChanged<Color> onSelected;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: !enabled,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.35,
+        child: _swatches(),
+      ),
+    );
+  }
+
+  Widget _swatches() {
     return SizedBox(
       height: 36,
       child: ListView(

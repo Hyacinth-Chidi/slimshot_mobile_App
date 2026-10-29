@@ -2713,9 +2713,14 @@ test pins fonts bundled or in `kServerTemplateFontNames`, animations selectable,
 **a highlight never the text's own colour** (a word lit the colour it already wears does not
 light, and a pill the colour of its letters swallows them), and no two presets alike.
 
-**Caption style** (`CaptionStyleSheet`, `widgets/panels/caption_style_sheet.dart`) is the
-styles grid on top — a style is a whole look, highlight included, so it is picked first — and
-the Highlight row with its colours under it, to tune it. No title, by the echo rule. It opens on
+**Caption style** (`CaptionStyleSheet`, `widgets/panels/caption_style_sheet.dart`) is
+**the highlight's colours first, the highlights under them, then the styles** (`Styles`), the
+owner's call of 2026-10-29 (**awaiting device verification**): with the styles grid on top, the
+colours sat below the fold of a sheet capped at 45% of the screen, where most users would never
+find them. **The colours stay put whatever the highlight** — dimmed and deaf to taps where it
+lights in no colour (`CaptionColorRow.enabled`): at the top, a row that came and went would move
+every row under it the moment a style was picked, under the finger. No title, by the echo rule.
+It opens on
 the selected caption's look and highlight, and **every tap restyles the whole set at once**
 (`restyleCaptions` for a style, `setCaptionHighlight` for a highlight): every caption's look and
 highlight and the settings' highlight, words, timing, place, size and motion untouched, one undo
