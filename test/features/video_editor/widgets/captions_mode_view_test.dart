@@ -85,6 +85,7 @@ void main() {
     ({TextLook look, CaptionHighlight highlight})? style,
     Size size = const Size(390, 844),
     double textScale = 1,
+    List<CaptionPreset> presets = _presets,
   }) async {
     tester.view.physicalSize = size * 3;
     tester.view.devicePixelRatio = 3;
@@ -117,7 +118,7 @@ void main() {
         onEditWords: () => calls.editWords++,
         onExport: () => calls.exports++,
         onOpenEditor: () => calls.openEditor++,
-        presets: _presets,
+        presets: presets,
       ),
     ));
     await tester.pump();
@@ -362,5 +363,44 @@ void main() {
       )),
     );
     await check(CaptionsStep.done);
+  });
+
+  // The editor rebuilds on every playhead report while the video plays; the
+  // tiles must stay still while their row scrolls, or the scroll pays for
+  // every tile's text layout each frame — the device-reported roughness the
+  // hold exists for.
+  testWidgets('a rebuild mid-scroll keeps the style tiles still',
+      (tester) async {
+    final many = [
+      for (var i = 0; i < 8; i++)
+        CaptionPreset(
+          id: 'p$i',
+          name: 'Style $i',
+          look: TextLook(
+            fontFamily: kTestFontFamily,
+            color: Color(0xFF000000 + i * 0x101010),
+          ),
+        ),
+    ];
+    await pumpView(tester, step: CaptionsStep.done, presets: many);
+    AnimationController clock() => tester
+        .widget<CaptionPresetTile>(find.byKey(const Key('captions_style_p0')))
+        .clock! as AnimationController;
+    expect(clock().isAnimating, isTrue);
+
+    final finger = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('captions_style_p1'))),
+    );
+    await finger.moveBy(const Offset(-60, 0));
+    await tester.pump();
+    expect(clock().isAnimating, isFalse, reason: 'held while it scrolls');
+
+    // A playhead report rebuilds the screen: the hold stays.
+    await pumpView(tester, step: CaptionsStep.done, presets: many);
+    expect(clock().isAnimating, isFalse);
+
+    await finger.up();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(clock().isAnimating, isTrue, reason: 'it plays again once still');
   });
 }

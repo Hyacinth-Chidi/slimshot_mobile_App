@@ -80,4 +80,13 @@ void main() {
     session.openedInEditor = true;
     expect(session.picksToDeleteOnLeave(picks), isEmpty);
   });
+
+  // An export kept for an earlier set does not keep the next one: a set
+  // emptied through Edit words and generated again was paid for again.
+  test('a new set is unkept until it is exported, whatever came before', () {
+    final session = CaptionsModeSession()..exportKept = true;
+    session.newSetPlaced();
+    expect(session.backAt(CaptionsStep.done), CaptionsBack.askDiscard);
+    expect(session.holdsWorkAt(CaptionsStep.done), isTrue);
+  });
 }

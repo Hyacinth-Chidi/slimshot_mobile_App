@@ -1572,6 +1572,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     if (drafts != null) {
       _endCaptionRun();
       _placeCaptionDrafts(drafts, run.request);
+      _captionsSession.newSetPlaced();
       _showFirstCaption();
       _prefetchFonts(captionPresetFontNames(kCaptionPresets));
     } else {

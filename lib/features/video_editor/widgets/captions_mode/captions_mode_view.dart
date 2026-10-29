@@ -138,7 +138,10 @@ class _CaptionsModeViewState extends State<CaptionsModeView>
       oldWidget.run?.removeListener(_runChanged);
       widget.run?.addListener(_runChanged);
     }
-    _syncClock();
+    // Only a change of step: the editor rebuilds on every playhead report,
+    // and restarting the clock then would undo its hold while the style row
+    // scrolls.
+    if (oldWidget.step != widget.step) _syncClock();
   }
 
   @override

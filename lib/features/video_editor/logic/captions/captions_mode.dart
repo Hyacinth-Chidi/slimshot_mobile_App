@@ -46,6 +46,10 @@ class CaptionsModeSession {
   /// ✎ made the work an ordinary editor project, saved as any is.
   bool openedInEditor = false;
 
+  /// A new set landed — a set emptied through Edit words and generated
+  /// again was paid for again, so an export of the old one keeps nothing.
+  void newSetPlaced() => exportKept = false;
+
   /// Back at [step].
   CaptionsBack backAt(CaptionsStep step) => switch (step) {
         CaptionsStep.ready => CaptionsBack.leave,
