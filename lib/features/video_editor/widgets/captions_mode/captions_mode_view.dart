@@ -1,7 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/lucide_icons.dart';
 import '../../../account/logic/account_copy.dart';
 import '../../../account/models/account_models.dart';
@@ -18,9 +21,10 @@ import '../panels/caption_sheet_parts.dart';
 import '../text_overlay/caption_preset_tile.dart';
 import '../text_overlay/text_preview_tile.dart';
 
-/// The share of the screen's height the video card takes; the screen
-/// scrolls where what is under it does not fit.
-const double kCaptionsCardHeightFraction = 0.45;
+/// The least height the video's slot is given. The card takes the room the
+/// step's controls leave — so they sit just above the button, with no empty
+/// band between — and below this the controls scroll instead.
+const double kCaptionsCardMinHeight = 160;
 
 /// One loop of every style tile — the Caption style sheet's.
 const Duration _kTileLoop = Duration(milliseconds: 1800);
@@ -44,6 +48,7 @@ class CaptionsModeView extends StatefulWidget {
     super.key,
     required this.step,
     required this.preview,
+    this.playing = false,
     required this.aspectRatio,
     required this.onBack,
     required this.language,
@@ -68,6 +73,10 @@ class CaptionsModeView extends StatefulWidget {
 
   /// The editor's canvas, drawn in the card.
   final Widget preview;
+
+  /// Whether the video plays: paused, a faded play icon on the card says a
+  /// tap plays it.
+  final bool playing;
 
   /// The project's frame, width over height.
   final double aspectRatio;
@@ -191,19 +200,26 @@ class _CaptionsModeViewState extends State<CaptionsModeView>
                     : null,
               ),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _card(),
-                      ...switch (widget.step) {
-                        CaptionsStep.ready => _ready(),
-                        CaptionsStep.generating => _generating(),
-                        CaptionsStep.done => _done(),
-                      },
-                    ],
-                  ),
+                child: CustomMultiChildLayout(
+                  delegate: _CardOverControls(),
+                  children: [
+                    LayoutId(id: _Slot.card, child: _card()),
+                    LayoutId(
+                      id: _Slot.controls,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: switch (widget.step) {
+                            CaptionsStep.ready => _ready(),
+                            CaptionsStep.generating => _generating(),
+                            CaptionsStep.done => _done(),
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               CompressBottomBar(child: _action()),
@@ -224,8 +240,9 @@ class _CaptionsModeViewState extends State<CaptionsModeView>
     final progress = run?.progress;
     return LayoutBuilder(
       builder: (context, constraints) {
-        var height =
-            MediaQuery.sizeOf(context).height * kCaptionsCardHeightFraction;
+        // The whole slot, less the gap under the top bar, in the frame's
+        // shape: as large as the screen allows.
+        var height = math.max(0.0, constraints.maxHeight - 4);
         var width = height * widget.aspectRatio;
         final room = constraints.maxWidth - 32;
         if (width > room) {
@@ -245,6 +262,24 @@ class _CaptionsModeViewState extends State<CaptionsModeView>
                   fit: StackFit.expand,
                   children: [
                     widget.preview,
+                    // Paused, a faded play icon says a tap plays the video;
+                    // it lets the tap through and fades out while it plays.
+                    if (widget.step != CaptionsStep.generating)
+                      IgnorePointer(
+                        child: Center(
+                          child: AnimatedOpacity(
+                            key: const Key('captions_play_hint'),
+                            opacity: widget.playing ? 0 : 1,
+                            duration: widget.playing
+                                ? AppMotion.exit
+                                : AppMotion.enter,
+                            curve: widget.playing
+                                ? AppMotion.exitCurve
+                                : AppMotion.enterCurve,
+                            child: const _PlayHint(),
+                          ),
+                        ),
+                      ),
                     if (widget.step == CaptionsStep.generating)
                       ColoredBox(
                         color: AppColors.background.withValues(alpha: 0.55),
@@ -288,12 +323,39 @@ class _CaptionsModeViewState extends State<CaptionsModeView>
         ),
         const SheetSectionLabel('Length'),
         CaptionLengthPills(
+          key: const Key('captions_length_row'),
           selected: widget.length,
           onSelected: widget.onLength,
         ),
       ];
 
-  List<Widget> _generating() {
+  /// The run's lines over Ready's rows, held invisible: the controls keep
+  /// their height, so the card keeps its size from Ready into the run and the
+  /// video does not jump when Generate is tapped.
+  List<Widget> _generating() => [
+        Stack(
+          children: [
+            Visibility(
+              visible: false,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: _ready(),
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: _generatingLines(),
+            ),
+          ],
+        ),
+      ];
+
+  List<Widget> _generatingLines() {
     final run = widget.run;
     if (run?.error case final error?) {
       return [
@@ -446,6 +508,29 @@ class _CaptionsModeViewState extends State<CaptionsModeView>
   }
 }
 
+/// The faded play icon on a paused video.
+class _PlayHint extends StatelessWidget {
+  const _PlayHint();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          color: AppColors.background.withValues(alpha: 0.35),
+          shape: BoxShape.circle,
+        ),
+        // A triangle's weight sits left of its box: nudged right to look
+        // centred in the circle.
+        padding: const EdgeInsets.only(left: 4),
+        child: Icon(
+          LucideIcons.play,
+          size: 30,
+          color: AppColors.textPrimary.withValues(alpha: 0.8),
+        ),
+      );
+}
+
 /// "Aa Edit words": the caption list, for a misheard word.
 class _EditWordsChip extends StatelessWidget {
   const _EditWordsChip({required this.onTap});
@@ -495,4 +580,32 @@ class _EditWordsChip extends StatelessWidget {
           ),
         ),
       );
+}
+
+enum _Slot { card, controls }
+
+/// The step's controls at the foot, laid out first at their own height, and
+/// the video's card in all the room above them — never less than
+/// [kCaptionsCardMinHeight], below which the controls scroll instead.
+class _CardOverControls extends MultiChildLayoutDelegate {
+  _CardOverControls();
+
+  @override
+  void performLayout(Size size) {
+    final controls = layoutChild(
+      _Slot.controls,
+      BoxConstraints(
+        minWidth: size.width,
+        maxWidth: size.width,
+        maxHeight: math.max(0.0, size.height - kCaptionsCardMinHeight),
+      ),
+    );
+    final cardHeight = math.max(0.0, size.height - controls.height);
+    layoutChild(_Slot.card, BoxConstraints.tight(Size(size.width, cardHeight)));
+    positionChild(_Slot.card, Offset.zero);
+    positionChild(_Slot.controls, Offset(0, cardHeight));
+  }
+
+  @override
+  bool shouldRelayout(_CardOverControls oldDelegate) => false;
 }

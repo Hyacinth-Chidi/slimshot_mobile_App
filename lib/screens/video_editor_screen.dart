@@ -1665,6 +1665,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         onTap: _togglePreview,
         child: IgnorePointer(child: _previewCanvas()),
       ),
+      playing: editorState.isPlaying,
       aspectRatio: editorState.projectAspectRatio,
       onBack: () => unawaited(_captionsBack()),
       language: _captionsLanguage,

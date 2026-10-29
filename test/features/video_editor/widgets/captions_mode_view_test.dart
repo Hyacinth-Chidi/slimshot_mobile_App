@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/core/utils/held_work.dart';
 import 'package:slimshotai/features/account/logic/account_copy.dart';
 import 'package:slimshotai/features/account/models/account_models.dart';
@@ -86,6 +87,8 @@ void main() {
     Size size = const Size(390, 844),
     double textScale = 1,
     List<CaptionPreset> presets = _presets,
+    bool playing = false,
+    Widget? preview,
   }) async {
     tester.view.physicalSize = size * 3;
     tester.view.devicePixelRatio = 3;
@@ -100,7 +103,9 @@ void main() {
       ),
       home: CaptionsModeView(
         step: step,
-        preview: const ColoredBox(key: Key('preview'), color: Colors.blue),
+        preview: preview ??
+            const ColoredBox(key: Key('preview'), color: Colors.blue),
+        playing: playing,
         aspectRatio: 9 / 16,
         onBack: () => calls.backs++,
         language: null,
@@ -326,6 +331,34 @@ void main() {
     expect(calls.backs, 2);
   });
 
+  // Device-reported: a large empty band between Length and Generate. The
+  // video takes the room the controls leave, so they sit just above the
+  // button and the picture is as large as the screen allows.
+  testWidgets('on Ready the video takes the room: the Length row sits just '
+      'above Generate', (tester) async {
+    await pumpView(tester, step: CaptionsStep.ready);
+    final length = tester.getRect(find.byKey(const Key('captions_length_row')));
+    final generate = tester.getRect(find.byKey(const Key('captions_generate')));
+    expect(generate.top - length.bottom, lessThan(40));
+    final card = tester.getSize(find.byKey(const Key('captions_card')));
+    expect(card.height, greaterThan(844 * 0.5));
+  });
+
+  // Generate must not make the picture jump: the card keeps its size from
+  // Ready into the run.
+  testWidgets('the video keeps its size from Ready to Generating',
+      (tester) async {
+    await pumpView(tester, step: CaptionsStep.ready);
+    final ready = tester.getSize(find.byKey(const Key('captions_card')));
+    await pumpView(
+      tester,
+      step: CaptionsStep.generating,
+      run: runOn(preparing(progress: 0.2)),
+    );
+    final generating = tester.getSize(find.byKey(const Key('captions_card')));
+    expect(generating.height, closeTo(ready.height, 0.5));
+  });
+
   testWidgets("the card keeps the project's frame", (tester) async {
     await pumpView(tester, step: CaptionsStep.ready);
     final card = tester.getSize(find.byKey(const Key('captions_card')));
@@ -345,6 +378,12 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 100));
       expect(tester.takeException(), isNull, reason: step.name);
+      // The rows scroll before the picture shrinks past use.
+      expect(
+        tester.getSize(find.byKey(const Key('captions_card'))).height,
+        greaterThanOrEqualTo(150),
+        reason: step.name,
+      );
     }
 
     await check(CaptionsStep.ready, notice: 'No sound to caption.');
@@ -402,5 +441,50 @@ void main() {
     await finger.up();
     await tester.pump(const Duration(milliseconds: 500));
     expect(clock().isAnimating, isTrue, reason: 'it plays again once still');
+  });
+
+  // Without a cue nobody knows the picture plays at a tap: a faded play icon
+  // sits on it while it is paused, and fades out while it plays.
+  testWidgets('a paused video wears a faded play icon, and playing fades it '
+      'out', (tester) async {
+    await pumpView(tester, step: CaptionsStep.ready);
+    final hint = find.byKey(const Key('captions_play_hint'));
+    expect(
+      find.descendant(of: find.byKey(const Key('captions_card')), matching: hint),
+      findsOneWidget,
+    );
+    expect(find.descendant(of: hint, matching: find.byIcon(LucideIcons.play)),
+        findsOneWidget);
+    expect(tester.widget<AnimatedOpacity>(hint).opacity, 1);
+
+    await pumpView(tester, step: CaptionsStep.ready, playing: true);
+    expect(tester.widget<AnimatedOpacity>(hint).opacity, 0);
+  });
+
+  testWidgets('a tap on the play icon reaches the video', (tester) async {
+    var taps = 0;
+    await pumpView(
+      tester,
+      step: CaptionsStep.done,
+      preview: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => taps++,
+        child: const ColoredBox(key: Key('preview'), color: Colors.blue),
+      ),
+    );
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const Key('captions_play_hint'))),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(taps, 1);
+  });
+
+  testWidgets('no play icon while the words are made', (tester) async {
+    await pumpView(
+      tester,
+      step: CaptionsStep.generating,
+      run: runOn(preparing()),
+    );
+    expect(find.byKey(const Key('captions_play_hint')), findsNothing);
   });
 }

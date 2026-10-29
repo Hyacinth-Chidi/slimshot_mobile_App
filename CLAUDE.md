@@ -2789,10 +2789,17 @@ timeline: someone who only wants a captioned clip need not learn the editor.
   callbacks, tested without a device (`captions_mode_view_test.dart`); its decisions are
   `logic/captions/captions_mode.dart` — the step read off the work (a run, captions, neither),
   Back, the hold, the picks.
-- **The canvas is the editor's** (`_previewCanvas`), laid out in a card in the project's frame
-  (`kCaptionsCardHeightFraction`, 45% of the height; the screen scrolls on a short phone) on plain
-  dark, since a caption's colour is judged against the footage. Only a tap reaches it — play,
-  pause — so no caption is grabbed by hand. **✎ hands the same canvas to the full editor** (a
+- **The canvas is the editor's** (`_previewCanvas`), laid out in a card in the project's frame on
+  plain dark, since a caption's colour is judged against the footage. **The card takes the room
+  the step's controls leave** (`_CardOverControls`: the controls laid out first at their own
+  height, the card in everything above) — device-reported: at a fixed 45% of the height a large
+  empty band sat between Length and Generate. Below `kCaptionsCardMinHeight` (160) the controls
+  scroll instead. **Generate does not make the picture jump**: through the run Ready's rows stay
+  laid out, invisible, under the run's lines, so the controls keep their height; Done's taller
+  controls take the card down once, when the words land. Only a tap reaches it — play,
+  pause — so no caption is grabbed by hand. **Paused, a faded play icon sits in its middle**
+  (`_PlayHint`, letting the tap through) and fades out while it plays — the owner's call: without
+  it nobody knew the picture played at a tap. None while the words are made, where the ring is. **✎ hands the same canvas to the full editor** (a
   `GlobalKey`), no reload.
 - **One caption run, two faces** (`CaptionRun`, `services/caption_run.dart`). What the progress
   sheet did — stage, progress, a failure's line, the shortfall an earned balance carries on, the
