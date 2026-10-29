@@ -172,12 +172,13 @@ class CompressThumbnailRow extends StatelessWidget {
 }
 
 /// Progress over the picture: the current file's percent and, for several,
-/// which one ("2 of 5").
+/// which one ("2 of 5"). With no progress to tell it spins with no number —
+/// a caption run's listening, which nothing measures.
 class CompressProgressRing extends StatelessWidget {
   const CompressProgressRing(this.progress, this.batchLine, {super.key});
 
-  /// The current file's progress, 0–100.
-  final double progress;
+  /// The current file's progress, 0–100; null while it cannot be told.
+  final double? progress;
   final String? batchLine;
 
   @override
@@ -187,7 +188,10 @@ class CompressProgressRing extends StatelessWidget {
         child: Stack(alignment: Alignment.center, children: [
           SizedBox.expand(
             child: CircularProgressIndicator(
-              value: (progress / 100).clamp(0.0, 1.0),
+              value: switch (progress) {
+                final p? => (p / 100).clamp(0.0, 1.0),
+                null => null,
+              },
               strokeWidth: 6,
               strokeCap: StrokeCap.round,
               color: AppColors.lilac,
@@ -197,14 +201,15 @@ class CompressProgressRing extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text(
-                '${progress.round()}%',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+              if (progress case final p?)
+                Text(
+                  '${p.round()}%',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
-              ),
               if (batchLine != null)
                 Text(
                   batchLine!,

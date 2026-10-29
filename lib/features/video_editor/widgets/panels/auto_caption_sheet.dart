@@ -38,16 +38,6 @@ class _AutoCaptionSheetState extends State<AutoCaptionSheet> {
         CaptionSource.all => 'All',
       };
 
-  static String _lengthLabel(CaptionLength l) => switch (l) {
-        CaptionLength.word => 'Word',
-        CaptionLength.phrase => 'Phrase',
-        CaptionLength.line => 'Line',
-      };
-
-  static String _languageLabel(String? code) => code == null
-      ? 'Auto detect'
-      : kCaptionLanguages.firstWhere((l) => l.code == code).name;
-
   @override
   Widget build(BuildContext context) {
     final maxHeight =
@@ -70,22 +60,13 @@ class _AutoCaptionSheetState extends State<AutoCaptionSheet> {
                   onSelected: (s) => setState(() => _source = s),
                 ),
                 const SheetSectionLabel('Language'),
-                CaptionPillRow<String?>(
-                  values: [
-                    null,
-                    for (final l in kCaptionLanguages) l.code,
-                  ],
+                CaptionLanguagePills(
                   selected: _language,
-                  label: _languageLabel,
-                  keyFor: (c) => Key('caption_language_${c ?? 'auto'}'),
                   onSelected: (c) => setState(() => _language = c),
                 ),
                 const SheetSectionLabel('Length'),
-                CaptionPillRow<CaptionLength>(
-                  values: CaptionLength.values,
+                CaptionLengthPills(
                   selected: _length,
-                  label: _lengthLabel,
-                  keyFor: (l) => Key('caption_length_${l.name}'),
                   onSelected: (l) => setState(() => _length = l),
                 ),
               ],
