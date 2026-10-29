@@ -197,11 +197,11 @@ class _CompressVideoScreenState extends ConsumerState<CompressVideoScreen> {
         onRewardEarned: () {
           if (mounted) notifier.selectPreset(preset);
         },
-        onFailed: () {
+        onFailed: (failure) {
           if (mounted) {
             ToastUtils.show(
               context,
-              'Check your connection to unlock ${preset.name}.',
+              unlockFailureMessage(failure, preset.name),
               isWarning: true,
             );
           }

@@ -1850,11 +1850,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                                           );
                                         }
                                       },
-                                      onFailed: () {
+                                      onFailed: (failure) {
                                         if (context.mounted) {
                                           ToastUtils.show(
                                             context,
-                                            'Please check your internet connection to unlock Pro features.',
+                                            unlockFailureMessage(
+                                              failure,
+                                              labelBuilder(val),
+                                            ),
                                             isWarning: true,
                                           );
                                         }

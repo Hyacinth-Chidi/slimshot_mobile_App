@@ -4,11 +4,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import '../theme/app_colors.dart';
+import '../theme/app_fonts.dart';
 import 'ad_pacing.dart';
 import 'ads_sdk.dart';
+import 'rewarded_unlock.dart';
 import 'work_ad.dart';
 
 export 'ad_pacing.dart' show AdPlacement;
+export 'rewarded_unlock.dart' show UnlockFailure, unlockFailureMessage;
 
 class AdService {
   /// **Ads come back one placement at a time, each on its own switch** (the
@@ -237,15 +241,27 @@ class AdService {
   // --- REWARDED ADS ---
   static RewardedAd? _rewardedAd;
   static DateTime? _rewardedLoadedAt;
-  static bool _isRewardedAdLoading = false;
 
-  /// Loads one rewarded ad (the Pro unlocks) in the background, unless one
-  /// is loaded or on its way. A failed load waits for the next ask.
+  /// The load on its way: completes with null once it has loaded, otherwise
+  /// why not.
+  static Completer<UnlockFailure?>? _rewardedLoad;
+
+  /// AdMob's `ERROR_CODE_NETWORK_ERROR`: the one failure that is the
+  /// connection's.
+  static const int _networkError = 2;
+
+  /// How long an unlock waits for its ad on the way — the consent step, the
+  /// SDK and the load — before saying none came.
+  static const Duration unlockWait = Duration(seconds: 15);
+
+  /// Loads one rewarded ad (the unlocks) in the background, unless one is
+  /// loaded or on its way — never before the consent step has started the
+  /// SDK. A failed load waits for the next ask.
   static void loadRewardedAd() {
-    if (!AdsSdk.started || _rewardedAd != null || _isRewardedAdLoading) {
+    if (!AdsSdk.started || _rewardedAd != null || _rewardedLoad != null) {
       return;
     }
-    _isRewardedAdLoading = true;
+    final load = _rewardedLoad = Completer<UnlockFailure?>();
     RewardedAd.load(
       adUnitId: rewardedAdUnitId,
       request: const AdRequest(),
@@ -253,19 +269,47 @@ class AdService {
         onAdLoaded: (ad) {
           _rewardedAd = ad;
           _rewardedLoadedAt = DateTime.now();
-          _isRewardedAdLoading = false;
+          _rewardedLoad = null;
+          load.complete(null);
         },
         onAdFailedToLoad: (err) {
-          debugPrint('Rewarded ad failed to load: ${err.message}');
-          _isRewardedAdLoading = false;
+          debugPrint('Rewarded ad failed to load: ${err.code} ${err.message}');
+          _rewardedLoad = null;
+          load.complete(err.code == _networkError
+              ? UnlockFailure.offline
+              : UnlockFailure.noAd);
         },
       ),
     );
   }
 
-  /// Shows the loaded rewarded ad: [onRewardEarned] if the user watches it
-  /// to the reward, otherwise [onFailed] — and [onFailed] at once when none
-  /// is loaded. Off for [placement], the unlock is granted without an ad.
+  /// Whether a loaded rewarded ad is fresh enough to show; one too old is
+  /// dropped.
+  static bool _rewardedReady() {
+    final ad = _rewardedAd;
+    final loadedAt = _rewardedLoadedAt;
+    if (ad != null &&
+        loadedAt != null &&
+        DateTime.now().difference(loadedAt) <= adLifetime) {
+      return true;
+    }
+    if (ad != null) {
+      unawaited(ad.dispose());
+      _rewardedAd = null;
+      _rewardedLoadedAt = null;
+    }
+    return false;
+  }
+
+  /// Shows a rewarded ad for an unlock: [onRewardEarned] if the user watches
+  /// it to the reward, otherwise [onFailed] with why — closed early, no
+  /// network, or no ad to be had. Off for [placement], the unlock is granted
+  /// without one.
+  ///
+  /// **An ad still on its way is waited for** ([unlockWait]), with "Loading
+  /// ad…" on screen; a tap outside or Back stops waiting, quietly. Before,
+  /// a tap a moment after the screen opened — the ad still loading — gave up
+  /// at once and blamed the connection (device-reported).
   ///
   /// The user chose to watch it — rewarded ads must be opted into — and no
   /// interstitial follows it within [AdPacing.minApart].
@@ -273,24 +317,27 @@ class AdService {
     BuildContext context, {
     required AdPlacement placement,
     required VoidCallback onRewardEarned,
-    required VoidCallback onFailed,
+    required void Function(UnlockFailure failure) onFailed,
   }) async {
     if (!isOn(placement)) {
       onRewardEarned();
       return;
     }
+    if (!_rewardedReady()) {
+      final (stopped, failure) = await _waitForRewarded(context);
+      if (stopped) return;
+      if (failure != null) {
+        onFailed(failure);
+        return;
+      }
+    }
     final ad = _rewardedAd;
-    final loadedAt = _rewardedLoadedAt;
-    _rewardedAd = null;
-    _rewardedLoadedAt = null;
-    if (ad == null ||
-        loadedAt == null ||
-        DateTime.now().difference(loadedAt) > adLifetime) {
-      if (ad != null) unawaited(ad.dispose());
-      loadRewardedAd();
-      onFailed();
+    if (ad == null) {
+      onFailed(UnlockFailure.noAd);
       return;
     }
+    _rewardedAd = null;
+    _rewardedLoadedAt = null;
 
     var earned = false;
     ad.fullScreenContentCallback = FullScreenContentCallback(
@@ -298,13 +345,13 @@ class AdService {
         unawaited(shown.dispose());
         pacing.otherAdShown();
         loadRewardedAd();
-        if (!earned) onFailed();
+        if (!earned) onFailed(UnlockFailure.closedEarly);
       },
       onAdFailedToShowFullScreenContent: (shown, error) {
         debugPrint('Rewarded ad failed to show: $error');
         unawaited(shown.dispose());
         loadRewardedAd();
-        onFailed();
+        onFailed(UnlockFailure.noAd);
       },
     );
     ad.show(onUserEarnedReward: (_, _) {
@@ -312,6 +359,72 @@ class AdService {
       onRewardEarned();
     });
   }
+
+  /// Waits for a rewarded ad with "Loading ad…" on screen. Answers whether
+  /// the user stopped waiting (a tap outside, Back) and, if not, why no ad
+  /// came — null when one is ready.
+  static Future<(bool, UnlockFailure?)> _waitForRewarded(
+      BuildContext context) async {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    var open = true;
+    final dialog = showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      builder: (_) => const _LoadingAd(),
+    ).whenComplete(() => open = false);
+    final failure = await awaitRewardedAd(
+      start: AdsSdk.start,
+      ready: _rewardedReady,
+      load: () {
+        loadRewardedAd();
+        return _rewardedLoad?.future ??
+            Future.value(_rewardedReady() ? null : UnlockFailure.noAd);
+      },
+      within: unlockWait,
+    );
+    if (!open) return (true, null);
+    navigator.pop();
+    await dialog;
+    return (false, failure);
+  }
+}
+
+/// "Loading ad…": an unlock waiting for its rewarded ad.
+class _LoadingAd extends StatelessWidget {
+  const _LoadingAd();
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Material(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.primaryStart,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text(
+                  'Loading ad…',
+                  style: TextStyle(
+                    fontFamily: kInterfaceFontFamily,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 /// The ads plugin's interstitial, behind [InterstitialPresenter].

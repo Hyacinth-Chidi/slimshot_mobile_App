@@ -192,13 +192,13 @@ class _ExportOptionsDialogState extends State<ExportOptionsDialog> {
                             });
                           }
                         },
-                        onFailed: () {
+                        onFailed: (failure) {
                           if (context.mounted) {
                             ToastUtils.show(
-                            context,
-                            'Please check your internet connection to unlock 4K Export.',
-                            isWarning: true,
-                          );
+                              context,
+                              unlockFailureMessage(failure, '4K export'),
+                              isWarning: true,
+                            );
                           }
                         },
                       );

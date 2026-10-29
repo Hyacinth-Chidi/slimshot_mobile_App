@@ -70,22 +70,27 @@ void main() {
     return captured;
   }
 
-  // No "Preparing..." loader waiting on an ad: with none loaded, the unlock
-  // says so at once (and asks for one for next time).
-  testWidgets('with no rewarded ad loaded, an unlock fails at once rather '
-      'than waiting', (tester) async {
+  // Device-reported: Best quality tapped a moment after the screen opened
+  // said "Check your connection" on a working connection — its ad was still
+  // on the way, and the tap gave up on it at once. The tap waits, saying so;
+  // here, with no ads plugin behind it, no ad can come, and it says that.
+  testWidgets('an unlock waits for its ad, saying it is loading, and with '
+      'none to be had says so — never blaming the connection', (tester) async {
     final context = await host(tester);
     var earned = 0;
-    var failed = 0;
-    await AdService.showRewardedAd(
+    final failures = <UnlockFailure>[];
+    unawaited(AdService.showRewardedAd(
       context,
       placement: AdPlacement.export,
       onRewardEarned: () => earned++,
-      onFailed: () => failed++,
-    );
+      onFailed: failures.add,
+    ));
     await tester.pump();
-    expect((earned, failed), (0, 1));
-    expect(find.byType(Dialog), findsNothing);
+    expect(find.text('Loading ad…'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('Loading ad…'), findsNothing);
+    expect(earned, 0);
+    expect(failures, [UnlockFailure.noAd]);
   });
 
   test('an interstitial after a job, with none loaded, lets what follows go '

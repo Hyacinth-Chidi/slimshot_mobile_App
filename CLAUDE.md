@@ -5031,6 +5031,19 @@ is waiting. It completes once the job has ended **and** the ad has closed, so th
 underneath meanwhile. Export's ad is the same rule after the job (`adAfterWork`). **Save shows no
 ad** anywhere, and a test reads the three result screens for it.
 
+**An unlock waits for its rewarded ad, and names the real cause when none comes**
+(`awaitRewardedAd`, `unlockFailureMessage`, `rewarded_unlock_test.dart`). Device-reported: Best
+quality tapped a moment after the screen opened toasted "Check your connection" on a working
+connection, and worked a little later — the ad was still on its way (the consent step, the SDK
+start, the load: a few seconds) and the tap gave up on it at once, and every failure was worded
+as the connection's. Now the tap waits, up to `AdService.unlockWait` (15 s), with **"Loading
+ad…"** on screen — a card, since a toast leaves after two seconds; a tap outside or Back stops
+waiting, quietly, and the ad stays loading for next time. A failure is said for what it was:
+**"No internet connection."** only on AdMob's network error, **"No ad right now. Try again in a
+moment."** for no fill, no consent yet or no answer in time, and **"Watch the ad to the end to
+unlock …"** for an ad closed early. All four unlocks (both Best qualities, 4K in the editor and
+in the export dialog) use the one message.
+
 **No ad is asked for before Google's consent step has started the SDK** (`AdsSdk.started`): the
 consent-then-start code moved out of the credit ads (`PluginRewardedAdPlayer`) into `AdsSdk`, and
 a screen with a placement starts it when it opens (`AdService.prepare`), so the EEA's consent
