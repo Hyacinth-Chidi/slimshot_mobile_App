@@ -13,7 +13,15 @@ flutter run --dart-define-from-file=env/env.json
 flutter test
 flutter analyze --no-pub
 flutter build apk --debug
+flutter build appbundle --release --dart-define-from-file=env/env.json
 ```
+
+**A release changes the version in two places**: `pubspec.yaml`'s `version:` and
+`lib/core/app_version.dart`, which the update check and Settings read (`app_version_test.dart`
+fails while they disagree). Both had the version written by hand and stayed at 2.0.0 (2) after
+pubspec moved to 2.0.1+3 — once the update API said 2.0.1, every 2.0.1 install would have been
+told to update to itself. The name under the icon is **"Slimshot"** (`android:label`, iOS
+`CFBundleDisplayName`, pinned by `app_label_test.dart`); inside the app the brand stays SlimShot AI.
 
 **Flutter 3.47.5 / Dart 3.13.4** (upgraded 2026-09-22 from 3.38.9, three minor versions).
 Motivated by the desktop version: 3.47 makes **Impeller the default renderer on macOS, Windows

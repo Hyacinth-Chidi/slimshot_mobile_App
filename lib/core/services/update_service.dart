@@ -2,7 +2,25 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../app_version.dart';
 import '../models/update_info.dart';
+
+/// Whether [info] names a newer release than the one installed: a higher
+/// version, or a higher build of the same one.
+bool updateIsAvailable(
+  UpdateInfo info, {
+  String version = kAppVersion,
+  int build = kAppBuildNumber,
+}) {
+  final remote = info.latestVersion.split('.').map(int.parse).toList();
+  final local = version.split('.').map(int.parse).toList();
+  for (var i = 0; i < 3; i++) {
+    final r = i < remote.length ? remote[i] : 0;
+    final l = i < local.length ? local[i] : 0;
+    if (r != l) return r > l;
+  }
+  return info.latestBuildNumber > build;
+}
 
 class UpdateService {
   static const String _apiUrl =
@@ -12,9 +30,6 @@ class UpdateService {
   static const String _cachedDataKey = 'update_cached_data';
 
   static const int _checkIntervalDays = 7;
-
-  static const String _currentVersion = '2.0.0';
-  static const int _currentBuildNumber = 2;
 
   /// Check for updates. Returns [UpdateInfo] if an update is available,
   /// or `null` if the app is up to date or check failed.
@@ -31,12 +46,7 @@ class UpdateService {
 
       if (info == null) return null;
 
-      if (_isNewerVersion(info.latestVersion, _currentVersion) ||
-          info.latestBuildNumber > _currentBuildNumber) {
-        return info;
-      }
-
-      return null; // App is up to date
+      return updateIsAvailable(info) ? info : null;
     } catch (e) {
       debugPrint('⚠️ Update check failed: $e');
       return null;
@@ -94,19 +104,5 @@ class UpdateService {
       debugPrint('⚠️ Failed to parse cached update: $e');
       return null;
     }
-  }
-
-  /// Compare two semantic versions. Returns true if [remote] > [local].
-  static bool _isNewerVersion(String remote, String local) {
-    final remoteParts = remote.split('.').map(int.parse).toList();
-    final localParts = local.split('.').map(int.parse).toList();
-
-    for (int i = 0; i < 3; i++) {
-      final r = i < remoteParts.length ? remoteParts[i] : 0;
-      final l = i < localParts.length ? localParts[i] : 0;
-      if (r > l) return true;
-      if (r < l) return false;
-    }
-    return false; // Equal
   }
 }

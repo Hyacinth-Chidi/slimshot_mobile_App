@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import '../core/app_version.dart';
 import '../core/theme/lucide_icons.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme/app_colors.dart';
 import '../core/widgets/colour_field_backdrop.dart';
 import '../core/utils/file_utils.dart';
@@ -65,7 +65,7 @@ class SettingsScreen extends StatelessWidget {
                             SettingsItem(
                               icon: LucideIcons.info,
                               title: 'App Version',
-                              subtitle: 'v2.0.0 (2)',
+                              subtitle: 'v$kAppVersion ($kAppBuildNumber)',
                               showChevron: false,
                               onTap: () {},
                             ),
@@ -80,33 +80,6 @@ class SettingsScreen extends StatelessWidget {
                         const SizedBox(height: 8),
                         SettingsGroup(
                           children: [
-                            SettingsItem(
-                              icon: LucideIcons.refreshCw,
-                              title: 'Reset Onboarding',
-                              subtitle: 'Show welcome screen again',
-                              onTap: () => _showConfirmDialog(
-                                context,
-                                title: 'Reset Onboarding',
-                                message:
-                                    'This will show the onboarding screen again on next app launch.',
-                                confirmLabel: 'Reset',
-                                onConfirm: () async {
-                                  final prefs =
-                                      await SharedPreferences.getInstance();
-                                  await prefs.setBool(
-                                    'hasSeenOnboarding',
-                                    false,
-                                  );
-                                  if (context.mounted) {
-                                    ToastUtils.show(
-                                      context,
-                                      'Onboarding will show on next launch',
-                                    );
-                                  }
-                                },
-                              ),
-                            ),
-                            const SettingsDivider(),
                             SettingsItem(
                               icon: LucideIcons.trash2,
                               title: 'Clear Cache',
