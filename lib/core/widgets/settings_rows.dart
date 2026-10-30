@@ -52,6 +52,9 @@ class SettingsItem extends StatelessWidget {
   final bool isDanger;
   final bool showChevron;
 
+  /// In place of the chevron: a switch, say.
+  final Widget? trailing;
+
   const SettingsItem({
     super.key,
     required this.icon,
@@ -60,6 +63,7 @@ class SettingsItem extends StatelessWidget {
     this.subtitle,
     this.isDanger = false,
     this.showChevron = true,
+    this.trailing,
   });
 
   @override
@@ -122,7 +126,9 @@ class SettingsItem extends StatelessWidget {
                   ],
                 ),
               ),
-              if (showChevron)
+              if (trailing != null)
+                trailing!
+              else if (showChevron)
                 const Icon(
                   LucideIcons.chevronRight,
                   color: AppColors.textSecondary,

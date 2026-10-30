@@ -82,6 +82,8 @@ String creditHistoryLabel(String type) => switch (type) {
       'admin_adjustment' => 'Adjustment',
       'account_deleted' => 'Account deleted',
       'purchase' => 'Purchase',
+      // Daily, weekly or monthly: the entry does not say which.
+      'daily_reward' => 'Claimed credits',
       _ => 'Credits',
     };
 
@@ -90,6 +92,29 @@ String creditAmountLabel(int amount) =>
     amount >= 0 ? '+$amount' : '−${amount.abs()}';
 
 String watchAdLabel(int credits) => 'Watch an ad · +$credits';
+
+/// The claim, named for how often it comes — the owner sets 1, 7 or 30 days.
+String claimCreditsLabel(int credits, int intervalDays) {
+  final period = switch (intervalDays) {
+    1 => 'daily ',
+    7 => 'weekly ',
+    30 => 'monthly ',
+    _ => '',
+  };
+  return 'Claim ${period}credits · +$credits';
+}
+
+/// The wait for the next claim: a clock under two days — a daily claim's
+/// whole wait — and days and hours past that.
+String nextClaimLabel(Duration left) {
+  if (left < const Duration(days: 2)) {
+    final hours = left.inHours;
+    final minutes = left.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = left.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return 'Next in $hours:$minutes:$seconds';
+  }
+  return 'Next in ${left.inDays}d ${left.inHours.remainder(24)}h';
+}
 
 /// Before today's allowance is known: no number to promise.
 const String kWatchAd = 'Watch an ad';

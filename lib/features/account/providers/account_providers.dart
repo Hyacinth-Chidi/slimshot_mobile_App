@@ -55,6 +55,9 @@ final creditAdServiceProvider = Provider<CreditAdService>(
   ),
 );
 
+/// The time, for the credit claim's countdown — a test sets its own.
+final claimClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 /// The system share sheet, for Invite a friend.
 final shareTextProvider = Provider<Future<void> Function(String text)>(
   (ref) => (text) async {

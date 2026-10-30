@@ -22,6 +22,8 @@ fails while they disagree). Both had the version written by hand and stayed at 2
 pubspec moved to 2.0.1+3 — once the update API said 2.0.1, every 2.0.1 install would have been
 told to update to itself. The name under the icon is **"Slimshot"** (`android:label`, iOS
 `CFBundleDisplayName`, pinned by `app_label_test.dart`); inside the app the brand stays SlimShot AI.
+**A release needs `android/app/google-services.json`** for push notifications (the push section);
+without it the build succeeds and ships with no push at all.
 
 **Flutter 3.47.5 / Dart 3.13.4** (upgraded 2026-09-22 from 3.38.9, three minor versions).
 Motivated by the desktop version: 3.47 makes **Impeller the default renderer on macOS, Windows
@@ -4625,6 +4627,26 @@ shares `inviteMessage(referralCode)` — the code and the Play Store link — th
 and the code is **shown** under it ("Your code · AB3DEF7K", tap to copy): a friend types it on
 their claim step.
 
+### Accounts and credits — claimed credits, daily, weekly or monthly
+
+**Awaiting device verification** (2026-10-30; the owner's calls). Server contract:
+`app-credits-api.md` §14. **On the Credits screen alone** (`CreditClaimButton`, at the top of the
+earn card): the owner sets the amount and how often — 1, 7 or 30 days, from the last claim — and
+switches it on and off in the dashboard; **missed periods never add up**, so there is nothing to
+show about them. The server decides everything and the app shows it:
+
+- **Claimable**: "Claim daily credits · +5" (weekly, monthly from `intervalDays`; another number
+  says only "Claim credits"), white on purple — the one thing on the card that pays now. A tap
+  claims, puts the server's `balance` on the pill (`applyBalance`), toasts "+5 credits" and reads
+  the history's first page again, so "Claimed credits" (`daily_reward`) is at its top.
+- **Waiting**: the same button, disabled, counting down — "Next in 23:59:59" under two days,
+  "Next in 6d 4h" past that (`nextClaimLabel`), rounded up so it never reads 0:00:00 while still
+  waiting; a timer ticks it once a second and stops when the claim is due, and the button lights.
+- **Off or unreadable**: no button. `enabled: false`, no credits, a failed read, and a claim
+  answered `DAILY_REWARD_OFF` all hide it; `DAILY_REWARD_NOT_READY` (another phone, a second tap)
+  shows the countdown its `details.nextClaimAt` names.
+- The time comes from `claimClockProvider`, so the tests run the countdown on a clock of their own.
+
 ### Home and Settings — near-black, a little light, smoked glass; the editor stays dark
 
 **Awaiting device verification** for the latest pass. Home and Settings sit on
@@ -5124,6 +5146,54 @@ EEA consent form (a VPN to Europe) appears once. Export: the first three exports
 installing show none, later ones about half the time (4K included), 4K is picked with no ad, and
 the finished video appears only once the ad has closed; photo compression shows its ad before
 the result; photos' Best quality asks for its ad.
+
+### Push notifications — on by default, asked for once
+
+**Awaiting device verification** (2026-10-30; the owner's calls). Server contract:
+`slimshot_server/docs/app-push-api.md`. The owner sends notifications from the dashboard through
+Firebase Cloud Messaging; the app hands the server this install's FCM token.
+
+- **Configured by `android/app/google-services.json`** — the Firebase console's file for
+  `com.techfamz.slimshotai`. The Google services Gradle plugin is applied **only when the file is
+  there** (`android/app/build.gradle.kts`); without it the build is what it was,
+  `Firebase.initializeApp()` fails in `startFirebase` (beside the prefs and the splash art in
+  `main`), `pushAvailableProvider` stays false and push is simply not offered — the server
+  address's rule. Not Dart-only options: a notification arriving with the app closed is drawn by
+  Firebase's native service, which reads the native config.
+- **`PushController`** holds every rule, tested against `FakePushMessaging`
+  (`push_controller_test.dart`): **on by default** (`push_enabled`); the token is sent with
+  `PUT /push/token` (`sendWithDevice`, the install token beside it) on every start, on Firebase's
+  token refresh and after a sign-in (the server ties it to the account); **asked for once**, by
+  the app's own flag (`push_permission_asked`) — Android 13+ tells never asked, refused once and
+  refused for good apart (`blocked`), but Android 12 and older, or a permission another plugin
+  asked for, can read *denied* before this app ever asked. Home's first frame calls `start()` —
+  the first visit after onboarding asks. Android 12 and older ask nothing. **Off is said again on
+  every start** (`token: null`), so a switch-off sent with no connection cannot leave the server
+  sending, and a notification arriving with the app open is not drawn while off. Nothing in it
+  throws.
+- **The registration token, not `register()`'s installation ID.** firebase_messaging 17
+  deprecated `getToken`/`onTokenRefresh` for an FID-based direct send; the server's Admin SDK
+  sends to registration tokens, so the deprecated calls stay, marked.
+- **Settings › General › Notifications** (`SettingsNotificationsRow`), only in a build with push.
+  It reads **on only where notifications can arrive** — switched on *and* allowed by the phone
+  (`isOn`) — and reads again on coming back to the app. Off sends `token: null`. On asks where
+  the phone can still show its dialog; **a no there leaves the switch off and nothing else** —
+  an answer, not a reason to open settings. Only where no dialog can show (refused for good, or
+  Android 12 and older — the answer did not move) does it open the phone's settings for the app,
+  with a toast.
+- **One channel, `slimshot_general` ("Updates")**, made at every start
+  (`NotificationsChannel.kt`) and named in the manifest as Firebase's default, with the small icon
+  `ic_stat_slimshot` (the logo's outline in white, `UPDATE_NOTIFICATION_ICON=1 flutter test
+  test/push_android_test.dart` redraws it) and the purple `notification_accent` — so a
+  notification looks the same whether Firebase drew it (app closed) or the app did. **While the
+  app is open Firebase draws nothing**: `FirebaseMessaging.onMessage` hands it to
+  `NativeNotifications.show` over `slimshot_ai/notifications`. `push_android_test.dart` pins the
+  channel id, the channel names on both sides, the icon (white, every density) and the colour.
+
+**Device checks**: a fresh install on Android 13+ asks once on Home, never again; Android 12 asks
+nothing; a dashboard message arrives with the app closed, in the background and open, the same
+look each time; the Settings switch off (nothing arrives) and on; the phone's own switch off reads
+off in the app; sign in and a user-targeted message arrives.
 
 ### Temporary files — gone once off screen, and History with them
 

@@ -106,9 +106,37 @@ void main() {
     expect(creditHistoryLabel('feature_charge'), 'Auto captions');
     expect(creditHistoryLabel('feature_refund'), 'Refund');
     expect(creditHistoryLabel('admin_adjustment'), 'Adjustment');
+    // Daily, weekly or monthly: the line does not say which.
+    expect(creditHistoryLabel('daily_reward'), 'Claimed credits');
     expect(creditHistoryLabel('something_new'), 'Credits');
     expect(creditAmountLabel(5), '+5');
     expect(creditAmountLabel(-6), '−6');
+  });
+
+  // The owner sets how often in the dashboard: 1, 7 or 30 days.
+  test('a credit claim is named for how often it comes', () {
+    expect(claimCreditsLabel(5, 1), 'Claim daily credits · +5');
+    expect(claimCreditsLabel(20, 7), 'Claim weekly credits · +20');
+    expect(claimCreditsLabel(50, 30), 'Claim monthly credits · +50');
+    expect(claimCreditsLabel(5, 3), 'Claim credits · +5');
+  });
+
+  // A clock under two days — a daily claim's whole wait — and days and
+  // hours past that.
+  test('the wait for the next claim', () {
+    expect(nextClaimLabel(const Duration(hours: 24)), 'Next in 24:00:00');
+    expect(
+      nextClaimLabel(const Duration(hours: 13, minutes: 4, seconds: 9)),
+      'Next in 13:04:09',
+    );
+    expect(nextClaimLabel(const Duration(seconds: 5)), 'Next in 0:00:05');
+    expect(
+      nextClaimLabel(const Duration(hours: 47, minutes: 59, seconds: 59)),
+      'Next in 47:59:59',
+    );
+    expect(nextClaimLabel(const Duration(days: 6, hours: 4, minutes: 30)),
+        'Next in 6d 4h');
+    expect(nextClaimLabel(const Duration(days: 29)), 'Next in 29d 0h');
   });
 
   test('earning reads as the spec writes it', () {

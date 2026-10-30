@@ -115,6 +115,25 @@ class AccountService {
         ),
       );
 
+  /// Whether credits can be claimed, how many, and when (contract §14).
+  Future<CreditClaimStatus> claimStatus() async => CreditClaimStatus.fromJson(
+        await _api.send(
+          () => http.Request('GET', _api.uri('/rewards/daily')),
+        ),
+      );
+
+  /// Claims them. `409 DAILY_REWARD_NOT_READY` (claimed already, its
+  /// `details.nextClaimAt`) and `DAILY_REWARD_OFF` are thrown as they are.
+  Future<CreditClaimResult> claimCredits() async => CreditClaimResult.fromJson(
+        await _api.send(
+          () => _api.jsonRequest(
+            'POST',
+            '/rewards/daily/claim',
+            const <String, Object?>{},
+          ),
+        ),
+      );
+
   /// A page of the credit history, newest first.
   Future<CreditHistoryPage> history({String? cursor, int limit = 20}) async =>
       CreditHistoryPage.fromJson(

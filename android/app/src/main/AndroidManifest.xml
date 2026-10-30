@@ -18,6 +18,20 @@
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-7001751702275942~2278307458"/>
 
+        <!-- Push notifications Firebase draws itself (the app in the background
+             or closed): the app's own channel, its white logo, its purple. The
+             app draws the ones that arrive while it is open the same way
+             (NotificationsChannel). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="slimshot_general" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_slimshot" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_accent" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

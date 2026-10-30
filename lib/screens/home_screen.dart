@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/theme/app_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/theme/lucide_icons.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -26,20 +27,21 @@ import '../core/widgets/colour_field_backdrop.dart';
 import '../core/widgets/dashed_frame_painter.dart';
 import '../core/widgets/floating_nav_bar.dart';
 import '../features/home_widget/launch_actions.dart';
+import '../features/push/push_providers.dart';
 import 'home_header.dart';
 import 'home_layout.dart';
 
 /// How many recent edits Home shows; Workspace has them all.
 const int _kRecentDrafts = 6;
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   List<DraftProject> _recentDrafts = [];
   bool _isLoadingDrafts = true;
 
@@ -51,6 +53,9 @@ class _HomeScreenState extends State<HomeScreen> {
     LaunchActions.instance.addListener(_runLaunchAction);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForUpdate();
+      // Push: the first visit after onboarding asks for permission, once,
+      // and every visit sends the token.
+      unawaited(ref.read(pushControllerProvider)?.start());
       // A tap that arrived before Home was up (the splash, onboarding).
       _runLaunchAction();
     });

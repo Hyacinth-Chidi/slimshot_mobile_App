@@ -6,6 +6,16 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services") apply false
+}
+
+// Push notifications are Firebase's, configured by the google-services.json the
+// Firebase console gives for this app. Without it the build is what it always
+// was and the app runs without push (Firebase.initializeApp fails, and the push
+// controller is never made) — the server address's rule: not offered before it
+// can work.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 val keystoreProperties = Properties()

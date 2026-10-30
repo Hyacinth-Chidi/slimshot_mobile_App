@@ -2,4 +2,6 @@
 <resources>
     <!-- The circle behind the icon menu's glyphs: deep purple. -->
     <color name="shortcut_icon_background">#FF3B0764</color>
+    <!-- A notification's accent: the app's purple (AppColors.primaryStart). -->
+    <color name="notification_accent">#FF9333EA</color>
 </resources>

@@ -287,6 +287,35 @@ void main() {
       expect(devices.token, 'fresh');
     });
 
+    // The push token is set with PUT (`PUT /push/token`), and a token of
+    // null — notifications switched off — goes out as JSON null.
+    test('can be a PUT, re-registering the same way', () async {
+      final seen = <http.Request>[];
+      final devices = MemoryDeviceTokens('stale');
+      final api = apiWith(
+        MockClient((request) async {
+          seen.add(request);
+          if (request.url.path.endsWith('/devices')) {
+            return envelope({'token': 'fresh'}, 201);
+          }
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          return body['deviceToken'] == 'fresh'
+              ? envelope({'registered': false})
+              : failure('DEVICE_NOT_REGISTERED', 422);
+        }),
+        devices: devices,
+      );
+      final data = await api.sendWithDevice(
+        '/push/token',
+        {'token': null},
+        method: 'PUT',
+      );
+      expect(data, {'registered': false});
+      final sets = seen.where((r) => r.url.path.endsWith('/push/token'));
+      expect(sets.map((r) => r.method), ['PUT', 'PUT']);
+      expect(jsonDecode(sets.last.body), {'token': null, 'deviceToken': 'fresh'});
+    });
+
     test('a public request carries no bearer', () async {
       late http.Request seen;
       final api = apiWith(MockClient((request) async {

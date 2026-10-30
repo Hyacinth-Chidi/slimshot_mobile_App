@@ -12,6 +12,7 @@ import '../../../core/widgets/frosted_glass.dart';
 import '../logic/account_copy.dart';
 import '../models/account_models.dart';
 import '../providers/account_providers.dart';
+import '../widgets/credit_claim_button.dart';
 import '../widgets/earn_credits_block.dart';
 
 /// Opens Credits on the root navigator — above the app shell's floating
@@ -69,6 +70,25 @@ class _CreditsScreenState extends ConsumerState<CreditsScreen> {
       if (mounted) setState(() => _error = accountErrorMessage(e));
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// The first page again, in place of what is shown: a claim just landed
+  /// at the top of the history.
+  Future<void> _reloadHistory() async {
+    try {
+      final page = await ref.read(accountServiceProvider).history();
+      if (!mounted) return;
+      setState(() {
+        _entries
+          ..clear()
+          ..addAll(page.items);
+        _next = page.nextCursor;
+        _loaded = true;
+        _error = null;
+      });
+    } on SlimshotApiException catch (e) {
+      debugPrint('CreditsScreen: history not reloaded (${e.code})');
     }
   }
 
@@ -132,9 +152,15 @@ class _CreditsScreenState extends ConsumerState<CreditsScreen> {
                 const SizedBox(height: 24),
                 FrostedGlass(
                   borderRadius: BorderRadius.circular(24),
-                  child: const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: EarnCreditsBlock(),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        CreditClaimButton(onClaimed: _reloadHistory),
+                        const EarnCreditsBlock(),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 28),

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:go_router/go_router.dart';
 import '../core/app_version.dart';
 import '../core/theme/lucide_icons.dart';
 import '../core/theme/app_colors.dart';
@@ -11,6 +10,7 @@ import '../core/widgets/responsive_layout.dart';
 import '../core/legal/settings_legal_section.dart';
 import '../core/widgets/settings_rows.dart';
 import '../features/account/widgets/settings_account_section.dart';
+import '../features/push/widgets/settings_notifications_row.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -62,6 +62,7 @@ class SettingsScreen extends StatelessWidget {
                         const SizedBox(height: 8),
                         SettingsGroup(
                           children: [
+                            const SettingsNotificationsRow(),
                             SettingsItem(
                               icon: LucideIcons.info,
                               title: 'App Version',

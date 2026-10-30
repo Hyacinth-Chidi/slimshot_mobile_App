@@ -197,16 +197,18 @@ class SlimshotApi {
   }) async =>
       _decodeEnvelope(await _perform(build(), timeout));
 
-  /// POSTs [body] as JSON with this install's token added as `deviceToken` —
-  /// how a sign-in names the phone. A token the server no longer knows (a
-  /// reset database) is replaced once and the request sent again.
+  /// Sends [body] as JSON with this install's token added as `deviceToken` —
+  /// how a sign-in names the phone, and how the push token is set (a PUT).
+  /// A token the server no longer knows (a reset database) is replaced once
+  /// and the request sent again.
   Future<Map<String, dynamic>> sendWithDevice(
     String path,
     Map<String, Object?> body, {
+    String method = 'POST',
     Duration timeout = defaultTimeout,
   }) async {
     Future<http.Response> post(String deviceToken) => _perform(
-          jsonRequest('POST', path, {...body, 'deviceToken': deviceToken}),
+          jsonRequest(method, path, {...body, 'deviceToken': deviceToken}),
           timeout,
         );
     var response = await post(await deviceToken(timeout: timeout));

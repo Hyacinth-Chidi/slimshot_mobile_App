@@ -8,6 +8,7 @@ import com.techfamz.slimshotai.audio.VoiceRecorderChannel
 import com.techfamz.slimshotai.homewidget.HomeWidgetChannel
 import com.techfamz.slimshotai.homewidget.LaunchIntents
 import com.techfamz.slimshotai.nativepreview.NativeTimelinePreviewManager
+import com.techfamz.slimshotai.notifications.NotificationsChannel
 import com.techfamz.slimshotai.thumbnails.VideoThumbnailProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -84,6 +85,12 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             AppBuildChannel.channelName,
         ).setMethodCallHandler(AppBuildChannel(applicationContext))
+
+        NotificationsChannel.ensureChannel(applicationContext)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            NotificationsChannel.channelName,
+        ).setMethodCallHandler(NotificationsChannel(applicationContext))
 
         // The preview renders into a Flutter texture rather than a PlatformView,
         // so the engine's renderer (the TextureRegistry) is what it needs.

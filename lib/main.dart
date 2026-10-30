@@ -34,6 +34,8 @@ import 'core/widgets/launch_splash.dart';
 import 'features/compression/providers/compression_provider.dart';
 import 'features/home_widget/home_widget_sync.dart';
 import 'features/home_widget/launch_actions.dart';
+import 'features/push/firebase_push_messaging.dart';
+import 'features/push/push_providers.dart';
 import 'features/video_editor/providers/video_editor_notifier.dart';
 
 Future<void> main() async {
@@ -50,17 +52,24 @@ Future<void> main() async {
   // who never meets an ad never starts it.
 
   // The splash's pictures are decoded while the native splash still shows,
-  // so the app's first frame can repeat it exactly (LaunchSplash).
-  final (prefs, launchArt) = await (
+  // so the app's first frame can repeat it exactly (LaunchSplash). Firebase
+  // starts alongside, for push; a build without its config runs without.
+  final (prefs, launchArt, pushAvailable) = await (
     SharedPreferences.getInstance(),
     LaunchSplashArt.load(),
+    startFirebase(),
   ).wait;
   final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
   final String initialRoute = hasSeenOnboarding ? '/home' : '/onboarding';
 
   initializeAppRouter(initialRoute);
 
-  runApp(ProviderScope(child: SlimShotApp(launchArt: launchArt)));
+  runApp(
+    ProviderScope(
+      overrides: [pushAvailableProvider.overrideWithValue(pushAvailable)],
+      child: SlimShotApp(launchArt: launchArt),
+    ),
+  );
 
   FlutterNativeSplash.remove();
   unawaited(FileUtils.cleanupStartup());

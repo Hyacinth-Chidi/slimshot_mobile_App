@@ -359,3 +359,74 @@ class CreditHistoryPage {
   final List<CreditEntry> items;
   final String? nextCursor;
 }
+
+/// When a time the server sent is readable, the instant; otherwise null.
+DateTime? _instant(Object? value) =>
+    value is String ? DateTime.tryParse(value) : null;
+
+/// Credits claimed once a day, a week or a month (`GET /rewards/daily`,
+/// contract §14). The owner sets the amount and how often.
+class CreditClaimStatus {
+  const CreditClaimStatus({
+    required this.enabled,
+    required this.credits,
+    required this.intervalDays,
+    this.nextClaimAt,
+  });
+
+  /// An answer the app cannot read is off: a button for a claim that may not
+  /// exist would be worse than none.
+  factory CreditClaimStatus.fromJson(Map<String, dynamic> json) {
+    final credits = (json['credits'] as num?)?.toInt() ?? 0;
+    return CreditClaimStatus(
+      enabled: json['enabled'] == true && credits > 0,
+      credits: credits,
+      intervalDays: (json['intervalDays'] as num?)?.toInt() ?? 1,
+      nextClaimAt: _instant(json['nextClaimAt']),
+    );
+  }
+
+  final bool enabled;
+  final int credits;
+
+  /// 1, 7 or 30.
+  final int intervalDays;
+
+  /// Null: claimable now. Otherwise when it can be claimed again.
+  final DateTime? nextClaimAt;
+
+  CreditClaimStatus claimedUntil(DateTime? next) => CreditClaimStatus(
+        enabled: enabled,
+        credits: credits,
+        intervalDays: intervalDays,
+        nextClaimAt: next,
+      );
+}
+
+/// What a claim paid (`POST /rewards/daily/claim`).
+class CreditClaimResult {
+  const CreditClaimResult({
+    required this.credits,
+    required this.balance,
+    this.nextClaimAt,
+  });
+
+  factory CreditClaimResult.fromJson(Map<String, dynamic> json) {
+    final balance = json['balance'];
+    if (balance is! num) {
+      throw const SlimshotApiException(
+        SlimshotApiException.badResponse,
+        'No balance.',
+      );
+    }
+    return CreditClaimResult(
+      credits: (json['credits'] as num?)?.toInt() ?? 0,
+      balance: balance.toInt(),
+      nextClaimAt: _instant(json['nextClaimAt']),
+    );
+  }
+
+  final int credits;
+  final int balance;
+  final DateTime? nextClaimAt;
+}
