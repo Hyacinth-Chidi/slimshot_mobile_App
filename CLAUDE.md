@@ -5156,9 +5156,12 @@ Firebase Cloud Messaging; the app hands the server this install's FCM token.
 - **Configured by `android/app/google-services.json`** — the Firebase console's file for
   `com.techfamz.slimshotai`. The Google services Gradle plugin is applied **only when the file is
   there** (`android/app/build.gradle.kts`); without it the build is what it was,
-  `Firebase.initializeApp()` fails in `startFirebase` (beside the prefs and the splash art in
-  `main`), `pushAvailableProvider` stays false and push is simply not offered — the server
-  address's rule. Not Dart-only options: a notification arriving with the app closed is drawn by
+  `Firebase.initializeApp()` fails in `startFirebase`, `pushAvailableProvider` stays false and
+  push is simply not offered — the server address's rule. **Nothing waits for Firebase**: `main`
+  starts it in the background after `runApp` and sets `pushAvailableProvider` when it is ready;
+  Home and the Settings row listen and start push then. Device-found: it first held the app's
+  start with a 5s limit, a debug run on the Infinix took longer, and push was off for the whole
+  session — notifications reached the phone and nothing drew them. Not Dart-only options: a notification arriving with the app closed is drawn by
   Firebase's native service, which reads the native config.
 - **`PushController`** holds every rule, tested against `FakePushMessaging`
   (`push_controller_test.dart`): **on by default** (`push_enabled`); the token is sent with
@@ -5190,7 +5193,7 @@ Firebase Cloud Messaging; the app hands the server this install's FCM token.
   `NativeNotifications.show` over `slimshot_ai/notifications`. `push_android_test.dart` pins the
   channel id, the channel names on both sides, the icon (white, every density) and the colour.
 
-**Device checks**: a fresh install on Android 13+ asks once on Home, never again; Android 12 asks
+**Device-verified 2026-10-30** on the Infinix (Android 12): a dashboard message arrives with the app open and in the background. **Still to check**: a fresh install on Android 13+ asks once on Home, never again; Android 12 asks
 nothing; a dashboard message arrives with the app closed, in the background and open, the same
 look each time; the Settings switch off (nothing arrives) and on; the phone's own switch off reads
 off in the app; sign in and a user-targeted message arrives.

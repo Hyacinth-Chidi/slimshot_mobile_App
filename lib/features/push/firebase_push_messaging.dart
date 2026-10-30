@@ -8,9 +8,13 @@ import 'push_messaging.dart';
 /// `google-services.json` the Firebase console gives, which the Gradle build
 /// applies only when it is there. False without it, and on anything that
 /// goes wrong: the app then runs without push.
+///
+/// Nothing waits on it (`main`). It used to hold the app's start with a 5s
+/// limit, and a debug run on a low-end phone took longer — push was then off
+/// for the whole session (device-found). The limit is only a last resort now.
 Future<bool> startFirebase() async {
   try {
-    await Firebase.initializeApp().timeout(const Duration(seconds: 5));
+    await Firebase.initializeApp().timeout(const Duration(seconds: 60));
     return true;
   } catch (error) {
     debugPrint('Push: Firebase not started: $error');

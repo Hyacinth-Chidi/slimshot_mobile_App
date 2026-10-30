@@ -9,9 +9,11 @@ import 'native_notifications.dart';
 import 'push_controller.dart';
 import 'push_messaging.dart';
 
-/// Whether Firebase started (`startFirebase`, in `main`). False until then,
-/// and in every test that does not say otherwise.
-final pushAvailableProvider = Provider<bool>((ref) => false);
+/// Whether Firebase has started. `main` starts it in the background and
+/// sets this when it is ready — never holding the app for it — so push comes
+/// on whenever Firebase does. False until then, and in every test that does
+/// not say otherwise.
+final pushAvailableProvider = StateProvider<bool>((ref) => false);
 
 final pushMessagingProvider =
     Provider<PushMessaging>((ref) => FirebasePushMessaging());

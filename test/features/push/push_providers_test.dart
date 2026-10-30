@@ -30,7 +30,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         ...accountOverrides(server),
-        pushAvailableProvider.overrideWithValue(true),
+        pushAvailableProvider.overrideWith((ref) => true),
         pushMessagingProvider.overrideWithValue(push),
         showPushNoticeProvider.overrideWithValue((n) async => shown?.add(n)),
       ],
@@ -52,7 +52,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           accountFeatureProvider.overrideWithValue(false),
-          pushAvailableProvider.overrideWithValue(true),
+          pushAvailableProvider.overrideWith((ref) => true),
           pushMessagingProvider.overrideWithValue(FakePushMessaging()),
         ],
       );

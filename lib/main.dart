@@ -52,24 +52,28 @@ Future<void> main() async {
   // who never meets an ad never starts it.
 
   // The splash's pictures are decoded while the native splash still shows,
-  // so the app's first frame can repeat it exactly (LaunchSplash). Firebase
-  // starts alongside, for push; a build without its config runs without.
-  final (prefs, launchArt, pushAvailable) = await (
+  // so the app's first frame can repeat it exactly (LaunchSplash).
+  final (prefs, launchArt) = await (
     SharedPreferences.getInstance(),
     LaunchSplashArt.load(),
-    startFirebase(),
   ).wait;
   final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
   final String initialRoute = hasSeenOnboarding ? '/home' : '/onboarding';
 
   initializeAppRouter(initialRoute);
 
+  final container = ProviderContainer();
   runApp(
-    ProviderScope(
-      overrides: [pushAvailableProvider.overrideWithValue(pushAvailable)],
+    UncontrolledProviderScope(
+      container: container,
       child: SlimShotApp(launchArt: launchArt),
     ),
   );
+  // Push comes on whenever Firebase is ready; nothing waits for it. A build
+  // without its config answers false and runs without push.
+  unawaited(startFirebase().then((started) {
+    container.read(pushAvailableProvider.notifier).state = started;
+  }));
 
   FlutterNativeSplash.remove();
   unawaited(FileUtils.cleanupStartup());

@@ -35,7 +35,9 @@ class _SettingsNotificationsRowState
     // Back from the phone's settings, where they may just have been
     // allowed: sync the server, then show what the phone now says.
     _lifecycle = AppLifecycleListener(onResume: _resume);
-    _read();
+    // Now, or once Firebase is ready.
+    ref.listenManual(pushControllerProvider, (_, __) => _read(),
+        fireImmediately: true);
   }
 
   @override

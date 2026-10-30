@@ -27,6 +27,7 @@ import '../core/widgets/colour_field_backdrop.dart';
 import '../core/widgets/dashed_frame_painter.dart';
 import '../core/widgets/floating_nav_bar.dart';
 import '../features/home_widget/launch_actions.dart';
+import '../features/push/push_controller.dart';
 import '../features/push/push_providers.dart';
 import 'home_header.dart';
 import 'home_layout.dart';
@@ -54,8 +55,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForUpdate();
       // Push: the first visit after onboarding asks for permission, once,
-      // and every visit sends the token.
-      unawaited(ref.read(pushControllerProvider)?.start());
+      // and every visit sends the token — now, or whenever Firebase is ready.
+      ref.listenManual<PushController?>(
+        pushControllerProvider,
+        (_, push) => unawaited(push?.start()),
+        fireImmediately: true,
+      );
       // A tap that arrived before Home was up (the splash, onboarding).
       _runLaunchAction();
     });
