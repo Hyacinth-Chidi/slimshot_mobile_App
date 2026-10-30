@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../logic/captions/caption_settings.dart';
 
 /// The grab handle, drawn as every other sheet draws it.
 class SheetGrabHandle extends StatelessWidget {
@@ -121,7 +122,8 @@ class SheetActionButton extends StatelessWidget {
 
 /// A horizontal row of colour swatches; the current one is ringed in the
 /// accent, the rest in the border colour — which is also what keeps a black
-/// swatch visible on the sheet.
+/// swatch visible on the sheet. Not [enabled], it stays where it is, dimmed
+/// and deaf to taps: disabled, not hidden.
 class CaptionColorRow extends StatelessWidget {
   const CaptionColorRow({
     super.key,
@@ -129,15 +131,27 @@ class CaptionColorRow extends StatelessWidget {
     required this.selected,
     required this.keyFor,
     required this.onSelected,
+    this.enabled = true,
   });
 
   final List<Color> colors;
   final Color selected;
   final Key Function(int index) keyFor;
   final ValueChanged<Color> onSelected;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: !enabled,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.35,
+        child: _swatches(),
+      ),
+    );
+  }
+
+  Widget _swatches() {
     return SizedBox(
       height: 36,
       child: ListView(
@@ -234,4 +248,62 @@ class CaptionPillRow<T> extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The Language choices: Auto detect, then every language the server is
+/// asked in — the Auto captions sheet's row and the captions screen's, one
+/// row so the two cannot drift.
+class CaptionLanguagePills extends StatelessWidget {
+  const CaptionLanguagePills({
+    super.key,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  /// ISO 639-1, or null for Auto detect.
+  final String? selected;
+  final ValueChanged<String?> onSelected;
+
+  static String _label(String? code) => code == null
+      ? 'Auto detect'
+      : kCaptionLanguages.firstWhere((l) => l.code == code).name;
+
+  @override
+  Widget build(BuildContext context) => CaptionPillRow<String?>(
+        values: [
+          null,
+          for (final l in kCaptionLanguages) l.code,
+        ],
+        selected: selected,
+        label: _label,
+        keyFor: (c) => Key('caption_language_${c ?? 'auto'}'),
+        onSelected: onSelected,
+      );
+}
+
+/// The Length choices — how many words a caption holds.
+class CaptionLengthPills extends StatelessWidget {
+  const CaptionLengthPills({
+    super.key,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final CaptionLength selected;
+  final ValueChanged<CaptionLength> onSelected;
+
+  static String _label(CaptionLength l) => switch (l) {
+        CaptionLength.word => 'Word',
+        CaptionLength.phrase => 'Phrase',
+        CaptionLength.line => 'Line',
+      };
+
+  @override
+  Widget build(BuildContext context) => CaptionPillRow<CaptionLength>(
+        values: CaptionLength.values,
+        selected: selected,
+        label: _label,
+        keyFor: (l) => Key('caption_length_${l.name}'),
+        onSelected: onSelected,
+      );
 }

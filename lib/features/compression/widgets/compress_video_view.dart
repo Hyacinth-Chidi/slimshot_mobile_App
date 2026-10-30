@@ -32,7 +32,7 @@ class CompressVideoView extends StatelessWidget {
     this.previewAspectRatio,
     this.isPlaying = false,
     this.onTogglePlay,
-    this.showPro = AdService.enabled,
+    this.showPro = AdService.videoCompressionAds,
     this.thumbnails = const [],
     this.previewIndex = 0,
     this.onPreview,
@@ -282,13 +282,11 @@ class _PreviewFrame extends StatelessWidget {
                 left: 12,
                 right: 12,
                 bottom: 12,
-                child: Row(children: [
-                  if (infoLabel != null)
-                    Flexible(child: CompressInfoChip(infoLabel!, icon: infoIcon)),
-                  const Spacer(),
-                  if (sizeLabel != null)
-                    CompressInfoChip(sizeLabel!, icon: LucideIcons.hardDrive),
-                ]),
+                child: CompressInfoChipRow(
+                  label: infoLabel,
+                  labelIcon: infoIcon,
+                  size: sizeLabel,
+                ),
               ),
             ],
           ]),

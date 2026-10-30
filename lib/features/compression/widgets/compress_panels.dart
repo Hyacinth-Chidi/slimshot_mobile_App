@@ -774,6 +774,40 @@ class CompressInfoChip extends StatelessWidget {
       );
 }
 
+/// A picture's foot: what the file is on the left, its size on the right.
+///
+/// The label takes the room it needs and is cut only once the row is full,
+/// and the size keeps the right edge, alone or not. A `Spacer` beside the
+/// label's `Flexible` split the free room between them in half, so on a
+/// 360-wide phone "1080p · 0:42" read "1080p · 0…" with room to spare.
+class CompressInfoChipRow extends StatelessWidget {
+  const CompressInfoChipRow({
+    super.key,
+    required this.label,
+    required this.labelIcon,
+    required this.size,
+  });
+
+  final String? label;
+  final IconData labelIcon;
+  final String? size;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = this.label;
+    final size = this.size;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        if (label != null && label.isNotEmpty)
+          Flexible(child: CompressInfoChip(label, icon: labelIcon)),
+        const SizedBox(width: 8),
+        if (size != null) CompressInfoChip(size, icon: LucideIcons.hardDrive),
+      ],
+    );
+  }
+}
+
 /// The screen's one action, pinned under the content, which fades out
 /// behind it as it scrolls.
 class CompressBottomBar extends StatelessWidget {

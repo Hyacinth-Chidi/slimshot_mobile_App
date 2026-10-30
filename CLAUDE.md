@@ -2713,9 +2713,14 @@ test pins fonts bundled or in `kServerTemplateFontNames`, animations selectable,
 **a highlight never the text's own colour** (a word lit the colour it already wears does not
 light, and a pill the colour of its letters swallows them), and no two presets alike.
 
-**Caption style** (`CaptionStyleSheet`, `widgets/panels/caption_style_sheet.dart`) is the
-styles grid on top — a style is a whole look, highlight included, so it is picked first — and
-the Highlight row with its colours under it, to tune it. No title, by the echo rule. It opens on
+**Caption style** (`CaptionStyleSheet`, `widgets/panels/caption_style_sheet.dart`) is
+**the highlight's colours first, the highlights under them, then the styles** (`Styles`), the
+owner's call of 2026-10-29 (**awaiting device verification**): with the styles grid on top, the
+colours sat below the fold of a sheet capped at 45% of the screen, where most users would never
+find them. **The colours stay put whatever the highlight** — dimmed and deaf to taps where it
+lights in no colour (`CaptionColorRow.enabled`): at the top, a row that came and went would move
+every row under it the moment a style was picked, under the finger. No title, by the echo rule.
+It opens on
 the selected caption's look and highlight, and **every tap restyles the whole set at once**
 (`restyleCaptions` for a style, `setCaptionHighlight` for a highlight): every caption's look and
 highlight and the settings' highlight, words, timing, place, size and motion untouched, one undo
@@ -2765,6 +2770,73 @@ one edge — the editor offers neither value. The sheet marks a style current by
 could still take an undo step if a preset ever carried an animation (none does). **Reveal carries
 no outline** — white type over a soft shadow alone; a device call on bright footage. (Bubble has
 none either, and was judged readable on the device.)
+
+### Auto captions from Home — the editor in captions mode
+
+**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-10-29-home-auto-captions-design.md`,
+plan beside it in `plans/`. Home's tools read **Auto captions · Compress Video · Compress Photo**
+(the owner's order; Auto captions took Privacy Strip's place, and Privacy Strip left the app). A
+tap asks the gallery for one video — Compress video's picker and permission handling — and opens
+the captions screen: the video in a card, then **Ready** (Language, Length, Generate),
+**Generating** (the run drawn on the card), **Done** (Edit words, Style, Colour, Export, ✎). No
+timeline: someone who only wants a captioned clip need not learn the editor.
+
+- **It is the editor, not a second implementation**: `VideoEditorScreen(captionsMode: true)` on
+  `/edit/captions`, the way recording mode is the editor with another face. The project, the
+  preview engine, the caption run, the styles and the export are the editor's own, so the
+  captions look the same here, in the editor and in the file. The build's listeners run as ever;
+  its layout is `CaptionsModeView` (`widgets/captions_mode/`), a picture of the step with
+  callbacks, tested without a device (`captions_mode_view_test.dart`); its decisions are
+  `logic/captions/captions_mode.dart` — the step read off the work (a run, captions, neither),
+  Back, the hold, the picks.
+- **The canvas is the editor's** (`_previewCanvas`), laid out in a card in the project's frame on
+  plain dark, since a caption's colour is judged against the footage. **The card takes the room
+  the step's controls leave** (`_CardOverControls`: the controls laid out first at their own
+  height, the card in everything above) — device-reported: at a fixed 45% of the height a large
+  empty band sat between Length and Generate. Below `kCaptionsCardMinHeight` (160) the controls
+  scroll instead. **Generate does not make the picture jump**: through the run Ready's rows stay
+  laid out, invisible, under the run's lines, so the controls keep their height; Done's taller
+  controls take the card down once, when the words land. Only a tap reaches it — play,
+  pause — so no caption is grabbed by hand. **Paused, a faded play icon sits in its middle**
+  (`_PlayHint`, letting the tap through) and fades out while it plays — the owner's call: without
+  it nobody knew the picture played at a tap. None while the words are made, where the ring is. **✎ hands the same canvas to the full editor** (a
+  `GlobalKey`), no reload.
+- **One caption run, two faces** (`CaptionRun`, `services/caption_run.dart`). What the progress
+  sheet did — stage, progress, a failure's line, the shortfall an earned balance carries on, the
+  retry on the same pipeline (so the same upload key, never a second charge), the stop that
+  answers a shortfall no, the hold on the app — is a `ChangeNotifier` the editor's progress sheet
+  and the captions screen both draw; the sheet's tests passed unchanged. Generate is the editor's
+  door (`CaptionAccess.ensureAllowed`, then the silent price check inside the run); the client
+  and pipeline are built once for both (`_newCaptionPipeline`), and so is placing a set
+  (`_placeCaptionDrafts`). The ring shows a percentage only while the audio is prepared, the one
+  stage that reports one (`CompressProgressRing` spins with no number otherwise). A failure shows
+  in place with Cancel and Try again; **a soundless video goes back to Ready with its line**
+  (`runFailureReturnsToReady`), since nothing was uploaded and trying again cannot help. A run is
+  settled a microtask after its own notification: a `ChangeNotifier` may not be disposed while it
+  notifies.
+- **When the words land** the playhead parks, paused, half-way through the first caption, so a
+  word is lit; a tap plays. The style tiles' fonts are fetched then.
+- **Done**: Edit words is the editor's caption list (`CaptionBatchSheet`, opening on the first
+  caption; a row tap selects, so captions mode deselects as it closes); the Style row is the
+  Caption style sheet's tiles in one scrolling row, the set's own marked — found, not remembered —
+  each tap `restyleCaptions`; the Colour row is the highlight's colours, dimmed and deaf where it
+  lights in none (`setCaptionHighlight`). One undo step each, and no undo buttons: another style
+  is the way back. A set emptied through Edit words is Ready again. **Export** is the editor's at
+  its defaults, HD 1080 at 30 fps, with no options; its interstitial is the export's own.
+- **No draft, nothing in Recent Edits** (`setSavesDraft(false)` — a notifier field, not state, so
+  an undo can never turn saving back off) until ✎; from then on it is an ordinary editor project,
+  saved as any is, and Home reads Recent Edits again on the way back. **Back**: Ready leaves;
+  Generating stops the run, as Cancel does; Done asks **"Discard these captions?"**
+  (`confirmDiscardCaptions`) until an export of them was **kept** — saved or shared. The export
+  screen's route now completes with whether its file was (`ResultExit.kept`); one discarded there
+  does not count. Until then the app is held (`CaptionsModeSession.holdsWorkAt`), so a tap on the
+  home screen widget cannot tear paid captions down. The picked video goes with the screen
+  (`picksToDeleteOnLeave`) unless ✎ made it the draft's.
+- **Device checks**: Home's order; a video with sound, and one without (back to Ready, its
+  line); a shortfall carried on by an ad; Cancel and Back mid-run (nothing placed late, nothing
+  charged twice); a style and a colour, and the file matching the canvas; Edit words, emptying the
+  set too; Export, Save, then Back (no question); Back with nothing kept (asked); ✎, then leaving
+  (the edit in Recent Edits); a home-widget tap on Done (the app only comes forward).
 
 ### Text Size — the letters, not the scale
 
@@ -4434,6 +4506,18 @@ shell's floating nav is painted above them, so a sheet opened on a tab's navigat
 since Lucide has no brand marks — and its label scales down rather than overflow on a narrow
 phone with large text (`sign_in_sheet_test.dart` pins both).
 
+**The legal pages** (2026-10-30, **awaiting device verification**). The privacy policy and the
+Terms of Service live on the website (`slimshotAI_web/slimshot/app/privacy`, `/terms`), their
+addresses in one place (`core/legal/legal_links.dart`), opened through `legalLinkOpenerProvider`
+so a test can see what a tap opens. Settings' Legal group is `SettingsLegalSection` (Privacy,
+Terms, Open-source licences), and the sign-in sheet's email step ends **"By continuing, you agree
+to the Terms of Service and Privacy Policy."** — the first sign-in makes the account. The policy
+had promised that nothing left the phone and no personal data was collected; it now says what
+Auto captions uploads (the sound, deleted after the job), what an account holds, AdMob, the
+hashes kept after deletion and the deletion page. **Anything new that sends data off the phone,
+stores something about a user, or adds an ad or a provider must be added to the policy** — and
+to Play Console's Data safety form, which has to match it.
+
 ### Accounts and credits — stage 2: the silent price check
 
 **Awaiting device verification.** Plan: `docs/superpowers/plans/2026-10-06-credits-stage2-price-step.md`.
@@ -4505,9 +4589,10 @@ it showed **Back tomorrow** to someone with every ad still to watch, until `/me`
 offers a plain **Watch an ad** with no count, and is not written back into the cache as a number.
 Opening the Credits screen reads `/me` again, so a reward that landed while it was closed shows.
 
-**Credit ads have their own switch** (`AdService.creditAdsEnabled`, on); `AdService.enabled` —
-interstitials and the Pro-unlock ads — stays off. **Credit ads start the SDK themselves, when an
-earning block first shows, after Google's consent step** (UMP: `requestConsentInfoUpdate`, then
+**Credit ads have their own switch** (`AdService.creditAdsEnabled`, on); the other ads have one
+per placement (the ads section below). **Credit ads start the SDK themselves, when an
+earning block first shows, after Google's consent step** (`AdsSdk`, shared with every other ad
+since; UMP: `requestConsentInfoUpdate`, then
 `loadAndShowConsentFormIfRequired`, then `canRequestAds`) — the EEA, the UK and Switzerland need
 consent for ads to serve, and a user who never earns credits never starts the SDK. **The last
 answer is used first**, Google's own pattern: where an earlier check already allowed ads the SDK
@@ -4569,6 +4654,60 @@ light, not paint.**
   secondary, not tertiary. The coin is **`AppColors.credit`** (amber).
 - **The credits pill is pinned to the right edge** (`HomeHeader`'s brand is `Expanded`): a
   `Flexible` brand let a short balance sit against it.
+- **Six recent edits fill the room down to the nav, on every phone** (`home_layout.dart`,
+  `home_layout_test.dart`, `home_recent_edits_test.dart`, **awaiting device verification**; the
+  owner's design after rejecting three mockups). The section is **"Recent Edits"** (the owner's
+  word, matching the home screen widget's "Continue editing"; the empty card says "Your recent
+  edits will appear here"); the code still says drafts. The six, three to a row, take
+  everything from under the title to the bottom of the screen and scroll **inside their own box
+  — never the page**. The nav sits 12dp above the system's bar on every tab
+  (`kFloatingNavBottomMargin`; `kFloatingNavClearance` is that plus the 68dp bar).
+
+  **Home's heights come from the room a phone gives it, never from which phone it is**
+  (`HomeLayout.fit`). A first pass was tuned to one test phone (a Note 10, 411 × 869dp) and
+  scrolled on another (an Infinix, 360 × 806dp — physically larger, fewer dp): the owner's rule
+  against designing for one phone, broken. Now every part under the header — the four gaps,
+  New Video, the tool cards and the draft rows — gives up **the same share** of what it can,
+  from its full size to its least (`HomeGive`: New Video 156→120, tools 120→96, rows 140→108,
+  gaps 16/16/20/12 → 8/8/12/8), as far as it takes for both rows to end at the 8dp gap above
+  the nav. A shorter phone shows the same page smaller rather than one part squeezed: the
+  plus and "New Video" are laid out at full height and scaled to the card's
+  (`FittedBox` over a 156dp box); a tool card's icon and words shrink only once the card cannot
+  hold them. Rows are whole dp, the rounding left under them, never past the nav. That fits
+  every 18:9 or longer phone with ordinary bars and text — 360 × 720dp is the shortest — and a
+  360 × 800dp phone at 1.3× text. **Measured, not assumed**: the header is its own sliver and the
+  layout reads `precedingScrollExtent`, since its height follows the phone's width and text
+  size (on a 360dp phone the brand scales down beside the credits pill); "Recent Edits" has a
+  line height of its own (`homeTitleHeight`), because the theme gives body text 1.43 and the
+  layout must know the line exactly. **A tool card is exactly its height**: its 1dp border is
+  padding inside a `Container`, so the height goes on the container, not its child — it was
+  2dp taller than its 120 by accident, which here pushed the grid down until it scrolled.
+
+  **Where even every part at its least will not hold both rows** (16:9, 360 × 640dp), nothing
+  goes under its least: the first row sits above the nav and the second runs on **under** it,
+  through a full-width blur band (`recent_drafts_blur`, from the nav's top edge to the screen's
+  foot), and scrolling the drafts brings it up clear of the nav. The page itself scrolls only
+  where not even one row fits above the nav — a phone on its side. The layout is the same
+  whatever the number of edits, so nothing moves when the fourth one is made.
+
+  **Before any edit, a dashed card takes the six's place** (`recent_drafts_empty`,
+  `HomeLayout.emptyCard`; the owner's call, 2026-10-28, replacing the 120dp glass card they had
+  first asked to keep): where the six's first row would start and as wide as the rows — a test
+  adds six edits to an empty Home and finds them on the card's edges — down to the second row's
+  foot or **20dp above the nav, whichever comes first** (`kHomeEmptyCardNavGap`; the owner's
+  call: at the cards' 8dp, one large frame crowded the nav), never under 120dp
+  (`kHomeEmptyCardLeast`). It is **the home screen widget's empty
+  frame**: dashed lilac at 45% over a 4% white fill, 1.5dp, the inbox glyph and "Your recent
+  edits will appear here" centred. The dashes are `DashedFramePainter` (`core/widgets/`), moved
+  out of the Background sheet's empty photo tile so the two draw one frame.
+
+  **The tests sweep, they do not name phones**: every room from 250 to 1250dp at four text sizes
+  and four nav heights against the rules (each part within its range, both rows above the nav
+  exactly when the least fits, nothing left over but the rounding, more room never shrinking
+  anything), and the real Home on eleven phone shapes, 360 × 720 to 600 × 960, three densities
+  and three text sizes. The test file loads Plus Jakarta Sans: the test font draws every letter
+  a full em wide. **The blur band may go once the owner has seen the six fit** — their call,
+  pending.
 - **Account sheets sit on the same light**, everywhere (`AccountSheetFrame.glows`, the home
   composition moved closer in for a shorter shape; the top glow is wide because over a near-black
   screen that light is what shows where the sheet begins). **Light, not glass**: a glass version
@@ -4576,7 +4715,7 @@ light, not paint.**
   good at all"). Inside the editor too: the glow is the sheet's own, below the picture, and an
   account sheet is not a choice judged against the footage.
 - **A home card does what it says wherever it is touched** (`home_cards_test.dart`). Device-
-  reported: Compress Video / Compress Photo / Privacy Strip sometimes opened a blank page with only
+  reported: the three tool cards sometimes opened a blank page with only
   the floating nav, until Back. The decorative circle in each card's corner was an
   `OpenContainer` — a widget that opens a page when tapped — whose page was an empty box, pushed
   inside the home tab; a tap on that corner went to it instead of the card. It is a plain circle
@@ -4786,8 +4925,9 @@ through Google Fonts.
 - **Qualities are rows, not three squeezed tiles**: icon, name, one line, a tick; Smart wears
   **Recommended**. The video presets were renamed to fit (`Best quality` / `Smart` /
   `Smallest`, one short description each).
-  **PRO shows only while ads are on** (`showPro: AdService.enabled`): with ads off nothing is
-  locked, so the badge promised a lock that was not there.
+  **PRO shows exactly while Best quality's ad unlocks it** (`showPro:
+  AdService.videoCompressionAds`, on since 2026-10-28; photos' `photoCompressionAds`, off): with
+  a placement's ads off nothing is locked, so the badge would promise a lock that is not there.
 - **No before-and-after here — the user's call on the device.** A Now → After card with an
   estimated range was built and removed: the sizes belong to the result screen, where "after" is
   the real file rather than a guess from a preset's "50-80%". The result screen's
@@ -4797,6 +4937,9 @@ through Google Fonts.
 - **The preview hugs the video's shape** (capped at 42% of the height for a tall one) and carries
   `videoInfoLabel` ("1080p · 0:42") and the size — the metadata was read and never shown.
   Compressing grows it and puts a progress ring on it (per-file %, "2 of 5" for a batch).
+  **The two labels share the picture's foot through `CompressInfoChipRow`** (the photo screen's
+  too): the label takes the room it needs and the size keeps the right edge. A `Spacer` beside
+  the label's `Flexible` split the free room in half, so on a 360dp phone it read "1080p · 0…".
 - **Several videos** get a thumbnail row (`VideoThumbnailService`, the filmstrip's extractor); a
   tap plays that one in the preview.
 - **From 700 px wide, two columns** (`kCompressTwoColumnWidth`): video left, settings right.
@@ -4890,59 +5033,110 @@ compress screen resets the provider as it opens, so sharing a video or photo int
 opened a screen that found nothing and closed itself. Opened from the share sheet there is
 nothing beneath it, so back goes home rather than popping.
 
-### Privacy Strip — what the photo really carries, removed without re-saving it
+### Ads — back one placement at a time
 
-**Awaiting device verification** (the reader is Kotlin; the screens from an approved mockup).
-`PrivacyStripView` and `PrivacyReportView` (`features/privacy/widgets/`) sit on the compress
-screens' `CompressScaffold`, tested without a device; the screens own the provider, the picker
-and the photo's shape (`PhotoInspector`, shared with Compress photo).
+**Awaiting device verification** (the owner's calls, 2026-10-28 and -29). Every ad but the credit ads was
+off from 2026-10-03 behind one switch, `AdService.enabled`, which would have brought every old
+placement back at once — including an interstitial in front of **Save**, which made the user
+wait for their own file. It is gone: **each placement has its own switch** (`AdPlacement`,
+`AdService.isOn`), and off, a placement waits on no ad and keeps nothing locked (its step goes
+ahead, its unlock is granted, its views show no badge).
 
-- **The screen shows what each photo really holds**, read through `PhotoMetadataReader.kt`
-  (`slimshot_ai/photo_metadata`, Android's `ExifInterface`): location as coordinates, camera,
-  date taken, author — one photo's values, or "In 3 of 5" across several; only what is there,
-  and "No location, camera or date in this photo." where nothing is. The old screen listed four
-  fixed chips for every photo, which was a claim, not a fact. An empty GPS block reads 0,0 and
-  is not a location (`PhotoMetadata.fromMap`). HEIC reads from Android 9; a file the reader
-  cannot open is "nothing found", never an error, because the strip still runs on it.
-- **The report reads each cleaned file back** (`PrivacyState.remaining`) and ticks a detail only
-  where it is confirmed gone; one that survived says **Still there**, and a file that could not be
-  read back is left unticked rather than assumed clean. "Details removed" shows only when every
-  file is verified clean.
-- **A JPEG is cleaned without re-encoding** (`stripJpegMetadata`, `logic/jpeg_metadata.dart`,
-  the user's call): its EXIF, XMP, IPTC, comments, JFXX thumbnail, MPF and any trailer after the
-  image's end are dropped and every other byte copied, so the picture is identical. The old path
-  re-saved it at quality 100 — called "lossless" in a comment, it was not: a little quality lost
-  and usually a bigger file. **EXIF also holds the rotation flag**, without which a portrait photo
-  shows on its side, so it is written back alone in a minimal EXIF block. Kept: JFIF, the colour
-  profile (`ICC_PROFILE`), Adobe's colour flag, every table and frame segment. **Not done through
-  `ExifInterface`**: it leaves the embedded thumbnail (which can show the photo before a crop) and
-  IPTC. A JPEG too unusual to walk falls back to re-encoding; PNG re-encodes losslessly; HEIC and
-  WebP become a quality-100 JPEG as before (`DefaultPhotoStripper`), since nothing can rewrite
-  them in place. A test plants "secret" in every hiding place and asserts none survives and the
-  image bytes are untouched.
-- `CompressionLoaderOverlay` is gone — the three screens that used it share the progress ring.
+- **Video compression, on**: an interstitial **over the running compression**, in the wait
+  rather than added to it (`kVideoCompressionAdRule`): two seconds of the compression's own
+  progress first (AdMob recommends a "please wait" moment before an interstitial, so a quick
+  second tap cannot land on the ad), and only when about ten seconds or more are left, judged
+  from the progress — a 30-second ad over a 5-second job would make the ad the wait.
+  **Best quality is unlocked by a rewarded ad** the user chooses to watch — the owner first
+  asked for a rewarded ad *during* the compression, but rewarded ads must be opted into, one by
+  one, so it stays an unlock — and a compression at Best quality gets no interstitial
+  (`compressionGetsInterstitial`).
+- **Photo compression, on**: an interstitial on **every compression, however small or fast**
+  (`kPhotoCompressionAdRule`), a second in — photos compress in a second or two, so the video rule
+  would almost never show one; one done inside that second gets its ad then, **before the result,
+  never on top of it** (an ad appearing over a page that has just loaded is one AdMob disallows)
+  — with Best quality unlocked by a rewarded ad and its compressions getting no interstitial, as
+  for video. (Privacy Strip had the same rule, until it left the app.)
+- **Export, on — after it, never during it, and only now and then** (`showExportAd`,
+  `export_ads.dart`). The interstitial comes **between the finished export and its video**: the
+  progress holds at 100% until it closes (`ExportVideoScreen.exportAd`). **Never during the
+  export**, unlike a compression: compression is FFmpeg on the CPU, but export runs on the
+  hardware decoders and encoder, which a video ad needs too — on a low-end phone (the Infinix
+  decodes about 105 fps of 1080p across every decoder) an ad over it would slow it, or have
+  Android take a codec away, as already happened to video overlays. **Not every export** (the
+  owner's calls): **never on a user's first three exports after installing the app**
+  (`kExportsWithoutAds`; `ExportHistory`, a count of finished exports kept in the app's
+  preferences, so it outlasts a launch and starts from none after a fresh install; a cancelled
+  or failed export is not counted), then by chance, about half (`kExportAdChance`). **The
+  resolution is chosen freely** (2026-10-29): 4K was unlocked by a rewarded ad, and an export at
+  4K was spared the interstitial for it; both went together, so a 4K export follows the same rule
+  as any — no size is a way round the ad. The orphaned `ExportOptionsDialog`, which carried the
+  same gate and was opened from nowhere, is deleted. Nothing before the export any more (an
+  interstitial used to stand between the Export tap and the export starting), nothing on Save.
+  Export's interstitial gets ready when the editor opens (`AdService.prepare`; no rewarded ad
+  is loaded for it — `AdService.unlocksWithRewardedAd`). Whatever becomes of the ad, the video
+  follows: the step never throws, and the screen catches anything that would.
+- **How often** (`AdPacing`): one ad per **four minutes** at most for video compression, **six**
+  for photo compression, **five** for export (the owner's ranges were 3–5 and
+  5–7), and never two ads within a minute of each other, whichever placements — a rewarded unlock
+  counts. Kept for the session.
+
+**One function decides an ad over a job** (`adOverWork`, `work_ad.dart`, `work_ad_test.dart`):
+never before the lead-in, never holding the job up, **only an ad already loaded** (none is
+waited for), only when it is due, and **only while the job still counts** — on screen, not
+cancelled, not failed (`wanted`): an ad after Back, a cancel or an error would land where nobody
+is waiting. It completes once the job has ended **and** the ad has closed, so the screens move on
+— the result, an error — only after it; the compression runs on underneath meanwhile. Export's ad is the same rule after the job (`adAfterWork`). **Save shows no
+ad** anywhere, and a test reads the result screens for it.
+
+**An unlock waits for its rewarded ad, and names the real cause when none comes**
+(`awaitRewardedAd`, `unlockFailureMessage`, `rewarded_unlock_test.dart`). Device-reported: Best
+quality tapped a moment after the screen opened toasted "Check your connection" on a working
+connection, and worked a little later — the ad was still on its way (the consent step, the SDK
+start, the load: a few seconds) and the tap gave up on it at once, and every failure was worded
+as the connection's. Now the tap waits, up to `AdService.unlockWait` (15 s), with **"Loading
+ad…"** on screen — a card, since a toast leaves after two seconds; a tap outside or Back stops
+waiting, quietly, and the ad stays loading for next time. A failure is said for what it was:
+**"No internet connection."** only on AdMob's network error, **"No ad right now. Try again in a
+moment."** for no fill, no consent yet or no answer in time, and **"Watch the ad to the end to
+unlock …"** for an ad closed early. Both unlocks (the two Best qualities) use the one
+message.
+
+**No ad is asked for before Google's consent step has started the SDK** (`AdsSdk.started`): the
+consent-then-start code moved out of the credit ads (`PluginRewardedAdPlayer`) into `AdsSdk`, and
+a screen with a placement starts it when it opens (`AdService.prepare`), so the EEA's consent
+form appears there the first time. `main.dart` starts nothing. A loaded ad is dropped after 50
+minutes (AdMob keeps one an hour), and a failed load waits for the next ask instead of retrying
+every ten seconds for as long as the app runs.
+
+**Device checks**: a long compression shows an interstitial two seconds in and the result after
+it closes; a short clip shows none; a second compression within four minutes shows none; Best
+quality asks for its ad and then compresses with none; Back or Cancel during the first seconds shows nothing; Save never shows an ad; the
+EEA consent form (a VPN to Europe) appears once. Export: the first three exports after
+installing show none, later ones about half the time (4K included), 4K is picked with no ad, and
+the finished video appears only once the ad has closed; photo compression shows its ad before
+the result; photos' Best quality asks for its ad.
 
 ### Temporary files — gone once off screen, and History with them
 
 **Awaiting device verification** (the owner's call, 2026-10-28: the app should not fill the phone
-with files nobody can reach). A compression, a stripped photo and an export are the app's own
+with files nobody can reach). A compression and an export are the app's own
 temporary files (`slimshot_temp_`, `slimshot_export_`), of no use once off screen: a saved one is
 in the gallery and a shared one is a copy (share_plus copies into `cache/share_plus/` before
 handing it over, so the original may go at once).
 
 - **Leaving a result deletes its files** (`ResultExit`, `core/utils/result_exit.dart`) — the
-  compress result, the Privacy Strip report and the export screen alike, by ✕ or Back (each
+  compress result and the export screen alike, by ✕ or Back (each
   routes Back through the same leave with a `PopScope`). **One nobody saved or shared is asked
   about first**: "Discard this video?",
   "Discard these 5 photos?" (`confirmDiscard`, `core/widgets/discard_dialog.dart`, the drafts'
   Delete Draft? look) — Cancel or a tap outside stays. Saving marks it kept, and so does a share
   sheet closed on a target: `MediaSaveService.shareFiles` answers whether it was **not** dismissed,
-  so a phone that cannot say how the share went counts as kept and nobody is asked twice. Back
-  on the Privacy report still steps back to the strip screen, asking first.
+  so a phone that cannot say how the share went counts as kept and nobody is asked twice.
 - **A result never deletes the files it was made from.** A result handed back as it was
   (`skippedCompressions`) *is* its picked file, so `ResultExit` leaves out the inputs; the screen
   they were picked for deletes those **when it closes** — Compress photo, Compress video and
-  Privacy Strip, whose Change photos also deletes the picks it replaces.
+  the captions screen (unless ✎ made its video an editor project's).
 - **`FileUtils.deleteTempFiles` deletes only inside the temporary folder**, by resolved path, and
   the picker's folder once empty: image_picker copies each pick to `cache/<uuid>/`,
   receive_sharing_intent a shared file to the cache root, and a file outside the cache is the
@@ -5005,9 +5199,10 @@ dialog and its errors are exactly Home's. A Continue whose draft is gone says "T
 deleted." and redraws the widget.
 
 **Work in progress is never thrown away by a tap** (`HeldWork`, `core/utils/held_work.dart`): an
-export (from start until its file is saved or shared, or it fails), a compression or a privacy
-strip under way, a compress or strip result nobody kept (`ResultExit.hold`), a caption run (the
-progress sheet) and recording mode (`RecordController`) — and the update screen, which a forced
+export (from start until its file is saved or shared, or it fails), a compression under way, a
+compress result nobody kept (`ResultExit.hold`), a caption run (`CaptionRun`, in the progress
+sheet or on the captions screen), captions made from Home that no kept export holds, and
+recording mode (`RecordController`) — and the update screen, which a forced
 update keeps on screen. **Going Home with the editor open saves the draft explicitly first** (the
 editor's own save in `dispose` runs a frame after the screen has gone), **and Home acts only once
 the editor's provider is gone** (≤ 120 frames): two editors at once would share one

@@ -1,13 +1,23 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/core/services/ad_service.dart';
+import 'package:slimshotai/core/services/ads_sdk.dart';
+import 'package:slimshotai/features/compression/logic/compression_ads.dart';
+import 'package:slimshotai/features/compression/logic/compression_presets.dart';
 
-/// Ads are switched off for now. Every ad in the app goes through
-/// [AdService], so with the switch off nothing waits on an ad and nothing an
-/// ad used to unlock stays locked.
+/// Ads come back one placement at a time, each on its own switch (the
+/// owner's call, 2026-10-28). Every ad in the app goes through
+/// [AdService], so where a placement is off nothing waits on an ad and
+/// nothing an ad used to unlock stays locked.
 void main() {
-  test('ads are off', () {
-    expect(AdService.enabled, isFalse);
+  test('every placement is on: the compressions and export',
+      () {
+    for (final placement in AdPlacement.values) {
+      expect(AdService.isOn(placement), isTrue, reason: '$placement');
+    }
   });
 
   test('credit ads play the unit whose verification calls the server', () {
@@ -15,6 +25,37 @@ void main() {
     // rewarded unit (Pro unlocks) has none: an ad from it can never pay.
     expect(AdService.creditAdUnitIdAndroid,
         'ca-app-pub-7001751702275942/2451324896');
+  });
+
+  // The owner's call: Best quality is unlocked by a rewarded ad, so a
+  // compression at Best quality has already had its ad.
+  test('a compression gets an interstitial unless it is at Best quality',
+      () {
+    for (final presets in [
+      CompressionPresets.videoPresets,
+      CompressionPresets.imagePresets,
+    ]) {
+      for (final preset in presets) {
+        expect(compressionGetsInterstitial(preset), !preset.isPro,
+            reason: preset.name);
+      }
+      expect(presets.where((p) => p.isPro).map((p) => p.name),
+          ['Best quality']);
+    }
+  });
+
+  // Save is the moment the user gets what they came for: an ad in front of
+  // it makes them wait for their own file.
+  test('saving a result never waits on an ad', () {
+    for (final screen in [
+      'lib/screens/result_screen.dart',
+      // Its ad comes between the export and the finished video
+      // (`showExportAd`), never on Save.
+      'lib/screens/export_video_screen.dart',
+    ]) {
+      expect(File(screen).readAsStringSync(), isNot(contains('AdService')),
+          reason: screen);
+    }
   });
 
   Future<BuildContext> host(WidgetTester tester) async {
@@ -28,35 +69,91 @@ void main() {
     return captured;
   }
 
-  testWidgets('a save that waited on an interstitial goes ahead at once',
-      (tester) async {
-    final context = await host(tester);
-    var dismissed = 0;
-    await AdService.showInterstitialAd(context, onAdDismissed: () => dismissed++);
-    await tester.pump();
-    expect(dismissed, 1);
-    // No "Preparing..." loader waiting on an ad that will never come.
-    expect(find.byType(Dialog), findsNothing);
-    expect(find.text('Preparing...'), findsNothing);
-  });
-
-  testWidgets('what a rewarded ad unlocked is unlocked without one',
-      (tester) async {
+  // Device-reported: Best quality tapped a moment after the screen opened
+  // said "Check your connection" on a working connection — its ad was still
+  // on the way, and the tap gave up on it at once. The tap waits, saying so;
+  // here, with no ads plugin behind it, no ad can come, and it says that.
+  testWidgets('an unlock waits for its ad, saying it is loading, and with '
+      'none to be had says so — never blaming the connection', (tester) async {
     final context = await host(tester);
     var earned = 0;
-    var failed = 0;
-    await AdService.showRewardedAd(
+    final failures = <UnlockFailure>[];
+    unawaited(AdService.showRewardedAd(
       context,
+      placement: AdPlacement.export,
       onRewardEarned: () => earned++,
-      onFailed: () => failed++,
-    );
-    expect((earned, failed), (1, 0));
+      onFailed: failures.add,
+    ));
+    await tester.pump();
+    expect(find.text('Loading ad…'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('Loading ad…'), findsNothing);
+    expect(earned, 0);
+    expect(failures, [UnlockFailure.noAd]);
   });
 
-  test('nothing is loaded in the background', () {
-    // Off, these return before reaching the ads plugin, which a test has no
-    // platform side for — a call into it would throw here.
+  test('an interstitial after a job, with none loaded, lets what follows go '
+      'ahead at once', () async {
+    var done = false;
+    unawaited(AdService.afterWork(AdPlacement.export).then((_) => done = true));
+    await pumpEventQueue();
+    expect(done, isTrue);
+  });
+
+  // In the EEA, the UK and Switzerland an ad may be asked for only once
+  // Google's consent step allows it. Asking the plugin here — a test has no
+  // platform side — would fail the test with the plugin's error.
+  test('no ad is asked for before the consent step has started the SDK',
+      () async {
+    expect(AdsSdk.started, isFalse);
     AdService.loadInterstitialAd();
     AdService.loadRewardedAd();
+    await pumpEventQueue();
+  });
+
+  // Export's ad comes after it, never over it: the export runs on the
+  // hardware codecs a video ad would share.
+  test('nothing shows over an export while it runs', () async {
+    final work = Completer<void>();
+    var done = false;
+    unawaited(AdService.overWork(
+      AdPlacement.export,
+      work: work.future,
+      progress: () => 0,
+    ).then((_) => done = true));
+    await pumpEventQueue();
+    expect(done, isFalse);
+    work.complete();
+    await pumpEventQueue();
+    expect(done, isTrue);
+  });
+
+  // The owner's call (2026-10-29): the export's resolution is chosen freely.
+  // 4K asked for a rewarded ad; nothing about an export is unlocked now.
+  test("choosing the export's resolution asks for no ad", () {
+    final source = File('lib/screens/video_editor_screen.dart')
+        .readAsStringSync()
+        .replaceAll('\r\n', '\n');
+    final start = source.indexOf('void _showExportOptionsPopup()');
+    expect(start, isNot(-1));
+    final popup = source.substring(start, source.indexOf('\n  }\n', start));
+    expect(popup, isNot(contains('showRewardedAd')));
+    expect(popup, isNot(contains("'PRO'")));
+    // The old export options dialog, opened from nowhere, carried the same
+    // gate.
+    expect(
+      File('lib/features/video_editor/widgets/dialogs/export_options_dialog.dart')
+          .existsSync(),
+      isFalse,
+    );
+  });
+
+  test('only the compressions are unlocked by a rewarded ad', () {
+    expect(AdService.unlocksWithRewardedAd(AdPlacement.videoCompression),
+        isTrue);
+    expect(AdService.unlocksWithRewardedAd(AdPlacement.photoCompression),
+        isTrue);
+    // So the editor no longer loads one it would never show.
+    expect(AdService.unlocksWithRewardedAd(AdPlacement.export), isFalse);
   });
 }

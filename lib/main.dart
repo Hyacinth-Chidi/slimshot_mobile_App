@@ -9,11 +9,9 @@ import 'features/compression/logic/compress_inputs.dart';
 import 'package:animations/animations.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/file_utils.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'core/services/ad_service.dart';
 import 'core/services/media_picker_service.dart';
 import 'core/services/removed_features.dart';
 import 'core/models/update_info.dart';
@@ -25,8 +23,6 @@ import 'screens/compress_image_screen.dart';
 import 'screens/result_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/update_screen.dart';
-import 'screens/privacy_screen.dart';
-import 'screens/privacy_result_screen.dart';
 import 'screens/video_editor_screen.dart';
 import 'screens/workspace_screen.dart';
 import 'screens/main_shell_screen.dart';
@@ -38,7 +34,6 @@ import 'core/widgets/launch_splash.dart';
 import 'features/compression/providers/compression_provider.dart';
 import 'features/home_widget/home_widget_sync.dart';
 import 'features/home_widget/launch_actions.dart';
-import 'features/privacy/providers/privacy_provider.dart';
 import 'features/video_editor/providers/video_editor_notifier.dart';
 
 Future<void> main() async {
@@ -49,14 +44,10 @@ Future<void> main() async {
   // Notices for code the app ships that no package declares (the ported
   // transitions), on Flutter's licences page in Settings.
   registerThirdPartyLicences();
-  // `AdService.enabled` (interstitials, Pro-unlock ads) is off. Credit ads
-  // start the SDK themselves, after Google's consent step, on the first
-  // Watch an ad (`PluginRewardedAdPlayer`).
-  if (AdService.enabled) {
-    MobileAds.instance.initialize();
-    AdService.loadInterstitialAd(); // Start background preload immediately
-    AdService.loadRewardedAd(); // Start background preload for Rewarded Ads
-  }
+  // The ads SDK is not started here: whatever shows an ad starts it, after
+  // Google's consent step (`AdsSdk`) — a screen with an ad placement when it
+  // opens (`AdService.prepare`), credit ads on the first Watch an ad. A user
+  // who never meets an ad never starts it.
 
   // The splash's pictures are decoded while the native splash still shows,
   // so the app's first frame can repeat it exactly (LaunchSplash).
@@ -188,6 +179,21 @@ GoRouter createAppRouter(String initialRoute) {
           );
         },
       ),
+      // Auto captions from Home: the editor in its captions mode, on one
+      // picked video.
+      GoRoute(
+        path: '/edit/captions',
+        pageBuilder: (context, state) {
+          final extra = state.extra;
+          return _buildTransitionPage(
+            state: state,
+            child: VideoEditorScreen(
+              initialMedia: [if (extra is XFile) extra],
+              captionsMode: true,
+            ),
+          );
+        },
+      ),
       GoRoute(
         path: '/compress/image',
         pageBuilder: (context, state) {
@@ -204,25 +210,6 @@ GoRouter createAppRouter(String initialRoute) {
         pageBuilder: (context, state) => _buildTransitionPage(
           state: state,
           child: const ResultScreen(),
-        ),
-      ),
-
-      GoRoute(
-        path: '/privacy',
-        pageBuilder: (context, state) {
-          return _buildTransitionPage(
-            state: state,
-            child: PrivacyScreen(
-              initialImages: compressInputsFromExtra(state.extra),
-            ),
-          );
-        },
-      ),
-      GoRoute(
-        path: '/privacy/result',
-        pageBuilder: (context, state) => _buildTransitionPage(
-          state: state,
-          child: const PrivacyResultScreen(),
         ),
       ),
 
@@ -313,18 +300,14 @@ class _SlimShotAppState extends ConsumerState<SlimShotApp> {
     }
   }
 
-  /// Whether going Home now would throw something away: an export, a
-  /// compression or a strip under way, a result nobody kept, a caption run,
-  /// a voice take ([HeldWork]) — or skip the update screen, which a forced
+  /// Whether going Home now would throw something away: an export or a
+  /// compression under way, a result nobody kept, a caption run or captions
+  /// nobody exported, a voice take ([HeldWork]) — or skip the update screen, which a forced
   /// update keeps on screen.
   bool _holdsWork() {
     if (HeldWork.instance.isHeld) return true;
     if (ref.exists(compressionProvider) &&
         ref.read(compressionProvider).isProcessing) {
-      return true;
-    }
-    if (ref.exists(privacyProvider) &&
-        ref.read(privacyProvider).isProcessing) {
       return true;
     }
     return appRouter.routerDelegate.currentConfiguration.uri.path ==

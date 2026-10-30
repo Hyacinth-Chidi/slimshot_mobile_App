@@ -25,6 +25,20 @@ class _FakePicker extends ImagePickerPlatform {
     return images;
   }
 
+  /// What Auto captions asks for: one video. Nothing picked, so nothing
+  /// opens.
+  int videoPicks = 0;
+
+  @override
+  Future<XFile?> getVideo({
+    required ImageSource source,
+    CameraDevice preferredCameraDevice = CameraDevice.rear,
+    Duration? maxDuration,
+  }) async {
+    videoPicks++;
+    return null;
+  }
+
   /// What "New video" asks for: videos and photos together.
   @override
   Future<List<XFile>> getMedia({required MediaOptions options}) async {
@@ -71,7 +85,6 @@ void main() {
   // tab. Wherever a card is touched, it must do what the card says.
   for (final (card, route) in [
     ('Compress\nPhoto', '/compress/image'),
-    ('Privacy\nStrip', '/privacy'),
   ]) {
     testWidgets('a tap anywhere on "$card" opens the gallery and its screen',
         (tester) async {
@@ -131,7 +144,7 @@ void main() {
   // tools are solid tiles.
   testWidgets('the three tool cards are solid, not glass', (tester) async {
     await pumpHome(tester);
-    for (final title in ['Compress\nVideo', 'Compress\nPhoto', 'Privacy\nStrip']) {
+    for (final title in ['Auto\ncaptions', 'Compress\nVideo', 'Compress\nPhoto']) {
       final text = find.text(title);
       expect(find.ancestor(of: text, matching: find.byType(FrostedGlass)),
           findsNothing, reason: title);
@@ -159,5 +172,41 @@ void main() {
       expect(colour.r, closeTo(AppColors.textPrimary.r, 0.01), reason: title);
       expect(colour.b, closeTo(AppColors.textPrimary.b, 0.01), reason: title);
     }
+  });
+
+  // The owner's call: Auto captions takes Privacy Strip's place, first of
+  // the three — captions without learning the editor.
+  testWidgets('the tools read Auto captions, Compress Video, Compress Photo, '
+      'in that order', (tester) async {
+    await pumpHome(tester);
+    double left(String title) => tester.getTopLeft(find.text(title)).dx;
+    expect(left('Auto\ncaptions'), lessThan(left('Compress\nVideo')));
+    expect(left('Compress\nVideo'), lessThan(left('Compress\nPhoto')));
+    expect(find.text('Privacy\nStrip'), findsNothing);
+  });
+
+  testWidgets('Auto captions wears the subtitles glyph', (tester) async {
+    await pumpHome(tester);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('home_auto_captions')),
+        matching: find.byIcon(LucideIcons.subtitles),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a tap on Auto captions asks the gallery for one video',
+      (tester) async {
+    await pumpHome(tester);
+    await tester.tap(find.text('Auto\ncaptions'));
+    await _settle(tester);
+    expect(picker.videoPicks, 1);
+    // Nothing picked: Home stays.
+    expect(
+      appRouter.routerDelegate.currentConfiguration.matches
+          .map((m) => m.matchedLocation),
+      ['/home'],
+    );
   });
 }

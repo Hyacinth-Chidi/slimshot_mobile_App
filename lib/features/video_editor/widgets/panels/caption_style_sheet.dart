@@ -10,9 +10,13 @@ import 'editor_sheet.dart';
 
 /// A caption's menu → Caption style: how the whole set looks, one tap.
 ///
-/// The styles first — a style is a whole look, highlight included, so it is
-/// picked first — and the Highlight row under them, to tune it. No title: the
-/// user tapped Caption style to get here.
+/// **The highlight's colours first, the highlights under them, the styles
+/// after** (the owner's call, 2026-10-29): under the styles, the colours sat
+/// below the fold of a sheet capped at 45% of the screen, and most users
+/// would never have found them. The colours stay put whatever the highlight
+/// — dimmed where it lights in none — or picking a style would move every
+/// row under the finger. No title: the user tapped Caption style to get
+/// here.
 ///
 /// **Every tap reaches the whole set at once**, through [onPresetChosen] and
 /// [onHighlightChanged], one undo step each: a set where one caption looks
@@ -59,7 +63,7 @@ class _CaptionStyleSheetState extends State<CaptionStyleSheet>
   late TextLook _look = widget.look;
   late CaptionHighlight _highlight = widget.highlight;
 
-  /// A style is a look and a highlight; the Highlight row follows it, so the
+  /// A style is a look and a highlight; the Highlight rows follow it, so the
   /// highlight can be tuned from there.
   void _choosePreset(CaptionPreset preset) {
     setState(() {
@@ -108,13 +112,16 @@ class _CaptionStyleSheetState extends State<CaptionStyleSheet>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CaptionPresetGrid(
-                    presets: widget.presets,
-                    selectedId: _currentPresetId,
-                    clock: _clock,
-                    onSelected: _choosePreset,
-                  ),
                   const SheetSectionLabel('Highlight'),
+                  CaptionColorRow(
+                    colors: kCaptionHighlightColors,
+                    selected: _highlight.color,
+                    enabled: captionHighlightUsesColor(_highlight.style),
+                    keyFor: (i) => Key('caption_highlight_color_$i'),
+                    onSelected: (c) =>
+                        _setHighlight(_highlight.copyWith(color: c)),
+                  ),
+                  const SizedBox(height: 12),
                   CaptionPillRow<CaptionHighlightStyle>(
                     values: CaptionHighlightStyle.values,
                     selected: _highlight.style,
@@ -123,16 +130,13 @@ class _CaptionStyleSheetState extends State<CaptionStyleSheet>
                     onSelected: (s) =>
                         _setHighlight(_highlight.copyWith(style: s)),
                   ),
-                  if (captionHighlightUsesColor(_highlight.style)) ...[
-                    const SizedBox(height: 12),
-                    CaptionColorRow(
-                      colors: kCaptionHighlightColors,
-                      selected: _highlight.color,
-                      keyFor: (i) => Key('caption_highlight_color_$i'),
-                      onSelected: (c) =>
-                          _setHighlight(_highlight.copyWith(color: c)),
-                    ),
-                  ],
+                  const SheetSectionLabel('Styles'),
+                  CaptionPresetGrid(
+                    presets: widget.presets,
+                    selectedId: _currentPresetId,
+                    clock: _clock,
+                    onSelected: _choosePreset,
+                  ),
                   const SizedBox(height: 20),
                 ],
               ),

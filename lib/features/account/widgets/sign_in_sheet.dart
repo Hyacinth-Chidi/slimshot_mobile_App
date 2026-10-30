@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../core/legal/legal_links.dart';
 import '../../../core/services/slimshot_api.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/toast_utils.dart';
 import '../logic/account_copy.dart';
 import '../models/account_models.dart';
 import '../providers/account_providers.dart';
@@ -140,6 +142,8 @@ class _SignInSheetState extends ConsumerState<SignInSheet> {
         busy: _busy,
         onPressed: _looksLikeEmail ? _sendCode : null,
       ),
+      const SizedBox(height: 14),
+      const _Agreement(),
     ];
   }
 
@@ -298,5 +302,60 @@ class _SignInSheetState extends ConsumerState<SignInSheet> {
       setState(() => _resendIn--);
       if (_resendIn <= 0) timer.cancel();
     });
+  }
+}
+
+/// What signing in agrees to — the first sign-in makes the account — with
+/// each name opening its page on the website.
+class _Agreement extends ConsumerWidget {
+  const _Agreement();
+
+  static const _style = TextStyle(
+    color: AppColors.textTertiary,
+    fontSize: 12.5,
+    height: 1.5,
+  );
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    Future<void> open(String url, String name) async {
+      final opened = await ref.read(legalLinkOpenerProvider)(Uri.parse(url));
+      if (!opened && context.mounted) {
+        ToastUtils.show(context, 'Could not open the $name', isError: true);
+      }
+    }
+
+    InlineSpan link(String name, String url, Key key) => WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: GestureDetector(
+            key: key,
+            behavior: HitTestBehavior.opaque,
+            onTap: () => open(url, name),
+            child: Text(
+              name,
+              style: _style.copyWith(
+                color: AppColors.textSecondary,
+                decoration: TextDecoration.underline,
+                decorationColor: AppColors.textSecondary,
+              ),
+            ),
+          ),
+        );
+
+    return Text.rich(
+      key: const Key('sign_in_agreement'),
+      TextSpan(
+        style: _style,
+        children: [
+          const TextSpan(text: 'By continuing, you agree to the '),
+          link('Terms of Service', kTermsOfServiceUrl, const Key('sign_in_terms')),
+          const TextSpan(text: ' and '),
+          link('Privacy Policy', kPrivacyPolicyUrl, const Key('sign_in_privacy')),
+          const TextSpan(text: '.'),
+        ],
+      ),
+      textAlign: TextAlign.center,
+    );
   }
 }

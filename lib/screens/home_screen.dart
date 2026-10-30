@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,8 +23,14 @@ import '../core/utils/toast_utils.dart';
 import '../core/widgets/frosted_glass.dart';
 import '../core/widgets/permission_dialog.dart';
 import '../core/widgets/colour_field_backdrop.dart';
+import '../core/widgets/dashed_frame_painter.dart';
+import '../core/widgets/floating_nav_bar.dart';
 import '../features/home_widget/launch_actions.dart';
 import 'home_header.dart';
+import 'home_layout.dart';
+
+/// How many recent edits Home shows; Workspace has them all.
+const int _kRecentDrafts = 6;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -92,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadDrafts() async {
     try {
-      final drafts = await DraftService.getRecentDrafts(3);
+      final drafts = await DraftService.getRecentDrafts(_kRecentDrafts);
       if (mounted) {
         setState(() {
           _recentDrafts = drafts;
@@ -188,224 +195,323 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _handlePrivacyStrip() async {
+  /// Auto captions without the timeline: one video, then the editor in its
+  /// captions mode. ✎ there makes it an editor project, so Recent Edits is
+  /// read again on the way back.
+  Future<void> _handleAutoCaptions() async {
     try {
       final picker = MediaPickerService();
-      final images = await picker.pickImages();
-      if (images.isNotEmpty && mounted) {
-        context.push('/privacy', extra: images);
+      final video = await picker.pickVideo();
+      if (video != null && mounted) {
+        await context.push('/edit/captions', extra: video);
+        _loadDrafts();
       }
     } catch (e) {
       if (!mounted) return;
       if (MediaPickerService.isPermissionError(e)) {
         PermissionDialog.showGalleryAccessRequired(
           context: context,
-          message:
-              'Please grant storage access to pick photos for privacy stripping.',
+          message: 'Please grant storage access to pick a video for captions.',
           onCancel: () {},
         );
       } else {
-        ToastUtils.show(context, 'Error picking photo: $e', isError: true);
+        ToastUtils.show(context, 'Error picking video: $e', isError: true);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Where the floating nav's top edge is, up from the bottom of the screen.
+    final navClearance =
+        kFloatingNavClearance + MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
           const Positioned.fill(child: ColourFieldBackdrop()),
 
+          // Down to the bottom of the screen: the drafts run on under the
+          // floating nav rather than stopping above it.
           SafeArea(
+            bottom: false,
             child: CustomScrollView(
+              key: const ValueKey('home_page'),
               slivers: [
-                SliverFillRemaining(
-                  hasScrollBody: false,
+                // The header is measured, never assumed: its height follows
+                // the phone's width and text size.
+                SliverToBoxAdapter(
                   child: ResponsiveCenter(
                     child: Padding(
-                      padding: const EdgeInsets.only(
-                        left: 24,
-                        right: 24,
-                        top: 32,
-                        bottom: 100, // Extra padding for the floating nav bar
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          HomeHeader(
-                            brand: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SvgPicture.asset(
-                                  'assets/logo.svg',
-                                  width: 44,
-                                  height: 44,
-                                ),
-                                const SizedBox(width: 8),
-                                ShaderMask(
-                                  blendMode: BlendMode.srcIn,
-                                  shaderCallback: (bounds) =>
-                                      const LinearGradient(
-                                        colors: [
-                                          AppColors.textPrimary,
-                                          AppColors.textSecondary,
-                                        ],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ).createShader(bounds),
-                                  child: const Text(
-                                    'SlimShot AI',
-                                    style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: -0.5,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                      padding: const EdgeInsets.fromLTRB(
+                          24, kHomeTopPadding, 24, 0),
+                      child: HomeHeader(
+                        brand: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SvgPicture.asset(
+                              'assets/logo.svg',
+                              width: 44,
+                              height: 44,
                             ),
-                          ).animate().fadeIn().slideY(begin: -0.2, end: 0),
-
-                          const SizedBox(height: 24),
-
-                          // Edit Video Hero Card
-                          _HeroActionCard(onTap: _handleEditVideo, delay: 200),
-
-                          const SizedBox(height: 16),
-
-                          // 3 Square Tool Buttons
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _GridActionCard(
-                                  title: 'Compress\nVideo',
-                                  icon: LucideIcons.video,
-                                  onTap: _handleCompressVideo,
-                                  delay: 250,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _GridActionCard(
-                                  title: 'Compress\nPhoto',
-                                  icon: LucideIcons.image,
-                                  onTap: _handleCompressPhoto,
-                                  delay: 300,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _GridActionCard(
-                                  title: 'Privacy\nStrip',
-                                  icon: LucideIcons.shield,
-                                  onTap: _handlePrivacyStrip,
-                                  delay: 350,
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 32),
-
-                          // Recent Drafts Placeholder Section
-                          const Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      'Recent Drafts',
-                                      style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                              .animate()
-                              .fadeIn(delay: 400.ms)
-                              .slideY(begin: 0.1, end: 0),
-
-                          const SizedBox(height: 12),
-
-                          if (_isLoadingDrafts)
-                            const Center(
-                              child: CircularProgressIndicator(
-                                color: AppColors.primaryStart,
-                              ),
-                            )
-                          else if (_recentDrafts.isEmpty)
-                            FrostedGlass(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: const SizedBox(
-                                    height: 120,
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            LucideIcons.inbox,
-                                            color: AppColors.textTertiary,
-                                            size: 32,
-                                          ),
-                                          SizedBox(height: 8),
-                                          Text(
-                                            'Your recent video drafts will appear here',
-                                            style: TextStyle(fontFamily: kInterfaceFontFamily, 
-                                              fontSize: 13,
-                                              color: AppColors.textSecondary,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                )
-                                .animate()
-                                .fadeIn(delay: 450.ms)
-                                .slideY(begin: 0.1, end: 0)
-                          else
-                            SizedBox(
-                                  height: 140,
-                                  child: Row(
-                                    children: [
-                                      for (int i = 0; i < 3; i++) ...[
-                                        Expanded(
-                                          child: i < _recentDrafts.length
-                                              ? _buildDraftCard(
-                                                  _recentDrafts[i],
-                                                )
-                                              : const SizedBox(),
-                                        ),
-                                        if (i < 2) const SizedBox(width: 12),
-                                      ],
+                            const SizedBox(width: 8),
+                            ShaderMask(
+                              blendMode: BlendMode.srcIn,
+                              shaderCallback: (bounds) =>
+                                  const LinearGradient(
+                                    colors: [
+                                      AppColors.textPrimary,
+                                      AppColors.textSecondary,
                                     ],
-                                  ),
-                                )
-                                .animate()
-                                .fadeIn(delay: 450.ms)
-                                .slideY(begin: 0.1, end: 0),
-                        ],
-                      ),
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ).createShader(bounds),
+                              child: const Text(
+                                'SlimShot AI',
+                                style: TextStyle(fontFamily: kInterfaceFontFamily, 
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ).animate().fadeIn().slideY(begin: -0.2, end: 0),
                     ),
                   ),
+                ),
+                // Everything under the header is sized from the room the
+                // phone leaves ([HomeLayout]): the rest of the screen, under
+                // the nav included, ending in the drafts' box. Only where that
+                // will not hold one row above the nav — a phone on its side —
+                // does the page itself scroll.
+                SliverLayoutBuilder(
+                  builder: (context, constraints) {
+                    final layout = HomeLayout.fit(
+                      room: constraints.viewportMainAxisExtent -
+                          constraints.precedingScrollExtent,
+                      title: homeTitleHeight(MediaQuery.textScalerOf(context)),
+                      navClearance: navClearance,
+                    );
+                    return SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: layout.height,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            ResponsiveCenter(
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 24),
+                                child: _toolsAndTitle(layout),
+                              ),
+                            ),
+                            Expanded(
+                              child: ResponsiveCenter(
+                                child: _recentDraftsArea(
+                                  navClearance,
+                                  layout,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
           ),
+
+          // What runs on under the nav passes under a blur across the full
+          // width, never a hard edge. Over the bare background it shows
+          // nothing, since the glows are already soft.
+          if (!_isLoadingDrafts && _recentDrafts.isNotEmpty)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: navClearance,
+              child: ClipRect(
+                key: const ValueKey('recent_drafts_blur'),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
+  /// New Video, the three tools and the "Recent Edits" line, each at the
+  /// height the phone's room gives it ([HomeLayout]).
+  Widget _toolsAndTitle(HomeLayout layout) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(height: layout.gapAboveHero),
+          _HeroActionCard(
+            height: layout.hero,
+            onTap: _handleEditVideo,
+            delay: 200,
+          ),
+          SizedBox(height: layout.gapAboveTools),
+          Row(
+            children: [
+              Expanded(
+                child: _GridActionCard(
+                  key: const ValueKey('home_auto_captions'),
+                  title: 'Auto\ncaptions',
+                  icon: LucideIcons.subtitles,
+                  height: layout.tools,
+                  onTap: _handleAutoCaptions,
+                  delay: 250,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _GridActionCard(
+                  key: const ValueKey('home_compress_video'),
+                  title: 'Compress\nVideo',
+                  icon: LucideIcons.video,
+                  height: layout.tools,
+                  onTap: _handleCompressVideo,
+                  delay: 300,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _GridActionCard(
+                  key: const ValueKey('home_compress_photo'),
+                  title: 'Compress\nPhoto',
+                  icon: LucideIcons.image,
+                  height: layout.tools,
+                  onTap: _handleCompressPhoto,
+                  delay: 350,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: layout.gapAboveTitle),
+          // One line at a line height of its own, so it is exactly the
+          // height the layout made room for.
+          SizedBox(
+            height: layout.title,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Recent Edits',
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontFamily: kInterfaceFontFamily,
+                    fontSize: kHomeTitleFontSize,
+                    height: kHomeTitleLineHeight,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.1, end: 0),
+          ),
+          SizedBox(height: layout.gapAboveDrafts),
+        ],
+      );
+
+  /// The recent edits, in the room from under their title to the bottom of
+  /// the screen: up to six, three to a row, scrolling inside their own box.
+  /// Where two rows fit above the nav, they sit there ([HomeLayout]); where
+  /// they cannot, the second row runs on under the nav, blurred, until the
+  /// drafts are scrolled up out from under it — the padding under the last
+  /// row is what lets it clear the nav. Before any edit, a dashed card takes
+  /// the six's place ([HomeLayout.emptyCard]).
+  Widget _recentDraftsArea(double navClearance, HomeLayout layout) {
+    if (_isLoadingDrafts) {
+      return const Align(
+        alignment: Alignment.topCenter,
+        child: CircularProgressIndicator(color: AppColors.primaryStart),
+      );
+    }
+    if (_recentDrafts.isEmpty) {
+      return Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          // The home screen widget's empty frame, here too: dashed lilac
+          // over a breath of white — a place kept for the edits to come.
+          child: SizedBox(
+                key: const ValueKey('recent_drafts_empty'),
+                width: double.infinity,
+                height: layout.emptyCard,
+                child: CustomPaint(
+                  foregroundPainter: DashedFramePainter(
+                    colour: AppColors.lilac.withValues(alpha: 0.45),
+                    radius: 16,
+                    strokeWidth: 1.5,
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.textPrimary.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              LucideIcons.inbox,
+                              color: AppColors.textTertiary,
+                              size: 32,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Your recent edits will appear here',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontFamily: kInterfaceFontFamily,
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              .animate()
+              .fadeIn(delay: 450.ms)
+              .slideY(begin: 0.1, end: 0),
+        ),
+      );
+    }
+    return GridView.builder(
+          key: const ValueKey('recent_drafts'),
+          padding: EdgeInsets.fromLTRB(24, 0, 24, navClearance + kHomeDraftNavGap),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisExtent: layout.draftRow,
+            mainAxisSpacing: kHomeDraftSpacing,
+            crossAxisSpacing: kHomeDraftSpacing,
+          ),
+          itemCount: _recentDrafts.length,
+          itemBuilder: (context, i) => _buildDraftCard(_recentDrafts[i]),
+        )
+        .animate()
+        .fadeIn(delay: 450.ms)
+        .slideY(begin: 0.1, end: 0);
+  }
+
   Widget _buildDraftCard(DraftProject draft) {
     return GestureDetector(
+      key: ValueKey('recent_draft_${draft.id}'),
       onTap: () async {
         HapticFeedback.selectionClick();
         await _openDraft(draft);
@@ -451,12 +557,15 @@ class _HomeScreenState extends State<HomeScreen> {
 class _GridActionCard extends StatefulWidget {
   final String title;
   final IconData icon;
+  final double height;
   final VoidCallback onTap;
   final int delay;
 
   const _GridActionCard({
+    super.key,
     required this.title,
     required this.icon,
+    required this.height,
     required this.onTap,
     required this.delay,
   });
@@ -470,6 +579,8 @@ class _GridActionCardState extends State<_GridActionCard> {
 
   @override
   Widget build(BuildContext context) {
+    // The corner circle keeps its share of a shorter card.
+    final corner = widget.height / kHomeToolsHeight.full;
     return GestureDetector(
       onTapDown: (_) => setState(() => _isPressed = true),
       onTapUp: (_) {
@@ -482,6 +593,10 @@ class _GridActionCardState extends State<_GridActionCard> {
       // photos, glass read as washed out.
       child: AnimatedContainer(
         duration: 150.ms,
+        // The height includes the border: a border is padding inside a
+        // container, so a height given to its child would grow the card
+        // past what the layout made room for.
+        height: widget.height,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: AppColors.surface,
@@ -490,13 +605,12 @@ class _GridActionCardState extends State<_GridActionCard> {
             color: _isPressed ? AppColors.primaryStart : AppColors.surfaceLight,
           ),
         ),
-        child: SizedBox(
-          height: 120, // Square proportion
+        child: SizedBox.expand(
           child: Stack(
             children: [
               Positioned(
-                right: -30,
-                bottom: -30,
+                right: -30 * corner,
+                bottom: -30 * corner,
                 // Decoration only. It was an `OpenContainer` — a widget that
                 // opens a page when tapped — so a tap on this corner opened
                 // an empty page inside the home tab, leaving only the
@@ -505,8 +619,8 @@ class _GridActionCardState extends State<_GridActionCard> {
                   scale: _isPressed ? 1.2 : 1.0,
                   duration: 150.ms,
                   child: Container(
-                    width: 100,
-                    height: 100,
+                    width: 100 * corner,
+                    height: 100 * corner,
                     decoration: BoxDecoration(
                       color: AppColors.textPrimary.withValues(alpha: 0.07),
                       shape: BoxShape.circle,
@@ -515,52 +629,55 @@ class _GridActionCardState extends State<_GridActionCard> {
                 ),
               ),
 
+              // The icon and its words keep their size until the card is
+              // too short for them, then shrink together rather than
+              // overflow it.
               Padding(
-                padding: const EdgeInsets.all(12),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    mainAxisAlignment: MainAxisAlignment
-                        .center, // Center items to keep them together
-                    children: [
-                      AnimatedContainer(
-                        duration: 150.ms,
-                        transformAlignment: Alignment.center,
-                        transform: _isPressed
-                            ? Matrix4.diagonal3Values(0.9, 0.9, 1.0)
-                            : Matrix4.identity(),
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: AppColors.textPrimary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.textPrimary.withValues(
-                              alpha: 0.14,
+                padding: const EdgeInsets.all(10),
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedContainer(
+                          duration: 150.ms,
+                          transformAlignment: Alignment.center,
+                          transform: _isPressed
+                              ? Matrix4.diagonal3Values(0.9, 0.9, 1.0)
+                              : Matrix4.identity(),
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppColors.textPrimary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.textPrimary.withValues(
+                                alpha: 0.14,
+                              ),
                             ),
                           ),
+                          child: Icon(
+                            widget.icon,
+                            color: _isPressed
+                                ? AppColors.primaryStart
+                                : AppColors.textPrimary,
+                            size: 20,
+                          ),
                         ),
-                        child: Icon(
-                          widget.icon,
-                          color: _isPressed
-                              ? AppColors.primaryStart
-                              : AppColors.textPrimary,
-                          size: 20,
+                        const SizedBox(height: 8), // Added spacing
+                        Text(
+                          widget.title,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontFamily: kInterfaceFontFamily, 
+                            fontSize: 13,
+                            height: 1.2, // Tighter line height for multiline text
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8), // Added spacing
-                      Text(
-                        widget.title,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontFamily: kInterfaceFontFamily, 
-                          fontSize: 13,
-                          height: 1.2, // Tighter line height for multiline text
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -573,10 +690,15 @@ class _GridActionCardState extends State<_GridActionCard> {
 }
 
 class _HeroActionCard extends StatefulWidget {
+  final double height;
   final VoidCallback onTap;
   final int delay;
 
-  const _HeroActionCard({required this.onTap, required this.delay});
+  const _HeroActionCard({
+    required this.height,
+    required this.onTap,
+    required this.delay,
+  });
 
   @override
   State<_HeroActionCard> createState() => _HeroActionCardState();
@@ -610,7 +732,7 @@ class _HeroActionCardState extends State<_HeroActionCard> {
           scale: _isPressed ? 0.98 : 1,
           duration: 120.ms,
           child: Container(
-            height: 156,
+            height: widget.height,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
               gradient: const LinearGradient(
@@ -632,13 +754,25 @@ class _HeroActionCardState extends State<_HeroActionCard> {
                     width: box.maxWidth * 0.5,
                     child: const _PhotoFan(),
                   ),
-                  // The plus and its words, on the left.
+                  // The plus and its words, on the left: laid out for the
+                  // card's full height and scaled to the height it has, so a
+                  // shorter card shows the same plus smaller, never
+                  // squeezed against its edges.
                   Positioned(
                     left: 0,
                     top: 0,
                     bottom: 0,
                     width: box.maxWidth * 0.42,
-                    child: const _NewVideoPlus(),
+                    child: FittedBox(
+                      child: SizedBox(
+                        width: box.maxWidth *
+                            0.42 *
+                            kHomeHeroHeight.full /
+                            box.maxHeight,
+                        height: kHomeHeroHeight.full,
+                        child: const _NewVideoPlus(),
+                      ),
+                    ),
                   ),
                 ]),
               ),

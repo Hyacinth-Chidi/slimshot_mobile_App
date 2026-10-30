@@ -19,7 +19,19 @@ Future<bool> confirmDiscard(
   BuildContext context, {
   required bool isVideo,
   required int count,
-}) async {
+}) =>
+    _confirmDiscard(context, discardQuestion(isVideo: isVideo, count: count));
+
+/// The question asked before leaving captions made from Home that no export
+/// kept: the credits were spent on them.
+const String kDiscardCaptionsQuestion = 'Discard these captions?';
+
+/// [confirmDiscard] for captions nobody exported and kept. True only for
+/// Discard.
+Future<bool> confirmDiscardCaptions(BuildContext context) =>
+    _confirmDiscard(context, kDiscardCaptionsQuestion);
+
+Future<bool> _confirmDiscard(BuildContext context, String question) async {
   final discard = await showDialog<bool>(
     context: context,
     barrierColor: Colors.black54,
@@ -46,7 +58,7 @@ Future<bool> confirmDiscard(
             ),
             const SizedBox(height: 16),
             Text(
-              discardQuestion(isVideo: isVideo, count: count),
+              question,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontFamily: kInterfaceFontFamily,

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'file_utils.dart';
 import 'held_work.dart';
 
-/// Leaving a finished result — a compression, a privacy strip, an export —
+/// Leaving a finished result — a compression, an export —
 /// throws its files away: they are the app's temporary copies, of no use once
 /// off screen, since a saved one is in the gallery and a shared one the share
 /// plugin copied before handing it over. One that was neither saved nor
@@ -35,6 +35,10 @@ class ResultExit {
   void release() => _held.release(this);
 
   /// The result was saved, or sent somewhere: leaving it asks nothing.
+  /// Whether the result was saved or shared — kept somewhere off this
+  /// screen.
+  bool get kept => _kept;
+
   void markKept() {
     _kept = true;
     _held.release(this);

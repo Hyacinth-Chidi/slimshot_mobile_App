@@ -48,4 +48,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(answers, [false, false]);
   });
+
+  // Captions made from Home and never exported: the credits were spent on
+  // them, so they are asked about, never lost to a stray Back.
+  testWidgets('the captions question: Discard is yes, Cancel stays',
+      (tester) async {
+    final answers = <bool>[];
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => Center(
+          child: TextButton(
+            onPressed: () async =>
+                answers.add(await confirmDiscardCaptions(context)),
+            child: const Text('leave'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('leave'));
+    await tester.pumpAndSettle();
+    expect(find.text(kDiscardCaptionsQuestion), findsOneWidget);
+    expect(kDiscardCaptionsQuestion, 'Discard these captions?');
+    await tester.tap(find.byKey(const Key('discard_cancel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('leave'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('discard_confirm')));
+    await tester.pumpAndSettle();
+    expect(answers, [false, true]);
+  });
 }

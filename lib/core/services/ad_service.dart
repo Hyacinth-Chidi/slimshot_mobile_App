@@ -1,35 +1,81 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import '../theme/app_colors.dart';
+import '../theme/app_fonts.dart';
+import 'ad_pacing.dart';
+import 'ads_sdk.dart';
+import 'rewarded_unlock.dart';
+import 'work_ad.dart';
+
+export 'ad_pacing.dart' show AdPlacement;
+export 'rewarded_unlock.dart' show UnlockFailure, unlockFailureMessage;
+
 class AdService {
-  /// **The one switch for every ad in the app. Off for now** — set it to
-  /// `true` to bring ads back; nothing else needs to change.
+  /// **Ads come back one placement at a time, each on its own switch** (the
+  /// owner's call, 2026-10-28; every ad was off from 2026-10-03). Off, a
+  /// placement waits on no ad and keeps nothing locked: its step goes ahead
+  /// at once, its rewarded unlock is granted without one, and its views show
+  /// no unlock badge.
   ///
-  /// Off, nothing waits on an ad and nothing an ad unlocked stays locked: an
-  /// interstitial's save goes ahead at once, a rewarded ad's unlock is
-  /// granted without one, the "Watch ad to unlock" labels hide, and the ads
-  /// SDK is never started (`main.dart`). Without an ad there is no other way
-  /// to reach a Pro preset or 4K export, so withholding them would lock those
-  /// features away entirely.
-  static const bool enabled = false;
+  /// Video compression: an interstitial over a running compression
+  /// ([kVideoCompressionAdRule]; one per four minutes at most, [AdPacing]);
+  /// Best quality unlocked by a rewarded ad, its compressions getting no
+  /// interstitial.
+  static const bool videoCompressionAds = true;
+
+  /// Photo compression (2026-10-29): an interstitial on every compression,
+  /// however fast, a second in ([kPhotoCompressionAdRule]; one per six
+  /// minutes at most); Best quality unlocked by a rewarded ad, its
+  /// compressions getting no interstitial.
+  static const bool photoCompressionAds = true;
+
+  /// The editor's export (2026-10-29): an interstitial **after** it, before
+  /// the finished video — never over it, which would share the hardware
+  /// codecs it runs on — and only now and then (`showExportAd`: never a
+  /// user's first three exports after installing the app, then by chance;
+  /// one per five minutes at most). Its resolution is chosen freely.
+  static const bool exportAds = true;
+
+  static bool isOn(AdPlacement placement) => switch (placement) {
+        AdPlacement.videoCompression => videoCompressionAds,
+        AdPlacement.photoCompression => photoCompressionAds,
+        AdPlacement.export => exportAds,
+      };
 
   /// Rewarded ads that **earn credits**: their own switch, on (spec §3 E).
-  /// `enabled` stays off, so interstitials and the Pro-unlock ads stay off.
-  /// A credit ad starts the SDK itself, after the consent step, on the first
-  /// Watch an ad. The reward is verified on the server (SSV), never granted
-  /// by the app.
+  /// A credit ad starts the SDK itself, after the consent step ([AdsSdk]),
+  /// on the first Watch an ad. The reward is verified on the server (SSV),
+  /// never granted by the app.
   static const bool creditAdsEnabled = true;
 
-  // --- INTERSTITIAL ADS ---
-  static InterstitialAd? _interstitialAd;
-  static bool _isAdReady = false;
-  static bool _isLoading = false;
+  /// How often an interstitial may show, across the app.
+  static final AdPacing pacing = AdPacing();
 
-  // --- REWARDED ADS ---
-  static RewardedAd? _rewardedAd;
-  static bool _isRewardedAdReady = false;
-  static bool _isRewardedAdLoading = false;
+  /// The placements whose ad shows over their job; export's comes after
+  /// it ([afterWork]).
+  static const Map<AdPlacement, WorkAdRule> _workAdRules = {
+    AdPlacement.videoCompression: kVideoCompressionAdRule,
+    AdPlacement.photoCompression: kPhotoCompressionAdRule,
+  };
+
+  /// The placements with something a rewarded ad unlocks: Best quality, 4K.
+  static const Set<AdPlacement> _rewardedUnlocks = {
+    AdPlacement.videoCompression,
+    AdPlacement.photoCompression,
+  };
+
+  /// Whether [placement] unlocks something with a rewarded ad — Best quality
+  /// in the compressions; nothing in the export (the owner's call,
+  /// 2026-10-29: its resolution is chosen freely).
+  static bool unlocksWithRewardedAd(AdPlacement placement) =>
+      _rewardedUnlocks.contains(placement);
+
+  /// AdMob keeps a loaded ad showable for an hour.
+  static const Duration adLifetime = Duration(minutes: 50);
 
   // Live Ad Unit IDs provided by TechFamz
   static String get _interstitialAdUnitId {
@@ -67,247 +113,326 @@ class AdService {
     }
   }
 
-  /// Preloads an interstitial ad in the background. Call this when entering the result screen.
-  static void loadInterstitialAd() {
-    if (!enabled) return;
-    if (_isAdReady || _isLoading) return;
-    _isLoading = true;
+  /// Gets [placement]'s ads ready ahead of its moment: Google's consent
+  /// step and the SDK (once a launch, [AdsSdk]), then an interstitial loaded
+  /// — and, where something is unlocked by one, a rewarded ad. Called when
+  /// its screen opens. Never throws; nothing waits on it.
+  static Future<void> prepare(AdPlacement placement) async {
+    if (!isOn(placement)) return;
+    if (await AdsSdk.start() != null) return;
+    loadInterstitialAd();
+    if (_rewardedUnlocks.contains(placement)) loadRewardedAd();
+  }
 
+  /// [placement]'s interstitial after its job, before what follows it
+  /// ([adAfterWork]): completes once it has closed, or at once when none
+  /// shows. Off, nothing.
+  static Future<void> afterWork(
+    AdPlacement placement, {
+    bool Function()? wanted,
+  }) {
+    if (!isOn(placement)) return Future.value();
+    return adAfterWork(
+      placement: placement,
+      pacing: pacing,
+      presenter: const _PluginInterstitial(),
+      wanted: wanted ?? () => true,
+    );
+  }
+
+  /// [placement]'s interstitial over [work], a job already running
+  /// ([adOverWork]): completes once the job has ended and any ad has
+  /// closed. Off, it is the job alone. [wanted] says whether the job still
+  /// counts when its ad is due: still on screen, not cancelled, not failed.
+  static Future<void> overWork(
+    AdPlacement placement, {
+    required Future<void> work,
+    required double Function() progress,
+    bool Function()? wanted,
+  }) {
+    final rule = _workAdRules[placement];
+    if (!isOn(placement) || rule == null) return work;
+    return adOverWork(
+      placement: placement,
+      rule: rule,
+      work: work,
+      progress: progress,
+      wanted: wanted ?? () => true,
+      pacing: pacing,
+      presenter: const _PluginInterstitial(),
+    );
+  }
+
+  // --- INTERSTITIAL ADS ---
+  static InterstitialAd? _interstitialAd;
+  static DateTime? _interstitialLoadedAt;
+  static bool _isLoading = false;
+
+  /// Loads one interstitial in the background, unless one is loaded or on
+  /// its way — and never before the consent step has started the SDK
+  /// ([AdsSdk.started]). A failed load is not retried on a timer: the next
+  /// screen that shows ads, or the next ad asked for, tries again.
+  static void loadInterstitialAd() {
+    if (!AdsSdk.started || _interstitialAd != null || _isLoading) return;
+    _isLoading = true;
     InterstitialAd.load(
       adUnitId: _interstitialAdUnitId,
       request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
-          debugPrint('Ad loaded successfully');
           _interstitialAd = ad;
-          _isAdReady = true;
+          _interstitialLoadedAt = DateTime.now();
           _isLoading = false;
-
-          _interstitialAd?.fullScreenContentCallback = FullScreenContentCallback(
-            onAdDismissedFullScreenContent: (ad) {
-              ad.dispose();
-              _isAdReady = false;
-              _interstitialAd = null;
-              loadInterstitialAd(); // Preload next ad immediately
-            },
-            onAdFailedToShowFullScreenContent: (ad, error) {
-              debugPrint('Ad failed to show: $error');
-              ad.dispose();
-              _isAdReady = false;
-              _interstitialAd = null;
-              loadInterstitialAd(); // Retry loading
-            },
-          );
         },
         onAdFailedToLoad: (err) {
-          debugPrint('Ad failed to load: ${err.message}');
-          _isAdReady = false;
-          _interstitialAd = null;
+          debugPrint('Interstitial failed to load: ${err.message}');
           _isLoading = false;
-          
-          // Retry after delay
-          Future.delayed(const Duration(seconds: 10), loadInterstitialAd);
         },
       ),
     );
   }
 
-  /// Shows the preloaded ad with a smart timeout loader.
-  /// If the ad is ready, it shows instantly.
-  /// If not, it displays a loading dialog for up to 3 seconds, waiting for the ad.
-  /// Always executes [onAdDismissed] exactly once to guarantee the save flow.
-  static Future<void> showInterstitialAd(
-      BuildContext context, {required VoidCallback onAdDismissed}) async {
-    if (!enabled) {
-      onAdDismissed();
+  /// Whether a loaded interstitial is fresh enough to show. One too old is
+  /// dropped and another asked for; none at all is asked for too, ready for
+  /// next time.
+  static bool _interstitialReady() {
+    final ad = _interstitialAd;
+    final loadedAt = _interstitialLoadedAt;
+    if (ad != null &&
+        loadedAt != null &&
+        DateTime.now().difference(loadedAt) <= adLifetime) {
+      return true;
+    }
+    if (ad != null) {
+      unawaited(ad.dispose());
+      _interstitialAd = null;
+      _interstitialLoadedAt = null;
+    }
+    loadInterstitialAd();
+    return false;
+  }
+
+  /// Shows the loaded interstitial. Completes when it closes, or at once
+  /// when it could not show; the next one is loaded either way.
+  static Future<void> _showInterstitial() {
+    final ad = _interstitialAd;
+    if (ad == null) return Future.value();
+    _interstitialAd = null;
+    _interstitialLoadedAt = null;
+    final closed = Completer<void>();
+    void done(InterstitialAd shown) {
+      unawaited(shown.dispose());
+      if (!closed.isCompleted) closed.complete();
+      loadInterstitialAd();
+    }
+
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: done,
+      onAdFailedToShowFullScreenContent: (shown, error) {
+        debugPrint('Interstitial failed to show: $error');
+        done(shown);
+      },
+    );
+    ad.show();
+    return closed.future;
+  }
+
+  // --- REWARDED ADS ---
+  static RewardedAd? _rewardedAd;
+  static DateTime? _rewardedLoadedAt;
+
+  /// The load on its way: completes with null once it has loaded, otherwise
+  /// why not.
+  static Completer<UnlockFailure?>? _rewardedLoad;
+
+  /// AdMob's `ERROR_CODE_NETWORK_ERROR`: the one failure that is the
+  /// connection's.
+  static const int _networkError = 2;
+
+  /// How long an unlock waits for its ad on the way — the consent step, the
+  /// SDK and the load — before saying none came.
+  static const Duration unlockWait = Duration(seconds: 15);
+
+  /// Loads one rewarded ad (the unlocks) in the background, unless one is
+  /// loaded or on its way — never before the consent step has started the
+  /// SDK. A failed load waits for the next ask.
+  static void loadRewardedAd() {
+    if (!AdsSdk.started || _rewardedAd != null || _rewardedLoad != null) {
       return;
     }
+    final load = _rewardedLoad = Completer<UnlockFailure?>();
+    RewardedAd.load(
+      adUnitId: rewardedAdUnitId,
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) {
+          _rewardedAd = ad;
+          _rewardedLoadedAt = DateTime.now();
+          _rewardedLoad = null;
+          load.complete(null);
+        },
+        onAdFailedToLoad: (err) {
+          debugPrint('Rewarded ad failed to load: ${err.code} ${err.message}');
+          _rewardedLoad = null;
+          load.complete(err.code == _networkError
+              ? UnlockFailure.offline
+              : UnlockFailure.noAd);
+        },
+      ),
+    );
+  }
 
-    // Helper to setup callbacks and show ad
-    void showAdNow() {
-      _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
-        onAdDismissedFullScreenContent: (ad) {
-          ad.dispose();
-          _isAdReady = false;
-          _interstitialAd = null;
-          onAdDismissed(); // Trigger the save action when ad closes
-          loadInterstitialAd(); // Preload next ad in background
-        },
-        onAdFailedToShowFullScreenContent: (ad, error) {
-          debugPrint('Ad failed to show: $error');
-          ad.dispose();
-          _isAdReady = false;
-          _interstitialAd = null;
-          onAdDismissed(); // Fallback if ad fails to show
-          loadInterstitialAd(); // Preload next ad in background
-        },
-      );
-      _interstitialAd!.show();
+  /// Whether a loaded rewarded ad is fresh enough to show; one too old is
+  /// dropped.
+  static bool _rewardedReady() {
+    final ad = _rewardedAd;
+    final loadedAt = _rewardedLoadedAt;
+    if (ad != null &&
+        loadedAt != null &&
+        DateTime.now().difference(loadedAt) <= adLifetime) {
+      return true;
     }
+    if (ad != null) {
+      unawaited(ad.dispose());
+      _rewardedAd = null;
+      _rewardedLoadedAt = null;
+    }
+    return false;
+  }
 
-    if (_isAdReady && _interstitialAd != null) {
-      // Ad is already loaded! Show it instantly.
-      showAdNow();
+  /// Shows a rewarded ad for an unlock: [onRewardEarned] if the user watches
+  /// it to the reward, otherwise [onFailed] with why — closed early, no
+  /// network, or no ad to be had. Off for [placement], the unlock is granted
+  /// without one.
+  ///
+  /// **An ad still on its way is waited for** ([unlockWait]), with "Loading
+  /// ad…" on screen; a tap outside or Back stops waiting, quietly. Before,
+  /// a tap a moment after the screen opened — the ad still loading — gave up
+  /// at once and blamed the connection (device-reported).
+  ///
+  /// The user chose to watch it — rewarded ads must be opted into — and no
+  /// interstitial follows it within [AdPacing.minApart].
+  static Future<void> showRewardedAd(
+    BuildContext context, {
+    required AdPlacement placement,
+    required VoidCallback onRewardEarned,
+    required void Function(UnlockFailure failure) onFailed,
+  }) async {
+    if (!isOn(placement)) {
+      onRewardEarned();
       return;
     }
+    if (!_rewardedReady()) {
+      final (stopped, failure) = await _waitForRewarded(context);
+      if (stopped) return;
+      if (failure != null) {
+        onFailed(failure);
+        return;
+      }
+    }
+    final ad = _rewardedAd;
+    if (ad == null) {
+      onFailed(UnlockFailure.noAd);
+      return;
+    }
+    _rewardedAd = null;
+    _rewardedLoadedAt = null;
 
-    // Ad is not ready. Show a smart loading dialog.
-    debugPrint('Ad not ready yet. Showing smart loader...');
-    
-    showDialog(
+    var earned = false;
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (shown) {
+        unawaited(shown.dispose());
+        pacing.otherAdShown();
+        loadRewardedAd();
+        if (!earned) onFailed(UnlockFailure.closedEarly);
+      },
+      onAdFailedToShowFullScreenContent: (shown, error) {
+        debugPrint('Rewarded ad failed to show: $error');
+        unawaited(shown.dispose());
+        loadRewardedAd();
+        onFailed(UnlockFailure.noAd);
+      },
+    );
+    ad.show(onUserEarnedReward: (_, _) {
+      earned = true;
+      onRewardEarned();
+    });
+  }
+
+  /// Waits for a rewarded ad with "Loading ad…" on screen. Answers whether
+  /// the user stopped waiting (a tap outside, Back) and, if not, why no ad
+  /// came — null when one is ready.
+  static Future<(bool, UnlockFailure?)> _waitForRewarded(
+      BuildContext context) async {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    var open = true;
+    final dialog = showDialog<void>(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F172A).withValues(alpha: 0.9), // Slate 900
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFF334155)), // Slate 700
-            ),
-            child: const Column(
+      useRootNavigator: true,
+      builder: (_) => const _LoadingAd(),
+    ).whenComplete(() => open = false);
+    final failure = await awaitRewardedAd(
+      start: AdsSdk.start,
+      ready: _rewardedReady,
+      load: () {
+        loadRewardedAd();
+        return _rewardedLoad?.future ??
+            Future.value(_rewardedReady() ? null : UnlockFailure.noAd);
+      },
+      within: unlockWait,
+    );
+    if (!open) return (true, null);
+    navigator.pop();
+    await dialog;
+    return (false, failure);
+  }
+}
+
+/// "Loading ad…": an unlock waiting for its rewarded ad.
+class _LoadingAd extends StatelessWidget {
+  const _LoadingAd();
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Material(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(color: Color(0xFF8B5CF6)), // Violet 500
-                SizedBox(height: 16),
+                SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.primaryStart,
+                  ),
+                ),
+                SizedBox(width: 12),
                 Text(
-                  'Preparing...',
+                  'Loading ad…',
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    decoration: TextDecoration.none,
+                    fontFamily: kInterfaceFontFamily,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ],
             ),
           ),
         ),
-      ),
-    );
+      );
+}
 
-    // Poll for up to 3 seconds (30 checks * 100ms)
-    bool adLoadedDuringWait = false;
-    for (int i = 0; i < 30; i++) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      if (_isAdReady && _interstitialAd != null) {
-        adLoadedDuringWait = true;
-        break;
-      }
-    }
+/// The ads plugin's interstitial, behind [InterstitialPresenter].
+class _PluginInterstitial implements InterstitialPresenter {
+  const _PluginInterstitial();
 
-    // Dismiss the loading dialog
-    if (context.mounted) {
-      Navigator.of(context, rootNavigator: true).pop();
-    }
+  @override
+  bool get ready => AdService._interstitialReady();
 
-    if (adLoadedDuringWait) {
-      debugPrint('Ad loaded during wait! Showing ad now.');
-      showAdNow();
-    } else {
-      debugPrint('Ad timed out after 3 seconds. Proceeding to save.');
-      onAdDismissed(); // Proceed immediately
-    }
-  }
-
-  // ==========================================
-  // REWARDED ADS IMPLEMENTATION
-  // ==========================================
-
-  /// Preloads a rewarded ad in the background.
-  static void loadRewardedAd() {
-    if (!enabled) return;
-    if (_isRewardedAdReady || _isRewardedAdLoading) return;
-    _isRewardedAdLoading = true;
-
-    RewardedAd.load(
-      adUnitId: rewardedAdUnitId,
-      request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: (ad) {
-          debugPrint('Rewarded Ad loaded successfully');
-          _rewardedAd = ad;
-          _isRewardedAdReady = true;
-          _isRewardedAdLoading = false;
-
-          _rewardedAd?.fullScreenContentCallback = FullScreenContentCallback(
-            onAdDismissedFullScreenContent: (ad) {
-              ad.dispose();
-              _isRewardedAdReady = false;
-              _rewardedAd = null;
-              loadRewardedAd(); // Preload next ad immediately
-            },
-            onAdFailedToShowFullScreenContent: (ad, error) {
-              debugPrint('Rewarded Ad failed to show: $error');
-              ad.dispose();
-              _isRewardedAdReady = false;
-              _rewardedAd = null;
-              loadRewardedAd(); // Retry loading
-            },
-          );
-        },
-        onAdFailedToLoad: (err) {
-          debugPrint('Rewarded Ad failed to load: ${err.message}');
-          _isRewardedAdReady = false;
-          _rewardedAd = null;
-          _isRewardedAdLoading = false;
-          
-          // Retry after delay
-          Future.delayed(const Duration(seconds: 10), loadRewardedAd);
-        },
-      ),
-    );
-  }
-
-  /// Shows the preloaded rewarded ad.
-  /// If ad is not ready or fails, invokes [onFailed].
-  /// If the user fully watches the ad, invokes [onRewardEarned].
-  static Future<void> showRewardedAd(
-      BuildContext context, {
-      required VoidCallback onRewardEarned,
-      required VoidCallback onFailed,
-  }) async {
-    if (!enabled) {
-      onRewardEarned();
-      return;
-    }
-
-    if (!_isRewardedAdReady || _rewardedAd == null) {
-      debugPrint('Rewarded Ad is not ready.');
-      onFailed();
-      return;
-    }
-
-    bool rewardEarned = false;
-
-    // We must reset the callback before showing it to handle the specific reward action for this call
-    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
-      onAdDismissedFullScreenContent: (ad) {
-        ad.dispose();
-        _isRewardedAdReady = false;
-        _rewardedAd = null;
-        loadRewardedAd(); // Preload next ad in background
-        if (!rewardEarned) {
-           debugPrint('Rewarded Ad dismissed without earning reward.');
-           onFailed();
-        }
-      },
-      onAdFailedToShowFullScreenContent: (ad, error) {
-        debugPrint('Rewarded Ad failed to show: $error');
-        ad.dispose();
-        _isRewardedAdReady = false;
-        _rewardedAd = null;
-        loadRewardedAd(); // Preload next ad in background
-        onFailed();
-      },
-    );
-
-    _rewardedAd!.show(onUserEarnedReward: (AdWithoutView ad, RewardItem reward) {
-      debugPrint('User earned reward: ${reward.amount} ${reward.type}');
-      rewardEarned = true;
-      onRewardEarned();
-    });
-  }
+  @override
+  Future<void> show() => AdService._showInterstitial();
 }

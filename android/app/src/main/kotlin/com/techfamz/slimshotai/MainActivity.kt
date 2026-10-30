@@ -8,7 +8,6 @@ import com.techfamz.slimshotai.audio.VoiceRecorderChannel
 import com.techfamz.slimshotai.homewidget.HomeWidgetChannel
 import com.techfamz.slimshotai.homewidget.LaunchIntents
 import com.techfamz.slimshotai.nativepreview.NativeTimelinePreviewManager
-import com.techfamz.slimshotai.privacy.PhotoMetadataReader
 import com.techfamz.slimshotai.thumbnails.VideoThumbnailProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -19,7 +18,6 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
 
     private var thumbnailProvider: VideoThumbnailProvider? = null
-    private var photoMetadataReader: PhotoMetadataReader? = null
     private var audioTools: AudioToolsChannel? = null
     private var voiceRecorder: VoiceRecorderChannel? = null
     private var homeWidget: HomeWidgetChannel? = null
@@ -68,13 +66,6 @@ class MainActivity : FlutterActivity() {
             VideoThumbnailProvider.channelName,
         ).setMethodCallHandler(thumbnails)
 
-        val metadata = PhotoMetadataReader()
-        photoMetadataReader = metadata
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            PhotoMetadataReader.channelName,
-        ).setMethodCallHandler(metadata)
-
         val tools = AudioToolsChannel()
         audioTools = tools
         MethodChannel(
@@ -115,8 +106,6 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         thumbnailProvider?.dispose()
         thumbnailProvider = null
-        photoMetadataReader?.release()
-        photoMetadataReader = null
         audioTools?.release()
         audioTools = null
         voiceRecorder?.release()

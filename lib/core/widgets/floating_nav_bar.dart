@@ -64,6 +64,19 @@ class FloatingNavBar extends StatefulWidget {
   State<FloatingNavBar> createState() => _FloatingNavBarState();
 }
 
+/// The gap the shell leaves under the bar, above the system's own inset.
+/// It was 32 until Home's six recent drafts needed the room (the owner's
+/// call, 2026-10-28).
+const double kFloatingNavBottomMargin = 12;
+
+/// The bar's height: its tabs and the glass around them.
+const double kFloatingNavBarHeight = 68;
+
+/// How far the bar reaches up from the bottom of the screen, above the
+/// system's inset. Content that must clear the bar pads by this much.
+const double kFloatingNavClearance =
+    kFloatingNavBottomMargin + kFloatingNavBarHeight;
+
 const double _kTabHeight = 50;
 const double _kIconSize = 26;
 const double _kIconLabelGap = 8;

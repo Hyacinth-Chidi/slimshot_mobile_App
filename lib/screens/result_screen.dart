@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 
-import '../core/services/ad_service.dart';
 import '../core/services/media_save_service.dart';
 import '../core/utils/file_utils.dart';
 import '../core/theme/app_colors.dart';
@@ -49,7 +48,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     // Nobody has kept the result yet: a tap on the home screen widget only
     // brings the app forward until somebody does.
     _exit.hold();
-    AdService.loadInterstitialAd();
     HapticFeedback.mediumImpact();
     final state = ref.read(compressionProvider);
     if (state.outputPaths.isNotEmpty &&
@@ -182,22 +180,19 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     if (isVideo) _openVideo(outputs[index]);
   }
 
-  void _save(List<String> outputPaths) {
-    AdService.showInterstitialAd(
-      context,
-      onAdDismissed: () async {
-        try {
-          await MediaSaveService.saveOptimizedMediaToGallery(outputPaths);
-          _exit.markKept();
-          HapticFeedback.mediumImpact();
-          if (mounted) ToastUtils.show(context, 'Saved to gallery');
-        } catch (e) {
-          if (mounted) {
-            ToastUtils.show(context, 'Could not save: $e', isError: true);
-          }
-        }
-      },
-    );
+  /// Saves at once: an ad in front of Save made the user wait for their own
+  /// file (the ad is over the compression instead).
+  Future<void> _save(List<String> outputPaths) async {
+    try {
+      await MediaSaveService.saveOptimizedMediaToGallery(outputPaths);
+      _exit.markKept();
+      HapticFeedback.mediumImpact();
+      if (mounted) ToastUtils.show(context, 'Saved to gallery');
+    } catch (e) {
+      if (mounted) {
+        ToastUtils.show(context, 'Could not save: $e', isError: true);
+      }
+    }
   }
 
   Future<void> _share(List<String> outputPaths) async {

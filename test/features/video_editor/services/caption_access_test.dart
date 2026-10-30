@@ -28,23 +28,38 @@ void main() {
     final source = File('lib/screens/video_editor_screen.dart')
         .readAsStringSync()
         .replaceAll('\r\n', '\n');
-    final start = source.indexOf('Future<void> _startAutoCaptions()');
-    expect(start, isNot(-1));
-    final body = source.substring(start, source.indexOf('\n  }\n', start));
+    String bodyOf(String signature) {
+      final start = source.indexOf(signature);
+      expect(start, isNot(-1), reason: signature);
+      return source.substring(start, source.indexOf('\n  }\n', start));
+    }
 
+    final body = bodyOf('Future<void> _startAutoCaptions()');
     final gate = body.indexOf('CaptionAccess.ensureAllowed(context, ref)');
     final options = body.indexOf('AutoCaptionSheet(');
     expect(gate, isNot(-1), reason: 'the gate is called');
     expect(options, isNot(-1));
     expect(gate, lessThan(options), reason: 'signing in comes first');
-    expect(body, contains('session: ref.read(accountSessionProvider)'),
-        reason: 'the upload shares the app session');
     expect(body, contains('ref.read(accountProvider.notifier).refresh()'),
         reason: 'the balance follows the charge or refund');
-    expect(body, contains('quotePrice:'),
+
+    // The run itself is built in one place, for the editor and for
+    // captions made from Home alike.
+    final pipeline = bodyOf('_newCaptionPipeline() {');
+    expect(pipeline, contains('session: ref.read(accountSessionProvider)'),
+        reason: 'the upload shares the app session');
+    expect(pipeline, contains('quotePrice:'),
         reason: 'the run is priced by the server before it uploads');
-    expect(body, contains('AccountService.autoCaptionsFeature'));
-    expect(body, contains('.applyBalance('),
+    expect(pipeline, contains('AccountService.autoCaptionsFeature'));
+    expect(pipeline, contains('.applyBalance('),
         reason: "the charge's balance reaches the pill at once");
+
+    // From Home, Generate is the same door: signing in before the run.
+    final generate = bodyOf('Future<void> _generateCaptions()');
+    final homeGate =
+        generate.indexOf('CaptionAccess.ensureAllowed(context, ref)');
+    expect(homeGate, isNot(-1));
+    expect(homeGate, lessThan(generate.indexOf('_newCaptionPipeline()')),
+        reason: 'signing in comes first');
   });
 }

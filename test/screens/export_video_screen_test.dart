@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:slimshotai/core/utils/held_work.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
+import 'package:slimshotai/features/video_editor/services/export_ads.dart';
 import 'package:slimshotai/features/video_editor/services/native_timeline_preview_service.dart';
 import 'package:slimshotai/screens/export_video_screen.dart';
 
@@ -16,6 +17,8 @@ void main() {
   const exported = '/cache/slimshot_export_1.mp4';
   late List<String> deleted;
   late _FakeExport engine;
+  // What the export route completed with: whether its file was kept.
+  late List<Object?> results;
 
   Future<void> record(Iterable<String> paths) async => deleted.addAll(paths);
 
@@ -24,16 +27,23 @@ void main() {
   setUp(() {
     deleted = [];
     engine = _FakeExport();
+    results = [];
   });
 
   /// The editor beneath, and the export screen pushed over it. While
   /// [exporting], its spinner never settles, so frames are pumped instead.
-  Future<void> openExport(WidgetTester tester, {bool exporting = false}) async {
+  Future<void> openExport(
+    WidgetTester tester, {
+    bool exporting = false,
+    ExportAd? exportAd,
+  }) async {
     await tester.pumpWidget(MaterialApp(
       home: Builder(
         builder: (context) => Scaffold(
           body: TextButton(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            onPressed: () async =>
+                results.add(await Navigator.of(context).push<bool>(
+                    MaterialPageRoute(
               builder: (_) => ExportVideoScreen(
                 exportState: const VideoEditorState(),
                 previewCanvasSize: const Size(720, 1280),
@@ -41,8 +51,9 @@ void main() {
                 targetFps: 30,
                 preview: engine,
                 deleteFiles: record,
+                exportAd: exportAd ?? (_) async {},
               ),
-            )),
+            ))),
             child: const Text('editor'),
           ),
         ),
@@ -106,6 +117,42 @@ void main() {
     });
   });
 
+  // Captions made from Home ask before they are left unless an export of
+  // them was kept, so the export says whether its file was.
+  group('what the export says it kept', () {
+    testWidgets('a shared export closes saying it was kept', (tester) async {
+      const share = MethodChannel('dev.fluttercommunity.plus/share');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(share, (_) async => 'com.whatsapp');
+      addTearDown(() => messenger.setMockMethodCallHandler(share, null));
+      await openExport(tester);
+      await tester.tap(find.text('Share'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('export_close')));
+      await tester.pumpAndSettle();
+      expect(results, [true]);
+    });
+
+    testWidgets('a discarded export closes saying nothing was kept',
+        (tester) async {
+      await openExport(tester);
+      await tester.tap(find.byKey(const Key('export_close')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('discard_confirm')));
+      await tester.pumpAndSettle();
+      expect(results, [false]);
+    });
+
+    testWidgets('a cancelled export says nothing was kept', (tester) async {
+      engine.finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(results, [false]);
+    });
+  });
+
   // A tap on the home screen widget only brings the app forward while an
   // export runs or a finished one nobody kept is on screen.
   group('holding the app where it is', () {
@@ -150,6 +197,49 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ExportVideoScreen), findsNothing);
       expect(HeldWork.instance.isHeld, isFalse);
+    });
+  });
+
+  // The owner's call: an export's interstitial comes after it, before the
+  // finished video — never during it, which would share the hardware video
+  // codecs the export runs on, and never on Save.
+  group("the export's ad", () {
+    const result = NativeExportResult(
+      outputPath: exported,
+      durationSeconds: 3,
+      frameCount: 90,
+      degradedTransitions: 0,
+    );
+
+    testWidgets('the finished video appears only once the ad has closed',
+        (tester) async {
+      final ad = Completer<void>();
+      bool Function()? wanted;
+      engine.finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true, exportAd: (w) {
+        wanted = w;
+        return ad.future;
+      });
+      engine.finish!.complete(result);
+      await tester.pump();
+      await tester.pump();
+      expect(wanted!(), isTrue, reason: 'the screen is still there');
+      expect(find.text('Share'), findsNothing, reason: 'the ad comes first');
+
+      ad.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Share'), findsOneWidget);
+    });
+
+    testWidgets('a failed export asks for no ad', (tester) async {
+      var asked = 0;
+      engine.finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true, exportAd: (_) async {
+        asked++;
+      });
+      engine.finish!.completeError(StateError('no encoder'));
+      await tester.pumpAndSettle();
+      expect(asked, 0);
     });
   });
 
