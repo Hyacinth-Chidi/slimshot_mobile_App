@@ -4506,6 +4506,18 @@ shell's floating nav is painted above them, so a sheet opened on a tab's navigat
 since Lucide has no brand marks — and its label scales down rather than overflow on a narrow
 phone with large text (`sign_in_sheet_test.dart` pins both).
 
+**The legal pages** (2026-10-30, **awaiting device verification**). The privacy policy and the
+Terms of Service live on the website (`slimshotAI_web/slimshot/app/privacy`, `/terms`), their
+addresses in one place (`core/legal/legal_links.dart`), opened through `legalLinkOpenerProvider`
+so a test can see what a tap opens. Settings' Legal group is `SettingsLegalSection` (Privacy,
+Terms, Open-source licences), and the sign-in sheet's email step ends **"By continuing, you agree
+to the Terms of Service and Privacy Policy."** — the first sign-in makes the account. The policy
+had promised that nothing left the phone and no personal data was collected; it now says what
+Auto captions uploads (the sound, deleted after the job), what an account holds, AdMob, the
+hashes kept after deletion and the deletion page. **Anything new that sends data off the phone,
+stores something about a user, or adds an ad or a provider must be added to the policy** — and
+to Play Console's Data safety form, which has to match it.
+
 ### Accounts and credits — stage 2: the silent price check
 
 **Awaiting device verification.** Plan: `docs/superpowers/plans/2026-10-06-credits-stage2-price-step.md`.

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/core/legal/legal_links.dart';
 import 'package:slimshotai/features/account/providers/account_providers.dart';
 import 'package:slimshotai/features/account/widgets/sign_in_sheet.dart';
 import 'package:slimshotai/features/video_editor/widgets/panels/editor_sheet.dart';
@@ -13,8 +14,10 @@ import '../../../support/fake_server.dart';
 void main() {
   late FakeServer server;
   late FakeGoogleIdTokens google;
+  late List<Uri> opened;
 
   setUp(() {
+    opened = [];
     server = FakeServer()
       ..on(
         'POST',
@@ -38,7 +41,13 @@ void main() {
   Future<List<Object?>> open(WidgetTester tester) async {
     final results = await pumpHost(
       tester,
-      accountOverrides(server, google: google),
+      [
+        ...accountOverrides(server, google: google),
+        legalLinkOpenerProvider.overrideWithValue((url) async {
+          opened.add(url);
+          return true;
+        }),
+      ],
       (context, ref) => showEditorSheet<bool>(
         context,
         builder: (_) => const SignInSheet(reason: 'Sign in to use Auto captions'),
@@ -61,6 +70,24 @@ void main() {
     expect(find.text('Sign in to use Auto captions'), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
     expect(find.byKey(const Key('sign_in_email')), findsOneWidget);
+  });
+
+  // Signing in makes the account, so the sheet says what that agrees to, and
+  // each name opens its page.
+  testWidgets('says continuing agrees to the terms and the privacy policy',
+      (tester) async {
+    await open(tester);
+    expect(find.byKey(const Key('sign_in_agreement')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sign_in_terms')));
+    await tester.tap(find.byKey(const Key('sign_in_privacy')));
+    await tester.pump();
+    expect(opened, [Uri.parse(kTermsOfServiceUrl), Uri.parse(kPrivacyPolicyUrl)]);
+  });
+
+  testWidgets('the agreement holds with no Google button too', (tester) async {
+    google = FakeGoogleIdTokens(isAvailable: false);
+    await open(tester);
+    expect(find.byKey(const Key('sign_in_agreement')), findsOneWidget);
   });
 
   testWidgets("the Google button carries Google's own G", (tester) async {

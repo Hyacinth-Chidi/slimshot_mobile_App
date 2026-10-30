@@ -8,10 +8,9 @@ import '../core/widgets/colour_field_backdrop.dart';
 import '../core/utils/file_utils.dart';
 import '../core/utils/toast_utils.dart';
 import '../core/widgets/responsive_layout.dart';
-import '../core/legal/third_party_licences.dart';
+import '../core/legal/settings_legal_section.dart';
 import '../core/widgets/settings_rows.dart';
 import '../features/account/widgets/settings_account_section.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -139,38 +138,10 @@ class SettingsScreen extends StatelessWidget {
                           title: 'LEGAL',
                         ).animate().fadeIn(delay: 350.ms),
                         const SizedBox(height: 8),
-                        SettingsGroup(
-                          children: [
-                            SettingsItem(
-                              icon: LucideIcons.shield,
-                              title: 'Privacy Policy',
-                              subtitle: 'Review our data practices',
-                              onTap: () async {
-                                final url = Uri.parse(
-                                  'https://slimshotai.vercel.app/privacy',
-                                );
-                                if (!await launchUrl(
-                                  url,
-                                  mode: LaunchMode.externalApplication,
-                                )) {
-                                  if (context.mounted) {
-                                    ToastUtils.show(
-                                      context,
-                                      'Could not open privacy policy',
-                                      isError: true,
-                                    );
-                                  }
-                                }
-                              },
-                            ),
-                            SettingsItem(
-                              icon: LucideIcons.fileText,
-                              title: 'Open-source licences',
-                              subtitle: 'Notices for code SlimShot uses',
-                              onTap: () => openSourceLicences(context),
-                            ),
-                          ],
-                        ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.1),
+                        const SettingsLegalSection()
+                            .animate()
+                            .fadeIn(delay: 400.ms)
+                            .slideY(begin: 0.1),
 
                         const SizedBox(height: 48),
                         Column(
