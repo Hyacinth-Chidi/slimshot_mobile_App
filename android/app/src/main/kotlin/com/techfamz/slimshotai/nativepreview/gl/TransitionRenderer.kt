@@ -503,10 +503,22 @@ internal class TransitionRenderer(
 
         override fun onFrameNotReady() = requestRender()
 
-        override fun onTextAtlasReady(id: String, path: String) = onTextAtlas(true, id, path)
+        // Held until the draw that loaded it is swapped — see [renderFrame].
+        override fun onTextAtlasReady(id: String, path: String) {
+            textsLoadedThisDraw.add(id to path)
+        }
 
         override fun onTextAtlasGone(id: String, path: String) = onTextAtlas(false, id, path)
     }
+
+    /**
+     * GL thread only: texts whose atlas this draw loaded. The editor is told
+     * after the swap, so the frame that first draws a text is already on its
+     * way to the screen when the editor's two-frame wait begins — told from
+     * inside the draw, a slow frame (a heavy transition) could outlast the
+     * wait and leave a frame in which nobody drew the text.
+     */
+    private val textsLoadedThisDraw = mutableListOf<Pair<String, String>>()
 
     /** Once per list, not once per draw: the builder asks again every frame. */
     private fun warnPreviewOverlayOnce(message: String) {
@@ -1360,6 +1372,12 @@ internal class TransitionRenderer(
         composite(surfaceWidth, surfaceHeight)
 
         egl.swapBuffers(surface)
+
+        // After the swap: a text loaded this draw is now drawn by the engine.
+        if (textsLoadedThisDraw.isNotEmpty()) {
+            for ((id, path) in textsLoadedThisDraw) onTextAtlas(true, id, path)
+            textsLoadedThisDraw.clear()
+        }
 
         // How long a layered frame takes on this phone, swap included — a GPU
         // that cannot keep up shows here as a swap that waits. Preview only:
