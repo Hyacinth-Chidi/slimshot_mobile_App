@@ -10,6 +10,7 @@ import 'package:slimshotai/features/video_editor/models/media_asset.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_segment.dart';
 import 'package:slimshotai/features/video_editor/services/native_timeline_preview_service.dart';
+import 'package:slimshotai/features/video_editor/services/overlay_sync.dart';
 
 /// How overlay edits reach the native preview.
 ///
@@ -117,6 +118,73 @@ void main() {
         previewCanvasSize: canvas,
       );
       expect(one, isNot(none));
+    });
+  });
+
+  group('OverlaySync', () {
+    EditorTimelineOverlay entry(String path) => EditorTimelineOverlay(
+          id: 'text_t',
+          kind: 'text',
+          path: path,
+          centerX: const AnimatableDouble(baseValue: 0.5),
+          centerY: const AnimatableDouble(baseValue: 0.8),
+          boxWidth: 0.4,
+          boxHeight: 0.1,
+          scale: const AnimatableDouble(baseValue: 1),
+          rotation: const AnimatableDouble(baseValue: 0),
+          opacity: const AnimatableDouble(baseValue: 1),
+          startSeconds: 1,
+          endSeconds: 2,
+          laneIndex: 1000,
+          slideOffsetX: 0.4,
+          slideOffsetY: 0.1,
+        );
+
+    List<Map<String, dynamic>> compose(
+      VideoEditorState state,
+      Size canvasSize,
+      List<EditorTimelineOverlay> texts,
+    ) =>
+        NativeTimelinePreviewService().overlayPayload(
+          state,
+          previewCanvasSize: canvasSize,
+          textEntries: texts,
+        );
+
+    test('text entries are pushed when they change, and only then', () {
+      final sync = OverlaySync();
+      final state = stateWith([photo()]);
+      final first = [entry('/a.png')];
+
+      expect(sync.payloadFor(state, canvas, first, compose), isNotNull);
+      // A position event: the same lists, the playhead moved.
+      expect(
+        sync.payloadFor(stateWith(state.imageOverlays, playhead: 2.5), canvas, first, compose),
+        isNull,
+      );
+      expect(sync.payloadFor(state, canvas, first, compose), isNull);
+
+      final second = [entry('/b.png')];
+      final pushed = sync.payloadFor(state, canvas, second, compose);
+      expect(pushed, isNotNull);
+      expect(pushed!.last['path'], '/b.png');
+      expect(sync.payloadFor(state, canvas, second, compose), isNull);
+    });
+
+    test('a list rebuilt with the same entries is not pushed again', () {
+      final sync = OverlaySync();
+      final state = stateWith([photo()]);
+      expect(sync.payloadFor(state, canvas, [entry('/a.png')], compose), isNotNull);
+      expect(sync.payloadFor(state, canvas, [entry('/a.png')], compose), isNull);
+    });
+
+    test('after a reset the same payload goes out again', () {
+      final sync = OverlaySync();
+      final state = stateWith([photo()]);
+      final texts = [entry('/a.png')];
+      expect(sync.payloadFor(state, canvas, texts, compose), isNotNull);
+      sync.reset();
+      expect(sync.payloadFor(state, canvas, texts, compose), isNotNull);
     });
   });
 

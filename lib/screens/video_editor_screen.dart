@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -44,6 +43,9 @@ import '../features/video_editor/providers/video_editor_notifier.dart';
 import '../features/video_editor/services/media_import_service.dart';
 import '../features/video_editor/services/effect_bars_sync.dart';
 import '../features/video_editor/services/native_timeline_preview_service.dart';
+import '../features/video_editor/services/overlay_sync.dart';
+import '../features/video_editor/services/preview_text_atlases.dart';
+import '../features/video_editor/services/text_overlay_rasterizer.dart';
 import '../core/models/draft_project.dart';
 import '../features/video_editor/logic/animation/clip_keyframes.dart';
 import '../features/video_editor/logic/animation/overlay_keyframes.dart';
@@ -648,6 +650,18 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       _handleNativePreviewEvent,
     );
 
+    // Each text's atlas is the export's own drawing, made at the preview
+    // texture's density.
+    _previewTexts = PreviewTextAtlases(
+      rasterize: (text, canvas, scale) => TextOverlayRasterizer.rasterizeAtlas(
+        overlay: text,
+        canvasSize: canvas,
+        rasterScale: scale,
+      ),
+      fontReady: FontRegistry.instance.isAvailable,
+    )..addListener(_onPreviewTextsChanged);
+    FontRegistry.instance.changes.addListener(_onFontRegistered);
+
     // The Transitions and Effects tiles kept from an earlier launch are found
     // now, long before either sheet can open — a tile asked for before the
     // store knows what it holds is drawn again and shows its icon.
@@ -770,6 +784,10 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     _ticker.dispose();
     _drawnPlayhead.dispose();
     _audioPlayerManager.dispose();
+    FontRegistry.instance.changes.removeListener(_onFontRegistered);
+    _previewTexts
+      ..removeListener(_onPreviewTextsChanged)
+      ..dispose();
     unawaited(_nativePreviewSubscription?.cancel() ?? Future<void>.value());
     unawaited(_nativePreviewService.dispose());
     super.dispose();
@@ -874,6 +892,17 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       // nothing explains why. The export screen has always surfaced its own
       // `exportWarning`; the preview dropped these on the floor until now.
       ToastUtils.show(context, event.message ?? 'Preview compromise');
+    } else if (event.type == 'textReady' || event.type == 'textGone') {
+      // Which texts the engine now draws, or no longer can. Flutter stops
+      // drawing a text only after the engine says it has it.
+      final id = event.overlayId;
+      final path = event.path;
+      if (id == null || path == null) return;
+      if (event.type == 'textReady') {
+        _previewTexts.engineReady(id, path);
+      } else {
+        _previewTexts.engineGone(id, path);
+      }
     } else if (event.type == 'position' && event.positionSeconds != null) {
       final state = ref.read(videoEditorProvider);
       if (!_canUseNativeTimelinePreview(state) || !state.isPlaying) return;
@@ -930,12 +959,46 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   }
 
   /// What the engine was last told the overlays are. See [_syncNativeOverlays].
-  String? _nativeOverlaySignature;
-  List<ImageOverlayModel>? _syncedImageOverlays;
-  List<VideoOverlayModel>? _syncedVideoOverlays;
-  Size? _syncedOverlayCanvasSize;
+  final OverlaySync _overlaySync = OverlaySync();
 
-  /// Pushes the overlay list when it changes — and **only** then.
+  /// The preview's text atlases, and who draws each text: the engine, in the
+  /// frame of the picture at its time, or Flutter, for the text being edited
+  /// and any the engine has not confirmed. Made in [initState].
+  late final PreviewTextAtlases _previewTexts;
+
+  /// Hands the editor's text to [_previewTexts]: on every state change, a
+  /// font landing and a canvas resize. Cheap when only the playhead moved.
+  void _updatePreviewTexts(VideoEditorState state) {
+    _previewTexts.update(
+      texts: state.textOverlays,
+      playhead: state.currentPlaybackPosition,
+      selectedTextId: state.selectedTextId,
+      isPlaying: state.isPlaying,
+      canvasSize: ref.read(videoCanvasSizeProvider),
+      textureSize: state.projectCanvasSize,
+      engineAvailable:
+          _canUseNativeTimelinePreview(state) && state.sourceVideo != null,
+    );
+  }
+
+  /// A font that lands draws differently from the face it stood in for, so
+  /// the texts are handed over again and those that use it drawn anew.
+  void _onFontRegistered() {
+    if (mounted) _updatePreviewTexts(ref.read(videoEditorProvider));
+  }
+
+  /// The texts the engine should draw changed — an atlas landed, a text
+  /// stopped being edited — with no state change to carry them.
+  void _onPreviewTextsChanged() {
+    if (!mounted) return;
+    final state = ref.read(videoEditorProvider);
+    unawaited(_syncNativeOverlays(state));
+    // Bars go wherever overlays go; unchanged, this sends nothing.
+    unawaited(_syncNativeEffects(state));
+  }
+
+  /// Pushes the overlay list — photos, videos and the texts the engine
+  /// draws — when it changes, and **only** then ([OverlaySync]).
   ///
   /// Overlays are deliberately absent from the playback signature: sending a
   /// whole timeline for an overlay edit re-prepares every lane's player, which
@@ -944,41 +1007,30 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// bails out, because moving an overlay must show while the finger is down.
   Future<void> _syncNativeOverlays(VideoEditorState state) async {
     if (!_canUseNativeTimelinePreview(state) || state.sourceVideo == null) {
-      _nativeOverlaySignature = null;
+      _overlaySync.reset();
       return;
     }
     final canvasSize = ref.read(videoCanvasSizeProvider);
     if (canvasSize == null) return;
 
-    // This runs on **every** state change, and during playback that is a
-    // position event ~30 times a second. The payload depends only on the two
-    // overlay lists and the canvas size, and the state is immutable — an
-    // untouched list keeps its identity through `copyWith` — so three
-    // identity checks answer "nothing changed" without composing anything.
-    if (_nativeOverlaySignature != null &&
-        identical(state.imageOverlays, _syncedImageOverlays) &&
-        identical(state.videoOverlays, _syncedVideoOverlays) &&
-        canvasSize == _syncedOverlayCanvasSize) {
-      return;
-    }
-    _syncedImageOverlays = state.imageOverlays;
-    _syncedVideoOverlays = state.videoOverlays;
-    _syncedOverlayCanvasSize = canvasSize;
-
-    final payload = _nativePreviewService.overlayPayload(
+    final payload = _overlaySync.payloadFor(
       state,
-      previewCanvasSize: canvasSize,
+      canvasSize,
+      _previewTexts.payload,
+      (state, canvas, texts) => _nativePreviewService.overlayPayload(
+        state,
+        previewCanvasSize: canvas,
+        textEntries: texts,
+      ),
     );
-    final signature = jsonEncode(payload);
-    if (_nativeOverlaySignature == signature) return;
-    _nativeOverlaySignature = signature;
+    if (payload == null) return;
 
     try {
       await _nativePreviewService.sendOverlayPayload(payload);
     } catch (_) {
       // An overlay that cannot be pushed is not worth interrupting an edit
       // for; the engine warns for itself when it cannot draw one.
-      _nativeOverlaySignature = null;
+      _overlaySync.reset();
     }
   }
 
@@ -1704,6 +1756,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
           service: _nativePreviewService,
         ),
         playhead: _drawnPlayhead,
+        engineDrawnTexts: _previewTexts.engineDrawn,
         onTogglePreview: _togglePreview,
         // The space beside the picture is "done here",
         // one level per tap: an open panel closes
@@ -3699,6 +3752,16 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       (prev, texts) => _fetchProjectFonts(texts),
     );
 
+    // A canvas resize — the keyboard, a panel — carries no state change, and
+    // the overlays are placed against the canvas, so they go out again at the
+    // new size. The texts keep their atlases: those are the texture's pixels.
+    ref.listen<Size?>(videoCanvasSizeProvider, (prev, size) {
+      final state = ref.read(videoEditorProvider);
+      _updatePreviewTexts(state);
+      unawaited(_syncNativeOverlays(state));
+      unawaited(_syncNativeEffects(state));
+    });
+
     ref.listen<VideoEditorState>(videoEditorProvider, (prev, state) {
       final stopAt = _transitionPlaybackStop;
       if (stopAt != null &&
@@ -3711,6 +3774,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       // Overlays and effect bars go on their own light channels, so unlike
       // the timeline they are pushed while playing and mid-drag too — an
       // overlay or a bar moved under the finger has to move on the canvas.
+      // The texts first: the overlays carry the ones the engine draws.
+      _updatePreviewTexts(state);
       unawaited(_syncNativeOverlays(state));
       unawaited(_syncNativeEffects(state));
       if (_canUseNativeTimelinePreview(state) && !state.isPlaying) {
