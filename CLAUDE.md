@@ -4049,6 +4049,70 @@ players hold no video decoder.
 **What it unlocks**: an overlay chroma key and blend modes, each now a shader line rather than an
 impossibility, and an exact feather instead of a hard-edged clip.
 
+### Text and captions are drawn by the engine in the preview too
+
+**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-10-31-preview-text-in-engine-design.md`,
+plan beside it in `plans/`. The owner saw captions land a little after their words in the preview
+while the file was exact. Measured on the Infinix (profile build, probes on one monotonic
+clock): the caption trailed the picture by 38 ms median, 70 ms in 1 frame of 10, while the
+picture and the sound were in step. The cause was the split — the engine drew the picture,
+**Flutter drew the text over it**, at a playhead read when a Flutter frame began and shown a frame
+or two later. The export bakes text into the frames through the engine and could not drift.
+
+**Who draws a text — one rule** (`logic/preview_text/preview_text_rules.dart`,
+`PreviewTextAtlases`): **Flutter** while the text is being edited — selected, with playback
+paused (every edit pauses first) — and while the engine has not confirmed its current atlas;
+**the engine** otherwise. Editing is therefore exactly as immediate as before, and during
+playback every text is the export's own drawing (`OverlayDrawBuilder.textDraws` → `TextQuads`),
+in the same GL frame as the picture. `TextOverlayLayer` lays out an engine-drawn text as ever —
+box, gestures, selection frame and handles — and paints nothing in it.
+
+- **No text is drawn by nobody.** A text joins `engineDrawn` two Flutter frames after the engine
+  reported its current atlas, and leaves it the moment anything changes that (a look edit, being
+  selected and paused, the engine losing the atlas). The engine reports a load only **after the
+  swap** of the frame that first draws the text: told from inside the draw, a slow frame (a heavy
+  layered transition, past 45 ms on the Infinix) could outlast the wait.
+- **Readiness is by atlas path, not entry**: two texts of one look share an atlas, and one upload
+  serves both. A path names one rasterisation, so an old report cannot pass for a new look.
+- **An atlas is the export's own** (`TextOverlayRasterizer.rasterizeAtlas`, one entry builder for
+  both — `textAtlasOverlayEntry`), at the preview texture's density (`previewRasterScale`), its
+  scale stepped up to a quarter octave (`previewAtlasScale`) so a small pinch on a caption set
+  makes nothing again. **Keyed on what it draws** (`previewTextAtlasKey`, a test holds every
+  serialised field to one side): moving, retiming or animating needs no new atlas. **Not the
+  canvas's size on screen**: the atlas is the texture's pixels, and the keyboard and panels resize
+  the canvas constantly — keyed on it, every atlas would be made again at each. Its box is
+  measured against the canvas it was made at (`atlasCanvasSize`); line rounding leaves it within
+  1% on another canvas, under a pixel.
+- **Made in the background**: only once the text list has stood still 250 ms (a drag or a word
+  being typed makes none), one at a time with a frame between them, nearest the playhead first,
+  for texts within 5 s behind and 30 s ahead. A failure is not retried until the text changes.
+- **Two windows.** Texts within half a second behind and two seconds ahead are **sent** to the
+  engine (`kPreviewTextSend*`) — that is the GPU budget, whatever the number of captions — and
+  the engine frees the still texture of any path its list no longer names (`StillResidency`;
+  before, the preview kept every still it ever uploaded, photos included) and preloads the next
+  text one upload per draw. A text being edited is sent at no opacity, so it is loaded when play
+  is pressed.
+- **Files**: `text_atlas_*` (and the flat raster's `text_overlay_*`) are swept at launch now; the
+  preview's are deleted two seconds after they leave its 120-atlas cache, and all of them when the
+  editor closes.
+- A preview text the engine cannot load goes back to Flutter **silently** — a preview-only
+  fallback is logged, never toasted.
+
+**The picture's own instant** (`gl/PictureClock.kt`). Moving text into the engine alone would not
+have fixed it: video frames reach the renderer ~42 ms before they are shown (ExoPlayer releases
+each early, stamped with when it is due), while overlays were timed by the clock at the engine's
+tick. Overlays are now drawn at the instant of the frame they are composited with — the clock
+carried to that frame's due time — so photo and video overlays gained the same correction. Where
+no fresh frame says (a photo clip, the tail), at the clock carried to now plus the lead the video
+frames showed. The clock is carried from when its value last **changed** (`smoothedPosition`'s
+rule): over a photo ExoPlayer can hold one position for most of a second. A live text redraws on
+every clock step (`OverlayClock.needsRedraw`); while video frames drive the draws a tick asks for
+none (`framesDriveDraws`). **Effect bars are still switched on the tick clock** — a follow-up.
+
+**Known, deferred:** a photo-only project learns no lead (no video frame teaches one), so its text
+reaches the screen a frame or two behind the sound, as every overlay did before; a text over the
+4096 px atlas limit stays Flutter-drawn.
+
 ### Sound library — effects and music, tap to listen, + to add
 
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-10-19-sound-effects-library-design.md`,
