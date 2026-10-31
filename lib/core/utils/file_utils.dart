@@ -14,6 +14,12 @@ class FileUtils {
   /// temporary files.
   static const String exportPrefix = 'slimshot_export_';
 
+  /// What a text's flat raster and its glyph atlas are named — the export's,
+  /// and the preview's, which draws an atlas for every look of every caption
+  /// it shows.
+  static const String textRasterPrefix = 'text_overlay_';
+  static const String textAtlasPrefix = 'text_atlas_';
+
   /// The folder the share plugin copies a file into before handing it to
   /// the app it is shared with, emptied only by the next share.
   static const String shareCopiesFolder = 'share_plus';
@@ -46,7 +52,10 @@ class FileUtils {
 
   /// Whether [name] is one of the app's own temporary files.
   static bool isAppTempName(String name) =>
-      name.startsWith(filePrefix) || name.startsWith(exportPrefix);
+      name.startsWith(filePrefix) ||
+      name.startsWith(exportPrefix) ||
+      name.startsWith(textRasterPrefix) ||
+      name.startsWith(textAtlasPrefix);
 
   /// Clears what the previous session left — every one of the app's own
   /// temporary files and the share plugin's copies — since nothing from a

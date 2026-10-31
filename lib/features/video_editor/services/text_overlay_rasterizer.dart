@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/utils/file_utils.dart';
 import '../logic/captions/caption_highlight.dart';
 import '../logic/captions/caption_highlight_layout.dart';
 import '../logic/text_glyph_layout.dart';
@@ -281,7 +282,7 @@ class TextOverlayRasterizer {
 
       final dir = await getTemporaryDirectory();
       final file = File(
-        '${dir.path}/text_overlay_${overlay.id}_${DateTime.now().microsecondsSinceEpoch}.png',
+        '${dir.path}/${FileUtils.textRasterPrefix}${overlay.id}_${DateTime.now().microsecondsSinceEpoch}.png',
       );
       await file.writeAsBytes(bytes.buffer.asUint8List());
 
@@ -547,7 +548,7 @@ class TextOverlayRasterizer {
 
         final dir = await getTemporaryDirectory();
         final file = File(
-          '${dir.path}/text_atlas_${overlay.id}_${DateTime.now().microsecondsSinceEpoch}.png',
+          '${dir.path}/${FileUtils.textAtlasPrefix}${overlay.id}_${DateTime.now().microsecondsSinceEpoch}.png',
         );
         await file.writeAsBytes(bytes.buffer.asUint8List());
 

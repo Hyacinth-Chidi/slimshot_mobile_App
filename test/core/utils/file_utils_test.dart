@@ -52,6 +52,18 @@ void main() {
       }
     });
 
+    test('clears the text atlases the preview and the export drew', () async {
+      // The preview draws an atlas per look of every caption it shows; one a
+      // crash left behind would otherwise stay on the phone for good.
+      final atlas = make('${temp.path}/text_atlas_cap_1793141004000.png',
+          modified: lastSession);
+      final flat = make('${temp.path}/text_overlay_cap_1793141004001.png',
+          modified: lastSession);
+      await FileUtils.cleanupStartup(launchedAt: launch, tempDir: temp);
+      expect(atlas.existsSync(), isFalse);
+      expect(flat.existsSync(), isFalse);
+    });
+
     test('keeps a file written since it began', () async {
       final current = make('${temp.path}/slimshot_temp_now.mp4');
       await FileUtils.cleanupStartup(launchedAt: launch, tempDir: temp);
