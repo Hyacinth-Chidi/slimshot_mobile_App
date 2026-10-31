@@ -93,9 +93,12 @@ Flutter for editing.
   limit even at floor density, the rare case the export falls back to a flat raster for) stays
   drawn by Flutter.
 - **Keyed by everything the atlas depends on** — the words, every `TextLook` field, Size, box
-  width, the caption's words and highlight, the scale that sets its density, the canvas size, the
-  preview density, and whether its font is registered yet — and by nothing else. Moving, turning,
-  fading, retiming or animating a text needs no new atlas; changing how it looks does.
+  width, the caption's words and highlight, the scale that sets its density, the preview
+  texture's size, and whether its font is registered yet — and by nothing else. Moving, turning,
+  fading, retiming or animating a text needs no new atlas; changing how it looks does. **Not the
+  canvas's size on screen** (found while planning): the atlas is drawn at canvas × the texture's
+  pixels per canvas pixel, which is the texture's own pixels, and the keyboard and tool panels
+  resize the canvas all the time — keyed on it, every atlas would be made again at each.
 - **Prepared in the background, nearest the playhead first** (texts visible now, then those coming
   up in the direction of play), at most a few milliseconds of UI-thread work per frame, so a big
   restyle never stutters. The text being edited is prepared once its edit settles (the gesture
@@ -118,10 +121,27 @@ Flutter for editing.
   so a hand-over overlaps for a frame or two and never leaves a gap.
 - **Frees textures it no longer needs.** Today the preview keeps every still texture it ever
   uploaded; with an atlas per edit that grows forever. Textures for paths no longer in the list
-  are released, and text atlases are kept within a memory budget: those visible now and those
-  starting soon are kept and loaded ahead of time while playing; the furthest away go first, and
-  **a text on screen at the engine's clock is never evicted.**
+  are released, and the list holds only the texts near the playhead (half a second behind it,
+  two seconds ahead — the plan's send window), so the text atlases in GPU memory are those on
+  screen and those starting soon, loaded ahead of time while playing, whatever the number of
+  captions. **A text on screen is always in the list, so it is never evicted.**
 - Respects the export hold (`exportOwnsRenderer`) exactly as overlays and effects already do.
+
+### "The frame's own time" — found while planning
+
+The same measurement shows video frames reaching the renderer **~42 ms before their display
+time** (median; ExoPlayer releases a frame early with the time it is due on screen), while the
+engine times overlays by the sound's position at the moment it draws. So an overlay drawn by the
+engine today — a photo overlay, and a caption if moved there as-is — trails the picture beside it
+by that same ~42 ms: moving captions into the engine alone would not fix them.
+
+The engine therefore draws overlays at **the picture's own time**: the timeline instant of the
+video frame it is compositing (the clock read at a known instant, advanced to the moment that
+frame is due on screen). Where no fresh video frame exists — a photo clip, the tail — it uses the
+clock advanced to now plus the lead it last measured from video frames (none if it never has),
+and it keeps drawing every engine tick while playing there, since no video frame asks for a draw.
+Photo and video overlays get the same correction for free. Effect bars are still switched on the
+engine's tick clock — unchanged here, noted as a follow-up.
 
 ### The text layer (Flutter)
 
