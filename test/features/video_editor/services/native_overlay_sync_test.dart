@@ -1,8 +1,10 @@
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/logic/mask/clip_mask.dart';
 import 'package:slimshotai/features/video_editor/logic/timeline/video_editor_timeline_composer.dart';
+import 'package:slimshotai/features/video_editor/models/editor_timeline.dart';
 import 'package:slimshotai/features/video_editor/models/image_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/models/media_asset.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
@@ -115,6 +117,39 @@ void main() {
         previewCanvasSize: canvas,
       );
       expect(one, isNot(none));
+    });
+  });
+
+  group('overlayPayload', () {
+    test('text entries ride the payload above every other overlay', () {
+      // The preview's text is the export's text entry, sent beside the photo
+      // and video overlays on the same channel, stacked above them.
+      const text = EditorTimelineOverlay(
+        id: 'text_t',
+        kind: 'text',
+        path: '/t.png',
+        centerX: AnimatableDouble(baseValue: 0.5),
+        centerY: AnimatableDouble(baseValue: 0.8),
+        boxWidth: 0.4,
+        boxHeight: 0.1,
+        scale: AnimatableDouble(baseValue: 1),
+        rotation: AnimatableDouble(baseValue: 0),
+        opacity: AnimatableDouble(baseValue: 1),
+        startSeconds: 1,
+        endSeconds: 2,
+        laneIndex: 1000,
+        slideOffsetX: 0.4,
+        slideOffsetY: 0.1,
+      );
+      final payload = NativeTimelinePreviewService().overlayPayload(
+        stateWith([photo()]),
+        previewCanvasSize: canvas,
+        textEntries: const [text],
+      );
+
+      expect(payload, hasLength(2));
+      expect(payload.first['id'], 'i');
+      expect(payload.last, text.toJson());
     });
   });
 }

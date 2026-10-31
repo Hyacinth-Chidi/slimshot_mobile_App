@@ -25,6 +25,23 @@ void main() {
     expect(silent.advancing, isFalse);
   });
 
+  test('textReady and textGone carry the overlay and its atlas', () {
+    // Which text the engine now draws, or no longer can — the atlas path
+    // says which look, so a report about an older atlas is told apart.
+    final ready = NativeTimelinePreviewEvent.fromPlatformEvent(
+      {'type': 'textReady', 'overlayId': 'text_a', 'path': '/x.png'},
+    );
+    expect(ready.type, 'textReady');
+    expect(ready.overlayId, 'text_a');
+    expect(ready.path, '/x.png');
+
+    final gone = NativeTimelinePreviewEvent.fromPlatformEvent(
+      {'type': 'textGone', 'overlayId': 'text_a', 'path': '/old.png'},
+    );
+    expect(gone.overlayId, 'text_a');
+    expect(gone.path, '/old.png');
+  });
+
   test('a pause says where the engine stopped', () {
     final paused = NativeTimelinePreviewEvent.fromPlatformEvent(
       {'type': 'paused', 'isReady': true, 'positionSeconds': 4.25},

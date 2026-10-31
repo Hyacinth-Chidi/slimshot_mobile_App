@@ -117,13 +117,18 @@ class NativeTimelinePreviewService {
   /// The screen needs the payload twice per push — to decide whether anything
   /// changed and then to send it — and composing it for each was the whole
   /// overlay list normalised and encoded twice per frame of a drag.
+  ///
+  /// [textEntries] are the texts the engine draws — the export's own entries,
+  /// made from preview atlases by `PreviewTextAtlases`.
   List<Map<String, dynamic>> overlayPayload(
     VideoEditorState state, {
     Size? previewCanvasSize,
+    List<EditorTimelineOverlay> textEntries = const [],
   }) {
     final overlays = _timelineComposer.composeOverlays(
       state,
       previewCanvasSize: previewCanvasSize,
+      extraOverlays: textEntries,
     );
     return [for (final o in overlays) o.toJson()];
   }
@@ -762,10 +767,18 @@ class NativeTimelinePreviewEvent {
     this.isReady,
     this.message,
     this.progress,
+    this.overlayId,
+    this.path,
   });
 
   final String type;
   final double? positionSeconds;
+
+  /// On `textReady` / `textGone`: the text's overlay entry (`text_<id>`) and
+  /// the atlas the engine now draws it from, or can no longer — the path
+  /// tells a report about an older look from one about the current.
+  final String? overlayId;
+  final String? path;
 
   /// On `position` events: whether the engine's picture is moving — its
   /// master lane genuinely playing, not buffering or stalled. The drawn
@@ -793,6 +806,8 @@ class NativeTimelinePreviewEvent {
       isReady: event['isReady'] as bool?,
       message: event['message'] as String?,
       progress: (event['progress'] as num?)?.toDouble(),
+      overlayId: event['overlayId'] as String?,
+      path: event['path'] as String?,
     );
   }
 }

@@ -247,11 +247,15 @@ class VideoEditorTimelineComposer {
     return bars;
   }
 
+  /// The overlay list alone. [extraOverlays] are merged in and lane-sorted
+  /// with the rest, as [compose] merges the export's — the preview's text
+  /// entries, which are the export's own.
   List<EditorTimelineOverlay> composeOverlays(
     VideoEditorState state, {
     Size? previewCanvasSize,
+    List<EditorTimelineOverlay> extraOverlays = const [],
   }) =>
-      _composeOverlays(state, previewCanvasSize, const []);
+      _composeOverlays(state, previewCanvasSize, extraOverlays);
 
   /// Normalises overlays out of preview-canvas pixels into canvas fractions.
   ///
