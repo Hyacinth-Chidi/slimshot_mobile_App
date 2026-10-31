@@ -1,12 +1,29 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:slimshotai/features/video_editor/logic/text_overlay_geometry.dart';
 import 'package:slimshotai/features/video_editor/models/editor_timeline.dart';
+import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/services/text_atlas_overlay.dart';
 import 'package:slimshotai/features/video_editor/services/text_overlay_rasterizer.dart';
 
+import '../../../support/test_fonts.dart';
+
+/// `rasterizeAtlas` writes its PNG through `path_provider`, which has no
+/// platform implementation under `flutter_test`.
+class _FakePathProviderPlatform extends PathProviderPlatform {
+  @override
+  Future<String?> getTemporaryPath() async {
+    final dir = await Directory.systemTemp.createTemp('text_atlas_entry_test_');
+    return dir.path;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  PathProviderPlatform.instance = _FakePathProviderPlatform();
 
   group('glyphsForAtlas', () {
     test('converts atlas and box pixels into fractions', () {
@@ -176,6 +193,82 @@ void main() {
       );
       expect(stretched.height / drawn.height,
           closeTo(textBox.width / textBox.height, 1e-9));
+    });
+  });
+
+  group('textAtlasOverlayEntry', () {
+    final text = TextOverlayModel(
+      id: 'cap',
+      text: 'Hello',
+      fontFamily: kTestFontFamily,
+      referenceCanvasSize: const Size(400, 700),
+      laneIndex: 3,
+      inAnimation: 'none',
+      startTime: const Duration(seconds: 1),
+      endTime: const Duration(seconds: 3),
+    );
+
+    Future<RasterizedTextAtlas> atlasAt(Size canvas, double rasterScale) async {
+      final atlas = await TextOverlayRasterizer.rasterizeAtlas(
+        overlay: text,
+        canvasSize: canvas,
+        rasterScale: rasterScale,
+      );
+      expect(atlas, isNotNull);
+      expect(atlas!.glyphs, isNotEmpty);
+      return atlas;
+    }
+
+    test("the entry is the export's atlas entry", () async {
+      const canvas = Size(360, 640);
+      final atlas = await atlasAt(canvas, 2);
+      final entry = textAtlasOverlayEntry(text, atlas, canvas);
+
+      expect(entry.id, 'text_cap');
+      expect(entry.kind, 'text');
+      expect(entry.path, atlas.pngPath);
+      expect(entry.glyphs!.length, atlas.glyphs.length);
+      expect(entry.laneIndex, 1003);
+      expect(entry.boxWidth,
+          closeTo(textOverlayBoxPx(atlas.canvasPxSize, usingAtlas: true).width / 360, 1e-12));
+      expect(entry.animationIn, isNull, reason: "'none' is sent as nothing");
+      expect(entry.animationInSeconds, 0.5);
+      expect(entry.startSeconds, 1.0);
+      expect(entry.endSeconds, 3.0);
+    });
+
+    test('hidden keeps everything but opacity', () async {
+      const canvas = Size(360, 640);
+      final atlas = await atlasAt(canvas, 2);
+      final shown = textAtlasOverlayEntry(text, atlas, canvas).toJson();
+      final hidden = textAtlasOverlayEntry(text, atlas, canvas, hidden: true).toJson();
+
+      expect(hidden['opacity'], 0.0);
+      expect(shown['opacity'], isNot(0.0));
+      expect({...hidden}..remove('opacity'), {...shown}..remove('opacity'));
+    });
+
+    test('an atlas made at another canvas size places the same box', () async {
+      // The keyboard and the tool panels resize the canvas; an atlas made
+      // before the resize must place exactly the box one made after would.
+      const small = Size(270, 480);
+      const large = Size(360, 640);
+      final fromSmall = await atlasAt(small, 720 / 270);
+      final fromLarge = await atlasAt(large, 720 / 360);
+
+      final a = textAtlasOverlayEntry(text, fromSmall, large, atlasCanvasSize: small);
+      final b = textAtlasOverlayEntry(text, fromLarge, large, atlasCanvasSize: large);
+
+      // Within 2%: the text engine rounds each line's height at the size it
+      // lays out at, which measures 0.7% on this box — under a pixel at the
+      // texture's density. A box measured against the wrong canvas is off by
+      // the canvases' ratio, 25% here.
+      void same(double x, double y, String what) =>
+          expect(x, closeTo(y, y.abs() * 0.02), reason: what);
+      same(a.boxWidth, b.boxWidth, 'boxWidth');
+      same(a.boxHeight, b.boxHeight, 'boxHeight');
+      same(a.slideOffsetX, b.slideOffsetX, 'slideOffsetX');
+      same(a.slideOffsetY, b.slideOffsetY, 'slideOffsetY');
     });
   });
 }

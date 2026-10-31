@@ -1,7 +1,6 @@
 ﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:characters/characters.dart';
 import 'package:flutter/services.dart';
@@ -424,135 +423,74 @@ class NativeTimelinePreviewService {
         if (warning != null) warnings.add(warning);
       }
 
-      final String pngPath;
-      final Size boxPxSize;
-      // What the placement box is sized from: the text box for the glyph
-      // path, whose cells carry their own bleed; for the flat path the whole
-      // PNG, which is the box plus an even margin for the shadow.
-      final Size placedPxSize;
-      final List<EditorTimelineGlyph>? glyphs;
       if (usableAtlas != null) {
-        pngPath = usableAtlas.pngPath;
-        boxPxSize = usableAtlas.canvasPxSize;
-        placedPxSize = boxPxSize;
-        glyphs = glyphsForAtlas(usableAtlas);
-      } else {
-        // The atlas PNG, if one was written, is still on disk — register it
-        // for deletion even though it is not used, or an unusable atlas leaks
-        // a file per export.
-        if (atlas != null) tempFiles.add(atlas.pngPath);
-        final flat = await TextOverlayRasterizer.rasterize(
-          overlay: raster,
-          canvasSize: canvas,
-          rasterScale: rasterScale,
-        );
-        if (flat == null) continue;
-        pngPath = flat.pngPath;
-        boxPxSize = flat.canvasPxSize;
-        placedPxSize = flat.rasterPxSize;
-        glyphs = null;
+        tempFiles.add(usableAtlas.pngPath);
+        // The one builder of a text's entry, shared with the preview.
+        overlays.add(textAtlasOverlayEntry(text, usableAtlas, canvas));
+        continue;
       }
-      tempFiles.add(pngPath);
 
-      // The layer's own placement, in canvas fractions, keyframes and all: the
-      // box centre is the canvas centre plus the (clamped) offset — the same
-      // helper the layer positions its widget with.
+      // The atlas PNG, if one was written, is still on disk — register it for
+      // deletion even though it is not used, or an unusable atlas leaks a
+      // file per export.
+      if (atlas != null) tempFiles.add(atlas.pngPath);
+      final flat = await TextOverlayRasterizer.rasterize(
+        overlay: raster,
+        canvasSize: canvas,
+        rasterScale: rasterScale,
+      );
+      if (flat == null) continue;
+      tempFiles.add(flat.pngPath);
+      // What the placement box is sized from: for the flat path the whole PNG,
+      // which is the box plus an even margin for the shadow.
+      final boxPxSize = flat.canvasPxSize;
+
+      // The layer's own placement, in canvas fractions, keyframes and all.
       final placement = textOverlayWirePlacement(text, canvas);
 
-      // The two raster paths need different boxes — see `textOverlayBoxPx`.
-      // The flat path contain-fits the PNG and so takes a pixel square; the
-      // glyph path multiplies each cell's fraction by the box directly and so
-      // takes the true text box. Sending the square down the glyph path
-      // stretched every exported text vertically by the box's own aspect.
-      final fitBox =
-          textOverlayBoxPx(placedPxSize, usingAtlas: usableAtlas != null);
-      final boxDivW = boxPxSize.width == 0 ? 1.0 : boxPxSize.width;
-      final boxDivH = boxPxSize.height == 0 ? 1.0 : boxPxSize.height;
+      // The flat path contain-fits the PNG and so takes a pixel square — see
+      // `textOverlayBoxPx`.
+      final fitBox = textOverlayBoxPx(flat.rasterPxSize, usingAtlas: false);
 
       overlays.add(
         EditorTimelineOverlay(
           id: 'text_${text.id}',
-          kind: glyphs == null ? 'image' : 'text',
-          path: pngPath,
-          glyphs: glyphs,
-          backgroundLeft: (usableAtlas?.backgroundRect?.left ?? 0) / boxDivW,
-          backgroundTop: (usableAtlas?.backgroundRect?.top ?? 0) / boxDivH,
-          backgroundRight: (usableAtlas?.backgroundRect?.right ?? 0) / boxDivW,
-          backgroundBottom:
-              (usableAtlas?.backgroundRect?.bottom ?? 0) / boxDivH,
-          backgroundRadius: (usableAtlas?.borderRadius ?? 0) / boxDivW,
-          backgroundAtlas:
-              usableAtlas == null ? null : backgroundAtlasFor(usableAtlas),
-          highlight: usableAtlas == null ? null : highlightForAtlas(usableAtlas),
+          kind: 'image',
+          path: flat.pngPath,
           centerX: placement.centerX,
           centerY: placement.centerY,
           boxWidth: fitBox.width / canvas.width,
           boxHeight: fitBox.height / canvas.height,
           scale: placement.scale,
           rotation: placement.rotation,
-          // The text's own, where a constant 1.0 used to go: opacity is a
-          // placement property now, keyframable like the rest.
           opacity: placement.opacity,
           startSeconds: text.startTime.inMilliseconds / 1000.0,
           endSeconds: text.endTime.inMilliseconds / 1000.0,
-          // Above every image/video overlay, matching the preview's stacking
-          // where the text layer sits on top.
           laneIndex: 1000 + text.laneIndex,
-          // flutter_animate slides by the widget's own size, not the image
-          // overlays' fixed 200px, so the travel is the raster's own box.
           slideOffsetX: boxPxSize.width / canvas.width,
           slideOffsetY: boxPxSize.height / canvas.height,
-          // **Two different vocabularies, chosen by which path draws.**
-          //
-          // The glyph path resolves ids through the catalog
-          // (`TextAnimationCurves.resolveAnimationId`), which knows the legacy
-          // names and resolves them *by slot*; it must receive the id as the
-          // model stores it. The flat-raster fallback draws through the image
-          // overlay's own `stateAt`, whose arms are the older vocabulary with
-          // no legacy names in them at all — so that path still needs the
-          // translation. Sending either one down the other's route is a
-          // silently wrong animation, not a missing one.
-          animationIn: glyphs == null
-              ? _mapTextAnimation(text.inAnimation, isOut: false)
-              : _catalogTextAnimation(text.inAnimation),
-          animationOut: glyphs == null
-              ? _mapTextAnimation(text.outAnimation, isOut: true)
-              : _catalogTextAnimation(text.outAnimation),
-          // A loop has no image-overlay equivalent, so the fallback cannot draw
-          // one; sending it anyway would be read by `stateAt`'s default arm as
-          // nothing, but stating the asymmetry is clearer than relying on that.
-          animationLoop:
-              glyphs == null ? null : _catalogTextAnimation(text.loopAnimation),
-          // Speeds, not durations. Native resolves the window lengths itself
-          // from the catalog, the glyph count and the speed — a staggered
-          // animation's length depends on how many characters there are, which
-          // the composer would otherwise have to recompute and keep in step
-          // across the boundary.
+          // The flat-raster fallback draws through the image overlay's own
+          // `stateAt`, whose arms are the older vocabulary with no legacy
+          // names in them at all — so this path needs the translation, where
+          // the glyph path (`textAtlasOverlayEntry`) must not have it. Sending
+          // either one down the other's route is a silently wrong animation,
+          // not a missing one.
+          animationIn: _mapTextAnimation(text.inAnimation, isOut: false),
+          animationOut: _mapTextAnimation(text.outAnimation, isOut: true),
+          // A loop has no image-overlay equivalent, so the fallback cannot
+          // draw one.
           speedIn: text.animationInDuration,
           speedOut: text.animationOutDuration,
           speedLoop: text.loopSpeed,
-          // The flat path is still timed here, because the image-overlay
-          // animation it takes has no catalog duration to resolve. 0.5s is what
-          // the preview's flutter_animate chain actually plays.
+          // Timed here, because the image-overlay animation it takes has no
+          // catalog duration to resolve. 0.5s is what the preview's
+          // flutter_animate chain actually plays.
           animationInSeconds: 0.5,
           animationOutSeconds: 0.5,
         ),
       );
     }
     return (overlays: overlays, tempFiles: tempFiles, warnings: warnings);
-  }
-
-  /// A stored animation id on its way to the **glyph** path, which resolves it
-  /// through the catalog on the Kotlin side.
-  ///
-  /// Deliberately no translation: `TextAnimationCurves.resolveAnimationId`
-  /// holds the legacy tables and applies them **by slot**, which is the only
-  /// place that mapping may live — a second copy here would be one more thing
-  /// to keep in step across a boundary nothing type-checks. All this does is
-  /// spell `'none'` as null, which is what the contract's nullable field means.
-  String? _catalogTextAnimation(String name) {
-    if (name.isEmpty || name == 'none') return null;
-    return name;
   }
 
   /// Text animation names → the **image overlay's** animation names, for the

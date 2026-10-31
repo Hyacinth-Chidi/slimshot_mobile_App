@@ -1,8 +1,109 @@
 import 'dart:ui';
 
+import '../logic/animation/animatable_double.dart';
+import '../logic/preview_text/preview_text_rules.dart';
 import '../logic/text_overlay_geometry.dart';
 import '../models/editor_timeline.dart';
+import '../models/text_overlay_model.dart';
 import 'text_overlay_rasterizer.dart';
+
+/// A text's overlay entry, drawn from its atlas — **the one builder**, for
+/// the export and the preview alike, so the engine is handed the same entry
+/// whichever of the two made the atlas.
+///
+/// [atlasCanvasSize] is the canvas the atlas was made at, when that is not
+/// [canvasSize]. The box, its background and the slide travel are measured
+/// against it, as fractions; the placement against [canvasSize]. Text is laid
+/// out relative to the canvas, so the fractions are the same on any canvas,
+/// and an atlas made before the keyboard resized the canvas places exactly
+/// the box one made after would.
+///
+/// [hidden] sends the text at no opacity: the engine keeps the atlas loaded,
+/// so the moment the text stops being edited it can draw it, and draws
+/// nothing for it meanwhile.
+EditorTimelineOverlay textAtlasOverlayEntry(
+  TextOverlayModel text,
+  RasterizedTextAtlas atlas,
+  Size canvasSize, {
+  Size? atlasCanvasSize,
+  bool hidden = false,
+}) {
+  final measuredOn = atlasCanvasSize ?? canvasSize;
+  final boxPxSize = atlas.canvasPxSize;
+
+  // The layer's own placement, in canvas fractions, keyframes and all: the
+  // box centre is the canvas centre plus the (clamped) offset — the same
+  // helper the layer positions its widget with.
+  final placement = textOverlayWirePlacement(text, canvasSize);
+
+  // The glyph path multiplies each cell's fraction by the box directly and so
+  // takes the true text box — see `textOverlayBoxPx`.
+  final fitBox = textOverlayBoxPx(boxPxSize, usingAtlas: true);
+  final boxDivW = boxPxSize.width == 0 ? 1.0 : boxPxSize.width;
+  final boxDivH = boxPxSize.height == 0 ? 1.0 : boxPxSize.height;
+
+  return EditorTimelineOverlay(
+    id: previewTextEntryId(text.id),
+    kind: 'text',
+    path: atlas.pngPath,
+    glyphs: glyphsForAtlas(atlas),
+    backgroundLeft: (atlas.backgroundRect?.left ?? 0) / boxDivW,
+    backgroundTop: (atlas.backgroundRect?.top ?? 0) / boxDivH,
+    backgroundRight: (atlas.backgroundRect?.right ?? 0) / boxDivW,
+    backgroundBottom: (atlas.backgroundRect?.bottom ?? 0) / boxDivH,
+    backgroundRadius: atlas.borderRadius / boxDivW,
+    backgroundAtlas: backgroundAtlasFor(atlas),
+    highlight: highlightForAtlas(atlas),
+    centerX: placement.centerX,
+    centerY: placement.centerY,
+    boxWidth: fitBox.width / measuredOn.width,
+    boxHeight: fitBox.height / measuredOn.height,
+    scale: placement.scale,
+    rotation: placement.rotation,
+    // The text's own, where a constant 1.0 used to go: opacity is a placement
+    // property now, keyframable like the rest.
+    opacity: hidden ? const AnimatableDouble(baseValue: 0) : placement.opacity,
+    startSeconds: text.startTime.inMilliseconds / 1000.0,
+    endSeconds: text.endTime.inMilliseconds / 1000.0,
+    // Above every image/video overlay, matching the preview's stacking where
+    // the text layer sits on top.
+    laneIndex: 1000 + text.laneIndex,
+    // flutter_animate slides by the widget's own size, not the image
+    // overlays' fixed 200px, so the travel is the raster's own box.
+    slideOffsetX: boxPxSize.width / measuredOn.width,
+    slideOffsetY: boxPxSize.height / measuredOn.height,
+    // The glyph path resolves ids through the catalog
+    // (`TextAnimationCurves.resolveAnimationId`), which knows the legacy names
+    // and resolves them *by slot*; it must receive the id as the model stores
+    // it. (The flat-raster fallback draws through the image overlay's own
+    // `stateAt`, whose vocabulary differs — the export translates for it.)
+    animationIn: _catalogTextAnimation(text.inAnimation),
+    animationOut: _catalogTextAnimation(text.outAnimation),
+    animationLoop: _catalogTextAnimation(text.loopAnimation),
+    // Speeds, not durations. Native resolves the window lengths itself from
+    // the catalog, the glyph count and the speed — a staggered animation's
+    // length depends on how many characters there are, which the composer
+    // would otherwise have to recompute and keep in step across the boundary.
+    speedIn: text.animationInDuration,
+    speedOut: text.animationOutDuration,
+    speedLoop: text.loopSpeed,
+    animationInSeconds: 0.5,
+    animationOutSeconds: 0.5,
+  );
+}
+
+/// A stored animation id on its way to the **glyph** path, which resolves it
+/// through the catalog on the Kotlin side.
+///
+/// Deliberately no translation: `TextAnimationCurves.resolveAnimationId`
+/// holds the legacy tables and applies them **by slot**, which is the only
+/// place that mapping may live — a second copy here would be one more thing
+/// to keep in step across a boundary nothing type-checks. All this does is
+/// spell `'none'` as null, which is what the contract's nullable field means.
+String? _catalogTextAnimation(String name) {
+  if (name.isEmpty || name == 'none') return null;
+  return name;
+}
 
 /// The box dimensions to send as an overlay's `boxWidth`/`boxHeight`, in
 /// canvas pixels. The two raster paths need **different** boxes, and sending
