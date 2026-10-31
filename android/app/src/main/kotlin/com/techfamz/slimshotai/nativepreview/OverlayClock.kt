@@ -49,6 +49,13 @@ internal object OverlayClock {
             // it moves on every step inside its span — at rest or not.
             if (overlay.hasKeyframes && previous != now) return true
 
+            // So is a text's: a caption's lit word, a letter's animation, a
+            // loop. Their windows come from the catalog (`TextAnimationTiming`),
+            // not from the animation seconds the checks below read. Over video
+            // the frames drive the draws anyway (`PictureClock`); this is what
+            // keeps a caption moving over a photo, and right under a scrub.
+            if (overlay.isText && previous != now) return true
+
             // Inside an animation window the overlay is different every frame.
             //
             // The window's own far edge is a boundary like any other: the step

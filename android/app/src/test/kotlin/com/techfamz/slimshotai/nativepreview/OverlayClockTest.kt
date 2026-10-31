@@ -40,6 +40,37 @@ class OverlayClockTest {
         ),
     )!!
 
+    /** A text, drawn from its atlas: its highlight and letters move with the clock. */
+    private fun text(start: Double, end: Double): NativeTimelineOverlay = NativeTimelineOverlay.fromMap(
+        mapOf(
+            "id" to "text_t",
+            "kind" to "text",
+            "path" to "/t.png",
+            "startSeconds" to start,
+            "endSeconds" to end,
+            "glyphs" to listOf(
+                mapOf(
+                    "atlasLeft" to 0.0, "atlasTop" to 0.0, "atlasRight" to 1.0, "atlasBottom" to 1.0,
+                    "boxLeft" to 0.0, "boxTop" to 0.0, "boxRight" to 1.0, "boxBottom" to 1.0,
+                    "srcLeft" to 0.0, "srcTop" to 0.0, "srcRight" to 1.0, "srcBottom" to 1.0,
+                ),
+            ),
+        ),
+    )!!
+
+    @Test
+    fun `text redraws on every step inside its span`() {
+        // A caption's lit word, a letter's animation, a loop: each changes
+        // with the clock, and their windows come from the catalog, not from
+        // the overlay's own animation seconds.
+        assertTrue(OverlayClock.needsRedraw(listOf(text(1.0, 5.0)), 2.00, 2.01))
+    }
+
+    @Test
+    fun `text outside its span asks nothing`() {
+        assertFalse(OverlayClock.needsRedraw(listOf(text(1.0, 5.0)), 6.0, 6.1))
+    }
+
     @Test
     fun `no overlays never asks for a redraw`() {
         assertFalse(OverlayClock.needsRedraw(emptyList(), 0.0, 5.0))
