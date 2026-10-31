@@ -49,12 +49,19 @@ class TextOverlayLayer extends ConsumerStatefulWidget {
   /// both and half as often.
   final ValueListenable<double>? playhead;
 
+  /// The texts the engine draws, by id (`PreviewTextAtlases.engineDrawn`).
+  /// The engine paints them in the frame of the picture, at its time, so the
+  /// layer paints nothing for them — and keeps their box for a finger, their
+  /// frame and their handles, exactly as for any other text.
+  final ValueListenable<Set<String>>? engineDrawn;
+
   const TextOverlayLayer({
     super.key,
     required this.videoCanvasSize,
     required this.onShowTextEditor,
     this.targetLaneIndex,
     this.playhead,
+    this.engineDrawn,
   });
 
   @override
@@ -99,6 +106,7 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
     super.initState();
     FontRegistry.instance.changes.addListener(_onFontRegistered);
     widget.playhead?.addListener(_onPlayheadMoved);
+    widget.engineDrawn?.addListener(_onPlayheadMoved);
   }
 
   @override
@@ -108,12 +116,17 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
       oldWidget.playhead?.removeListener(_onPlayheadMoved);
       widget.playhead?.addListener(_onPlayheadMoved);
     }
+    if (oldWidget.engineDrawn != widget.engineDrawn) {
+      oldWidget.engineDrawn?.removeListener(_onPlayheadMoved);
+      widget.engineDrawn?.addListener(_onPlayheadMoved);
+    }
   }
 
   @override
   void dispose() {
     FontRegistry.instance.changes.removeListener(_onFontRegistered);
     widget.playhead?.removeListener(_onPlayheadMoved);
+    widget.engineDrawn?.removeListener(_onPlayheadMoved);
     super.dispose();
   }
 
@@ -195,9 +208,15 @@ class _TextOverlayLayerState extends ConsumerState<TextOverlayLayer> {
     // as the export's glyph pass multiplies it in. Only below 1: an Opacity
     // at 1 is a compositing layer paid for nothing.
     final opacity = overlay.opacity.clamp(0.0, 1.0).toDouble();
-    final painted = _textBox(overlay, layout, positionSeconds);
-    final content =
-        opacity < 1.0 ? Opacity(opacity: opacity, child: painted) : painted;
+    // The engine draws it: an empty box of the same size keeps what a finger
+    // touches exactly where the text is drawn.
+    final Widget content;
+    if (widget.engineDrawn?.value.contains(overlay.id) ?? false) {
+      content = SizedBox(width: box.width, height: box.height);
+    } else {
+      final painted = _textBox(overlay, layout, positionSeconds);
+      content = opacity < 1.0 ? Opacity(opacity: opacity, child: painted) : painted;
+    }
 
     return Positioned(
       left: center.dx - side / 2,

@@ -40,6 +40,9 @@ class VideoPreviewCanvas extends ConsumerStatefulWidget {
   /// The playhead as drawn, for the text layers (`TextOverlayLayer.playhead`).
   final ValueListenable<double>? playhead;
 
+  /// The texts the engine draws (`TextOverlayLayer.engineDrawn`).
+  final ValueListenable<Set<String>>? engineDrawnTexts;
+
   const VideoPreviewCanvas({
     super.key,
     required this.videoSurface,
@@ -48,6 +51,7 @@ class VideoPreviewCanvas extends ConsumerStatefulWidget {
     this.onCanvasSizeChanged,
     this.onShowTextEditor,
     this.playhead,
+    this.engineDrawnTexts,
   });
 
   @override
@@ -299,6 +303,7 @@ class _VideoPreviewCanvasState extends ConsumerState<VideoPreviewCanvas> {
                                             onShowTextEditor: widget.onShowTextEditor ?? (_, __) {},
                                             targetLaneIndex: lane,
                                             playhead: widget.playhead,
+                                            engineDrawn: widget.engineDrawnTexts,
                                           ),
                                         ],
                                       ),
