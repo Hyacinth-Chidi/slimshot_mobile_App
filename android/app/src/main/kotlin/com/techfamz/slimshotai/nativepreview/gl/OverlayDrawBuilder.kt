@@ -81,6 +81,20 @@ internal class OverlayDrawBuilder(
          * never sees this, because it waits instead.
          */
         fun onFrameNotReady() {}
+
+        /**
+         * A text's atlas is loaded: from now on the engine draws that text
+         * whenever it is on screen. The preview's text layer stops drawing a
+         * text only after hearing this, so no text is drawn by nobody.
+         */
+        fun onTextAtlasReady(id: String, path: String) {}
+
+        /**
+         * Realtime only: a text's atlas cannot be loaded. The editor draws the
+         * text itself, as it does any text the engine does not have, so this
+         * is not a failure to tell the user about.
+         */
+        fun onTextAtlasGone(id: String, path: String) {}
     }
 
     /** What [StillSource] has for a path right now. */
@@ -269,6 +283,68 @@ internal class OverlayDrawBuilder(
         return overlay.stateAt(t)
     }
 
+    /** Text atlases this preview could not load, each said once: it asks every draw. */
+    private val failedTextAtlases = mutableSetOf<String>()
+
+    /**
+     * Uploads a text's atlas and says so. `texImage2D` copies the pixels, so
+     * the bitmap goes at once.
+     */
+    private fun uploadTextAtlas(
+        overlay: NativeTimelineOverlay,
+        bitmap: android.graphics.Bitmap,
+    ): Pair<Int, Double> {
+        val uploaded = renderer.overlays.imageTexture(overlay.path, bitmap)
+        bitmap.recycle()
+        events.onTextAtlasReady(overlay.id, overlay.path)
+        return uploaded
+    }
+
+    /**
+     * The export counts an atlas it cannot read into its warnings: the file
+     * would differ. In the preview the editor draws any text the engine does
+     * not have, so one the engine cannot read costs the user nothing, and is
+     * handed back rather than toasted — a preview-only fallback is said in the
+     * log, never on screen.
+     */
+    private fun textAtlasFailed(overlay: NativeTimelineOverlay) {
+        if (!realtime) {
+            events.onOverlayFailed()
+            return
+        }
+        if (failedTextAtlases.add(overlay.path)) {
+            events.onTextAtlasGone(overlay.id, overlay.path)
+        }
+    }
+
+    /**
+     * Realtime only: uploads, at most, one text atlas the overlays will need —
+     * a text on screen the draw skipped (one being edited is sent at no
+     * opacity, and the draw skips it before uploading), or the next to start —
+     * so a text is loaded before it is due, and the editor can stop drawing it.
+     *
+     * True when it uploaded one and another is still to load, so the caller
+     * asks for another draw. An atlas still decoding asks for its own draw
+     * when it lands, so nothing here spins while one decodes.
+     */
+    fun preloadTexts(t: Double): Boolean {
+        if (!realtime) return false
+        var uploaded = false
+        for (overlay in StillResidency.preloadOrder(overlays, t)) {
+            if (renderer.overlays.cachedImageTexture(overlay.path) != null) continue
+            if (uploaded) return true
+            when (val still = stills.obtain(overlay.path, TEXT_ATLAS_MAX_PX)) {
+                is Still.Ready -> {
+                    uploadTextAtlas(overlay, still.bitmap)
+                    uploaded = true
+                }
+                Still.Pending -> Unit
+                Still.Failed -> textAtlasFailed(overlay)
+            }
+        }
+        return false
+    }
+
     private fun imageDraw(
         overlay: NativeTimelineOverlay,
         state: NativeTimelineOverlay.FrameState,
@@ -316,13 +392,11 @@ internal class OverlayDrawBuilder(
                 is Still.Ready -> still.bitmap
                 Still.Pending -> return emptyList()
                 Still.Failed -> {
-                    events.onOverlayFailed()
+                    textAtlasFailed(overlay)
                     return emptyList()
                 }
             }
-            val uploaded = renderer.overlays.imageTexture(overlay.path, bitmap)
-            bitmap.recycle()
-            uploaded
+            uploadTextAtlas(overlay, bitmap)
         }
 
         val glyphCount = overlay.glyphs.size

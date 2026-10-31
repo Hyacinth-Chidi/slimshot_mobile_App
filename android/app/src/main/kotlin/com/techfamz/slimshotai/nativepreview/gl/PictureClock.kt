@@ -76,6 +76,17 @@ internal class PictureClock {
 
     private var hasLead = false
 
+    /**
+     * The clock's lane shows no video — a photo, or no lane at all in the
+     * tail. The last video frame may still be recent, but it is no longer the
+     * picture, and taking it for one would leave the draws to frames that are
+     * not coming.
+     */
+    @Synchronized
+    fun onNoVideo() {
+        hasFrame = false
+    }
+
     /** The timeline instant to draw the overlays at, at [nowNs]. */
     @Synchronized
     fun overlayTime(nowNs: Long): Double {

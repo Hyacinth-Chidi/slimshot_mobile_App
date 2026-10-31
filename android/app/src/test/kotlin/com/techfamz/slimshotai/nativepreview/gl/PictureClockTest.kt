@@ -81,6 +81,19 @@ class PictureClockTest {
     }
 
     @Test
+    fun `a photo on screen ends what the last video frame said`() {
+        // At a cut to a photo the video's last frame is still recent, but it
+        // is no longer the picture: nothing would ask for a draw over the
+        // photo until it aged out.
+        val clock = PictureClock()
+        clock.onClock(1.0, ms(0), advancing = true)
+        clock.onVideoFrame(dueNs = ms(40), latchedNs = ms(0))
+        clock.onNoVideo()
+        assertFalse(clock.framesDriveDraws(ms(1)))
+        assertEquals(1.0 + 0.001 + 0.04, clock.overlayTime(ms(1)), 1e-9)
+    }
+
+    @Test
     fun `video frames drive the draws only while fresh and playing`() {
         val clock = PictureClock()
         clock.onClock(1.0, ms(0), advancing = true)

@@ -610,6 +610,17 @@ class NativeTimelinePreviewManager(
                 sendEvent(mapOf("type" to "error", "message" to message))
             },
             onWarning = ::sendRenderWarning,
+            // Which preview texts the engine now draws, or no longer can; the
+            // editor draws every text the engine does not have.
+            onTextAtlas = { ready, id, path ->
+                sendEvent(
+                    mapOf(
+                        "type" to if (ready) "textReady" else "textGone",
+                        "overlayId" to id,
+                        "path" to path,
+                    ),
+                )
+            },
         )
         renderer = activeRenderer
 

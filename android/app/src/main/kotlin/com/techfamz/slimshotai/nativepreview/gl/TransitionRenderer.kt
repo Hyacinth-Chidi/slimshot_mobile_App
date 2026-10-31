@@ -76,6 +76,12 @@ internal class TransitionRenderer(
      * rendered the plain picture with nothing telling the user why.
      */
     private val onWarning: (String) -> Unit = {},
+    /**
+     * A preview text's atlas is loaded ([ready]) or can no longer be drawn.
+     * The editor's text layer stops drawing a text only once the engine has
+     * it, so a text is never drawn by nobody. Called on the GL thread.
+     */
+    private val onTextAtlas: (ready: Boolean, id: String, path: String) -> Unit = { _, _, _ -> },
 ) : com.techfamz.slimshotai.nativepreview.gl.effects.EffectPassSink {
 
     /** One decoder's output: an external texture plus its surface plumbing. */
@@ -133,6 +139,13 @@ internal class TransitionRenderer(
          */
         @Volatile
         var hasFrame = false
+
+        /**
+         * GL thread only: the timestamp of the frame last latched — when it is
+         * due on screen — so a new frame can be told from the same one latched
+         * again. See [PictureClock].
+         */
+        var latchedTimestamp = Long.MIN_VALUE
 
         private val frameLock = ReentrantLock()
         private val frameArrived = frameLock.newCondition()
@@ -417,9 +430,15 @@ internal class TransitionRenderer(
     @Volatile
     private var pendingPreviewOverlays: List<NativeTimelineOverlay>? = null
 
-    /** The timeline instant overlays are drawn at; written by the engine. */
-    @Volatile
-    private var overlayClockSeconds = 0.0
+    /**
+     * The timeline instant overlays are drawn at: the engine's clock, carried
+     * to the moment the frame being composited is due on screen. Written by
+     * the engine, fed frames here.
+     */
+    private val pictureClock = PictureClock()
+
+    /** GL thread only: the list the builder last adopted, to tell what left it. */
+    private var adoptedPreviewOverlays: List<NativeTimelineOverlay> = emptyList()
 
     /** GL thread only: owns the preview's overlay decoders. */
     private var previewOverlayBuilder: OverlayDrawBuilder? = null
@@ -456,14 +475,17 @@ internal class TransitionRenderer(
     }
 
     /**
-     * Where the overlays' clock is. Always stored; [redraw] asks for a draw,
-     * which the engine requests only when the picture can differ — see
-     * [OverlayClock.needsRedraw].
+     * Where the overlays' clock is: [seconds], read at [readAtNs], and whether
+     * it is [advancing]. Always stored; [redraw] asks for a draw, which the
+     * engine requests only when the picture can differ — see
+     * [OverlayClock.needsRedraw] — and which is left to the frames while video
+     * plays: each new frame asks for its own draw and is drawn at its own
+     * instant, so a tick drawing as well would draw the same picture twice.
      */
-    fun setOverlayClock(seconds: Double, redraw: Boolean) {
+    fun setOverlayClock(seconds: Double, redraw: Boolean, readAtNs: Long, advancing: Boolean) {
         if (released) return
-        overlayClockSeconds = seconds
-        if (redraw) requestRender()
+        pictureClock.onClock(seconds, readAtNs, advancing)
+        if (redraw && !pictureClock.framesDriveDraws(System.nanoTime())) requestRender()
     }
 
     private val previewOverlayEvents = object : OverlayDrawBuilder.Events {
@@ -480,6 +502,10 @@ internal class TransitionRenderer(
         override fun onLateFrame() = Unit
 
         override fun onFrameNotReady() = requestRender()
+
+        override fun onTextAtlasReady(id: String, path: String) = onTextAtlas(true, id, path)
+
+        override fun onTextAtlasGone(id: String, path: String) = onTextAtlas(false, id, path)
     }
 
     /** Once per list, not once per draw: the builder asks again every frame. */
@@ -513,6 +539,11 @@ internal class TransitionRenderer(
                         }
                         if (bitmap == null) {
                             previewStillsFailed.add(path)
+                        } else if (previewOverlayList.none { it.path == path }) {
+                            // Left the list while it decoded — a text the
+                            // playhead passed, a look replaced. Kept, it would
+                            // be a bitmap nothing ever uploads or frees.
+                            bitmap.recycle()
                         } else {
                             previewStillsReady[path] = bitmap
                         }
@@ -536,10 +567,33 @@ internal class TransitionRenderer(
         previewOverlayDraws = emptyList()
     }
 
+    /**
+     * GL thread, context current. Frees the stills of every path [next] no
+     * longer names, and tells the editor which texts it can no longer draw.
+     *
+     * The preview used to keep every still it ever uploaded. The editor sends
+     * only the texts near the playhead, an atlas per look, so what the list
+     * names changes as the playhead moves — kept, the textures would grow with
+     * every caption played and every look tried.
+     */
+    private fun releaseUnlistedStills(
+        previous: List<NativeTimelineOverlay>,
+        next: List<NativeTimelineOverlay>,
+    ) {
+        for (overlay in StillResidency.released(previous, next)) {
+            overlays.releaseImageTexture(overlay.path)
+            previewStillsReady.remove(overlay.path)?.recycle()
+            previewStillsFailed.remove(overlay.path)
+            if (overlay.isText) onTextAtlas(false, overlay.id, overlay.path)
+        }
+    }
+
     /** GL thread, context current. */
     private fun buildPreviewOverlayDraws() {
         pendingPreviewOverlays?.let { list ->
             pendingPreviewOverlays = null
+            releaseUnlistedStills(adoptedPreviewOverlays, list)
+            adoptedPreviewOverlays = list
             val existing = previewOverlayBuilder
             if (existing != null && list.isNotEmpty()) {
                 // Kept, not rebuilt: the list changes on every frame of a
@@ -568,10 +622,17 @@ internal class TransitionRenderer(
             return
         }
         builder.maxVideoDecoders = previewOverlayDecoderCap
-        val clock = overlayClockSeconds
+        // The picture's own instant — see [PictureClock]. Read after the lanes
+        // latched this frame's picture, which is why `renderFrame` updates them
+        // first.
+        val clock = pictureClock.overlayTime(System.nanoTime())
         previewOverlayDraws = try {
             builder.releaseExpired(clock)
-            builder.drawsFor(clock)
+            val draws = builder.drawsFor(clock)
+            // One atlas a draw, so a text is loaded before it is due and the
+            // editor can stop drawing it; another draw if more are waiting.
+            if (builder.preloadTexts(clock)) requestRender()
+            draws
         } catch (error: Exception) {
             // An overlay must never take the preview's frame down with it.
             Log.w(TAG, "Preview overlays could not be drawn", error)
@@ -753,6 +814,11 @@ internal class TransitionRenderer(
         // this drops its uploads too; re-adopting the list makes the next draw
         // rebuild the builder and reload what it needs.
         overlays.releaseAll()
+        // The texts' atlases went with them: the editor draws those texts
+        // until the next draws load them again.
+        for (text in StillResidency.textsIn(previewOverlayList)) {
+            onTextAtlas(false, text.id, text.path)
+        }
         pendingPreviewOverlays = previewOverlayList
         // The effect buffers are export-*sized* — up to three full frames at the
         // encode resolution, which is larger than the preview canvas. They would
@@ -1285,10 +1351,12 @@ internal class TransitionRenderer(
         val startedMs = SystemClock.uptimeMillis()
         layeredFrameDrawn = false
 
-        // On this thread with the context current, every draw — so a still or
-        // an overlay frame that landed since the last one simply appears.
-        buildPreviewOverlayDraws()
+        // The lanes first: the overlays are drawn at the instant of the frame
+        // this latches (`PictureClock`). Then, on this thread with the context
+        // current, every draw — so a still or an overlay frame that landed
+        // since the last one simply appears.
         updateLaneTextures()
+        buildPreviewOverlayDraws()
         composite(surfaceWidth, surfaceHeight)
 
         egl.swapBuffers(surface)
@@ -1323,6 +1391,11 @@ internal class TransitionRenderer(
      * waits.
      */
     private fun updateLaneTextures() {
+        // The lane the clock is read from: the outgoing one through a
+        // transition, else the one on screen. Its frames say when the picture
+        // is due on screen; the other lane's — a preroll parked on a frame —
+        // say nothing about the picture.
+        val clockLane = transition?.outgoingLane ?: activeLane
         for (lane in lanes) {
             uploadPendingImage(lane)
 
@@ -1331,6 +1404,13 @@ internal class TransitionRenderer(
             try {
                 surfaceTexture.updateTexImage()
                 surfaceTexture.getTransformMatrix(lane.texMatrix)
+                if (lane.index == clockLane && !lane.showingImage) {
+                    val due = surfaceTexture.timestamp
+                    if (due != lane.latchedTimestamp) {
+                        lane.latchedTimestamp = due
+                        pictureClock.onVideoFrame(due, System.nanoTime())
+                    }
+                }
             } catch (error: Exception) {
                 // Thrown if the surface was torn down between the callback and
                 // this draw. Dropping the frame is the right response — but it
@@ -1341,6 +1421,10 @@ internal class TransitionRenderer(
                 lane.hasFrame = false
             }
         }
+        // A photo on screen, or no lane at all in the tail: the video's last
+        // frame, however recent, is no longer the picture.
+        val shown = lanes.getOrNull(clockLane)
+        if (shown == null || shown.showingImage || !shown.hasFrame) pictureClock.onNoVideo()
     }
 
     /**

@@ -1095,27 +1095,32 @@ internal class TimelinePlaybackEngine(
         val redraw = OverlayClock.needsFirstDraw(lastOverlayPosition) ||
             OverlayClock.needsRedraw(overlays, lastOverlayPosition, clock)
         lastOverlayPosition = clock
-        renderer.setOverlayClock(clock, redraw)
+        // When it was read, and whether it moves: the renderer carries it to
+        // the instant the picture it draws over is due on screen.
+        renderer.setOverlayClock(clock, redraw, System.nanoTime(), overlaysAdvancing())
     }
 
     /**
-     * Keeps each video overlay's sound on the clock its picture is drawn from.
+     * Whether the overlays' clock is moving — one rule for their picture and
+     * their sound.
      *
      * "Advancing" is the honest question, not "is play pressed": inside the
-     * video it is the master lane *genuinely* playing, so an overlay's sound
-     * cannot run on while the picture is stalled or still buffering its first
+     * video it is the master lane *genuinely* playing, so an overlay cannot
+     * run on while the picture is stalled or still buffering its first
      * frames. In the tail the engine is parked and the editor's ticker owns
      * the playhead, so there it is whether tail positions are still arriving.
      */
+    private fun overlaysAdvancing(): Boolean = when {
+        isScrubbing -> false
+        tailActive -> OverlayAudioSync.tailIsAdvancing(
+            SystemClock.elapsedRealtime() - lastTailClockMs,
+        )
+        else -> isPlaying && lanes.getOrNull(masterLane)?.player?.isPlaying == true
+    }
+
+    /** Keeps each video overlay's sound on the clock its picture is drawn from. */
     private fun applyOverlayAudio() {
-        val advancing = when {
-            isScrubbing -> false
-            tailActive -> OverlayAudioSync.tailIsAdvancing(
-                SystemClock.elapsedRealtime() - lastTailClockMs,
-            )
-            else -> isPlaying && lanes.getOrNull(masterLane)?.player?.isPlaying == true
-        }
-        overlayAudio.sync(overlays, overlayClockNow, advancing, volume)
+        overlayAudio.sync(overlays, overlayClockNow, overlaysAdvancing(), volume)
     }
 
     private fun tick() {
