@@ -4072,6 +4072,15 @@ box, gestures, selection frame and handles — and paints nothing in it.
   selected and paused, the engine losing the atlas). The engine reports a load only **after the
   swap** of the frame that first draws the text: told from inside the draw, a slow frame (a heavy
   layered transition, past 45 ms on the Infinix) could outlast the wait.
+- **While the timeline is dragged every text is Flutter's** (`update(scrubbing:)`, set by
+  `_beginScrub`/`_endScrub`; a fling and the seam glide arrive as scroll notifications, so they
+  count). Device-reported: captions stacked on one another while scrubbing, never paused or
+  playing. Flutter moves its text to the finger in the frame it moves; the engine hears of the
+  drag as seeks and draws a frame or more later, and captions kept changing hands as they left
+  and re-entered the send window — so one caption held by Flutter and its neighbour held by the
+  engine showed together. The texts stay sent at no opacity, so the engine keeps them loaded and
+  takes them back two frames after the drag, with nothing to load. A scrub needs no engine
+  timing: no sound plays and the picture itself is catching up to the finger.
 - **Readiness is by atlas path, not entry**: two texts of one look share an atlas, and one upload
   serves both. A path names one rasterisation, so an old report cannot pass for a new look.
 - **An atlas is the export's own** (`TextOverlayRasterizer.rasterizeAtlas`, one entry builder for

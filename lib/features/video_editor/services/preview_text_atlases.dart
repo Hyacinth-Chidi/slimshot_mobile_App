@@ -76,6 +76,7 @@ class PreviewTextAtlases extends ChangeNotifier {
   Size? _canvas;
   Size _texture = Size.zero;
   bool _engineAvailable = false;
+  bool _scrubbing = false;
 
   /// By key, least recently used first.
   final LinkedHashMap<String, _Atlas> _atlases = LinkedHashMap();
@@ -118,6 +119,14 @@ class PreviewTextAtlases extends ChangeNotifier {
   /// for them, and keeps every gesture and handle.
   ValueListenable<Set<String>> get engineDrawn => _engineDrawn;
 
+  /// [scrubbing] is a drag of the timeline under way: **every text is
+  /// Flutter's while it lasts.** Flutter moves its text to the finger in the
+  /// frame the finger moves; the engine hears of the drag as seeks and draws
+  /// a frame or more later. A caption held by each side at those two instants
+  /// showed both on screen at once — device-reported, captions stacked on one
+  /// another while scrubbing. The texts stay sent at no opacity, so the
+  /// engine keeps them loaded and takes them back two frames after the drag
+  /// ends, with nothing to load again.
   void update({
     required List<TextOverlayModel> texts,
     required double playhead,
@@ -126,6 +135,7 @@ class PreviewTextAtlases extends ChangeNotifier {
     required Size? canvasSize,
     required Size textureSize,
     required bool engineAvailable,
+    bool scrubbing = false,
   }) {
     if (_disposed) return;
     final textsChanged = !identical(texts, _texts);
@@ -136,6 +146,7 @@ class PreviewTextAtlases extends ChangeNotifier {
     _canvas = canvasSize;
     _texture = textureSize;
     _engineAvailable = engineAvailable;
+    _scrubbing = scrubbing;
 
     if (textsChanged) {
       _settled = false;
@@ -201,11 +212,12 @@ class PreviewTextAtlases extends ChangeNotifier {
         final atlas = _atlases.remove(key);
         if (atlas == null) continue;
         _atlases[key] = atlas; // most recently used
-        final hidden = isTextBeingEdited(
-          text.id,
-          selectedTextId: _selectedTextId,
-          isPlaying: _isPlaying,
-        );
+        final hidden = _scrubbing ||
+            isTextBeingEdited(
+              text.id,
+              selectedTextId: _selectedTextId,
+              isPlaying: _isPlaying,
+            );
         next.add(_entryFor(text, atlas, hidden, canvas));
         if (!hidden) shown[text.id] = atlas.path;
       }

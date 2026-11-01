@@ -978,6 +978,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       textureSize: state.projectCanvasSize,
       engineAvailable:
           _canUseNativeTimelinePreview(state) && state.sourceVideo != null,
+      // A drag of the timeline: Flutter draws every text while it lasts —
+      // see `PreviewTextAtlases.update`.
+      scrubbing: _isScrubbing,
     );
   }
 
@@ -1179,6 +1182,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   void _beginScrub() {
     if (_isScrubbing) return;
     _isScrubbing = true;
+    // The texts go to Flutter for the drag, before the finger moves them.
+    _updatePreviewTexts(ref.read(videoEditorProvider));
     if (!_canUseNativeTimelinePreview(ref.read(videoEditorProvider))) return;
     unawaited(_nativePreviewService.setScrubbing(true));
   }
@@ -1191,6 +1196,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     if (!_isScrubbing) return;
     _isScrubbing = false;
     final state = ref.read(videoEditorProvider);
+    // And back to the engine, which kept them loaded through the drag.
+    _updatePreviewTexts(state);
     if (!_canUseNativeTimelinePreview(state)) return;
     unawaited(() async {
       await _nativePreviewService.setScrubbing(false);

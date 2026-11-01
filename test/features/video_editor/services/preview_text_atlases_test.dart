@@ -59,6 +59,7 @@ void main() {
     bool playing = false,
     Size? canvasSize = canvas,
     bool engine = true,
+    bool scrubbing = false,
   }) =>
       atlases.update(
         texts: texts,
@@ -68,6 +69,7 @@ void main() {
         canvasSize: canvasSize,
         textureSize: texture,
         engineAvailable: engine,
+        scrubbing: scrubbing,
       );
 
   /// Prepares [texts] and lets every frame the work waits on pass.
@@ -348,6 +350,35 @@ void main() {
     final path = raster.completeNext();
     await tester.pump();
     expect(deleted, [path]);
+  });
+
+  testWidgets('while the timeline is dragged Flutter draws every text and the engine none',
+      (tester) async {
+    // Device-reported: captions stacked on each other while scrubbing. Flutter
+    // follows the finger in the frame it moves; the engine hears of the drag
+    // as seeks and draws a frame or more later — so a caption Flutter held
+    // and one the engine held showed together. One drawer while dragging.
+    final atlases = make();
+    final texts = [text('a', 0, 3)];
+    push(atlases, texts);
+    await settle(tester);
+    await engineTakes(tester, atlases, 'a');
+    expect(atlases.engineDrawn.value, {'a'});
+
+    push(atlases, texts, scrubbing: true);
+    expect(atlases.engineDrawn.value, isEmpty, reason: 'Flutter draws it at once');
+    expect(atlases.payload.single.opacity.baseValue, 0,
+        reason: 'still sent, so the engine keeps it loaded, but drawn there by nobody');
+
+    // Let go: the engine still holds the atlas, so it takes the text back
+    // without loading anything — two frames, as any hand-over.
+    push(atlases, texts);
+    expect(atlases.payload.single.opacity.baseValue, 1);
+    expect(atlases.engineDrawn.value, isEmpty);
+    await frame(tester);
+    await frame(tester);
+    expect(atlases.engineDrawn.value, {'a'});
+    atlases.dispose();
   });
 
   testWidgets('no engine, nothing sent and Flutter draws everything', (tester) async {
