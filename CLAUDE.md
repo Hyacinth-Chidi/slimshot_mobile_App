@@ -4080,7 +4080,14 @@ box, gestures, selection frame and handles — and paints nothing in it.
   and re-entered the send window — so one caption held by Flutter and its neighbour held by the
   engine showed together. The texts stay sent at no opacity, so the engine keeps them loaded and
   takes them back two frames after the drag, with nothing to load. A scrub needs no engine
-  timing: no sound plays and the picture itself is catching up to the finger.
+  timing: no sound plays and the picture itself is catching up to the finger. **The list sent
+  when a drag begins is held until it ends, and no atlas is made meanwhile**: re-sent as
+  captions entered and left the window — nearly every frame of a fast drag — it backed up the
+  Android main thread (measured on the Infinix: the engine's seeks landing ~300 ms late), and the
+  hide at a drag begun just after another waited behind it, leaving the engine's caption beside
+  Flutter's for ~130 ms. Measured with the drag rule in (before the hold): captions on the
+  picture to 0.5 ms median during playback, 9 frames in 10 within 6 ms, and no two captions
+  together in 48 s of playing.
 - **Readiness is by atlas path, not entry**: two texts of one look share an atlas, and one upload
   serves both. A path names one rasterisation, so an old report cannot pass for a new look.
 - **An atlas is the export's own** (`TextOverlayRasterizer.rasterizeAtlas`, one entry builder for

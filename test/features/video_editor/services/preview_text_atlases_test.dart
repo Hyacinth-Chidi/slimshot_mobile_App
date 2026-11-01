@@ -381,6 +381,47 @@ void main() {
     atlases.dispose();
   });
 
+  testWidgets('a drag sends the engine one list and holds it until the drag ends',
+      (tester) async {
+    // Measured on the phone: re-sent as captions entered and left the window
+    // around the finger — nearly every frame of a fast drag — the list backed
+    // up the Android main thread, and the hide at the next drag waited behind
+    // it while the engine kept its caption on screen.
+    final atlases = make();
+    final texts = [text('a', 0, 3), text('b', 3.5, 6)];
+    push(atlases, texts, playhead: 1);
+    await settle(tester);
+    expect(atlases.payload.map((e) => e.id), ['text_a']);
+
+    push(atlases, texts, playhead: 1, scrubbing: true);
+    final held = atlases.payload;
+    expect(held.map((e) => e.id), ['text_a']);
+    expect(held.single.opacity.baseValue, 0);
+
+    for (final playhead in [2.0, 3.0, 4.0, 5.0]) {
+      push(atlases, texts, playhead: playhead, scrubbing: true);
+      expect(identical(atlases.payload, held), isTrue, reason: 'at $playhead');
+    }
+
+    push(atlases, texts, playhead: 4.5);
+    expect(atlases.payload.map((e) => e.id), ['text_b']);
+    expect(atlases.payload.single.opacity.baseValue, 1);
+    atlases.dispose();
+  });
+
+  testWidgets('nothing is prepared during a drag', (tester) async {
+    final atlases = make();
+    final texts = [text('a', 0, 3)];
+    push(atlases, texts, scrubbing: true);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(raster.calls, isEmpty);
+
+    push(atlases, texts);
+    await tester.pump();
+    expect(raster.calls, hasLength(1));
+    atlases.dispose();
+  });
+
   testWidgets('no engine, nothing sent and Flutter draws everything', (tester) async {
     final atlases = make();
     final texts = [text('a', 0, 3)];

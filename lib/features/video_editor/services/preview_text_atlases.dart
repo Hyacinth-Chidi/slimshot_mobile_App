@@ -78,6 +78,9 @@ class PreviewTextAtlases extends ChangeNotifier {
   bool _engineAvailable = false;
   bool _scrubbing = false;
 
+  /// The list sent when the current drag began, held until it ends.
+  bool _payloadHeldForDrag = false;
+
   /// By key, least recently used first.
   final LinkedHashMap<String, _Atlas> _atlases = LinkedHashMap();
   final Set<String> _failed = {};
@@ -127,6 +130,14 @@ class PreviewTextAtlases extends ChangeNotifier {
   /// another while scrubbing. The texts stay sent at no opacity, so the
   /// engine keeps them loaded and takes them back two frames after the drag
   /// ends, with nothing to load again.
+  ///
+  /// **And the list sent when the drag begins is held until it ends**, with
+  /// no atlas made meanwhile. Re-sent as captions entered and left the window
+  /// around the finger — nearly every frame of a fast drag — it backed up the
+  /// Android main thread (measured: the engine's seeks landing ~300 ms late),
+  /// and the hide at the next drag waited behind it while the engine kept its
+  /// caption on screen. The engine draws no text during a drag, so nothing in
+  /// between is worth sending.
   void update({
     required List<TextOverlayModel> texts,
     required double playhead,
@@ -196,6 +207,12 @@ class PreviewTextAtlases extends ChangeNotifier {
   }
 
   bool _rebuildPayload() {
+    // Mid-drag: the list the drag began with stands — see [update].
+    if (_scrubbing && _payloadHeldForDrag) {
+      _shown = const {};
+      return false;
+    }
+    _payloadHeldForDrag = _scrubbing;
     final canvas = _canvas;
     final next = <EditorTimelineOverlay>[];
     final shown = <String, String>{};
@@ -300,7 +317,11 @@ class PreviewTextAtlases extends ChangeNotifier {
   // ---------------------------------------------------------- preparation
 
   void _pump() {
-    if (_disposed || _inFlight != null || !_settled || !_engineAvailable) return;
+    // Not during a drag: nothing made then is sent until it ends, and the
+    // drag has the frames.
+    if (_disposed || _inFlight != null || !_settled || !_engineAvailable || _scrubbing) {
+      return;
+    }
     final canvas = _canvas;
     if (canvas == null || canvas.isEmpty) return;
     final next = _nextToPrepare();
