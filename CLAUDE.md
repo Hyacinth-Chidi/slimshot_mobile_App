@@ -2715,9 +2715,13 @@ a look field must then be carried by `TextLook`, or a template or preset would l
 `logic/captions/caption_preset_catalog.dart`). A style that moved the set would undo the user's
 own placement every time they tried one, and a caption's size is its Size
 (`kCaptionTextSize` until the user changes it). Nine: **Bubble — the default, `kDefaultCaptionPreset`**, white
-type over a soft shadow with a purple pill behind the spoken word, chosen on the device because it
+type over a soft shadow with a pill behind the spoken word, chosen on the device because it
 shows the highlight off from the first moment, and the grid's first tile so "the first one" and
-"what I got" agree — then Classic (`kCaptionClassicLook`, the look the first device run approved),
+"what I got" agree. **Since 2026-11-01 (the owner's call) Bubble is Margarine on a pink pill**
+(`kCaptionHighlightPink`, the Colour row's own pink, so the row shows it chosen); it was
+Montserrat Bold on purple. Margarine is bundled (SIL OFL 1.1, Astigmatic; its notice is in
+`kBundledFontCopyrights`). Sets made before keep the look they wear, which no tile now marks —
+then Classic (`kCaptionClassicLook`, the look the first device run approved),
 Karaoke, Pop, Boxed, Impact, Neon, Reveal, Focus. No in or out animations: the highlight is a caption's motion. The catalog
 test pins fonts bundled or in `kServerTemplateFontNames`, animations selectable, shadows inside the Style tab's ranges,
 **a highlight never the text's own colour** (a word lit the colour it already wears does not
@@ -2910,8 +2914,9 @@ plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-a
 **`google_fonts` is gone**, and with it every runtime download from Google: a guard test
 (`test/no_google_fonts_test.dart`) fails on any import under `lib/` or the package in `pubspec.yaml`.
 
-- **The Font tab is one grid** (`FontGridView`, `fonts/font_grid.dart`): System (Roboto), the three
-  bundled fonts (`kBundledFontNames`: Montserrat Bold, Bebas Neue, Poppins), then **every
+- **The Font tab is one grid** (`FontGridView`, `fonts/font_grid.dart`): System (Roboto), the four
+  bundled fonts (`kBundledFontNames`: Montserrat Bold, Bebas Neue, Poppins, Margarine — each
+  a `pubspec.yaml` family whose file is there, which `font_names_test.dart` checks), then **every
   published font** in the owner's order (`GET /fonts`, no category). **No categories at all** —
   the owner's call, after trying Trending and More fonts and finding a font filed nowhere simply
   missing from the app: publish a font and it is listed, a new one at the top until moved, the
@@ -2953,7 +2958,7 @@ plan beside it in `plans/`. Server contract: `slimshot_server/docs/app-catalog-a
   session per name (`fontsToFetch`), from a listener on the text list alone — its identity
   survives a position event, so playback asks nothing. A font that cannot be had is said once a
   session (`kFontUnavailableMessage`); its texts draw in System, on the canvas and in the file.
-- **Templates and caption styles keep their faces**: the bundled three plus
+- **Templates and caption styles keep their faces**: the bundled four plus
   `kServerTemplateFontNames` — Abril Fatface, Inter, Montserrat, Nunito, Oswald, Permanent Marker,
   Playfair Display, Press Start 2P, Righteous, Sacramento — prefetched when the templates sheet,
   the editor's Templates tab or Caption style opens, so the tiles show their real looks. The
@@ -4998,9 +5003,9 @@ Both Skip and Get started set `hasSeenOnboarding` and go Home.
   edge to edge from the top of the screen, under the status bar and the step bar (a shade at the
   top keeps the bar readable), fading into the black where the words begin. **The photo is the
   room the words leave**, so on any screen the two meet and never overlap. Its caption plays
-  word by word in the app's own Bubble look (`kDefaultCaptionLook`: Montserrat Bold, white, the
+  word by word in the app's own Bubble look (`kDefaultCaptionLook`: Margarine, white, the
   soft shadow), the spoken word on a pill of the highlight row's **pink**
-  (`kCaptionHighlightPink`, the owner's call over Bubble's purple): **"EDIT YOUR VIDEOS WITH
+  (`kCaptionHighlightPink`, Bubble's own pink since 2026-11-01): **"EDIT YOUR VIDEOS WITH
   PASSION"** (`kOnboardingCaptionWords`, the owner's line, after a Pidgin one read as
   machine-written). It sits low on the picture, where captions go and where the photo has
   faded dark enough for white words; it wraps rather than shrinks, is sized from the screen

@@ -51,14 +51,15 @@ const TextLook kCaptionClassicLook = TextLook(
 
 const Color _yellow = Color(0xFFFFD60A);
 const Color _green = Color(0xFF30D158);
-const Color _purple = Color(0xFFBF5AF2);
 const Color _blue = Color(0xFF0A84FF);
 const Color _black = Color(0xFF000000);
 const Color _white = Color(0xFFFFFFFF);
 
-/// The look of the default style, Bubble: bold white type over a soft shadow.
+/// The look of the default style, Bubble: white type over a soft shadow, in
+/// Margarine — the owner's pick (2026-11-01), bundled so a caption looks the
+/// same offline and on any phone.
 const TextLook kDefaultCaptionLook = TextLook(
-  fontFamily: 'Montserrat Bold',
+  fontFamily: 'Margarine',
   shadowColor: _black,
   shadowOpacity: 0.5,
   shadowBlur: 8,
@@ -66,9 +67,10 @@ const TextLook kDefaultCaptionLook = TextLook(
   shadowAngle: 90,
 );
 
-/// The default style's highlight: a purple pill behind the word being spoken.
+/// The default style's highlight: a pink pill behind the word being spoken —
+/// the highlight row's own pink, so the Colour row shows it chosen.
 const CaptionHighlight kDefaultCaptionHighlight =
-    CaptionHighlight(style: CaptionHighlightStyle.pill, color: _purple);
+    CaptionHighlight(style: CaptionHighlightStyle.pill, color: kCaptionHighlightPink);
 
 /// The style a project's first caption set is generated in — Bubble, chosen
 /// on the device because it shows the highlight off from the first moment.

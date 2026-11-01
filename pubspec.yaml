@@ -111,6 +111,10 @@ flutter:
     - family: Poppins
       fonts:
         - asset: assets/fonts/Poppins-Regular.ttf
+    # The default caption style's face (Bubble), the owner's pick. SIL OFL 1.1.
+    - family: Margarine
+      fonts:
+        - asset: assets/fonts/Margarine-Regular.ttf
 
 dev_dependencies:
   flutter_test:

@@ -23,12 +23,13 @@ void main() {
         fontRow('rg', 'Righteous'),
       ]));
       expect(entries.map((e) => e.label),
-          ['SYSTEM', 'Montserrat Bold', 'Bebas Neue', 'Poppins', 'Playfair Display', 'Lato Bold', 'Righteous']);
+          ['SYSTEM', 'Montserrat Bold', 'Bebas Neue', 'Poppins', 'Margarine', 'Playfair Display', 'Lato Bold', 'Righteous']);
       expect(entries.first.name, 'Roboto');
       expect(entries.first.source, FontSource.system);
       expect(entries[1].source, FontSource.bundled);
-      expect(entries[4].source, FontSource.server);
-      expect(entries[4].font?.id, 'pd');
+      expect(entries[4].source, FontSource.bundled);
+      expect(entries[5].source, FontSource.server);
+      expect(entries[5].font?.id, 'pd');
     });
 
     test('a server font named like a local one is left out', () {
@@ -138,7 +139,7 @@ void main() {
     test('no published fonts leaves the local ones, and says nothing', () async {
       server.fonts = [];
       await controller.open();
-      expect(labels(), ['SYSTEM', 'Montserrat Bold', 'Bebas Neue', 'Poppins']);
+      expect(labels(), ['SYSTEM', 'Montserrat Bold', 'Bebas Neue', 'Poppins', 'Margarine']);
       expect(controller.takeNotice(), isNull);
     });
 
@@ -161,7 +162,7 @@ void main() {
       final local = build(configured: false);
       await local.open();
       await local.refresh();
-      expect(local.entries.map((e) => e.label), ['SYSTEM', 'Montserrat Bold', 'Bebas Neue', 'Poppins']);
+      expect(local.entries.map((e) => e.label), ['SYSTEM', 'Montserrat Bold', 'Bebas Neue', 'Poppins', 'Margarine']);
       expect(server.totalHits, 0);
       expect(local.takeNotice(), isNull);
     });

@@ -85,6 +85,9 @@ const Map<String, String> kBundledFontCopyrights = {
       'Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)',
   'Plus Jakarta Sans':
       'Copyright 2020 The Plus Jakarta Sans Project Authors (https://github.com/tokotype/PlusJakartaSans)',
+  'Margarine':
+      'Copyright (c) 2012 by Brian J. Bonislawsky DBA Astigmatic (AOETI) (astigma@astigmatic.com), '
+          'with Reserved Font Name "Margarine"',
 };
 
 const String _oflText = """

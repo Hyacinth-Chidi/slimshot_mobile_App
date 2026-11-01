@@ -19,14 +19,18 @@ void main() {
     expect(ids.toSet(), hasLength(ids.length));
   });
 
-  test('the first preset is the default style: Bubble, a purple pill', () {
+  test('the first preset is the default style: Bubble, Margarine on a pink pill', () {
     // What a project's first set is generated in, and the first tile of the
-    // grid, so "the first one" and "what I got" are the same thing.
+    // grid, so "the first one" and "what I got" are the same thing. The
+    // owner's call (2026-11-01): their font, the highlight row's own pink.
     final first = kCaptionPresets.first;
     expect(first, same(kDefaultCaptionPreset));
     expect(first.id, 'bubble');
+    expect(first.look.fontFamily, 'Margarine');
     expect(first.highlight.style, CaptionHighlightStyle.pill);
-    expect(first.highlight.color, const Color(0xFFBF5AF2));
+    expect(first.highlight.color, const Color(0xFFFF375F));
+    expect(kCaptionHighlightColors, contains(first.highlight.color),
+        reason: 'the Colour row marks the pink as chosen');
     // A set built with nothing said wears it.
     final made = buildCaptionOverlays(
       drafts: const [

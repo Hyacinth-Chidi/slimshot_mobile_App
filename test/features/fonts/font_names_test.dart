@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/fonts/font_names.dart';
 import 'package:slimshotai/features/video_editor/logic/captions/caption_preset_catalog.dart';
@@ -11,6 +13,21 @@ void main() {
       expect(isLocalFontName(name.toUpperCase()), isTrue, reason: name);
     }
     expect(isLocalFontName('Playfair Display'), isFalse);
+  });
+
+  test('every bundled font is a family the app ships, and its file is there', () {
+    // A name listed here and missing from pubspec.yaml draws in System on
+    // every phone — with nothing failing anywhere to say so.
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    for (final name in kBundledFontNames) {
+      expect(pubspec, contains('- family: $name\n'), reason: name);
+    }
+    final assets = RegExp(r'- asset: (assets/fonts/\S+)')
+        .allMatches(pubspec)
+        .map((m) => m.group(1)!);
+    for (final asset in assets) {
+      expect(File(asset).existsSync(), isTrue, reason: asset);
+    }
   });
 
   test('every template and caption font is local or a server template font', () {

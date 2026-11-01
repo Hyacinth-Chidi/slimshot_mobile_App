@@ -89,9 +89,9 @@ void main() {
           canvasSize: canvas,
         ).first;
 
-    test('bold white type with a soft shadow, from a font in the app', () {
+    test('white type with a soft shadow, in Margarine, a font in the app', () {
       final c = captionOn(const Size(360, 640));
-      expect(c.fontFamily, 'Montserrat Bold');
+      expect(c.fontFamily, 'Margarine');
       // Bundled, not fetched: a caption must look the same offline, and on a
       // phone whose system face is not the one the download would have been.
       expect(kBundledFontNames, contains(c.fontFamily));
@@ -183,7 +183,7 @@ void main() {
 
     test('with no canvas known yet it still has a look', () {
       final c = buildCaptionOverlays(drafts: drafts, setId: 's', lane: 0).first;
-      expect(c.fontFamily, 'Montserrat Bold');
+      expect(c.fontFamily, 'Margarine');
       expect(c.scale, inInclusiveRange(kMinTextScale, kMaxTextScale));
       expect(c.boxWidth, isNull);
     });

@@ -8,7 +8,7 @@ const String kSystemFontName = 'Roboto';
 
 /// Fonts bundled in the app (`pubspec.yaml`), drawn offline from the first
 /// install. Every other font comes from SlimShot's server.
-const List<String> kBundledFontNames = ['Montserrat Bold', 'Bebas Neue', 'Poppins'];
+const List<String> kBundledFontNames = ['Montserrat Bold', 'Bebas Neue', 'Poppins', 'Margarine'];
 
 /// The server fonts the built-in templates and caption styles use. The owner
 /// uploads each as a Regular face; until one is on the phone, its text draws
