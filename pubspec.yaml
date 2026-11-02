@@ -1,7 +1,7 @@
 name: slimshotai
 description: "A Premium Video editor and media tools."
 publish_to: "none"
-version: 2.0.1+5
+version: 2.0.1+6
 
 environment:
   sdk: ^3.10.8
