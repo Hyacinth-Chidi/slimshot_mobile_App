@@ -2715,11 +2715,14 @@ a look field must then be carried by `TextLook`, or a template or preset would l
 `logic/captions/caption_preset_catalog.dart`). A style that moved the set would undo the user's
 own placement every time they tried one, and a caption's size is its Size
 (`kCaptionTextSize` until the user changes it). Nine: **Bubble — the default, `kDefaultCaptionPreset`**, white
-type over a soft shadow with a pill behind the spoken word, chosen on the device because it
+type with a pill behind the spoken word, chosen on the device because it
 shows the highlight off from the first moment, and the grid's first tile so "the first one" and
 "what I got" agree. **Since 2026-11-01 (the owner's call) Bubble is Margarine on a pink pill**
 (`kCaptionHighlightPink`, the Colour row's own pink, so the row shows it chosen); it was
-Montserrat Bold on purple. Margarine is bundled (SIL OFL 1.1, Astigmatic; its notice is in
+Montserrat Bold on purple. **Since 2026-11-02 it has no shadow** (the owner's call, seen on the
+device) — plain white letters, no outline either; readable over bright footage is the device's to
+judge. A shadowless caption also exports much faster: its atlas needs no shadow cells and no
+shadow padding, 0.24 megapixels against 1.88 (the export-wait section). Margarine is bundled (SIL OFL 1.1, Astigmatic; its notice is in
 `kBundledFontCopyrights`). Sets made before keep the look they wear, which no tile now marks —
 then Classic (`kCaptionClassicLook`, the look the first device run approved),
 Karaoke, Pop, Boxed, Impact, Neon, Reveal, Focus. No in or out animations: the highlight is a caption's motion. The catalog
@@ -2783,7 +2786,7 @@ one edge — the editor offers neither value. The sheet marks a style current by
 (speeds ignored) while `restyleCaptions` returns early only on full equality, so a current tile
 could still take an undo step if a preset ever carried an animation (none does). **Reveal carries
 no outline** — white type over a soft shadow alone; a device call on bright footage. (Bubble has
-none either, and was judged readable on the device.)
+neither an outline nor, since 2026-11-02, a shadow.)
 
 ### Auto captions from Home — the editor in captions mode
 
@@ -4134,6 +4137,41 @@ none (`framesDriveDraws`). **Effect bars are still switched on the tick clock** 
 reaches the screen a frame or two behind the sound, as every overlay did before; a text over the
 4096 px atlas limit stays Flutter-drawn.
 
+### A captioned export starts at once — raw atlases and a moving bar
+
+**Awaiting device verification** (2026-11-02). Device-reported on the live 2.0.1: an export with
+auto captions sat at 0% for five or six seconds before it began, and read as broken; exports
+without text started at once. Before the engine is asked, `_rasterizeTextOverlays` draws every text
+into an atlas at export density, one after another — a caption set is dozens — and nothing moved
+the bar.
+
+- **An atlas is raw pixels, not a PNG** (`raw_atlas_file.dart`, `RawAtlasFile.kt`;
+  `raw_atlas_file_test.dart`, `RawAtlasFileTest`). Measured on 30 Bubble captions at HD density:
+  Flutter's PNG encoder was 129 ms of each atlas's ~200 ms — an atlas is a couple of million
+  pixels, nearly all shadow padding — where reading the pixels back and deflating them at zlib's
+  fastest level is 29 ms. The file (`.rgbz`) is `SSRZ`, width and height as little-endian 32-bit
+  integers, then the **premultiplied** RGBA rows as one zlib stream; the deflate runs on a
+  background isolate. **Lossless, the same pixels**: the reassembly tests pass unchanged, and the
+  raw path skips the PNG's trip through straight alpha. `StillImageDecoder` hands an atlas file to
+  `RawAtlasFile` before trying `BitmapFactory`, so the preview and the export read it alike and
+  photos are untouched. Both sides are pinned by `test/fixtures/raw_atlas_fixture.rgbz`
+  (regenerate with `UPDATE_RAW_ATLAS_FIXTURE=1 flutter test
+  test/features/video_editor/services/raw_atlas_file_test.dart`, then re-run the Kotlin suite);
+  tests read an atlas through `decodeAtlasImage` (`test/support/atlas_files.dart`), itself pinned
+  to hand back exactly the drawn pixels. `RasterizedTextAtlas.atlasPath` was `pngPath`; the flat
+  raster stays a PNG.
+- **The bar moves from the first moment**: `exportVideo(onPreparing:)` says how far through the
+  texts it is, each one done, all before the engine is asked, and the export screen gives that the
+  first `kExportTextShare` (10%), laying the engine's own progress over the rest. A project without
+  text keeps the whole bar for the engine.
+- **The shadowless default does the rest** (the owner's call, the same day): with no shadow cells
+  and no shadow padding a Bubble atlas is 0.24 megapixels against 1.88. End to end on a desktop,
+  30 captions: about 5.0–5.7 s as PNGs with a shadow, 2.0–2.4 s raw with a shadow, **0.38 s raw
+  without** — the default now.
+- **Still to try if a device wants more**: preparing the captions while the engine encodes the
+  sound (its first pass needs none of them), and half-resolution shadow cells for the styles that
+  keep a shadow — a shadow is a blur, and a blur hides the halving.
+
 ### Sound library — effects and music, tap to listen, + to add
 
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-10-19-sound-effects-library-design.md`,
@@ -5003,8 +5041,8 @@ Both Skip and Get started set `hasSeenOnboarding` and go Home.
   edge to edge from the top of the screen, under the status bar and the step bar (a shade at the
   top keeps the bar readable), fading into the black where the words begin. **The photo is the
   room the words leave**, so on any screen the two meet and never overlap. Its caption plays
-  word by word in the app's own Bubble look (`kDefaultCaptionLook`: Margarine, white, the
-  soft shadow), the spoken word on a pill of the highlight row's **pink**
+  word by word in the app's own Bubble look (`kDefaultCaptionLook`: Margarine, plain
+  white), the spoken word on a pill of the highlight row's **pink**
   (`kCaptionHighlightPink`, Bubble's own pink since 2026-11-01): **"EDIT YOUR VIDEOS WITH
   PASSION"** (`kOnboardingCaptionWords`, the owner's line, after a Pidgin one read as
   machine-written). It sits low on the picture, where captions go and where the photo has

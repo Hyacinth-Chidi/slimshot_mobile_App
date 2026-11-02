@@ -55,17 +55,10 @@ const Color _blue = Color(0xFF0A84FF);
 const Color _black = Color(0xFF000000);
 const Color _white = Color(0xFFFFFFFF);
 
-/// The look of the default style, Bubble: white type over a soft shadow, in
-/// Margarine — the owner's pick (2026-11-01), bundled so a caption looks the
-/// same offline and on any phone.
-const TextLook kDefaultCaptionLook = TextLook(
-  fontFamily: 'Margarine',
-  shadowColor: _black,
-  shadowOpacity: 0.5,
-  shadowBlur: 8,
-  shadowDistance: 2,
-  shadowAngle: 90,
-);
+/// The look of the default style, Bubble: plain white type in Margarine — the
+/// owner's pick (2026-11-01), bundled so a caption looks the same offline and
+/// on any phone — with no shadow under it (the owner's call, 2026-11-02).
+const TextLook kDefaultCaptionLook = TextLook(fontFamily: 'Margarine');
 
 /// The default style's highlight: a pink pill behind the word being spoken —
 /// the highlight row's own pink, so the Colour row shows it chosen.

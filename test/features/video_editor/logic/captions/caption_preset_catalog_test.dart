@@ -6,6 +6,7 @@ import 'package:slimshotai/features/video_editor/logic/captions/caption_preset_c
 import 'package:slimshotai/features/video_editor/logic/captions/caption_grouping.dart';
 import 'package:slimshotai/features/video_editor/logic/text_animation_catalog.dart';
 import 'package:slimshotai/features/video_editor/logic/text_look.dart';
+import 'package:slimshotai/features/video_editor/logic/text_overlay_geometry.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 import 'package:slimshotai/features/fonts/font_names.dart';
 
@@ -22,11 +23,17 @@ void main() {
   test('the first preset is the default style: Bubble, Margarine on a pink pill', () {
     // What a project's first set is generated in, and the first tile of the
     // grid, so "the first one" and "what I got" are the same thing. The
-    // owner's call (2026-11-01): their font, the highlight row's own pink.
+    // owner's call (2026-11-01): their font, the highlight row's own pink;
+    // and (2026-11-02) no shadow under the letters.
     final first = kCaptionPresets.first;
     expect(first, same(kDefaultCaptionPreset));
     expect(first.id, 'bubble');
     expect(first.look.fontFamily, 'Margarine');
+    expect(
+      TextOverlayLayout.hasShadow(first.look.applyTo(TextOverlayModel(id: 'c', text: 'hi'))),
+      isFalse,
+      reason: 'no shadow',
+    );
     expect(first.highlight.style, CaptionHighlightStyle.pill);
     expect(first.highlight.color, const Color(0xFFFF375F));
     expect(kCaptionHighlightColors, contains(first.highlight.color),

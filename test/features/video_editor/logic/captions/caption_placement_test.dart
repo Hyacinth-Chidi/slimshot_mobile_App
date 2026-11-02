@@ -89,16 +89,17 @@ void main() {
           canvasSize: canvas,
         ).first;
 
-    test('white type with a soft shadow, in Margarine, a font in the app', () {
+    test('white type with no shadow, in Margarine, a font in the app', () {
       final c = captionOn(const Size(360, 640));
       expect(c.fontFamily, 'Margarine');
       // Bundled, not fetched: a caption must look the same offline, and on a
       // phone whose system face is not the one the download would have been.
       expect(kBundledFontNames, contains(c.fontFamily));
       expect(c.color, const Color(0xFFFFFFFF));
-      expect(c.shadowColor, const Color(0xFF000000));
+      // The owner's call (2026-11-02): no shadow under the letters.
+      expect(TextOverlayLayout.hasShadow(c), isFalse);
       expect(c.backgroundColor.a, 0);
-      // The word being spoken sits on a purple pill.
+      // The word being spoken sits on a pink pill.
       expect(c.highlight.style, CaptionHighlightStyle.pill);
       // No fades: a half-second fade is most of a one-second caption's life.
       expect(
