@@ -56,12 +56,20 @@ class ExportVideoScreen extends StatefulWidget {
   State<ExportVideoScreen> createState() => _ExportVideoScreenState();
 }
 
+/// The part of the export's bar the text step fills, when a project has text.
+const double kExportTextShare = 0.1;
+
 class _ExportVideoScreenState extends State<ExportVideoScreen> {
   late final NativeTimelinePreviewService _nativePreview =
       widget.preview ?? NativeTimelinePreviewService();
   late final ResultExit _exit = ResultExit(delete: widget.deleteFiles);
   StreamSubscription? _progressSub;
   double _progress = 0.0;
+
+  /// The part of the bar the text step took — [kExportTextShare] once a
+  /// project's text has been prepared, nothing for one without text — so the
+  /// engine's own progress fills what is left after it.
+  double _textShare = 0.0;
   bool _isExporting = true;
   String? _exportedVideoPath;
   VideoPlayerController? _playerController;
@@ -92,7 +100,8 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
     _progressSub = _nativePreview.events.listen((event) {
       if (!mounted) return;
       if (event.type == 'exportProgress' && event.progress != null) {
-        setState(() => _progress = event.progress!.clamp(0.0, 1.0));
+        final engine = event.progress!.clamp(0.0, 1.0);
+        setState(() => _progress = _textShare + engine * (1 - _textShare));
       } else if (event.type == 'exportWarning' && event.message != null) {
         // A device that forced a compromise says so; a file that quietly
         // differs from the preview must never pass as a clean success.
@@ -119,6 +128,16 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
         onWarning: (message) {
           if (!mounted) return;
           ToastUtils.show(context, message, isWarning: true);
+        },
+        // Captions are drawn before the engine starts — dozens of images for
+        // a caption set — and the bar sat at 0% meanwhile, which read as a
+        // broken export. They move the first part of the bar instead.
+        onPreparing: (fraction) {
+          if (!mounted) return;
+          setState(() {
+            _textShare = kExportTextShare;
+            _progress = fraction.clamp(0.0, 1.0) * kExportTextShare;
+          });
         },
       );
     } catch (e) {

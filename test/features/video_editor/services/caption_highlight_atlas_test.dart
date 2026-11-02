@@ -270,6 +270,34 @@ void main() {
       return warnings;
     }
 
+    // Device-reported: a captioned export sat at 0% while its captions were
+    // drawn. Each one done is said, all of them before the engine is asked.
+    test('preparing the text says how far through it is, text by text', () async {
+      final heard = <({double fraction, int engineCalls})>[];
+      await NativeTimelinePreviewService(registerFonts: (_) async {}).exportVideo(
+        VideoEditorState(
+          assets: const [
+            MediaAsset(
+              id: 'a',
+              path: '/v.mp4',
+              type: MediaAssetType.video,
+              durationSeconds: 10,
+              width: 1080,
+              height: 1920,
+              hasAudio: true,
+            ),
+          ],
+          segments: [VideoSegment(id: 'a', assetId: 'a', sourceStart: 0, sourceEnd: 5)],
+          textOverlays: [caption(), caption().copyWith(id: 'c2')],
+        ),
+        outputPath: '/tmp/o.mp4',
+        previewCanvasSize: canvas,
+        onPreparing: (fraction) => heard.add((fraction: fraction, engineCalls: sent.length)),
+      );
+      expect(heard.map((h) => h.fraction), [0.5, 1.0]);
+      expect(heard.map((h) => h.engineCalls), [0, 0], reason: 'before the engine is asked');
+    });
+
     test("export registers the project's text fonts before it rasterises", () async {
       final gate = Completer<void>();
       final registered = <String>[];

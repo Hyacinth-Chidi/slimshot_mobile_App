@@ -243,6 +243,45 @@ void main() {
     });
   });
 
+  // Device-reported: an export with captions sat at 0% for five or six
+  // seconds while its text was prepared, and read as broken. The text step
+  // moves the first tenth of the bar; the engine fills the rest after it.
+  group('the bar from the first moment', () {
+    Future<void> engineAt(WidgetTester tester, double progress) async {
+      engine.engineEvents.add(
+        NativeTimelinePreviewEvent(type: 'exportProgress', progress: progress),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    testWidgets('preparing the text moves the first tenth', (tester) async {
+      engine
+        ..preparing = [0.5]
+        ..finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true);
+      // The percentage animates to where the bar stands.
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('5.0%'), findsOneWidget);
+    });
+
+    testWidgets("the engine's progress fills the rest after it", (tester) async {
+      engine
+        ..preparing = [0.5, 1.0]
+        ..finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true);
+      await engineAt(tester, 0.5);
+      expect(find.text('55.0%'), findsOneWidget);
+    });
+
+    testWidgets('with no text the engine has the whole bar', (tester) async {
+      engine.finish = Completer<NativeExportResult>();
+      await openExport(tester, exporting: true);
+      await engineAt(tester, 0.5);
+      expect(find.text('50.0%'), findsOneWidget);
+    });
+  });
+
   testWidgets('Back during an export cancels it, as ✕ does, without asking',
       (tester) async {
     engine.finish = Completer<NativeExportResult>();
@@ -261,8 +300,14 @@ class _FakeExport extends NativeTimelinePreviewService {
   Completer<NativeExportResult>? finish;
   bool cancelled = false;
 
+  /// How far through its text the export says it is, before the engine starts.
+  List<double> preparing = const [];
+
+  /// The engine's own events: its progress through the file.
+  final engineEvents = StreamController<NativeTimelinePreviewEvent>.broadcast();
+
   @override
-  Stream<NativeTimelinePreviewEvent> get events => const Stream.empty();
+  Stream<NativeTimelinePreviewEvent> get events => engineEvents.stream;
 
   @override
   Future<NativeExportResult> exportVideo(
@@ -272,14 +317,19 @@ class _FakeExport extends NativeTimelinePreviewService {
     int frameRate = 30,
     int targetShortSidePx = 1080,
     void Function(String message)? onWarning,
-  }) =>
-      finish?.future ??
-      Future.value(const NativeExportResult(
-        outputPath: '/cache/slimshot_export_1.mp4',
-        durationSeconds: 3,
-        frameCount: 90,
-        degradedTransitions: 0,
-      ));
+    void Function(double fraction)? onPreparing,
+  }) {
+    for (final fraction in preparing) {
+      onPreparing?.call(fraction);
+    }
+    return finish?.future ??
+        Future.value(const NativeExportResult(
+          outputPath: '/cache/slimshot_export_1.mp4',
+          durationSeconds: 3,
+          frameCount: 90,
+          degradedTransitions: 0,
+        ));
+  }
 
   @override
   Future<void> cancelExport() async => cancelled = true;

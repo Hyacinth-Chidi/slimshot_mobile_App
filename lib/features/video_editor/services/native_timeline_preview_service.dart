@@ -309,6 +309,7 @@ class NativeTimelinePreviewService {
     int frameRate = 30,
     int targetShortSidePx = 1080,
     void Function(String message)? onWarning,
+    void Function(double fraction)? onPreparing,
   }) async {
     // No waiting for downloads: a font is applied only once it is on the
     // phone, so the export draws what the canvas draws. What it does need is
@@ -327,6 +328,7 @@ class NativeTimelinePreviewService {
       state,
       previewCanvasSize,
       targetShortSidePx,
+      onPreparing,
     );
     for (final warning in textRasters.warnings) {
       onWarning?.call(warning);
@@ -371,6 +373,10 @@ class NativeTimelinePreviewService {
   /// Rasterised text overlays as native image-overlay entries, the temp files
   /// to delete once the export is done with them, and any degradation the user
   /// has to be told about.
+  ///
+  /// [onPreparing] hears how far through the texts it is after each one: a
+  /// caption set is dozens of atlases, and before this the export sat at 0%
+  /// while they were drawn, with nothing to say it was working.
   Future<
       ({
         List<EditorTimelineOverlay> overlays,
@@ -380,6 +386,7 @@ class NativeTimelinePreviewService {
     VideoEditorState state,
     Size? previewCanvasSize,
     int targetShortSidePx,
+    void Function(double fraction)? onPreparing,
   ) async {
     final canvas = previewCanvasSize;
     if (state.textOverlays.isEmpty ||
@@ -403,7 +410,12 @@ class NativeTimelinePreviewService {
     final tempFiles = <String>[];
     final warnings = <String>[];
 
-    for (final text in state.textOverlays) {
+    final texts = state.textOverlays;
+    for (var i = 0; i < texts.length; i++) {
+      // The texts done so far, said before the next is drawn — whichever way
+      // the last one left the loop.
+      if (i > 0) onPreparing?.call(i / texts.length);
+      final text = texts[i];
       // Drawn at the largest size it reaches, so a keyframed zoom is as sharp
       // at its end as a text resting there — see [textOverlayPeakScale]. Only
       // the raster's density reads the scale; its placement box does not.
@@ -495,6 +507,7 @@ class NativeTimelinePreviewService {
         ),
       );
     }
+    onPreparing?.call(1.0);
     return (overlays: overlays, tempFiles: tempFiles, warnings: warnings);
   }
 
