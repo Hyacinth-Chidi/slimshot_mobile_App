@@ -18,7 +18,8 @@ void main() {
   test('every bundled font is a family the app ships, and its file is there', () {
     // A name listed here and missing from pubspec.yaml draws in System on
     // every phone — with nothing failing anywhere to say so.
-    final pubspec = File('pubspec.yaml').readAsStringSync();
+    // A Windows checkout may hand the file over with \r\n line endings.
+    final pubspec = File('pubspec.yaml').readAsStringSync().replaceAll('\r\n', '\n');
     for (final name in kBundledFontNames) {
       expect(pubspec, contains('- family: $name\n'), reason: name);
     }
