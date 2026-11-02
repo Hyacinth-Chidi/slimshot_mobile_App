@@ -11,6 +11,7 @@ import '../logic/captions/caption_highlight_layout.dart';
 import '../logic/text_glyph_layout.dart';
 import '../logic/text_overlay_geometry.dart';
 import '../models/text_overlay_model.dart';
+import 'raw_atlas_file.dart';
 
 /// The result of packing padded glyph cells into rows at one density —
 /// private plumbing between [TextOverlayRasterizer._packGlyphs] and the
@@ -122,7 +123,7 @@ class RasterizedCell {
 /// running a rasteriser.
 class RasterizedTextAtlas {
   const RasterizedTextAtlas({
-    required this.pngPath,
+    required this.atlasPath,
     required this.canvasPxSize,
     required this.atlasPxSize,
     required this.glyphs,
@@ -133,7 +134,8 @@ class RasterizedTextAtlas {
     this.highlight,
   });
 
-  final String pngPath;
+  /// The sheet's pixels, as a raw atlas file (`raw_atlas_file.dart`).
+  final String atlasPath;
 
   /// The whole text box in canvas pixels — the same box `rasterize` reports.
   final Size canvasPxSize;
@@ -543,17 +545,16 @@ class TextOverlayRasterizer {
               atlasWidth.ceil().clamp(1, kMaxRasterSidePx),
               atlasHeight.ceil().clamp(1, kMaxRasterSidePx),
             );
-        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-        if (bytes == null) return null;
 
+        // Raw pixels, not a PNG: its encoder was most of the wait before a
+        // captioned export began. See [writeRawAtlas].
         final dir = await getTemporaryDirectory();
-        final file = File(
-          '${dir.path}/${FileUtils.textAtlasPrefix}${overlay.id}_${DateTime.now().microsecondsSinceEpoch}.png',
-        );
-        await file.writeAsBytes(bytes.buffer.asUint8List());
+        final path =
+            '${dir.path}/${FileUtils.textAtlasPrefix}${overlay.id}_${DateTime.now().microsecondsSinceEpoch}.$kRawAtlasExtension';
+        await writeRawAtlas(image, path);
 
         return RasterizedTextAtlas(
-          pngPath: file.path,
+          atlasPath: path,
           canvasPxSize: boxSize,
           atlasPxSize: Size(atlasWidth, atlasHeight),
           glyphs: [

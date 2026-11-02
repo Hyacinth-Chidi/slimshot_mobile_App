@@ -8,6 +8,7 @@ import 'package:slimshotai/features/video_editor/logic/text_overlay_geometry.dar
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/services/text_overlay_rasterizer.dart';
 
+import '../../../support/atlas_files.dart';
 import '../../../support/test_fonts.dart';
 
 class _FakePathProviderPlatform extends PathProviderPlatform {
@@ -103,7 +104,7 @@ void main() {
       canvasSize: canvas,
       rasterScale: 1,
     );
-    final image = await decode(atlas!.pngPath);
+    final image = await decodeAtlasImage(atlas!.atlasPath);
     final edges = await edgeAlpha(image, atlas.glyphs.single.atlasRect);
     expect(edges, (left: 0, top: 0, right: 0, bottom: 0));
   });
@@ -231,7 +232,7 @@ void main() {
         );
         expect(
           await edgeAlpha(
-            await decode(atlas!.pngPath),
+            await decodeAtlasImage(atlas!.atlasPath),
             atlas.glyphs.single.atlasRect,
           ),
           (left: 0, top: 0, right: 0, bottom: 0),

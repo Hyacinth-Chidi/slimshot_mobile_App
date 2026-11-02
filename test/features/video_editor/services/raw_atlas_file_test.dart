@@ -6,6 +6,8 @@ import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/services/raw_atlas_file.dart';
 
+import '../../../support/atlas_files.dart';
+
 /// A text atlas reaches the engine as its raw pixels, compressed — not as a
 /// PNG, whose encoder was two thirds of the wait before a captioned export
 /// began. Lossless both ways, so the engine gets exactly what Flutter drew.
@@ -66,6 +68,14 @@ void main() {
     expect(read.width, 16);
     expect(read.height, 16);
     expect(read.rgba, drawn);
+
+    // The tests' own reader (`decodeAtlasImage`) gives the same pixels back,
+    // so the atlas tests built on it look at what the engine is handed.
+    final again = await decodeAtlasImage(path);
+    final reread =
+        (await again.toByteData(format: ui.ImageByteFormat.rawRgba))!.buffer.asUint8List();
+    again.dispose();
+    expect(reread, drawn);
   });
 
   // The engine's reader is tested against this same file

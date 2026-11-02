@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart';
+import 'package:slimshotai/features/video_editor/services/raw_atlas_file.dart';
 import 'package:slimshotai/features/video_editor/services/text_overlay_rasterizer.dart';
 
+import '../../../support/atlas_files.dart';
 import '../../../support/test_fonts.dart';
 
 /// `rasterizeAtlas` writes its PNG through `path_provider`, which has no
@@ -37,6 +39,21 @@ void main() {
       );
 
   group('rasterizeAtlas', () {
+    // A PNG's encoder was two thirds of the wait before a captioned export
+    // began; the engine reads the raw pixels instead (`raw_atlas_file.dart`).
+    test('writes the atlas as raw pixels the engine reads, not a PNG', () async {
+      final atlas = (await TextOverlayRasterizer.rasterizeAtlas(
+        overlay: overlayWith('abc'),
+        canvasSize: const Size(400, 700),
+        rasterScale: 2,
+      ))!;
+      expect(atlas.atlasPath, endsWith('.$kRawAtlasExtension'));
+      final pixels = decodeRawAtlas(File(atlas.atlasPath).readAsBytesSync());
+      expect(pixels, isNotNull);
+      expect(pixels!.width, atlas.atlasPxSize.width.ceil());
+      expect(pixels.height, atlas.atlasPxSize.height.ceil());
+    });
+
     test('returns one glyph entry per inked character', () async {
       final atlas = await TextOverlayRasterizer.rasterizeAtlas(
         overlay: overlayWith('abc'),
@@ -396,9 +413,7 @@ Future<_AlphaBuffer> _reassemble(
   required Size size,
   required Offset origin,
 }) async {
-  final atlasBytes = await File(atlas.pngPath).readAsBytes();
-  final atlasCodec = await ui.instantiateImageCodec(atlasBytes);
-  final atlasImage = (await atlasCodec.getNextFrame()).image;
+  final atlasImage = await decodeAtlasImage(atlas.atlasPath);
 
   final width = size.width.ceil();
   final height = size.height.ceil();

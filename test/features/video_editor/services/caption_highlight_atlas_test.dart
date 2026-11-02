@@ -17,6 +17,7 @@ import 'package:slimshotai/features/video_editor/services/native_timeline_previe
 import 'package:slimshotai/features/video_editor/services/text_atlas_overlay.dart';
 import 'package:slimshotai/features/video_editor/services/text_overlay_rasterizer.dart';
 
+import '../../../support/atlas_files.dart';
 import '../../../support/test_fonts.dart';
 
 class _FakePathProviderPlatform extends PathProviderPlatform {
@@ -73,8 +74,7 @@ void main() {
       ))!;
 
   Future<({ByteData data, int width})> pixels(String path) async {
-    final codec = await ui.instantiateImageCodec(await File(path).readAsBytes());
-    final image = (await codec.getNextFrame()).image;
+    final image = await decodeAtlasImage(path);
     final data = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
     final width = image.width;
     image.dispose();
@@ -103,7 +103,7 @@ void main() {
       final atlas = await atlasOf(caption());
       expect(atlas.glyphs.map((g) => g.word), [0, 0, 0, 0, 1, 1, 1, 1]);
       expect(atlas.glyphs.every((g) => g.litAtlasRect != null), isTrue);
-      final img = await pixels(atlas.pngPath);
+      final img = await pixels(atlas.atlasPath);
       for (final g in atlas.glyphs) {
         expect(countIn(img, g.litAtlasRect!, isRed), greaterThan(0));
         expect(countIn(img, g.atlasRect, isRed), 0);
@@ -115,7 +115,7 @@ void main() {
       final atlas = await atlasOf(caption(style: CaptionHighlightStyle.pill));
       expect(atlas.glyphs.every((g) => g.litAtlasRect == null), isTrue);
       expect(atlas.pills, hasLength(2));
-      final img = await pixels(atlas.pngPath);
+      final img = await pixels(atlas.atlasPath);
       for (final pill in atlas.pills) {
         expect(countIn(img, pill!.atlasRect, isRed), greaterThan(100));
       }
@@ -135,7 +135,7 @@ void main() {
       final atlas = await atlasOf(caption(background: Colors.black));
       expect(atlas.background, isNotNull);
       expect(atlas.background!.boxRect, atlas.backgroundRect);
-      final img = await pixels(atlas.pngPath);
+      final img = await pixels(atlas.atlasPath);
       final cell = atlas.background!.atlasRect.deflate(4);
       expect(countIn(img, cell, isBlack), greaterThan((cell.width * cell.height * 0.9).floor()));
     });

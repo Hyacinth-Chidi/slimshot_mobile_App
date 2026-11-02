@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -429,7 +429,7 @@ class NativeTimelinePreviewService {
       }
 
       if (usableAtlas != null) {
-        tempFiles.add(usableAtlas.pngPath);
+        tempFiles.add(usableAtlas.atlasPath);
         // The one builder of a text's entry, shared with the preview.
         overlays.add(textAtlasOverlayEntry(text, usableAtlas, canvas));
         continue;
@@ -438,7 +438,7 @@ class NativeTimelinePreviewService {
       // The atlas PNG, if one was written, is still on disk — register it for
       // deletion even though it is not used, or an unusable atlas leaks a
       // file per export.
-      if (atlas != null) tempFiles.add(atlas.pngPath);
+      if (atlas != null) tempFiles.add(atlas.atlasPath);
       final flat = await TextOverlayRasterizer.rasterize(
         overlay: raster,
         canvasSize: canvas,

@@ -366,17 +366,17 @@ class PreviewTextAtlases extends ChangeNotifier {
 
   Future<void> _landed(String key, RasterizedTextAtlas? atlas, Size canvas) async {
     if (_disposed) {
-      if (atlas != null) unawaited(_deleteFile(atlas.pngPath));
+      if (atlas != null) unawaited(_deleteFile(atlas.atlasPath));
       return;
     }
     if (!_isWanted(key)) {
       // The text changed while this was being drawn.
-      if (atlas != null) unawaited(_deleteFile(atlas.pngPath));
+      if (atlas != null) unawaited(_deleteFile(atlas.atlasPath));
     } else if (atlas == null || atlas.glyphs.isEmpty) {
       // Not retried until the text changes: drawing it again would fail
       // again, every frame. Flutter draws it meanwhile, as it always has.
       _failed.add(key);
-      if (atlas != null) unawaited(_deleteFile(atlas.pngPath));
+      if (atlas != null) unawaited(_deleteFile(atlas.atlasPath));
     } else {
       _atlases[key] = _Atlas(atlas, canvas);
       _refresh();
@@ -455,7 +455,7 @@ class _Atlas {
   /// The canvas it was made at — its box is measured against it.
   final Size canvas;
 
-  String get path => atlas.pngPath;
+  String get path => atlas.atlasPath;
 }
 
 class _KeyMemo {

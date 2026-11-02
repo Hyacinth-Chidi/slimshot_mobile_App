@@ -9,6 +9,7 @@ import 'package:slimshotai/features/video_editor/models/text_overlay_model.dart'
 import 'package:slimshotai/features/video_editor/services/text_atlas_overlay.dart';
 import 'package:slimshotai/features/video_editor/services/text_overlay_rasterizer.dart';
 
+import '../../../support/atlas_files.dart';
 import '../../../support/test_fonts.dart';
 
 class _FakePathProviderPlatform extends PathProviderPlatform {
@@ -81,7 +82,7 @@ void main() {
 
   test("a shadowed letter keeps its shadow in a cell of its own", () async {
     final atlas = await atlasOf(text());
-    final image = await decode(atlas.pngPath);
+    final image = await decodeAtlasImage(atlas.atlasPath);
     final px = await rgba(image);
     image.dispose();
     for (final g in atlas.glyphs) {
@@ -125,7 +126,7 @@ void main() {
 
     // Every shadow cell, then every letter cell — whole cells, placed as the
     // quads place them.
-    final atlasImage = await decode(atlas.pngPath);
+    final atlasImage = await decodeAtlasImage(atlas.atlasPath);
     final recorder = ui.PictureRecorder();
     final c = Canvas(recorder)..translate(margin, margin);
     void place(Rect cell, RasterizedGlyph g) {

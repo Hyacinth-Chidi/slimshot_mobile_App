@@ -28,7 +28,7 @@ void main() {
   group('glyphsForAtlas', () {
     test('converts atlas and box pixels into fractions', () {
       const atlas = RasterizedTextAtlas(
-        pngPath: '/tmp/a.png',
+        atlasPath: '/tmp/a.rgbz',
         canvasPxSize: Size(200, 100),
         atlasPxSize: Size(400, 50),
         glyphs: [
@@ -61,7 +61,7 @@ void main() {
     // able to notice. Hence a test of its own.
     test('passes srcRect through unconverted — it is already a fraction', () {
       const atlas = RasterizedTextAtlas(
-        pngPath: '/tmp/a.png',
+        atlasPath: '/tmp/a.rgbz',
         canvasPxSize: Size(200, 100),
         atlasPxSize: Size(400, 50),
         glyphs: [
@@ -84,7 +84,7 @@ void main() {
 
     test('a zero-sized atlas yields no glyphs rather than infinities', () {
       const atlas = RasterizedTextAtlas(
-        pngPath: '/tmp/a.png',
+        atlasPath: '/tmp/a.rgbz',
         canvasPxSize: Size(200, 100),
         atlasPxSize: Size(0, 0),
         glyphs: [
@@ -102,7 +102,7 @@ void main() {
 
     test('a zero-sized box yields no glyphs rather than infinities', () {
       const atlas = RasterizedTextAtlas(
-        pngPath: '/tmp/a.png',
+        atlasPath: '/tmp/a.rgbz',
         canvasPxSize: Size(0, 0),
         atlasPxSize: Size(400, 50),
         glyphs: [
@@ -160,7 +160,7 @@ void main() {
     // same glyph came out 176x176 — 1:1 — which is the 3.32x vertical stretch.
     test('a full-box glyph is drawn with the text box aspect, not 1:1', () {
       final atlas = RasterizedTextAtlas(
-        pngPath: '/tmp/a.png',
+        atlasPath: '/tmp/a.rgbz',
         canvasPxSize: textBox,
         atlasPxSize: const Size(256, 64),
         glyphs: [
@@ -226,7 +226,7 @@ void main() {
 
       expect(entry.id, 'text_cap');
       expect(entry.kind, 'text');
-      expect(entry.path, atlas.pngPath);
+      expect(entry.path, atlas.atlasPath);
       expect(entry.glyphs!.length, atlas.glyphs.length);
       expect(entry.laneIndex, 1003);
       expect(entry.boxWidth,

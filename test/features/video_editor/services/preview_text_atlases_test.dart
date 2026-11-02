@@ -459,7 +459,7 @@ class _FakeRasterizer {
     final (completer, text) = _pending.removeAt(0);
     final atlas = _atlas(text);
     completer.complete(atlas);
-    return atlas.pngPath;
+    return atlas.atlasPath;
   }
 
   RasterizedTextAtlas? _answerFor(TextOverlayModel text) {
@@ -468,7 +468,7 @@ class _FakeRasterizer {
   }
 
   RasterizedTextAtlas _atlas(TextOverlayModel text) => RasterizedTextAtlas(
-        pngPath: '/tmp/text_overlay_${text.id}_${_n++}.png',
+        atlasPath: '/tmp/text_atlas_${text.id}_${_n++}.rgbz',
         canvasPxSize: const Size(100, 30),
         atlasPxSize: const Size(200, 60),
         glyphs: const [

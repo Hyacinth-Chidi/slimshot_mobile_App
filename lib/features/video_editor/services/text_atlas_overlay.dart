@@ -45,7 +45,7 @@ EditorTimelineOverlay textAtlasOverlayEntry(
   return EditorTimelineOverlay(
     id: previewTextEntryId(text.id),
     kind: 'text',
-    path: atlas.pngPath,
+    path: atlas.atlasPath,
     glyphs: glyphsForAtlas(atlas),
     backgroundLeft: (atlas.backgroundRect?.left ?? 0) / boxDivW,
     backgroundTop: (atlas.backgroundRect?.top ?? 0) / boxDivH,
