@@ -49,6 +49,14 @@ void main() {
   late CompressionNotifier notifier;
   late CompressionState current;
 
+  /// Real file reads finish on their own time, which `pumpEventQueue` does
+  /// not wait for; under a busy test run it checked too early.
+  Future<void> settle(bool Function() done) async {
+    for (var i = 0; i < 200 && !done(); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('compress_cancel');
     final input = File('${dir.path}/in.mp4')..writeAsBytesSync(List.filled(1000, 1));
@@ -57,21 +65,17 @@ void main() {
     notifier.addListener((s) => current = s);
     notifier.setInputFiles([XFile(input.path)],
         defaultPreset: CompressionPresets.videoPresets[1]);
-    await pumpEventQueue();
+    // setInputFiles reads the file's size before it sets the inputs. Run A
+    // started before they landed returned at once, and the "A's progress"
+    // the first test sends was then B's.
+    await settle(() => current.inputFiles.isNotEmpty);
+    expect(current.inputFiles, isNotEmpty);
   });
 
   tearDown(() async {
     notifier.dispose();
     await dir.delete(recursive: true);
   });
-
-  /// Real file reads finish on their own time, which `pumpEventQueue` does
-  /// not wait for; under a busy test run it checked too early.
-  Future<void> settle(bool Function() done) async {
-    for (var i = 0; i < 200 && !done(); i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-  }
 
   Future<String> output(String name) async {
     final f = File('${dir.path}/$name')..writeAsBytesSync(List.filled(400, 2));
