@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.util.Log
+import java.nio.ByteBuffer
 
 /**
  * Decodes a photo into a bitmap, downscaled and turned the right way up.
@@ -29,6 +30,15 @@ internal object StillImageDecoder {
      * Returns null when the file is not an image this device can decode.
      */
     fun decode(path: String, maxWidth: Int, maxHeight: Int): Bitmap? {
+        // A text atlas: raw premultiplied pixels, copied in as they are —
+        // BitmapFactory cannot read it, and it carries no EXIF to apply.
+        if (RawAtlasFile.isRawAtlas(path)) {
+            val pixels = RawAtlasFile.read(path) ?: return null
+            val bitmap = Bitmap.createBitmap(pixels.width, pixels.height, Bitmap.Config.ARGB_8888)
+            bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(pixels.rgba))
+            return scaleToFit(bitmap, maxWidth, maxHeight)
+        }
+
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -59,6 +69,8 @@ internal object StillImageDecoder {
      * that carries a rotation tag.
      */
     fun bounds(path: String): Pair<Int, Int>? {
+        if (RawAtlasFile.isRawAtlas(path)) return RawAtlasFile.size(path)
+
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
