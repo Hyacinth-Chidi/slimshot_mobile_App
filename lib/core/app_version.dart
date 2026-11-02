@@ -6,4 +6,4 @@
 /// after a bump, which would have told every 2.0.1 install to update to
 /// itself once the update API named 2.0.1.
 const String kAppVersion = '2.0.1';
-const int kAppBuildNumber = 4;
+const int kAppBuildNumber = 5;
