@@ -5471,6 +5471,73 @@ app open — during an export too, which must keep running; a tap from the edito
 (its changes saved), from a result nobody saved (the app only comes forward), after rotating, and
 reopened from Recents after backing out (nothing repeats).
 
+### Camera — photo and video, a screen of its own
+
+**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-11-05-camera-design.md`
+(step 2, REACT, is there too). A camera opened from Home, **not an editor tool** — the owner's
+words: a full camera, Snapchat-like, that grows features later (face tracking and the like); what
+it shoots can be saved, shared or opened in the editor. Home's first tool card (`home_camera`,
+`/camera`); every shot goes to a review (`/camera/review`).
+
+- **CameraX, driven from Kotlin** (`camera/CameraChannel.kt`; channel `slimshot_ai/camera`,
+  events `slimshot_ai/camera_events`; `androidx.camera` 1.6.2), not the Flutter `camera` plugin,
+  which can neither composite REACT into one file nor run effects on the frames being recorded.
+  The preview is a Flutter `Texture` (`createSurfaceTexture`, the editor's own path) with **one
+  `Surface` kept across rebinds**: a new one per bind would put a second producer on the texture's
+  buffer queue while the camera may still hold the first. **Only the current mode's use cases are
+  bound** — Preview + `ImageCapture`, or Preview + `VideoCapture` (`Recorder`, Full HD falling back
+  to SD) — so a low-end phone is never asked for three at once; both frame 16:9.
+  `libimage_processing_util_jni.so` is 16 KB-aligned and built with NDK r27.
+- **The screen stays upright and the files turn with the phone**: portrait while the camera is
+  open, and an `OrientationEventListener` sets each capture's `targetRotation` (a recording keeps
+  the turn it started with), so a photo held sideways saves landscape. **The texture arrives
+  upright and, for a selfie, mirrored** — the camera's own transform, which Flutter applies
+  (`hasCameraTransform`) — so the preview only covers the screen (`previewCoverRect`); a processor
+  path (step 2's effects) arrives as the sensor wrote it and is turned by `previewTurns`, whose
+  screen-turn branch (a tablet whose natural orientation is landscape) is unverified.
+- **A selfie is saved mirrored, as it was seen** (my call; Snapchat and Instagram do):
+  `MIRROR_MODE_ON_FRONT_ONLY` for video, `isReversedHorizontal` for photos.
+- **The flash**: off / auto / on for a photo, a torch (off / on) for video, **each mode its own**,
+  sent with the bind (`configure({lens, mode, flash})`) so a photo's "on" never blinks on as a
+  torch on the way into video. **The torch only takes while the camera is open** — CameraX drops a
+  request made before, and the camera closes whenever the app leaves the screen — so it is applied
+  again on every `OPEN` state. A lens with no flash unit offers none.
+- **The decisions are Dart's, pure and tested** (`logic/camera_controller.dart` over a
+  `CameraBackend`, `logic/camera_geometry.dart`): mode, lens (remembered, `camera_lens`), flash,
+  zoom (pinch, held to the camera's range, a pill to put it back to 1×), tap to focus (measured on
+  the whole picture, crop included, for `DisplayOrientedMeteringPointFactory`), a sideways swipe
+  between PHOTO and VIDEO, and the shutter: a tap for a photo; for a video a tap to start and a tap
+  to stop, **pause and carry on in the same file**, no hold-to-record (the owner's call). While
+  recording only stop, pause and the time show; Back stops the take and reviews it.
+- **The camera taken away** (another app, Do Not Disturb, a policy) is said in place with Try
+  again, and when CameraX opens it again by itself the screen follows (`CameraAvailability`). A
+  recording the camera ended by itself — the app leaving the screen mid-take — keeps what it had
+  (CameraX finalises it) and opens the review.
+- **The microphone is asked on the way into video, at most once a screen**
+  (`PluginCameraPermissions`); refused, the video records silently and says so once. A permission
+  prompt that cannot be shown reads as refused, never as a crash.
+- **The review** (`CameraReviewScreen`): the file whole (contain — it is judged here), a video
+  looping with a scrub bar; **Retake · Save · Share · Edit**, Edit the purple one. Retake and Back
+  throw the shot away, asking first when it was neither saved nor shared (`ResultExit`, its
+  deleter limited to the camera folder). **Edit replaces the camera with the editor**
+  (`pushReplacement('/edit/video')`): the camera is let go rather than left running under an edit,
+  and Back from the editor is Home, whose Recent Edits hears the new draft through
+  `DraftRefreshNotifier`. A recording and an unsaved shot hold the app (`HeldWork`).
+- **Files are `<documents>/camera/`** (`CameraFiles`), never the temp folder: a shot opened in the
+  editor is a draft's clip and must outlive the launch cleanup. **At launch `sweepCameraFiles`
+  deletes what a killed app left there**, keeping every shot any draft's saved form mentions and
+  anything newer than the launch.
+- **Home's four tools share one scale** (`kHomeToolContentWidth` 72, `kHomeToolGap` 10): laid out
+  at one width and scaled into each card, so on a narrow phone the four shrink alike rather than
+  each by its own label.
+
+**Device checks**: the preview upright and undistorted on both lenses; a photo and a video held
+sideways save landscape; a selfie saves as seen; flash auto and on fire, the torch lights in video;
+pinch, tap to focus, swipe between modes; record, pause, resume, stop — one file, with sound;
+leaving the app mid-take, then coming back to the review; Retake, Save, Share, Edit (the editor
+opens on the shot, Back is Home, the edit is in Recent Edits); another app taking the camera; the
+microphone refused.
+
 ### Decisions already made â€” don't re-litigate
 
 | Question | Decision |

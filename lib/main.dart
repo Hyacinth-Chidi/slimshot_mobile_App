@@ -5,8 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'features/camera/logic/camera_controller.dart';
+import 'features/camera/logic/camera_files.dart';
+import 'features/camera/screens/camera_review_screen.dart';
+import 'features/camera/screens/camera_screen.dart';
 import 'features/compression/logic/compress_inputs.dart';
 import 'package:animations/animations.dart';
+import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/utils/file_utils.dart';
 
@@ -77,6 +82,7 @@ Future<void> main() async {
 
   FlutterNativeSplash.remove();
   unawaited(FileUtils.cleanupStartup());
+  unawaited(sweepCameraFiles());
   unawaited(forgetRemovedFeatures(prefs));
 }
 
@@ -204,6 +210,26 @@ GoRouter createAppRouter(String initialRoute) {
               initialMedia: [if (extra is XFile) extra],
               captionsMode: true,
             ),
+          );
+        },
+      ),
+      // The camera, from Home: its own screen, then the review of each shot.
+      GoRoute(
+        path: '/camera',
+        pageBuilder: (context, state) => _buildTransitionPage(
+          state: state,
+          child: const CameraScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/camera/review',
+        pageBuilder: (context, state) {
+          final shot = state.extra;
+          return _buildTransitionPage(
+            state: state,
+            child: shot is CameraShot
+                ? CameraReviewScreen(shot: shot)
+                : const Scaffold(backgroundColor: AppColors.background),
           );
         },
       ),

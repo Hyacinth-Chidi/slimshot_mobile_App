@@ -91,6 +91,16 @@ dependencies {
     // PlayerView), media3-effect and media3-transformer (nothing references
     // them now that the Transformer export route is ruled out).
 
+    // The Camera feature: CameraX driven from Kotlin, its preview a Flutter
+    // texture like the editor's. Not the Flutter `camera` plugin, which can
+    // neither composite REACT into one recorded file nor run effects on the
+    // frames being recorded (docs/superpowers/specs/2026-11-05-camera-design.md).
+    val cameraxVersion = "1.6.2"
+    implementation("androidx.camera:camera-core:$cameraxVersion")
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-video:$cameraxVersion")
+
     constraints {
         // AndroidX DataStore arrives through shared_preferences and Google's ads
         // SDK, and ships a native library, libdatastore_shared_counter.so. Up to

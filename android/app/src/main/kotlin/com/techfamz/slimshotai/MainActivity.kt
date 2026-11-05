@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.media3.common.util.UnstableApi
 import com.techfamz.slimshotai.audio.AudioToolsChannel
 import com.techfamz.slimshotai.audio.VoiceRecorderChannel
+import com.techfamz.slimshotai.camera.CameraChannel
 import com.techfamz.slimshotai.homewidget.HomeWidgetChannel
 import com.techfamz.slimshotai.homewidget.LaunchIntents
 import com.techfamz.slimshotai.nativepreview.NativeTimelinePreviewManager
@@ -22,6 +23,7 @@ class MainActivity : FlutterActivity() {
     private var audioTools: AudioToolsChannel? = null
     private var voiceRecorder: VoiceRecorderChannel? = null
     private var homeWidget: HomeWidgetChannel? = null
+    private var camera: CameraChannel? = null
 
     /** The widget or menu tap the app was started with, if it was. */
     private var launchedWith: Map<String, Any?>? = null
@@ -86,6 +88,24 @@ class MainActivity : FlutterActivity() {
             AppBuildChannel.channelName,
         ).setMethodCallHandler(AppBuildChannel(applicationContext))
 
+        // The Camera feature. The activity itself: CameraX binds to its
+        // lifecycle (the camera closes when the app leaves the screen) and
+        // reads the display's rotation from it.
+        val cameraChannel = CameraChannel(
+            context = this,
+            lifecycleOwner = this,
+            textureRegistry = flutterEngine.renderer,
+        )
+        camera = cameraChannel
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CameraChannel.channelName,
+        ).setMethodCallHandler(cameraChannel)
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CameraChannel.eventChannelName,
+        ).setStreamHandler(cameraChannel)
+
         NotificationsChannel.ensureChannel(applicationContext)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -119,6 +139,8 @@ class MainActivity : FlutterActivity() {
         voiceRecorder = null
         homeWidget?.release()
         homeWidget = null
+        camera?.release()
+        camera = null
         super.onDestroy()
     }
 }

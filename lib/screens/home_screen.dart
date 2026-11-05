@@ -205,6 +205,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  /// The camera: its own screen, and the editor only if a shot is taken
+  /// there to be edited (the editor then saves a draft, which Recent Edits
+  /// hears through [DraftRefreshNotifier]).
+  Future<void> _handleCamera() async {
+    await context.push('/camera');
+  }
+
   /// Auto captions without the timeline: one video, then the editor in its
   /// captions mode. ✎ there makes it an editor project, so Recent Edits is
   /// read again on the way back.
@@ -373,6 +380,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             children: [
               Expanded(
                 child: _GridActionCard(
+                  key: const ValueKey('home_camera'),
+                  title: 'Camera',
+                  icon: LucideIcons.camera,
+                  height: layout.tools,
+                  onTap: _handleCamera,
+                  delay: 225,
+                ),
+              ),
+              const SizedBox(width: kHomeToolGap),
+              Expanded(
+                child: _GridActionCard(
                   key: const ValueKey('home_auto_captions'),
                   title: 'Auto\ncaptions',
                   icon: LucideIcons.subtitles,
@@ -381,7 +399,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   delay: 250,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: kHomeToolGap),
               Expanded(
                 child: _GridActionCard(
                   key: const ValueKey('home_compress_video'),
@@ -392,7 +410,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   delay: 300,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: kHomeToolGap),
               Expanded(
                 child: _GridActionCard(
                   key: const ValueKey('home_compress_photo'),
@@ -564,6 +582,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
+/// The gap between Home's tool cards.
+const double kHomeToolGap = 10;
+
+/// The width a tool card's icon and words are laid out at before they are
+/// scaled into the card: the widest label, "Compress", at full size.
+const double kHomeToolContentWidth = 72;
+
 class _GridActionCard extends StatefulWidget {
   final String title;
   final IconData icon;
@@ -640,14 +665,18 @@ class _GridActionCardState extends State<_GridActionCard> {
               ),
 
               // The icon and its words keep their size until the card is
-              // too short for them, then shrink together rather than
-              // overflow it.
+              // too short or too narrow for them, then shrink together
+              // rather than overflow it. Laid out at one width for every
+              // card, so the four shrink alike on a narrow phone rather
+              // than each by its own label.
               Padding(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
                 child: Center(
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Column(
+                    child: SizedBox(
+                      width: kHomeToolContentWidth,
+                      child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         AnimatedContainer(
@@ -687,6 +716,7 @@ class _GridActionCardState extends State<_GridActionCard> {
                           ),
                         ),
                       ],
+                    ),
                     ),
                   ),
                 ),
