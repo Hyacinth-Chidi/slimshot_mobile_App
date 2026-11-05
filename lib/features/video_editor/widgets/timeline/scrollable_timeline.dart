@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_motion.dart';
 import '../../../../core/utils/toast_utils.dart';
+import '../../logic/timeline/lane_handle_geometry.dart';
 import '../../logic/timeline/lane_layout.dart';
 import '../../logic/timeline/timeline_geometry.dart';
 import '../../logic/timeline/timeline_snapping.dart';
@@ -1069,7 +1070,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
   Widget Function(bool isHeld) _overlayHandleVisual(
     String handleKey, {
     bool inside = false,
+    required double edgeX,
   }) {
+    // The bar marks the item's edge at [edgeX] inside a touch area that lies
+    // mostly outside the item (`laneHandleBox`): centred on the edge, or at
+    // 0:00 just inside it, so nothing is drawn before the timeline's start.
+    const slot = 12.0;
     return (isHeld) {
       final bar = AnimatedContainer(
         key: ValueKey('handle:$handleKey'),
@@ -1078,10 +1084,20 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         width: isHeld ? 12 : 8,
         color: isHeld ? AppColors.textPrimary : AppColors.primaryStart,
       );
-      if (!inside) return Align(alignment: Alignment.center, child: bar);
-      return Padding(
-        padding: const EdgeInsets.only(left: _handleTouchWidth / 2),
-        child: Align(alignment: Alignment.centerLeft, child: bar),
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            top: 0,
+            bottom: 0,
+            left: inside ? edgeX : edgeX - slot / 2,
+            width: slot,
+            child: Align(
+              alignment: inside ? Alignment.centerLeft : Alignment.center,
+              child: bar,
+            ),
+          ),
+        ],
       );
     };
   }
@@ -2771,8 +2787,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         widgets.add(
           Positioned(
             top: topOffset,
-            left: startPx - (_handleTouchWidth / 2),
-            width: _handleTouchWidth,
+            left: laneHandleBox(
+              edgePx: startPx,
+              itemWidthPx: widthPx,
+              isStart: true,
+            ).left,
+            width: kLaneHandleTouchWidth,
             height: _laneHeight - 8,
             child: _laneTrimHandle(
               handleKey: 'text:${text.id}:start',
@@ -2815,6 +2835,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
               visual: _overlayHandleVisual(
                 'text:${text.id}:start',
                 inside: _atTimelineStart(startPx),
+                edgeX: laneHandleBox(
+                  edgePx: startPx,
+                  itemWidthPx: widthPx,
+                  isStart: true,
+                ).edgeX,
               ),
             ),
           ),
@@ -2823,8 +2848,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         widgets.add(
           Positioned(
             top: topOffset,
-            left: startPx + widthPx - (_handleTouchWidth / 2),
-            width: _handleTouchWidth,
+            left: laneHandleBox(
+              edgePx: startPx + widthPx,
+              itemWidthPx: widthPx,
+              isStart: false,
+            ).left,
+            width: kLaneHandleTouchWidth,
             height: _laneHeight - 8,
             child: _laneTrimHandle(
               handleKey: 'text:${text.id}:end',
@@ -2866,7 +2895,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   _textTrimInitialTime = null;
                 });
               },
-              visual: _overlayHandleVisual('text:${text.id}:end'),
+              visual: _overlayHandleVisual(
+                'text:${text.id}:end',
+                edgeX: laneHandleBox(
+                  edgePx: startPx + widthPx,
+                  itemWidthPx: widthPx,
+                  isStart: false,
+                ).edgeX,
+              ),
             ),
           ),
         );
@@ -3055,8 +3091,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         widgets.add(
           Positioned(
             top: imageTrackTop,
-            left: startPx - (_handleTouchWidth / 2),
-            width: _handleTouchWidth,
+            left: laneHandleBox(
+              edgePx: startPx,
+              itemWidthPx: widthPx,
+              isStart: true,
+            ).left,
+            width: kLaneHandleTouchWidth,
             height: _laneHeight - 8,
             child: _laneTrimHandle(
               handleKey: 'image:${image.id}:start',
@@ -3104,6 +3144,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
               visual: _overlayHandleVisual(
                 'image:${image.id}:start',
                 inside: _atTimelineStart(startPx),
+                edgeX: laneHandleBox(
+                  edgePx: startPx,
+                  itemWidthPx: widthPx,
+                  isStart: true,
+                ).edgeX,
               ),
             ),
           ),
@@ -3113,8 +3158,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         widgets.add(
           Positioned(
             top: imageTrackTop,
-            left: startPx + widthPx - (_handleTouchWidth / 2),
-            width: _handleTouchWidth,
+            left: laneHandleBox(
+              edgePx: startPx + widthPx,
+              itemWidthPx: widthPx,
+              isStart: false,
+            ).left,
+            width: kLaneHandleTouchWidth,
             height: _laneHeight - 8,
             child: _laneTrimHandle(
               handleKey: 'image:${image.id}:end',
@@ -3161,7 +3210,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   _imageTrimInitialTime = null;
                 });
               },
-              visual: _overlayHandleVisual('image:${image.id}:end'),
+              visual: _overlayHandleVisual(
+                'image:${image.id}:end',
+                edgeX: laneHandleBox(
+                  edgePx: startPx + widthPx,
+                  itemWidthPx: widthPx,
+                  isStart: false,
+                ).edgeX,
+              ),
             ),
           ),
         );
@@ -3371,8 +3427,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       widgets.add(
         Positioned(
           top: top,
-          left: startPx - (_handleTouchWidth / 2),
-          width: _handleTouchWidth,
+          left: laneHandleBox(
+            edgePx: startPx,
+            itemWidthPx: widthPx,
+            isStart: true,
+          ).left,
+          width: kLaneHandleTouchWidth,
           height: _laneHeight - 8,
           child: _laneTrimHandle(
             handleKey: 'effect:${bar.id}:start',
@@ -3391,6 +3451,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
             visual: _overlayHandleVisual(
               'effect:${bar.id}:start',
               inside: _atTimelineStart(startPx),
+              edgeX: laneHandleBox(
+                edgePx: startPx,
+                itemWidthPx: widthPx,
+                isStart: true,
+              ).edgeX,
             ),
           ),
         ),
@@ -3399,8 +3464,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
       widgets.add(
         Positioned(
           top: top,
-          left: startPx + widthPx - (_handleTouchWidth / 2),
-          width: _handleTouchWidth,
+          left: laneHandleBox(
+            edgePx: startPx + widthPx,
+            itemWidthPx: widthPx,
+            isStart: false,
+          ).left,
+          width: kLaneHandleTouchWidth,
           height: _laneHeight - 8,
           child: _laneTrimHandle(
             handleKey: 'effect:${bar.id}:end',
@@ -3417,7 +3486,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
               _previewTrimPosition(next.inMilliseconds / 1000.0);
             },
             onEnd: endTrim,
-            visual: _overlayHandleVisual('effect:${bar.id}:end'),
+            visual: _overlayHandleVisual(
+              'effect:${bar.id}:end',
+              edgeX: laneHandleBox(
+                edgePx: startPx + widthPx,
+                itemWidthPx: widthPx,
+                isStart: false,
+              ).edgeX,
+            ),
           ),
         ),
       );
@@ -3606,8 +3682,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         widgets.add(
           Positioned(
             top: videoTrackTop,
-            left: startPx - (_handleTouchWidth / 2),
-            width: _handleTouchWidth,
+            left: laneHandleBox(
+              edgePx: startPx,
+              itemWidthPx: widthPx,
+              isStart: true,
+            ).left,
+            width: kLaneHandleTouchWidth,
             height: _laneHeight - 8,
             child: _laneTrimHandle(
               handleKey: 'video:${video.id}:start',
@@ -3656,6 +3736,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
               visual: _overlayHandleVisual(
                 'video:${video.id}:start',
                 inside: _atTimelineStart(startPx),
+                edgeX: laneHandleBox(
+                  edgePx: startPx,
+                  itemWidthPx: widthPx,
+                  isStart: true,
+                ).edgeX,
               ),
             ),
           ),
@@ -3665,8 +3750,12 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         widgets.add(
           Positioned(
             top: videoTrackTop,
-            left: startPx + widthPx - (_handleTouchWidth / 2),
-            width: _handleTouchWidth,
+            left: laneHandleBox(
+              edgePx: startPx + widthPx,
+              itemWidthPx: widthPx,
+              isStart: false,
+            ).left,
+            width: kLaneHandleTouchWidth,
             height: _laneHeight - 8,
             child: _laneTrimHandle(
               handleKey: 'video:${video.id}:end',
@@ -3714,7 +3803,14 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                   _videoTrimInitialTime = null;
                 });
               },
-              visual: _overlayHandleVisual('video:${video.id}:end'),
+              visual: _overlayHandleVisual(
+                'video:${video.id}:end',
+                edgeX: laneHandleBox(
+                  edgePx: startPx + widthPx,
+                  itemWidthPx: widthPx,
+                  isStart: false,
+                ).edgeX,
+              ),
             ),
           ),
         );

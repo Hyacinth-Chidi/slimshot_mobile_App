@@ -3627,6 +3627,17 @@ chrome is square**: no radius on handles, clip bodies, the transition marker, th
 preview or the canvas â€” the only rounding left is the playhead's 2px glow line and the waveform
 bars' 1px softening, which are lines, not boxes.
 
+**A handle's touch area lies outside its item** (`logic/timeline/lane_handle_geometry.dart`,
+`lane_item_drag_test.dart`, **awaiting device verification**). Device-reported: dragging a selected
+text, photo, video or effect bar trimmed it instead of moving it, worst at the zoom the timeline
+opens at. Each handle's 44 px touch area straddled the edge, so 22 px of it lay over the item at
+each end — and a handle claims the pointer on contact — so a one-second item 50 px wide was 44 px
+of handle, and a long-press meant to move it landed on one. The area keeps its width but now lies
+outside the edge, reaching in only `kLaneHandleInwardReach` (6 px), never more than 15% of a narrow
+item; at 0:00, where nothing left of the lanes can be touched, a start handle reaches in a little
+further (14 px, at most a quarter). The bar still marks the edge. Audio handles were already
+outside (4 px in).
+
 #### Snapping
 
 **One rule for everything on the lanes** (`logic/timeline/timeline_snapping.dart`, **device-verified
