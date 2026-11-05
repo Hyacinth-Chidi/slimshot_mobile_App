@@ -1449,17 +1449,10 @@ internal class TimelinePlaybackEngine(
                     renderer.setActiveLane(incoming.laneIndex)
                     idleOtherLane(incoming.laneIndex)
                     // A lane that has not got going yet is waited for at the
-                    // cut, or moved there when it is far behind — never read
-                    // back inside the window. See [TransitionLanes].
-                    val lane = lanes[incoming.laneIndex]
-                    val end = finished.timelineEndSeconds
-                    val behind = laneClock(lane)
-                    if (behind != null && TransitionLanes.handOverNeedsSeek(behind, end)) {
-                        seekLaneTo(lane, end)
-                        lane.player?.playWhenReady = isPlaying
-                    }
+                    // cut — never read back inside the window, never moved.
+                    // See [TransitionLanes.heldClock].
                     handOverHoldLane = incoming.laneIndex
-                    handOverHoldEnd = end
+                    handOverHoldEnd = finished.timelineEndSeconds
                 }
             }
         }

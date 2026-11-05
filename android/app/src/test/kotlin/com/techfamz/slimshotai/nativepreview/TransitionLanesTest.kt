@@ -81,15 +81,13 @@ class TransitionLanesTest {
     }
 
     @Test
-    fun `an incoming lane far behind the window's end is moved to it`() {
-        assertTrue(TransitionLanes.handOverNeedsSeek(incomingClock = 3.369, windowEnd = 4.765))
-    }
-
-    @Test
-    fun `one a little late is left to catch up, as drift is`() {
-        // The usual case: a few tens of ms late. A seek flushes the decoder,
-        // which is far more visible than the hold.
-        assertFalse(TransitionLanes.handOverNeedsSeek(incomingClock = 4.72, windowEnd = 4.765))
-        assertFalse(TransitionLanes.handOverNeedsSeek(incomingClock = 4.8, windowEnd = 4.765))
+    fun `the hold lasts as long as the lane is behind, however far`() {
+        // A lane that barely started is never moved: a seek restarts its
+        // decoder from the last keyframe, which froze the picture for seconds
+        // on the emulator. It plays on from the frame it shows, and the clock
+        // waits for it.
+        assertEquals(4.765, TransitionLanes.heldClock(raw = 3.369, holdEnd = 4.765), 0.0)
+        assertEquals(4.765, TransitionLanes.heldClock(raw = 3.9, holdEnd = 4.765), 0.0)
+        assertEquals(4.8, TransitionLanes.heldClock(raw = 4.8, holdEnd = 4.765), 0.0)
     }
 }

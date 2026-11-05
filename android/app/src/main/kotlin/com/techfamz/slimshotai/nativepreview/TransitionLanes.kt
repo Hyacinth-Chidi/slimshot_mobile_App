@@ -49,19 +49,14 @@ internal object TransitionLanes {
      * close handed it back: the playhead swung between the two until the
      * lane got going, the stop-and-restart device-reported at a transition.
      * Held, the playhead waits at the cut while the lane catches up.
+     *
+     * **However far behind, the lane is never moved there.** A seek restarts
+     * its decoder from the last keyframe: on the emulator that froze the
+     * picture for seconds at the cut, and on a phone it is still a decoder
+     * flush on screen. Left alone it plays on from the very frame it was
+     * blending in, so the picture never stops — only the playhead waits. The
+     * engine's drift rule, for the same reason.
      */
     fun heldClock(raw: Double, holdEnd: Double): Double =
         if (!holdEnd.isNaN() && raw < holdEnd) holdEnd else raw
-
-    /**
-     * Whether an incoming lane taking the clock is too far behind the
-     * window's end to be waited for, and is moved there instead. Within the
-     * drift tolerance it is left to catch up, as drift is: a seek flushes the
-     * decoder, which shows far more than a moment's hold.
-     */
-    fun handOverNeedsSeek(incomingClock: Double, windowEnd: Double): Boolean =
-        windowEnd - incomingClock > HAND_OVER_SEEK_SECONDS
-
-    /** The engine's drift tolerance: below it a lane is never seeked. */
-    private const val HAND_OVER_SEEK_SECONDS = 0.25
 }

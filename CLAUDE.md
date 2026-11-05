@@ -3727,11 +3727,12 @@ by a test:
   window, or the master lane once the playhead is past the first transition. **And the clock waits
   at the cut for a late incoming lane** (`TransitionLanes.heldClock`): read as it stood, a lane that
   had not got going yet put the clock back inside the window and the hand-off swung back and forth;
-  held, the playhead parks at the window's end until the lane gets there, and a lane more than the
-  drift tolerance behind is moved there (`handOverNeedsSeek`). On the emulator (software decoding
-  two videos at once) one run of a split + Dissolve played straight through and two parked 1.5–3 s
-  at the cut while the second decoder buffered; none looped. A phone's hardware decoders are
-  expected to keep up — a device run is what says so.
+  held, the playhead parks at the window's end until the lane gets there. **The lane is never
+  moved there, however far behind**: a first version seeked it, and on the emulator that restarted
+  its decoder from the last keyframe and froze the picture 4.5 s at the cut — left alone it plays on
+  from the very frame it was blending in, so the picture never stops and only the playhead waits
+  (the drift rule's reasoning). A phone's hardware decoders are expected to keep up through the
+  window; a device run is what says so.
 
 **Not fixed, and only a device can measure it:** the picture and the sound leave the phone through
 pipelines of different latency (display versus audio output, Bluetooth the worst), which nothing
