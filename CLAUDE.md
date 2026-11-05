@@ -5201,6 +5201,18 @@ No splitting of long videos — also the owner's. **The editor's export gets the
 is confirmed on a device** (a "WhatsApp Status" switch under Resolution and Frame rate, already
 chosen). The probe reads ffprobe's JSON through `VideoMetadata.fromProbe`, pure and tested.
 
+**Normal WhatsApp keeps it; WhatsApp Business re-encodes every new video — settled, leave it**
+(device-tested by the owner, 2026-11-05). SlimShot's Status output (720×1280, High 3.1, ~480 kbps
+on that clip) posted to Status stayed clear on **normal WhatsApp** and came out blurred on
+**WhatsApp Business**, both apps on Standard upload quality. Sent through a chat first, it posted
+to Business clear — byte-identical video, WhatsApp had only rewritten the wrapper (`mp42` brand,
+handler names and encoder tags stripped, `colr`/`pasp`/`btrt` dropped, and a 24-byte **`beam`**
+box after `ftyp`, payload 1,1,0,2 — WhatsApp's own mark). Three new files with that one picture
+went to Business: SlimShot's wrapper, **WhatsApp's exact wrapper with `beam`** (only the `mvhd`
+time changed) and the same without `beam` — **all three blurred**, on Standard and on HD. So
+Business keys on nothing inside the file: what it skips re-encoding is a video it already received
+in a chat (it posts its own copy). No encode or wrapper can reproduce that; don't chase it again.
+
 **A cancelled compression cannot touch a restarted one** (`compression_cancel_test.dart`). Every
 run asked "is *a* compression running?" rather than "is *mine*?": after Cancel and a restart, the
 cancelled run's FFmpeg call ended late as a failure, saw the new run's "running", marked it failed
