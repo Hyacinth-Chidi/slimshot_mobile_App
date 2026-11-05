@@ -36,4 +36,32 @@ internal object TransitionLanes {
      */
     fun mayPrewarm(windowActive: Boolean, incomingLane: Int, masterLane: Int): Boolean =
         !windowActive && incomingLane != masterLane
+
+    /**
+     * The clock after a window has closed into its incoming lane: held at
+     * the window's end ([holdEnd]) until that lane's own reading ([raw])
+     * gets there, then the lane's. NaN [holdEnd]: no hold.
+     *
+     * The incoming lane starts late — tens of milliseconds on a phone, two
+     * seconds on the emulator's decoder — so at the window's end it can still
+     * stand before it. Read as it was, the clock went back inside the window,
+     * whose opening handed it to the outgoing lane at the window's end, whose
+     * close handed it back: the playhead swung between the two until the
+     * lane got going, the stop-and-restart device-reported at a transition.
+     * Held, the playhead waits at the cut while the lane catches up.
+     */
+    fun heldClock(raw: Double, holdEnd: Double): Double =
+        if (!holdEnd.isNaN() && raw < holdEnd) holdEnd else raw
+
+    /**
+     * Whether an incoming lane taking the clock is too far behind the
+     * window's end to be waited for, and is moved there instead. Within the
+     * drift tolerance it is left to catch up, as drift is: a seek flushes the
+     * decoder, which shows far more than a moment's hold.
+     */
+    fun handOverNeedsSeek(incomingClock: Double, windowEnd: Double): Boolean =
+        windowEnd - incomingClock > HAND_OVER_SEEK_SECONDS
+
+    /** The engine's drift tolerance: below it a lane is never seeked. */
+    private const val HAND_OVER_SEEK_SECONDS = 0.25
 }

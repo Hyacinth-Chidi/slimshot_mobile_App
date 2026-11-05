@@ -1,5 +1,6 @@
 package com.techfamz.slimshotai.nativepreview
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -60,5 +61,35 @@ class TransitionLanesTest {
         assertFalse(
             TransitionLanes.mayPrewarm(windowActive = false, incomingLane = 1, masterLane = 1),
         )
+    }
+
+    // Run 1 on the emulator, after the clock fix: the incoming lane had not
+    // started by the window's end (still buffering at its first frame,
+    // 3.369), and handing it the clock put the clock back inside the window;
+    // it swung between 4.765 and 3.369 for two seconds.
+
+    @Test
+    fun `after a hand-over the clock holds at the window's end until the incoming lane gets there`() {
+        assertEquals(4.765, TransitionLanes.heldClock(raw = 3.369, holdEnd = 4.765), 0.0)
+        assertEquals(4.765, TransitionLanes.heldClock(raw = 4.74, holdEnd = 4.765), 0.0)
+    }
+
+    @Test
+    fun `and runs on from the incoming lane once it is past`() {
+        assertEquals(4.9, TransitionLanes.heldClock(raw = 4.9, holdEnd = 4.765), 0.0)
+        assertEquals(2.0, TransitionLanes.heldClock(raw = 2.0, holdEnd = Double.NaN), 0.0)
+    }
+
+    @Test
+    fun `an incoming lane far behind the window's end is moved to it`() {
+        assertTrue(TransitionLanes.handOverNeedsSeek(incomingClock = 3.369, windowEnd = 4.765))
+    }
+
+    @Test
+    fun `one a little late is left to catch up, as drift is`() {
+        // The usual case: a few tens of ms late. A seek flushes the decoder,
+        // which is far more visible than the hold.
+        assertFalse(TransitionLanes.handOverNeedsSeek(incomingClock = 4.72, windowEnd = 4.765))
+        assertFalse(TransitionLanes.handOverNeedsSeek(incomingClock = 4.8, windowEnd = 4.765))
     }
 }

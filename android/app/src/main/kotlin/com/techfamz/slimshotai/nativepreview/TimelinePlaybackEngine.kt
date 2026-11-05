@@ -794,6 +794,7 @@ internal class TimelinePlaybackEngine(
         }
         pendingSeekSeconds = null
         resetPositionSmoothing()
+        clearHandOverHold()
         // A seek can land anywhere, so the overlay picture is owed a redraw
         // whatever the clock says about crossings.
         lastOverlayPosition = Double.NaN
@@ -919,6 +920,7 @@ internal class TimelinePlaybackEngine(
     fun stopAll() {
         isPlaying = false
         isReady = false
+        clearHandOverHold()
         clips = emptyList()
         transitions = emptyList()
         activeWindowKey = null
@@ -960,8 +962,19 @@ internal class TimelinePlaybackEngine(
      */
     fun timelinePositionSeconds(): Double {
         val lane = lanes.getOrNull(masterLane) ?: return 0.0
-        val player = lane.player ?: return 0.0
-        val clip = lane.currentClip() ?: return 0.0
+        val raw = laneClock(lane) ?: return 0.0
+        // Just after a window closed into this lane, the clock waits at the
+        // window's end for the lane to get there: see [TransitionLanes.heldClock].
+        if (lane.index != handOverHoldLane) return raw
+        val held = TransitionLanes.heldClock(raw, handOverHoldEnd)
+        if (held == raw) clearHandOverHold()
+        return held.coerceIn(0.0, timelineDurationSeconds)
+    }
+
+    /** Where [lane]'s player stands on the timeline, or null with nothing loaded. */
+    private fun laneClock(lane: Lane): Double? {
+        val player = lane.player ?: return null
+        val clip = lane.currentClip() ?: return null
         // An ended lane stands at its clip's end, not the whole millisecond
         // before it — see [LaneClock].
         val seconds = LaneClock.timelineSeconds(
@@ -970,6 +983,15 @@ internal class TimelinePlaybackEngine(
             ended = player.playbackState == Player.STATE_ENDED,
         )
         return seconds.coerceIn(0.0, timelineDurationSeconds)
+    }
+
+    /** The lane a window just closed into, and the window's end it waits at. */
+    private var handOverHoldLane = -1
+    private var handOverHoldEnd = Double.NaN
+
+    private fun clearHandOverHold() {
+        handOverHoldLane = -1
+        handOverHoldEnd = Double.NaN
     }
 
     private fun clipAt(seconds: Double): NativeTimelineClip? {
@@ -1410,6 +1432,7 @@ internal class TimelinePlaybackEngine(
                 // keeps it, and plays if playback is on. See
                 // [TransitionLanes.closeHandsOver].
                 val clip = clipAt(position)
+                clearHandOverHold()
                 if (clip != null) {
                     masterLane = clip.laneIndex
                     renderer.setActiveLane(clip.laneIndex)
@@ -1419,12 +1442,24 @@ internal class TimelinePlaybackEngine(
                 }
             } else {
                 // The window just closed. The outgoing clip is spent; hand the
-                // clock to the incoming lane, which is already playing in step.
+                // clock to the incoming lane, which should be playing in step.
                 val incoming = finished?.let { clips.getOrNull(it.rightClipIndex) }
-                if (incoming != null) {
+                if (finished != null && incoming != null) {
                     masterLane = incoming.laneIndex
                     renderer.setActiveLane(incoming.laneIndex)
                     idleOtherLane(incoming.laneIndex)
+                    // A lane that has not got going yet is waited for at the
+                    // cut, or moved there when it is far behind — never read
+                    // back inside the window. See [TransitionLanes].
+                    val lane = lanes[incoming.laneIndex]
+                    val end = finished.timelineEndSeconds
+                    val behind = laneClock(lane)
+                    if (behind != null && TransitionLanes.handOverNeedsSeek(behind, end)) {
+                        seekLaneTo(lane, end)
+                        lane.player?.playWhenReady = isPlaying
+                    }
+                    handOverHoldLane = incoming.laneIndex
+                    handOverHoldEnd = end
                 }
             }
         }

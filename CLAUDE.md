@@ -3723,7 +3723,14 @@ by a test:
   milliseconds, which is why only a split showed it. Two hand-offs that kept that loop going are
   guarded too (`TransitionLanes`): a window the clock left *backwards* no longer hands the clock to
   the incoming lane, and a rebuild's prewarm never moves a lane the playhead is using — inside a
-  window, or the master lane once the playhead is past the first transition.
+  window, or the master lane once the playhead is past the first transition. **And the clock waits
+  at the cut for a late incoming lane** (`TransitionLanes.heldClock`): read as it stood, a lane that
+  had not got going yet put the clock back inside the window and the hand-off swung back and forth;
+  held, the playhead parks at the window's end until the lane gets there, and a lane more than the
+  drift tolerance behind is moved there (`handOverNeedsSeek`). On the emulator (software decoding
+  two videos at once) one run of a split + Dissolve played straight through and two parked 1.5–3 s
+  at the cut while the second decoder buffered; none looped. A phone's hardware decoders are
+  expected to keep up — a device run is what says so.
 
 **Not fixed, and only a device can measure it:** the picture and the sound leave the phone through
 pipelines of different latency (display versus audio output, Bluetooth the worst), which nothing
