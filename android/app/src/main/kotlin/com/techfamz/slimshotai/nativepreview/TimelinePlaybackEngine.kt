@@ -696,6 +696,15 @@ internal class TimelinePlaybackEngine(
     private fun prewarmTransitionLane() {
         val firstTransition = transitions.firstOrNull() ?: return
         val incoming = clips.getOrNull(firstTransition.rightClipIndex) ?: return
+        // Only a lane nothing is using: see [TransitionLanes.mayPrewarm].
+        if (!TransitionLanes.mayPrewarm(
+                windowActive = activeWindowKey != null,
+                incomingLane = incoming.laneIndex,
+                masterLane = masterLane,
+            )
+        ) {
+            return
+        }
         val lane = lanes.getOrNull(incoming.laneIndex) ?: return
         if (lane.blocks.isEmpty()) return
 
@@ -839,9 +848,9 @@ internal class TimelinePlaybackEngine(
         val block = lane.blocks[blockIndex]
         val itemIndex = block.indexOfClipAt(timelineSeconds)
         val clip = block.clips[itemIndex]
-        val inClipSourceSeconds = clip.sourceOffsetAt(timelineSeconds)
 
-        lane.player?.seekTo(itemIndex, (inClipSourceSeconds * 1000.0).toLong())
+        // Rounded up, never down: see [LaneClock].
+        lane.player?.seekTo(itemIndex, LaneClock.seekMs(clip, timelineSeconds))
     }
 
     private fun idleOtherLane(activeLaneIndex: Int) {
@@ -953,8 +962,14 @@ internal class TimelinePlaybackEngine(
         val lane = lanes.getOrNull(masterLane) ?: return 0.0
         val player = lane.player ?: return 0.0
         val clip = lane.currentClip() ?: return 0.0
-        val inClipSeconds = clip.timelineOffsetForSource(player.currentPosition / 1000.0)
-        return (clip.timelineStart + inClipSeconds).coerceIn(0.0, timelineDurationSeconds)
+        // An ended lane stands at its clip's end, not the whole millisecond
+        // before it — see [LaneClock].
+        val seconds = LaneClock.timelineSeconds(
+            clip,
+            player.currentPosition,
+            ended = player.playbackState == Player.STATE_ENDED,
+        )
+        return seconds.coerceIn(0.0, timelineDurationSeconds)
     }
 
     private fun clipAt(seconds: Double): NativeTimelineClip? {
@@ -1386,17 +1401,31 @@ internal class TimelinePlaybackEngine(
         }
 
         if (activeWindowKey != null) {
-            // The window just closed. The outgoing clip is spent; hand the
-            // clock to the incoming lane, which is already playing in step.
             val finished = transitions.firstOrNull { it.windowKey == activeWindowKey }
             activeWindowKey = null
             renderer.clearTransition()
 
-            val incoming = finished?.let { clips.getOrNull(it.rightClipIndex) }
-            if (incoming != null) {
-                masterLane = incoming.laneIndex
-                renderer.setActiveLane(incoming.laneIndex)
-                idleOtherLane(incoming.laneIndex)
+            if (finished != null && !TransitionLanes.closeHandsOver(position, finished)) {
+                // The clock jumped back before the window: the clip there
+                // keeps it, and plays if playback is on. See
+                // [TransitionLanes.closeHandsOver].
+                val clip = clipAt(position)
+                if (clip != null) {
+                    masterLane = clip.laneIndex
+                    renderer.setActiveLane(clip.laneIndex)
+                    idleOtherLane(clip.laneIndex)
+                    prerolledWindowKey = null
+                    applyPlaybackState()
+                }
+            } else {
+                // The window just closed. The outgoing clip is spent; hand the
+                // clock to the incoming lane, which is already playing in step.
+                val incoming = finished?.let { clips.getOrNull(it.rightClipIndex) }
+                if (incoming != null) {
+                    masterLane = incoming.laneIndex
+                    renderer.setActiveLane(incoming.laneIndex)
+                    idleOtherLane(incoming.laneIndex)
+                }
             }
         }
 
@@ -1496,7 +1525,9 @@ internal class TimelinePlaybackEngine(
         if (nowMs - lane.lastDriftSeekMs < DRIFT_SEEK_COOLDOWN_MS) return
         lane.lastDriftSeekMs = nowMs
 
-        player.seekTo((expectedSeconds.coerceAtLeast(0.0) * 1000.0).toLong())
+        // This lane takes the clock when the window closes, so it must not be
+        // put a millisecond behind it either.
+        player.seekTo(LaneClock.seekMs(incoming, position))
     }
 
     private fun applyPlaybackState() {

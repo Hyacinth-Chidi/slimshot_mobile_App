@@ -3697,6 +3697,22 @@ by a test:
   position and the playhead takes it, unless something moved the playhead since (`_pauseFrom`) —
   without the move the drawn playhead, a little ahead, would jump back on every pause. Putting the
   playhead there does not seek the engine onto the frame it already shows (`_engineParkedAt`).
+- **The engine's clock never falls short of where it was put** (`LaneClock`, `LaneClockTest`,
+  **awaiting device verification**). ExoPlayer seeks and reports in whole milliseconds, and a split
+  leaves its cut between two of them (so do transitions, speeds and trims for clip starts). Both
+  conversions rounded *down*, so the clock read back up to a millisecond of source — ten at 0.1x —
+  before where it was put. Device-reported twice, reproduced on the emulator with the engine's
+  clock logged: **a split with a transition at the cut stopped playback there for good** (parked on
+  the cut the clock read as inside the window ending there, which `seek` had decided it was past,
+  and the two lanes handed the clock back and forth on every tick; played up to, the outgoing clip
+  ended a fraction short of the window's end and the window never closed), and **an overlay added
+  over the second half did not show until played into** (paused, the clock stood 0.5 ms before the
+  playhead the overlay starts at). Seeks now round **up** (`LaneClock.seekMs`) and an ended lane
+  stands at its clip's exact end (`LaneClock.timelineSeconds`). Unsplit clips end on whole
+  milliseconds, which is why only a split showed it. Two hand-offs that kept that loop going are
+  guarded too (`TransitionLanes`): a window the clock left *backwards* no longer hands the clock to
+  the incoming lane, and a rebuild's prewarm never moves a lane the playhead is using — inside a
+  window, or the master lane once the playhead is past the first transition.
 
 **Not fixed, and only a device can measure it:** the picture and the sound leave the phone through
 pipelines of different latency (display versus audio output, Bluetooth the worst), which nothing
