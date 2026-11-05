@@ -3367,9 +3367,10 @@ transient, never the edit. Its colours were hard-coded Slate (`0xFF1E293B`/`0xFF
 surfaces — the grey-blue that read as another app — and are now all from `AppColors`. **The applied
 state is carried by the fill, not by a ring**: an earlier pass changed only the border and the ink,
 and 1.5px of tint is the first thing to vanish against a busy frame, so "has a transition" and
-"empty" looked alike exactly where it mattered. The accent fill is `Color.alphaBlend(highlight,
-surface)` rather than `highlight` raw, because `highlight` is 15% alpha — right over a panel, washed
-out over bright footage. The glyph is `arrowLeftRight`, not `sparkles`: sparkles is the language of
+"empty" looked alike exactly where it mattered. **An applied transition is a solid white mark with
+dark arrows** (`textPrimary` fill, `background` ink — the owner's call, 2026-11-05): the purple-tinted
+fill it replaced read faint over footage, and white keeps the accent for the one seam the sheet is
+pointed at (selected: `primaryStart` filled, white ring). The glyph is `arrowLeftRight`, not `sparkles`: sparkles is the language of
 *effects*, something applied to a picture, where a transition is two clips meeting. An empty seam
 shows a `plus` — it is an invitation, not a state.
 

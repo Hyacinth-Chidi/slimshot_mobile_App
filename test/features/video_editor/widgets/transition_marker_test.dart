@@ -146,17 +146,29 @@ void main() {
       expect(iconOf(tester).color, isNot(emptyIcon));
     });
 
+    testWidgets('an applied transition is a white mark with dark arrows',
+        (tester) async {
+      // The owner's call: purple read as faint over footage; white stands out
+      // on any frame, and the dark arrows on it stay legible.
+      await pump(tester, hasTransition: true, isSelected: false);
+      expect(decorationOf(tester).color, AppColors.textPrimary);
+      expect(iconOf(tester).color, AppColors.background);
+    });
+
     testWidgets('selection is legible against an applied transition',
         (tester) async {
       await pump(tester, hasTransition: true, isSelected: false);
-      final applied = (decorationOf(tester).border as Border).top;
+      final applied = decorationOf(tester);
 
       await pump(tester, hasTransition: true, isSelected: true);
-      final selected = (decorationOf(tester).border as Border).top;
+      final selected = decorationOf(tester);
 
-      // Selected is the app's selection language: a white ring, thicker.
+      // Selected is the app's selection language: the accent filled, a white
+      // ring, thicker — against the applied mark's white fill.
+      expect(selected.color, AppColors.primaryStart);
       expect(selected.color, isNot(applied.color));
-      expect(selected.width, greaterThan(applied.width));
+      expect((selected.border as Border).top.width,
+          greaterThan((applied.border as Border).top.width));
     });
   });
 

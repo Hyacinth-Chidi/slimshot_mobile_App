@@ -66,20 +66,15 @@ class TransitionMarker extends StatelessWidget {
       edge = Colors.white;
       ink = Colors.white;
     } else if (hasTransition) {
-      // Applied but not selected. The accent-tinted fill is what carries the
-      // state at a glance: an earlier version changed only the ring and the
-      // ink, and a 1.5px ring is the first thing to disappear against a busy
-      // frame — so "has a transition" and "empty" looked alike exactly where it
-      // mattered.
-      //
-      // **Composited over `surface` rather than used raw.** `highlight` is the
-      // accent at 15% alpha, which is right over a panel but not over video: a
-      // bright frame would show straight through it and wash the tint out. Laid
-      // over the same surface an empty seam uses, it is the identical colour a
-      // selected effect tile shows, and opaque.
-      fill = Color.alphaBlend(AppColors.highlight, AppColors.surface);
-      edge = AppColors.primaryStart;
-      ink = AppColors.primaryStart;
+      // Applied but not selected: a solid white mark with dark arrows (the
+      // owner's call). The fill carries the state at a glance — an earlier
+      // version changed only the ring and the ink, and a 1.5px ring is the
+      // first thing to disappear against a busy frame. White stands out on
+      // any footage where the purple-tinted fill read faint, and it keeps the
+      // accent for the one seam the sheet is pointed at.
+      fill = AppColors.textPrimary;
+      edge = AppColors.textPrimary;
+      ink = AppColors.background;
     } else {
       // An empty seam is an *invitation*, and should recede until wanted.
       fill = AppColors.surface;
