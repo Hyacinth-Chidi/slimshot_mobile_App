@@ -47,6 +47,7 @@ class CameraRoundButton extends StatelessWidget {
     this.size = 40,
     this.chosen = false,
     this.badge,
+    this.recordDot = false,
   });
 
   final IconData icon;
@@ -59,6 +60,9 @@ class CameraRoundButton extends StatelessWidget {
 
   /// A letter in the corner: the flash's A for auto.
   final String? badge;
+
+  /// A red dot in place of [icon]: carry on recording.
+  final bool recordDot;
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +88,14 @@ class CameraRoundButton extends StatelessWidget {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    Icon(icon, size: size * 0.45, color: AppColors.textPrimary),
+                    if (recordDot)
+                      Container(
+                        width: size * 0.36,
+                        height: size * 0.36,
+                        decoration: const BoxDecoration(color: AppColors.error, shape: BoxShape.circle),
+                      )
+                    else
+                      Icon(icon, size: size * 0.45, color: AppColors.textPrimary),
                     if (badge != null)
                       Positioned(
                         right: size * 0.16,

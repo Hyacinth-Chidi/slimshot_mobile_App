@@ -40,6 +40,8 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
@@ -81,6 +83,11 @@ class CameraChannel(
 ) : MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
 
     private val mainExecutor = ContextCompat.getMainExecutor(context)
+
+    /** Bakes a selfie's mirror into its pixels ([PhotoBaker]) off the main thread. */
+    private val photoWorker: ExecutorService = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "slimshot-camera-photo").apply { isDaemon = true }
+    }
     private var events: EventChannel.EventSink? = null
 
     private var provider: ProcessCameraProvider? = null
@@ -130,8 +137,10 @@ class CameraChannel(
                         bind(provider)
                         result.success(describe())
                     } catch (error: Exception) {
+                        // CameraX's own words name surface combinations and
+                        // camera ids; the user is told what happened.
                         Log.e(TAG, "camera bind failed", error)
-                        result.error("camera_unavailable", error.message ?: "The camera could not be opened.", null)
+                        result.error("camera_unavailable", CAMERA_UNAVAILABLE, null)
                     }
                 }
             }
@@ -189,7 +198,7 @@ class CameraChannel(
                 then(ready)
             } catch (error: Exception) {
                 Log.e(TAG, "camera provider failed", error)
-                result.error("camera_unavailable", error.message ?: "The camera could not be opened.", null)
+                result.error("camera_unavailable", CAMERA_UNAVAILABLE, null)
             }
         }, mainExecutor)
     }
@@ -410,13 +419,18 @@ class CameraChannel(
         val options = ImageCapture.OutputFileOptions.Builder(file).setMetadata(metadata).build()
         capture.takePicture(options, mainExecutor, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                result.success(mapOf("path" to file.absolutePath))
+                // Answered once the file is upright in its pixels, so the
+                // review and the editor read the same picture.
+                photoWorker.execute {
+                    PhotoBaker.bakeIfFlipped(file)
+                    mainExecutor.execute { result.success(mapOf("path" to file.absolutePath)) }
+                }
             }
 
             override fun onError(error: ImageCaptureException) {
                 Log.e(TAG, "photo failed", error)
                 file.delete()
-                result.error("photo_failed", error.message ?: "The photo could not be taken.", null)
+                result.error("photo_failed", "The photo could not be taken.", null)
             }
         })
     }
@@ -522,7 +536,10 @@ class CameraChannel(
         previewSize = null
     }
 
-    fun release() = close()
+    fun release() {
+        close()
+        photoWorker.shutdown()
+    }
 
     private fun display(): Display? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -546,6 +563,7 @@ class CameraChannel(
         const val channelName = "slimshot_ai/camera"
         const val eventChannelName = "slimshot_ai/camera_events"
         private const val TAG = "SlimshotCamera"
+        private const val CAMERA_UNAVAILABLE = "The camera could not be opened."
 
         const val LENS_FRONT = "front"
         const val LENS_BACK = "back"

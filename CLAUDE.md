@@ -5496,7 +5496,15 @@ it shoots can be saved, shared or opened in the editor. Home's first tool card (
   path (step 2's effects) arrives as the sensor wrote it and is turned by `previewTurns`, whose
   screen-turn branch (a tablet whose natural orientation is landscape) is unverified.
 - **A selfie is saved mirrored, as it was seen** (my call; Snapchat and Instagram do):
-  `MIRROR_MODE_ON_FRONT_ONLY` for video, `isReversedHorizontal` for photos.
+  `MIRROR_MODE_ON_FRONT_ONLY` for video, `isReversedHorizontal` for photos. **CameraX writes a
+  photo's mirror into the EXIF orientation, not the pixels**, and the editor's decoders read only
+  the plain turns (`StillImageDecoder` takes 3/6/8; Media3's takes the degrees and drops the
+  flip) — the selfie would have been unmirrored in the editor, and sideways in its filmstrip and
+  export (orientations 5 and 7 read as no turn). So a flipped photo is **baked upright in its
+  pixels** before it is handed back (`PhotoBaker`, off the main thread; `ExifTurn` reads the eight
+  orientations the EXIF way — flip, then turn — pinned by `ExifTurnTest`, mutation-checked). A
+  plain turn stays in the EXIF, which everything reads. **Known:** a mirrored-EXIF photo imported
+  from the gallery still draws unmirrored in the editor — rare, since phone cameras flip pixels.
 - **The flash**: off / auto / on for a photo, a torch (off / on) for video, **each mode its own**,
   sent with the bind (`configure({lens, mode, flash})`) so a photo's "on" never blinks on as a
   torch on the way into video. **The torch only takes while the camera is open** — CameraX drops a

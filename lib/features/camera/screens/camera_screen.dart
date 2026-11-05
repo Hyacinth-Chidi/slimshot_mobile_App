@@ -418,7 +418,8 @@ class _CameraScreenState extends State<CameraScreen> {
                     child: isRecording
                         ? CameraRoundButton(
                             key: const ValueKey('camera_pause'),
-                            icon: recording == RecordingState.paused ? LucideIcons.circle : LucideIcons.pause,
+                            icon: LucideIcons.pause,
+                            recordDot: recording == RecordingState.paused,
                             tooltip: recording == RecordingState.paused ? 'Resume' : 'Pause',
                             size: 48,
                             onTap: () {
