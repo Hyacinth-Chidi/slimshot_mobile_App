@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../../video_editor/logic/animation/animatable_double.dart';
 import '../../video_editor/logic/mask/clip_mask.dart';
 import '../../video_editor/logic/overlay_box_fit.dart';
+import '../../video_editor/models/image_overlay_model.dart';
 import '../../video_editor/models/media_asset.dart';
 import '../../video_editor/models/video_editor_state.dart';
 import '../../video_editor/models/video_overlay_model.dart';
@@ -346,10 +347,13 @@ VideoEditorState reactionProject(ReactionTake take) {
   final pieces = take.pieces.isEmpty
       ? [ReactionPiece(startMs: 0, endMs: cameraMs, offsetMs: 0)]
       : take.pieces;
+  // A photo has no clock: it is there from the take's first instant to its
+  // last, with nothing to wait for and nothing to run out.
+  final photo = video.isImage;
 
   // Recording time 0 came before the video started: the project starts when
   // the video does.
-  final leadMs = (-pieces.first.offsetMs).clamp(0, math.max(0, cameraMs - 1)).toInt();
+  final leadMs = photo ? 0 : (-pieces.first.offsetMs).clamp(0, math.max(0, cameraMs - 1)).toInt();
 
   // The camera's part: cropped to its region's shape, which then fills the
   // region exactly — the engine's contain fit spans the full width (or
@@ -368,6 +372,7 @@ VideoEditorState reactionProject(ReactionTake take) {
   final aspect = video.aspectRatio;
   final fitW = aspect >= 1 ? 1.0 : aspect;
   final fitH = aspect >= 1 ? 1 / aspect : 1.0;
+  final boxPx = photo ? kImageOverlayBoxPx : kVideoOverlayBoxPx;
   final box = take.layout == ReactionLayout.float
       ? targetWidth / fitW
       : math.max(targetWidth / fitW, targetHeight / fitH);
@@ -381,7 +386,20 @@ VideoEditorState reactionProject(ReactionTake take) {
   final projectMs = cameraMs - leadMs;
   final videoMs = (video.durationSeconds * 1000).round();
   final overlays = <VideoOverlayModel>[];
-  for (var i = 0; i < pieces.length; i++) {
+  final photos = [
+    if (photo)
+      ImageOverlayModel(
+        id: 'react_photo_${take.id}',
+        imagePath: video.path,
+        position: position,
+        scale: box / boxPx,
+        startTime: Duration.zero,
+        endTime: Duration(milliseconds: cameraMs),
+        mask: mask,
+        referenceCanvasSize: kReactionFrame,
+      ),
+  ];
+  for (var i = 0; i < (photo ? 0 : pieces.length); i++) {
     final piece = pieces[i];
     final fromMs = math.max(piece.startMs, leadMs);
     final toMs = i == pieces.length - 1 ? cameraMs : math.min(piece.endMs, cameraMs);
@@ -395,7 +413,7 @@ VideoEditorState reactionProject(ReactionTake take) {
       id: overlays.isEmpty ? 'react_video_${take.id}' : 'react_video_${take.id}_${overlays.length}',
       videoPath: video.path,
       position: position,
-      scale: box / kVideoOverlayBoxPx,
+      scale: box / boxPx,
       timelineStart: Duration(milliseconds: startMs),
       timelineEnd: Duration(milliseconds: endMs),
       sourceStart: videoFromMs / 1000,
@@ -431,5 +449,6 @@ VideoEditorState reactionProject(ReactionTake take) {
     trimRange: RangeValues(clip.sourceStart, clip.sourceEnd),
     durationSeconds: camera.durationSeconds,
     videoOverlays: overlays,
+    imageOverlays: photos,
   );
 }

@@ -2,15 +2,21 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../video_editor/services/media_import_service.dart';
 import '../logic/reaction.dart';
 import '../logic/reaction_session.dart';
 
-/// The video REACT plays: the take's player, and its picture to lay out.
+/// What REACT reacts to — a video, or a photo — as the take's player, and its
+/// picture to lay out.
 abstract class ReactionVideo implements ReactionPlayer {
   /// The picture's width over its height, upright.
   double get aspectRatio;
+
+  /// A still: no sound, no clock — its player does nothing and never ends.
+  bool get isPhoto;
 
   /// The video's picture, in its own shape.
   Widget picture();
@@ -20,8 +26,65 @@ abstract class ReactionVideo implements ReactionPlayer {
   Future<void> dispose();
 }
 
-/// Opens the video at a path for REACT; null when it will not play.
+/// Opens the video or photo at a path for REACT; null when it will not open.
 typedef ReactionVideoOpener = Future<ReactionVideo?> Function(String path);
+
+/// The file at [path] opened for REACT: a photo as a still, anything else
+/// through `video_player`. Its kind and a photo's upright shape come from the
+/// editor's own probe, the one its fits are made from.
+Future<ReactionVideo?> openReactionSource(String path) async {
+  try {
+    final assets = await MediaImportService().assetsFor([XFile(path)]);
+    final asset = assets.isEmpty ? null : assets.first;
+    if (asset != null && asset.isImage) {
+      final aspect = asset.aspectRatio;
+      return PhotoReactionSource(path, aspect.isFinite && aspect > 0 ? aspect : 1);
+    }
+  } catch (error) {
+    debugPrint('REACT: could not probe $path: $error');
+  }
+  return PluginReactionVideo.open(path);
+}
+
+/// A photo as what REACT reacts to: there for the whole take, silent.
+class PhotoReactionSource implements ReactionVideo {
+  PhotoReactionSource(this.path, this.aspectRatio);
+
+  final String path;
+
+  @override
+  final double aspectRatio;
+
+  @override
+  bool get isPhoto => true;
+
+  @override
+  int get durationMs => 0;
+
+  @override
+  bool get completed => false;
+
+  @override
+  Future<int?> positionMs() async => 0;
+
+  @override
+  Future<void> play() async {}
+
+  @override
+  Future<void> pause() async {}
+
+  @override
+  Future<void> seekTo(int ms) async {}
+
+  @override
+  Future<void> setVolume(double volume) async {}
+
+  @override
+  Widget picture() => Image.file(File(path), fit: BoxFit.fill, gaplessPlayback: true);
+
+  @override
+  Future<void> dispose() async {}
+}
 
 /// `video_player` as REACT's video.
 class PluginReactionVideo implements ReactionVideo {
@@ -40,6 +103,9 @@ class PluginReactionVideo implements ReactionVideo {
       return null;
     }
   }
+
+  @override
+  bool get isPhoto => false;
 
   @override
   double get aspectRatio {
@@ -79,6 +145,7 @@ class PluginReactionVideo implements ReactionVideo {
 /// where [layout] puts you ([reactionPlaces], the one definition the file is
 /// rendered from). Each picture fills its place edge to edge; in the float,
 /// the video's window can be dragged and pinched while [windowMovable].
+/// A [placeholder] stands in the video's place, unscaled, until there is one.
 class ReactionFrame extends StatefulWidget {
   const ReactionFrame({
     super.key,
@@ -89,6 +156,7 @@ class ReactionFrame extends StatefulWidget {
     required this.camera,
     this.onWindowChanged,
     this.windowMovable = true,
+    this.placeholder,
   });
 
   final ReactionLayout layout;
@@ -101,6 +169,7 @@ class ReactionFrame extends StatefulWidget {
 
   final ValueChanged<ReactionWindow>? onWindowChanged;
   final bool windowMovable;
+  final Widget? placeholder;
 
   /// Where the camera's picture sits in a frame of [frame] — what a tap to
   /// focus is measured against.
@@ -152,7 +221,7 @@ class _ReactionFrameState extends State<ReactionFrame> {
         final places = reactionPlaces(layout: widget.layout, window: widget.window, videoAspect: widget.videoAspect);
         final cameraRect = _scaled(places.camera, frame);
         final videoRect = _scaled(places.video, frame);
-        final video = ClipRect(
+        final video = widget.placeholder ?? ClipRect(
           child: FittedBox(
             fit: BoxFit.cover,
             clipBehavior: Clip.hardEdge,

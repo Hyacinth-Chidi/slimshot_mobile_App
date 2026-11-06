@@ -50,6 +50,12 @@ class ImageOverlayModel {
   /// Empty on every overlay nobody has placed a diamond on.
   OverlayKeyframes keyframes;
 
+  /// The canvas [position] and [scale] were placed against when that was not
+  /// the editor's — a REACT project's fixed frame; null for every overlay
+  /// placed in the editor. Converted once (`fitImageOverlayToCanvas`), the
+  /// video overlay's rule.
+  Size? referenceCanvasSize;
+
   ImageOverlayModel({
     required this.id,
     required this.imagePath,
@@ -67,6 +73,7 @@ class ImageOverlayModel {
     this.mask = ClipMask.none,
     this.chromaKey = ChromaKey.none,
     this.keyframes = OverlayKeyframes.none,
+    this.referenceCanvasSize,
   });
 
   ImageOverlayModel copyWith({
@@ -88,6 +95,8 @@ class ImageOverlayModel {
     ClipMask? mask,
     ChromaKey? chromaKey,
     OverlayKeyframes? keyframes,
+    Size? referenceCanvasSize,
+    bool clearReferenceCanvasSize = false,
   }) {
     return ImageOverlayModel(
       id: id ?? this.id,
@@ -106,6 +115,9 @@ class ImageOverlayModel {
       mask: mask ?? this.mask,
       chromaKey: chromaKey ?? this.chromaKey,
       keyframes: keyframes ?? this.keyframes,
+      referenceCanvasSize: clearReferenceCanvasSize
+          ? null
+          : (referenceCanvasSize ?? this.referenceCanvasSize),
     );
   }
 
@@ -167,6 +179,10 @@ class ImageOverlayModel {
       if (!mask.isNone) 'mask': mask.toJson(),
       if (!chromaKey.isNone) 'chromaKey': chromaKey.toJson(),
       if (!keyframes.isEmpty) 'keyframes': keyframes.toJson(),
+      if (referenceCanvasSize != null) ...{
+        'refWidth': referenceCanvasSize!.width,
+        'refHeight': referenceCanvasSize!.height,
+      },
     };
   }
 
@@ -193,6 +209,14 @@ class ImageOverlayModel {
       mask: ClipMask.fromJson(json['mask']),
       chromaKey: ChromaKey.fromJson(json['chromaKey']),
       keyframes: OverlayKeyframes.fromJson(json['keyframes']),
+      referenceCanvasSize: _referenceSize(json['refWidth'], json['refHeight']),
     );
   }
+}
+
+/// A reference canvas read back: both sides, positive, or none.
+Size? _referenceSize(Object? width, Object? height) {
+  if (width is! num || height is! num) return null;
+  if (!(width > 0) || !(height > 0)) return null;
+  return Size(width.toDouble(), height.toDouble());
 }

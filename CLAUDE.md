@@ -5572,9 +5572,23 @@ camera; the microphone refused.
 ### REACT — you and a video, in one file
 
 **Awaiting device verification** (2026-11-06). Spec: the camera spec's step 2. PHOTO · VIDEO ·
-**REACT**: pick a video, record yourself while it plays, and the reaction lands on the pile as one
-finished video in the gallery — and, from the viewer's Edit, opens in the editor as **two
+**REACT**: choose a video or a photo, record yourself beside it, and the reaction lands on the pile
+as one finished video in the gallery — and, from the viewer's Edit, opens in the editor as **two
 separate layers**, so the layout, size and sound can still change.
+
+- **REACT opens at once, on the front camera, and picks nothing by itself** (the owner's call,
+  from the first device run, where swiping to REACT threw the user into the gallery). The video's
+  place shows a dashed, see-through frame — "Select photo or video" (`react_pick`, the Home empty
+  card's `DashedFramePainter`) — that opens the picker (`MediaPickerService.pickOneMedia`, one
+  photo or video); the shutter with nothing chosen opens it too and records nothing. The layout
+  can be chosen first; the empty window is 9:16 (`kReactionPlaceholderAspect`). Something chosen
+  before opens again on coming back, unasked.
+- **A photo is reacted to as a still** (`PhotoReactionSource`, chosen by the editor's own probe
+  in `openReactionSource`): a player with no clock, so it never ends the take, and no sound — no
+  sound button, and the microphone counts as hearing only you. In the project it is a photo
+  overlay (`kImageOverlayBoxPx` box) from the first instant of the take to its last, with no lead
+  trimmed; it carries the reference frame like the video's (`ImageOverlayModel.referenceCanvasSize`,
+  converted by `fitImageOverlayToCanvas` through the same `fitOverlaysToCanvas`).
 
 - **Recorded live, rendered after** (option A, the owner's pick). The camera records only you —
   privately, into its own folder (`CameraMode.react` records as video does, never to the gallery);
@@ -5618,7 +5632,11 @@ separate layers**, so the layout, size and sound can still change.
   so the reaction lines up across every pause. The project starts when the video does (a late
   start is trimmed off your take), and **ends where the video does**: the take stops itself at the
   video's end (`kReactionVideoEndSlackMs`), and the moment it overruns is cut, or it would be a
-  half of nothing.
+  half of nothing. **The end is believed only once the video has been seen moving in that run,
+  and only from a player that knows its length** — device-reported, a take stopped by itself a
+  third of a second in and made a 9-frame reaction: `video_player` reads "completed" whenever its
+  position equals its duration, which a length of 0 makes true from the start. Root cause not
+  confirmed on a device; every stop now logs its reason (`REACT: the take stops: …`).
 - **Sound** (`videoSoundReachesMicrophone`): with headphones, or the video's sound turned off, the
   microphone hears only you, and the file has the video's clean sound with your voice; out loud,
   the microphone has the video too, so the project keeps the overlay muted — unmuted it would be

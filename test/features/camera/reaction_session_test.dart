@@ -50,7 +50,7 @@ class FakeReactionPlayer implements ReactionPlayer {
   }
 
   @override
-  bool get completed => false;
+  bool completed = false;
 }
 
 void main() {
@@ -160,6 +160,29 @@ void main() {
     now = const Duration(milliseconds: 990);
     await take.sample();
     expect(ended, 1);
+  });
+
+  test('a video whose length the player cannot tell never ends the take by itself', () async {
+    player = FakeReactionPlayer(() => now, durationMs: 0)..completed = true;
+    final take = session();
+    await take.start();
+    await report(0);
+    for (var t = 250; t <= 3000; t += 250) {
+      now = Duration(milliseconds: t);
+      await take.sample();
+    }
+    expect(ended, 0, reason: 'a length of 0 says nothing about where the video is');
+  });
+
+  test('a player that says it is done before anything played is not believed', () async {
+    player.completed = true;
+    player.startDelay = const Duration(seconds: 10);
+    final take = session();
+    await take.start();
+    await report(0);
+    now = const Duration(milliseconds: 250);
+    await take.sample();
+    expect(ended, 0);
   });
 
   test('a recording the camera ended by itself keeps what was recorded', () async {

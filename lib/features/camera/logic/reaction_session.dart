@@ -147,11 +147,20 @@ class ReactionTakeSession {
     // Paused, stopped or restarted while the player answered.
     if (_finished || _awaitingRun || camera.recording != RecordingState.recording) return;
     _lastRecordingMs = after;
-    if (video > _runVideoFromMs + kReactionVideoMovingMs) {
+    final moving = video > _runVideoFromMs + kReactionVideoMovingMs;
+    if (moving) {
       _log.sample(recordingMs: (before + after) ~/ 2, videoMs: video);
     }
-    if (!_saidEnded && (player.completed || video >= player.durationMs - kReactionVideoEndSlackMs)) {
+    // The end is believed only once the video has been seen playing in this
+    // run, and the length only when the player knows one: a player that
+    // reports 0, or "completed" before it has started, would otherwise end
+    // the take a quarter of a second in.
+    final duration = player.durationMs;
+    final atEnd = duration > 0 && (player.completed || video >= duration - kReactionVideoEndSlackMs);
+    if (!_saidEnded && moving && atEnd) {
       _saidEnded = true;
+      debugPrint('REACT: the video ended at ${video}ms of ${duration}ms '
+          '(completed: ${player.completed}); the take stops');
       onVideoEnded?.call();
     }
   }

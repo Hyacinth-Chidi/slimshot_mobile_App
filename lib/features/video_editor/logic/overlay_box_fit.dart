@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import '../models/image_overlay_model.dart';
 import '../models/video_overlay_model.dart';
 import 'animation/animatable_double.dart';
 import 'animation/overlay_keyframes.dart';
@@ -40,20 +41,34 @@ Size fittedOverlayBox({required double? contentAspect, required double box}) {
 /// like any other placed there.
 VideoOverlayModel fitOverlayToCanvas(VideoOverlayModel overlay, Size canvas) {
   final reference = overlay.referenceCanvasSize;
-  if (reference == null) return overlay;
-  if (!(canvas.width > 0) || !(canvas.height > 0)) return overlay;
-  if (!(reference.width > 0) || !(reference.height > 0)) {
-    return overlay.copyWith(clearReferenceCanvasSize: true);
-  }
+  if (reference == null || !_isCanvas(canvas)) return overlay;
+  final fitted = _fitMotion(overlay.motion, reference, canvas);
+  return (fitted == null ? overlay : overlay.withMotion(fitted)).copyWith(clearReferenceCanvasSize: true);
+}
+
+/// [fitOverlayToCanvas] for a photo overlay — the same conversion.
+ImageOverlayModel fitImageOverlayToCanvas(ImageOverlayModel overlay, Size canvas) {
+  final reference = overlay.referenceCanvasSize;
+  if (reference == null || !_isCanvas(canvas)) return overlay;
+  final fitted = _fitMotion(overlay.motion, reference, canvas);
+  return (fitted == null ? overlay : overlay.withMotion(fitted)).copyWith(clearReferenceCanvasSize: true);
+}
+
+bool _isCanvas(Size size) => size.width > 0 && size.height > 0;
+
+/// [motion] placed for [reference] re-placed for [canvas]: positions by each
+/// axis's ratio, the scale by the smaller. Null for a reference that is no
+/// size at all, which is simply dropped.
+OverlayMotion? _fitMotion(OverlayMotion motion, Size reference, Size canvas) {
+  if (!_isCanvas(reference)) return null;
   final sx = canvas.width / reference.width;
   final sy = canvas.height / reference.height;
   final size = math.min(sx, sy);
-  final params = overlay.motion.params;
-  final fitted = OverlayMotion.fromParams({
+  final params = motion.params;
+  return OverlayMotion.fromParams({
     ...params,
     OverlayProperty.x: mapAnimatable(params[OverlayProperty.x]!, (v) => v * sx),
     OverlayProperty.y: mapAnimatable(params[OverlayProperty.y]!, (v) => v * sy),
     OverlayProperty.scale: mapAnimatable(params[OverlayProperty.scale]!, (v) => v * size),
   });
-  return overlay.withMotion(fitted).copyWith(clearReferenceCanvasSize: true);
 }

@@ -16,10 +16,13 @@ import 'camera_screen_test.dart' show FakePermissions;
 
 /// A video that plays nothing and remembers what it was told.
 class FakeReactionVideo implements ReactionVideo {
-  FakeReactionVideo({this.aspectRatio = 16 / 9});
+  FakeReactionVideo({this.aspectRatio = 16 / 9, this.isPhoto = false});
 
   @override
   final double aspectRatio;
+
+  @override
+  final bool isPhoto;
 
   final calls = <String>[];
   double volume = 1;
@@ -86,7 +89,7 @@ void main() {
           return picked;
         },
         openReactionVideo: (path) async {
-          final video = FakeReactionVideo();
+          final video = FakeReactionVideo(isPhoto: path.endsWith('.jpg'));
           videos.add(video);
           return video;
         },
@@ -107,6 +110,16 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> choose(WidgetTester tester) async {
+    await tester.tap(key('react_pick'));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> enterAndChoose(WidgetTester tester) async {
+    await enterReact(tester);
+    await choose(tester);
+  }
+
   Future<void> recordATake(WidgetTester tester) async {
     await tester.tap(key('camera_shutter'));
     await tester.pumpAndSettle();
@@ -116,18 +129,54 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('REACT asks for a video first; none chosen, the camera stays as it was', (tester) async {
+  testWidgets('REACT opens at once on the front camera, with a frame to choose what to react to', (tester) async {
+    await pumpCamera(tester);
+    await enterReact(tester);
+    expect(picks, 0, reason: 'nothing is picked until asked for');
+    expect(camera.calls, contains('configure front react off'));
+    expect(key('reaction_frame'), findsOneWidget);
+    expect(key('react_pick'), findsOneWidget);
+    expect(find.text('Select photo or video'), findsOneWidget);
+    expect(key('react_sound'), findsNothing, reason: 'no sound to turn off yet');
+    expect(key('react_layout'), findsOneWidget, reason: 'the layout can be chosen first');
+  });
+
+  testWidgets('the frame opens the picker; nothing chosen, it stays', (tester) async {
     picked = null;
     await pumpCamera(tester);
     await enterReact(tester);
+    await choose(tester);
     expect(picks, 1);
-    expect(camera.calls.where((c) => c.contains('react')), isEmpty);
-    expect(key('reaction_frame'), findsNothing);
+    expect(key('react_pick'), findsOneWidget);
+    picked = '/picked/clip.mp4';
+    await choose(tester);
+    expect(key('react_pick'), findsNothing);
+    expect(key('fake_video_picture'), findsOneWidget);
   });
 
-  testWidgets('a video chosen: the front camera, and the frame with you and the video', (tester) async {
+  testWidgets('the shutter with nothing chosen asks for something, and records nothing', (tester) async {
     await pumpCamera(tester);
     await enterReact(tester);
+    await tester.tap(key('camera_shutter'));
+    await tester.pumpAndSettle();
+    expect(picks, 1);
+    expect(camera.calls.where((c) => c.startsWith('record')), isEmpty);
+    expect(key('fake_video_picture'), findsOneWidget);
+  });
+
+  testWidgets('a photo: no sound to turn off, and the microphone hears only you', (tester) async {
+    picked = '/picked/meme.jpg';
+    await pumpCamera(tester);
+    await enterAndChoose(tester);
+    expect(key('react_sound'), findsNothing);
+    await recordATake(tester);
+    expect(requests.single.videoPath, '/picked/meme.jpg');
+    expect(requests.single.micHearsVideo, isFalse);
+  });
+
+  testWidgets('a video chosen: the frame with you and the video', (tester) async {
+    await pumpCamera(tester);
+    await enterAndChoose(tester);
     expect(camera.calls, contains('configure front react off'));
     expect(key('reaction_frame'), findsOneWidget);
     expect(key('fake_video_picture'), findsOneWidget);
@@ -136,7 +185,7 @@ void main() {
 
   testWidgets('the layout button moves through top and bottom, side by side, and the window', (tester) async {
     await pumpCamera(tester);
-    await enterReact(tester);
+    await enterAndChoose(tester);
     final frame = tester.getRect(key('reaction_frame'));
     Rect video() => tester.getRect(key('reaction_video'));
 
@@ -160,7 +209,7 @@ void main() {
 
   testWidgets('a take: the video plays once the recording runs, and the reaction lands on the pile', (tester) async {
     await pumpCamera(tester);
-    await enterReact(tester);
+    await enterAndChoose(tester);
     await tester.tap(key('camera_shutter'));
     await tester.pumpAndSettle();
     expect(camera.lastGallery, isFalse, reason: 'the take is private');
@@ -193,7 +242,7 @@ void main() {
   testWidgets('with headphones, or the video silent, the file keeps the video\'s own sound', (tester) async {
     camera.headphones = true;
     await pumpCamera(tester);
-    await enterReact(tester);
+    await enterAndChoose(tester);
     await recordATake(tester);
     expect(requests.last.micHearsVideo, isFalse);
 
@@ -208,7 +257,7 @@ void main() {
   testWidgets('a reaction that could not be made says so, and keeps the take', (tester) async {
     made = null;
     await pumpCamera(tester);
-    await enterReact(tester);
+    await enterAndChoose(tester);
     await recordATake(tester);
     expect(find.text(kReactionFailedMessage), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
@@ -219,7 +268,7 @@ void main() {
 
   testWidgets('the window moves under the finger and stays in the frame', (tester) async {
     await pumpCamera(tester);
-    await enterReact(tester);
+    await enterAndChoose(tester);
     await tester.tap(key('react_layout'));
     await tester.pumpAndSettle();
     await tester.tap(key('react_layout'));
@@ -244,7 +293,7 @@ void main() {
 
   testWidgets('leaving REACT lets the video go; coming back opens it again, no new pick', (tester) async {
     await pumpCamera(tester);
-    await enterReact(tester);
+    await enterAndChoose(tester);
     await tester.tap(key('camera_mode_video'));
     await tester.pumpAndSettle();
     expect(videos.single.disposed, isTrue);
@@ -274,6 +323,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
     await enterReact(tester);
+    expect(tester.takeException(), isNull);
+    await choose(tester);
     for (var i = 0; i < 3; i++) {
       await tester.tap(key('react_layout'));
       await tester.pumpAndSettle();

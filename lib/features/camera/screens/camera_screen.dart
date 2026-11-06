@@ -15,7 +15,7 @@ import '../../../core/theme/app_fonts.dart';
 import '../../../core/theme/lucide_icons.dart';
 import '../../../core/utils/held_work.dart';
 import '../../../core/utils/toast_utils.dart';
-import '../../audio_tools/pick_video.dart';
+import '../../../core/widgets/dashed_frame_painter.dart';
 import '../../video_editor/logic/project_draft.dart';
 import '../logic/camera_controller.dart';
 import '../logic/camera_files.dart';
@@ -46,9 +46,15 @@ const double kCameraModeSwipePx = 60;
 const kReactLayoutKey = 'camera_react_layout';
 
 const kReactionFailedMessage = 'The reaction could not be made.';
-const kReactionVideoFailedMessage = "This video can't be played.";
+const kReactionVideoFailedMessage = "This can't be opened.";
+const kReactionPickLabel = 'Select photo or video';
+const kReactionAccessMessage = 'Allow access to your photos and videos';
+const kReactionPickFailedMessage = 'Your photos and videos could not be opened';
 
-/// Picks the video REACT plays: its path, or null.
+/// The shape REACT's empty window takes before anything is chosen.
+const double kReactionPlaceholderAspect = 9 / 16;
+
+/// Picks the photo or video REACT reacts to: its path, or null.
 typedef ReactionVideoPicker = Future<String?> Function(BuildContext context);
 
 /// What Edit hands the editor for [shot]: a reaction opens as the two layers
@@ -319,15 +325,13 @@ class _CameraScreenState extends State<CameraScreen> {
 
   // ---- REACT ----
 
-  /// Into REACT: a video to react to first, then the front camera.
+  /// Into REACT, at once, on the front camera. What to react to is chosen
+  /// from the frame (or the shutter); one chosen before opens again.
   Future<void> _enterReact() async {
     final controller = _controller;
     if (controller == null || !controller.canChangeMode) return;
-    if (_reactVideo == null) {
-      final path = _reactPath;
-      final ready = path != null && await _openReactVideo(path) || await _pickReactVideo();
-      if (!ready || !mounted) return;
-    }
+    final path = _reactPath;
+    if (_reactVideo == null && path != null) unawaited(_openReactVideo(path));
     await controller.setMode(CameraMode.react, lens: CameraLens.front);
   }
 
@@ -352,13 +356,24 @@ class _CameraScreenState extends State<CameraScreen> {
     return _openReactVideo(path);
   }
 
-  static Future<String?> _pickFromGallery(BuildContext context) => pickVideoPath(
-        MediaPickerService().pickVideo,
-        onError: (message) => ToastUtils.show(context, message, isError: true),
-      );
+  /// One photo or video from the gallery; a refusal or a failure is one line.
+  static Future<String?> _pickFromGallery(BuildContext context) async {
+    try {
+      return (await MediaPickerService().pickOneMedia())?.path;
+    } catch (error) {
+      if (context.mounted) {
+        ToastUtils.show(
+          context,
+          MediaPickerService.isPermissionError(error) ? kReactionAccessMessage : kReactionPickFailedMessage,
+          isError: true,
+        );
+      }
+      return null;
+    }
+  }
 
   Future<bool> _openReactVideo(String path) async {
-    final video = await (widget.openReactionVideo ?? PluginReactionVideo.open)(path);
+    final video = await (widget.openReactionVideo ?? openReactionSource)(path);
     if (!mounted) {
       unawaited(video?.dispose());
       return false;
@@ -404,11 +419,18 @@ class _CameraScreenState extends State<CameraScreen> {
     await _reactVideo?.setVolume(_videoSoundOn ? 1 : 0);
   }
 
-  /// Starts a take, or ends the one under way.
+  /// Starts a take, or ends the one under way; with nothing chosen yet, asks.
   Future<void> _reactShutter(CameraController controller) async {
-    if (_take != null) return _stopReaction();
+    if (_take != null) {
+      debugPrint('REACT: the take stops: the shutter or Back');
+      return _stopReaction();
+    }
     final video = _reactVideo;
-    if (video == null || controller.busy) return;
+    if (controller.busy) return;
+    if (video == null) {
+      await _pickReactVideo();
+      return;
+    }
     HapticFeedback.lightImpact();
     // Decided when the take starts: whether the microphone will hear the video.
     _headphones = await _backend.headphonesConnected();
@@ -416,7 +438,10 @@ class _CameraScreenState extends State<CameraScreen> {
     final take = ReactionTakeSession(
       camera: controller,
       player: video,
-      onVideoEnded: () => unawaited(_stopReaction()),
+      onVideoEnded: () {
+        debugPrint('REACT: the take stops: the video ended');
+        unawaited(_stopReaction());
+      },
     );
     setState(() => _take = take);
     if (!await take.start() && mounted) setState(() => _take = null);
@@ -445,6 +470,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   /// The app left mid-take: what was recorded becomes the reaction.
   Future<void> _reactionEnded(ReactionTakeSession take, CameraShot shot) async {
+    debugPrint('REACT: the take stops: the camera ended the recording');
     final recording = await take.endedBy(shot);
     if (!mounted) return;
     setState(() => _take = null);
@@ -471,7 +497,10 @@ class _CameraScreenState extends State<CameraScreen> {
           videoPath: path,
           layout: _layout,
           window: _window,
-          micHearsVideo: videoSoundReachesMicrophone(headphones: _headphones, videoSoundOn: _videoSoundOn),
+          micHearsVideo: videoSoundReachesMicrophone(
+            headphones: _headphones,
+            videoSoundOn: _videoSoundOn && !(_reactVideo?.isPhoto ?? false),
+          ),
           toGallery: toGallery,
         ),
         onProgress: (fraction) {
@@ -536,13 +565,12 @@ class _CameraScreenState extends State<CameraScreen> {
     if (width == null || height == null) return;
     // In REACT the camera fills its place in the frame, not the screen.
     var area = Offset.zero & screen;
-    final video = _reactVideo;
-    if (controller.mode == CameraMode.react && video != null) {
+    if (controller.mode == CameraMode.react) {
       final frame = reactionFrameOn(screen);
       area = ReactionFrame.cameraPlace(
         layout: _layout,
         window: _window,
-        videoAspect: video.aspectRatio,
+        videoAspect: _reactAspect,
         frame: frame.size,
       ).shift(frame.topLeft);
       if (!area.contains(tap)) return;
@@ -667,7 +695,7 @@ class _CameraScreenState extends State<CameraScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (controller?.mode == CameraMode.react && _reactVideo != null)
+              if (controller?.mode == CameraMode.react)
                 _reactPicture(screen, showing ? info : null)
               else if (showing)
                 CameraPreviewTexture(info: info, screen: screen),
@@ -692,8 +720,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
   /// REACT's frame, as the file will be: 9:16 on the screen, you and the
   /// video where the layout puts you.
+  /// The shape of what is reacted to, or of the empty window before it.
+  double get _reactAspect => _reactVideo?.aspectRatio ?? kReactionPlaceholderAspect;
+
   Widget _reactPicture(Size screen, CameraInfo? info) {
-    final video = _reactVideo!;
+    final video = _reactVideo;
     final frame = reactionFrameOn(screen);
     return Positioned.fromRect(
       rect: frame,
@@ -701,8 +732,9 @@ class _CameraScreenState extends State<CameraScreen> {
         key: const ValueKey('reaction_frame'),
         layout: _layout,
         window: _window,
-        videoAspect: video.aspectRatio,
-        video: video.picture(),
+        videoAspect: _reactAspect,
+        video: video?.picture() ?? const SizedBox.shrink(),
+        placeholder: video == null ? _ReactPlaceholder(onTap: () => unawaited(_pickReactVideo())) : null,
         camera: (place) => info == null
             ? const SizedBox.expand()
             : CameraPreviewTexture(info: info, screen: place),
@@ -751,7 +783,7 @@ class _CameraScreenState extends State<CameraScreen> {
             right: 8,
             child: _flashButton(controller!),
           ),
-        if (controller?.mode == CameraMode.react && _reactVideo != null && !isRecording)
+        if (controller?.mode == CameraMode.react && !isRecording)
           Positioned(
             top: 60,
             right: 8,
@@ -840,8 +872,9 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   /// REACT's own tools, down the right: the layout (a tap moves to the
-  /// next), the video's sound, and another video.
+  /// next), the video's sound, and something else to react to.
   Widget _reactTools() {
+    final video = _reactVideo;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -859,20 +892,24 @@ class _CameraScreenState extends State<CameraScreen> {
           },
           onTap: () => unawaited(_cycleLayout()),
         ),
-        const SizedBox(height: 6),
-        CameraRoundButton(
-          key: const ValueKey('react_sound'),
-          icon: _videoSoundOn ? LucideIcons.volume2 : LucideIcons.volumeX,
-          tooltip: _videoSoundOn ? 'Video sound on' : 'Video sound off',
-          onTap: () => unawaited(_toggleVideoSound()),
-        ),
-        const SizedBox(height: 6),
-        CameraRoundButton(
-          key: const ValueKey('react_change_video'),
-          icon: LucideIcons.replace,
-          tooltip: 'Change video',
-          onTap: () => unawaited(_changeReactVideo()),
-        ),
+        if (video != null && !video.isPhoto) ...[
+          const SizedBox(height: 6),
+          CameraRoundButton(
+            key: const ValueKey('react_sound'),
+            icon: _videoSoundOn ? LucideIcons.volume2 : LucideIcons.volumeX,
+            tooltip: _videoSoundOn ? 'Video sound on' : 'Video sound off',
+            onTap: () => unawaited(_toggleVideoSound()),
+          ),
+        ],
+        if (video != null) ...[
+          const SizedBox(height: 6),
+          CameraRoundButton(
+            key: const ValueKey('react_change_video'),
+            icon: LucideIcons.replace,
+            tooltip: 'Change',
+            onTap: () => unawaited(_changeReactVideo()),
+          ),
+        ],
       ],
     );
   }
@@ -1045,6 +1082,63 @@ class _Notice extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The video's place before anything is chosen: a dashed frame that opens
+/// the picker.
+class _ReactPlaceholder extends StatelessWidget {
+  const _ReactPlaceholder({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: const ValueKey('react_pick'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: CustomPaint(
+          foregroundPainter: DashedFramePainter(
+            colour: AppColors.lilac.withValues(alpha: 0.45),
+            radius: 14,
+            strokeWidth: 1.5,
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.textPrimary.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.imagePlus, color: AppColors.textPrimary, size: 28),
+                      SizedBox(height: 8),
+                      Text(
+                        kReactionPickLabel,
+                        style: TextStyle(
+                          fontFamily: kInterfaceFontFamily,
+                          color: AppColors.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slimshotai/features/video_editor/models/image_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/models/media_asset.dart';
 import 'package:slimshotai/features/video_editor/models/video_editor_state.dart';
 import 'package:slimshotai/features/video_editor/models/video_overlay_model.dart';
@@ -45,6 +46,17 @@ void main() {
     final mine = n.state.videoOverlays.firstWhere((o) => o.id == 'mine');
     expect(mine.position, const Offset(10, 10), reason: 'placed in this editor: already its canvas\'s');
     expect(n.state.canUndo, isFalse);
+  });
+
+  test("a reaction's photo overlay is converted too", () {
+    final n = notifierWith(const [])
+      ..state = notifierWith(const []).state.copyWith(imageOverlays: [
+        ImageOverlayModel(id: 'p', imagePath: '/p.jpg', position: const Offset(0, -160), scale: 2,
+            referenceCanvasSize: const Size(360, 640)),
+      ]);
+    n.fitOverlaysToCanvas(const Size(180, 320));
+    expect(n.state.imageOverlays.single.position, const Offset(0, -80));
+    expect(n.state.imageOverlays.single.referenceCanvasSize, isNull);
   });
 
   test('with nothing to convert the project is untouched', () {

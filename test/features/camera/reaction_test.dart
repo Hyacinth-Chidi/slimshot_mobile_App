@@ -243,6 +243,38 @@ void main() {
       expect(reactionProject(_take(videoSoundInCamera: false)).videoOverlays.single.isMuted, isFalse);
     });
 
+    test('a photo reacted to is a photo overlay filling its place for the whole take', () {
+      const photo = MediaAsset(
+        id: 'photo',
+        path: '/picked/meme.jpg',
+        type: MediaAssetType.image,
+        durationSeconds: 0,
+        width: 1080,
+        height: 1350,
+        hasAudio: false,
+      );
+      for (final layout in ReactionLayout.values) {
+        final take = _take(
+          layout: layout,
+          video: photo,
+          pieces: const [ReactionPiece(startMs: 0, endMs: 12000, offsetMs: -150)],
+        );
+        final state = reactionProject(take);
+        expect(state.videoOverlays, isEmpty);
+        final overlay = state.imageOverlays.single;
+        expect(overlay.imagePath, '/picked/meme.jpg');
+        expect(overlay.startTime, Duration.zero);
+        expect(overlay.endTime, const Duration(seconds: 12), reason: 'a photo has no end of its own');
+        expect(overlay.referenceCanvasSize, kReactionFrame);
+        expect(state.segments.single.sourceStart, 0, reason: 'nothing to wait for: no lead to trim');
+        expect(state.segments.single.sourceEnd, 12);
+        final timeline = _compose(take);
+        final places = reactionPlaces(layout: layout, window: take.window, videoAspect: photo.aspectRatio);
+        _expectRect(_overlayOnCanvas(timeline.overlays.single, photo.aspectRatio), places.video);
+        _expectRect(_clipOnCanvas(timeline.videoClips.single), places.camera);
+      }
+    });
+
     test('a take survives a round trip', () {
       final take = _take(
         layout: ReactionLayout.float,

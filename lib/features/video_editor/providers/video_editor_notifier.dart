@@ -306,9 +306,12 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// editor exists — to [canvas], once (`fitOverlayToCanvas`). Not an edit:
   /// no undo step, and nothing changes for an overlay placed here.
   void fitOverlaysToCanvas(Size canvas) {
-    if (!state.videoOverlays.any((o) => o.referenceCanvasSize != null)) return;
+    final videos = state.videoOverlays.any((o) => o.referenceCanvasSize != null);
+    final images = state.imageOverlays.any((o) => o.referenceCanvasSize != null);
+    if (!videos && !images) return;
     state = state.copyWith(
-      videoOverlays: [for (final o in state.videoOverlays) fitOverlayToCanvas(o, canvas)],
+      videoOverlays: videos ? [for (final o in state.videoOverlays) fitOverlayToCanvas(o, canvas)] : null,
+      imageOverlays: images ? [for (final o in state.imageOverlays) fitImageOverlayToCanvas(o, canvas)] : null,
     );
   }
 

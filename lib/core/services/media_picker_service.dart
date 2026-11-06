@@ -35,6 +35,11 @@ class MediaPickerService {
     return _picker.pickVideo(source: ImageSource.gallery);
   }
 
+  /// One photo or video from the gallery: what REACT reacts to.
+  Future<XFile?> pickOneMedia() {
+    return _picker.pickMedia();
+  }
+
   /// Opens the gallery for photos **and** videos together, allowing several.
   ///
   /// This is the picker the editor uses both to start a project and to add to

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/video_editor/logic/animation/animatable_double.dart';
 import 'package:slimshotai/features/video_editor/logic/animation/overlay_keyframes.dart';
 import 'package:slimshotai/features/video_editor/logic/overlay_box_fit.dart';
+import 'package:slimshotai/features/video_editor/models/image_overlay_model.dart';
 import 'package:slimshotai/features/video_editor/models/video_overlay_model.dart';
 
 const _frame = Size(360, 640);
@@ -52,6 +53,22 @@ void main() {
     final fitted = fitOverlayToCanvas(_placed(keyframes: keyframes), const Size(180, 320));
     expect(fitted.keyframes.of(OverlayProperty.x).map((k) => k.value), [0, 45]);
     expect(fitted.keyframes.of(OverlayProperty.scale).map((k) => k.value), [0.5, 1]);
+  });
+
+  test('a photo overlay placed on the frame converts the same way', () {
+    final photo = ImageOverlayModel(
+      id: 'p',
+      imagePath: '/p.jpg',
+      position: const Offset(0, -160),
+      scale: 2,
+      referenceCanvasSize: _frame,
+    );
+    final fitted = fitImageOverlayToCanvas(photo, const Size(180, 320));
+    expect(fitted.position, const Offset(0, -80));
+    expect(fitted.scale, 1);
+    expect(fitted.referenceCanvasSize, isNull);
+    expect(ImageOverlayModel.fromJson(photo.toJson()).referenceCanvasSize, _frame);
+    expect(ImageOverlayModel(id: 'q', imagePath: '/q.jpg').toJson().containsKey('refWidth'), isFalse);
   });
 
   test('a canvas not laid out yet leaves it for the real one', () {
