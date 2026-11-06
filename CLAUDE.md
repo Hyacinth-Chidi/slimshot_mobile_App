@@ -5476,8 +5476,8 @@ reopened from Recents after backing out (nothing repeats).
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-11-05-camera-design.md`
 (step 2, REACT, is there too). A camera opened from Home, **not an editor tool** — the owner's
 words: a full camera, Snapchat-like, that grows features later (face tracking and the like); what
-it shoots can be saved, shared or opened in the editor. Home's first tool card (`home_camera`,
-`/camera`); every shot goes to a review (`/camera/review`).
+it shoots is saved the moment it is taken and can be shared or opened in the editor. Home's
+first tool card (`home_camera`, `/camera`); the shots open in a viewer (`/camera/roll`).
 
 - **CameraX, driven from Kotlin** (`camera/CameraChannel.kt`; channel `slimshot_ai/camera`,
   events `slimshot_ai/camera_events`; `androidx.camera` 1.6.2), not the Flutter `camera` plugin,
@@ -5524,27 +5524,50 @@ it shoots can be saved, shared or opened in the editor. Home's first tool card (
 - **The microphone is asked on the way into video, at most once a screen**
   (`PluginCameraPermissions`); refused, the video records silently and says so once. A permission
   prompt that cannot be shown reads as refused, never as a crash.
-- **The review** (`CameraReviewScreen`): the file whole (contain — it is judged here), a video
-  looping with a scrub bar; **Retake · Save · Share · Edit**, Edit the purple one. Retake and Back
-  throw the shot away, asking first when it was neither saved nor shared (`ResultExit`, its
-  deleter limited to the camera folder). **Edit replaces the camera with the editor**
-  (`pushReplacement('/edit/video')`): the camera is let go rather than left running under an edit,
-  and Back from the editor is Home, whose Recent Edits hears the new draft through
-  `DraftRefreshNotifier`. A recording and an unsaved shot hold the app (`HeldWork`).
-- **Files are `<documents>/camera/`** (`CameraFiles`), never the temp folder: a shot opened in the
-  editor is a draft's clip and must outlive the launch cleanup. **At launch `sweepCameraFiles`
-  deletes what a killed app left there**, keeping every shot any draft's saved form mentions and
-  anything newer than the launch.
+- **Every shot is saved the moment it is taken, into the gallery's SlimShotAI album** (the
+  owner's design, as a phone's own camera does — no save-or-discard step): the album the app's
+  exports and compressions already go to, so everything SlimShot makes is in one place, visible to
+  every gallery and picker, backed up, and kept if the app is uninstalled (`GalleryShots.kt`). A
+  photo is taken into the camera's folder, baked upright if mirrored, then moved in
+  (`publishPhoto`); a video records straight into the album (`MediaStoreOutputOptions` — no copy of
+  a long file). Android 11+ needs no permission; **Android 10 and older need storage access**
+  (`galleryNeedsPermission`, asked once a screen) — refused, shots stay in the camera's folder and
+  it is said once (`kGalleryOffMessage`); a gallery that refuses one photo leaves it there too.
+- **The pile** (`CameraRollPile`): left of the shutter, the last shots stacked — **three cards at
+  most** (the owner's call), the newest on top, two tilted behind — and a new shot drops onto it.
+  Pause takes its place while recording. **The roll** (`CameraRoll`) is the app's own record of
+  its shots (prefs `camera_roll`, newest first, 300 kept): **only shots taken with SlimShot's
+  camera**, because seeing the whole gallery needs `READ_MEDIA_*`, which the manifest removes on
+  purpose (the photo picker needs none). A shot deleted in the gallery drops out at the next open.
+  **A CapCut-style in-app picker** — and the whole gallery in the viewer — would need those
+  permissions back and a Play Console declaration first (a video editor is a core use Google
+  approves); talked through with the owner, not started.
+- **The viewer** (`CameraRollScreen`, `/camera/roll`): one shot at a time, newest first, every shot
+  in a strip along the foot (a tap jumps there). **Swiping left goes to older shots, and one more
+  swipe past the oldest returns to the camera** (the owner's words; an overscroll past
+  `kBackToCameraOverscroll`), as Back and ✕ do. Delete sits see-through at the bottom left and asks
+  first (`confirmDelete` — the shot goes from the gallery too); Share hands it over; **Edit is for
+  videos only, with the scissors** (the owner's call: not a pen). Only the shot on screen holds a
+  video player. **Edit replaces the camera with the editor** (`pushReplacement('/edit/video')`):
+  the camera is let go rather than left running under an edit, and Back from the editor is Home,
+  whose Recent Edits hears the new draft through `DraftRefreshNotifier`. A recording holds the
+  app (`HeldWork`).
+- **The camera's own folder is `<documents>/camera/`** (`CameraFiles`), never the temp folder:
+  photos pass through it on their way to the gallery, and shots stay there where storage access is
+  off. **At launch `sweepCameraFiles` deletes what a killed app left there**, keeping every shot
+  any draft's saved form mentions, every shot the roll keeps, and anything newer than the
+  launch.
 - **Home's four tools share one scale** (`kHomeToolContentWidth` 72, `kHomeToolGap` 10): laid out
   at one width and scaled into each card, so on a narrow phone the four shrink alike rather than
   each by its own label.
 
-**Device checks**: the preview upright and undistorted on both lenses; a photo and a video held
-sideways save landscape; a selfie saves as seen; flash auto and on fire, the torch lights in video;
-pinch, tap to focus, swipe between modes; record, pause, resume, stop — one file, with sound;
-leaving the app mid-take, then coming back to the review; Retake, Save, Share, Edit (the editor
-opens on the shot, Back is Home, the edit is in Recent Edits); another app taking the camera; the
-microphone refused.
+**Device-checked on the Infinix (Android 12), the review-era build**: the preview on both lenses,
+a front photo saved upright and mirrored, record · pause · resume · stop into one file, Edit into
+the editor and Back to Home with the edit in Recent Edits. **Still to check**: the pile and the
+viewer; shots in the gallery's SlimShotAI album; Delete removing one from the gallery; storage
+access on Android 10 and older; the preview upright with a person in it; shots held sideways
+saving landscape; flash and torch; pinch, tap to focus, swipe between modes; leaving the app
+mid-take; another app taking the camera; the microphone refused.
 
 ### Decisions already made â€” don't re-litigate
 

@@ -1,10 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:slimshotai/core/utils/held_work.dart';
-import 'package:slimshotai/features/camera/logic/camera_controller.dart';
+import 'package:slimshotai/features/camera/logic/camera_roll.dart';
 import 'package:slimshotai/features/camera/screens/camera_screen.dart';
 import 'package:slimshotai/features/camera/services/camera_permissions.dart';
+import 'package:slimshotai/features/camera/widgets/shot_views.dart';
 
 import '../../support/fake_camera.dart';
 
@@ -28,23 +31,26 @@ class FakePermissions implements CameraPermissions {
   Future<bool> allowMicrophone() async => true;
 
   @override
+  Future<bool> allowStorage() async => true;
+
+  @override
   Future<void> openSettings() async => settingsOpened++;
 }
 
 void main() {
   late FakeCamera camera;
   late FakePermissions permissions;
-  late List<CameraShot> reviewed;
-  late CameraReviewOutcome? answer;
-  late List<CameraShot> edited;
+  late List<CameraRoll> opened;
+  late RollShot? answer;
+  late List<RollShot> edited;
   var paths = 0;
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     camera = FakeCamera()..recordedMs = 2500;
     permissions = FakePermissions();
-    reviewed = [];
-    answer = CameraReviewOutcome.retake;
+    opened = [];
+    answer = null;
     edited = [];
     paths = 0;
   });
@@ -55,17 +61,27 @@ void main() {
         backend: camera,
         permissions: permissions,
         newPath: (extension) async => '/shots/${++paths}.$extension',
-        review: (context, shot) async {
-          reviewed.add(shot);
+        openRoll: (context, roll) async {
+          opened.add(roll);
           return answer;
         },
         onEdit: (context, shot) => edited.add(shot),
+        loadFrame: (_) async => null,
       ),
     ));
     await tester.pumpAndSettle();
   }
 
   Finder key(String name) => find.byKey(ValueKey(name));
+
+  Future<void> recordAVideo(WidgetTester tester) async {
+    await tester.tap(key('camera_mode_video'));
+    await tester.pumpAndSettle();
+    await tester.tap(key('camera_shutter'));
+    await tester.pumpAndSettle();
+    await tester.tap(key('camera_shutter'));
+    await tester.pumpAndSettle();
+  }
 
   testWidgets('opens the camera once access is given, and shows its picture', (tester) async {
     await pumpCamera(tester);
@@ -106,12 +122,55 @@ void main() {
     expect(find.byType(Texture), findsOneWidget);
   });
 
-  testWidgets('a photo goes to the review', (tester) async {
+  testWidgets('a photo is kept at once and lands on the pile, no screen in between', (tester) async {
     await pumpCamera(tester);
+    expect(key('camera_roll_pile'), findsNothing, reason: 'no shots yet, no pile');
+
     await tester.tap(key('camera_shutter'));
     await tester.pumpAndSettle();
-    expect(reviewed.single, isA<PhotoShot>());
-    expect(reviewed.single.path, '/shots/1.jpg');
+    expect(camera.lastGallery, isTrue, reason: 'saved to the gallery as it is taken');
+    expect(opened, isEmpty, reason: 'nothing asks to save or discard');
+    expect(key('camera_roll_pile'), findsOneWidget);
+
+    final prefs = await SharedPreferences.getInstance();
+    final stored = jsonDecode(prefs.getString(kCameraRollKey)!) as List;
+    expect(stored.single['path'], '/shots/1.jpg');
+    expect(stored.single['uri'], 'content://media//shots/1.jpg');
+  });
+
+  testWidgets('the pile is three cards at most', (tester) async {
+    await pumpCamera(tester);
+    for (var i = 0; i < 5; i++) {
+      await tester.tap(key('camera_shutter'));
+      await tester.pumpAndSettle();
+    }
+    expect(
+      find.descendant(of: key('camera_roll_pile'), matching: find.byType(ShotThumbnail)),
+      findsNWidgets(CameraRollPile.maxCards),
+    );
+  });
+
+  testWidgets('shots taken before are on the pile when the camera opens', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      kCameraRollKey: jsonEncode([
+        {'path': 'test/fixtures/does_not_matter.jpg', 'video': false},
+      ]),
+    });
+    await tester.runAsync(() async {
+      await tester.pumpWidget(MaterialApp(
+        home: CameraScreen(
+          backend: camera,
+          permissions: permissions,
+          newPath: (extension) async => '/shots/x.$extension',
+          openRoll: (context, roll) async => null,
+          loadFrame: (_) async => null,
+        ),
+      ));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+    // Kept only while its file is there: this one never was.
+    expect(key('camera_roll_pile'), findsNothing);
   });
 
   testWidgets('while recording only stop, pause and the time are offered', (tester) async {
@@ -126,6 +185,7 @@ void main() {
     expect(key('camera_recording_time'), findsOneWidget);
     expect(key('camera_flip'), findsNothing);
     expect(key('camera_close'), findsNothing);
+    expect(key('camera_roll_pile'), findsNothing, reason: 'pause takes its place');
     expect(HeldWork.instance.isHeld, isTrue, reason: 'a home-widget tap must not end a take');
 
     await tester.tap(key('camera_pause'));
@@ -134,12 +194,12 @@ void main() {
 
     await tester.tap(key('camera_shutter'));
     await tester.pumpAndSettle();
-    expect(reviewed.single, isA<VideoShot>());
     expect(HeldWork.instance.isHeld, isFalse);
     expect(key('camera_flip'), findsOneWidget);
+    expect(key('camera_roll_pile'), findsOneWidget, reason: 'the video is on the pile');
   });
 
-  testWidgets('Back while recording stops the take and reviews it', (tester) async {
+  testWidgets('Back while recording stops the take and keeps it', (tester) async {
     await pumpCamera(tester);
     await tester.tap(key('camera_mode_video'));
     await tester.pumpAndSettle();
@@ -150,16 +210,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(camera.calls, contains('stop'));
-    expect(reviewed.single, isA<VideoShot>());
+    expect(key('camera_roll_pile'), findsOneWidget);
     expect(find.byType(CameraScreen), findsOneWidget, reason: 'the camera stays for the next shot');
   });
 
-  testWidgets('Edit in the review hands the shot to the editor', (tester) async {
-    answer = CameraReviewOutcome.edit;
+  testWidgets('the pile opens the viewer on the camera\'s shots', (tester) async {
     await pumpCamera(tester);
     await tester.tap(key('camera_shutter'));
     await tester.pumpAndSettle();
-    expect(edited.single.path, '/shots/1.jpg');
+    await tester.tap(key('camera_roll_pile'));
+    await tester.pumpAndSettle();
+    expect(opened.single.shots.single.path, '/shots/1.jpg');
+    expect(edited, isEmpty);
+  });
+
+  testWidgets('a video chosen for Edit in the viewer goes to the editor', (tester) async {
+    await pumpCamera(tester);
+    await recordAVideo(tester);
+    answer = RollShot(path: '/shots/1.mp4', isVideo: true, durationMs: 2500, takenAt: DateTime(2026));
+    await tester.tap(key('camera_roll_pile'));
+    await tester.pumpAndSettle();
+    expect(edited.single.path, '/shots/1.mp4');
   });
 
   testWidgets('the flash is offered only on a lens that has one', (tester) async {
@@ -209,10 +280,13 @@ void main() {
           backend: camera,
           permissions: permissions,
           newPath: (extension) async => '/shots/x.$extension',
-          review: (context, shot) async => null,
+          openRoll: (context, roll) async => null,
+          loadFrame: (_) async => null,
         ),
       ),
     ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('camera_shutter')));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });

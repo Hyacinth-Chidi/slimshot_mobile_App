@@ -5,9 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'features/camera/logic/camera_controller.dart';
 import 'features/camera/logic/camera_files.dart';
-import 'features/camera/screens/camera_review_screen.dart';
+import 'features/camera/logic/camera_roll.dart';
+import 'features/camera/screens/camera_roll_screen.dart';
 import 'features/camera/screens/camera_screen.dart';
 import 'features/compression/logic/compress_inputs.dart';
 import 'package:animations/animations.dart';
@@ -213,7 +213,7 @@ GoRouter createAppRouter(String initialRoute) {
           );
         },
       ),
-      // The camera, from Home: its own screen, then the review of each shot.
+      // The camera, from Home: its own screen, and the viewer on its shots.
       GoRoute(
         path: '/camera',
         pageBuilder: (context, state) => _buildTransitionPage(
@@ -222,13 +222,13 @@ GoRouter createAppRouter(String initialRoute) {
         ),
       ),
       GoRoute(
-        path: '/camera/review',
+        path: '/camera/roll',
         pageBuilder: (context, state) {
-          final shot = state.extra;
+          final roll = state.extra;
           return _buildTransitionPage(
             state: state,
-            child: shot is CameraShot
-                ? CameraReviewScreen(shot: shot)
+            child: roll is CameraRoll
+                ? CameraRollScreen(roll: roll)
                 : const Scaffold(backgroundColor: AppColors.background),
           );
         },

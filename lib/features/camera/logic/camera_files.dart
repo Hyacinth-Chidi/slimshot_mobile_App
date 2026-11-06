@@ -4,10 +4,13 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/services/draft_service.dart';
+import 'camera_roll.dart';
 
-/// At launch: what a killed app left in the camera folder goes, except every
-/// shot a draft points at — matched against each draft's whole saved form,
-/// so a shot used as a clip, an overlay or anything later is kept alike.
+/// At launch: what a killed app left in the camera folder goes — a photo
+/// caught on its way to the gallery — except every shot a draft points at
+/// (matched against each draft's whole saved form, so a shot used as a clip,
+/// an overlay or anything later is kept alike) and every shot the camera's
+/// roll keeps there because storage access was off.
 Future<void> sweepCameraFiles() async {
   final launch = DateTime.now();
   try {
@@ -15,7 +18,11 @@ Future<void> sweepCameraFiles() async {
     if (!await files.directory.exists()) return;
     final drafts = await DraftService.getDrafts();
     final referenced = drafts.map((draft) => jsonEncode(draft.toJson())).join('\n');
-    await files.sweep(keep: referenced.contains, before: launch);
+    final rolled = await CameraRoll.storedPaths();
+    await files.sweep(
+      keep: (path) => referenced.contains(path) || rolled.contains(path),
+      before: launch,
+    );
   } catch (_) {
     // A sweep that cannot run leaves the files for the next launch.
   }

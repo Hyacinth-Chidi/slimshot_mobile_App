@@ -60,16 +60,29 @@ class MethodChannelCamera implements CameraBackend {
   Future<void> focus(Offset point) => _call<void>('focus', {'x': point.dx, 'y': point.dy});
 
   @override
-  Future<String> takePhoto(String path) async {
-    final answer = await _call<Map<Object?, Object?>>('takePhoto', {'path': path});
+  Future<SavedShot> takePhoto(String path, {required bool gallery}) async {
+    final answer = await _call<Map<Object?, Object?>>('takePhoto', {'path': path, 'gallery': gallery});
     final saved = answer?['path'];
-    if (saved is! String) throw const CameraFailure(kPhotoFailedMessage);
-    return saved;
+    if (saved is! String || saved.isEmpty) throw const CameraFailure(kPhotoFailedMessage);
+    final uri = answer?['uri'];
+    return SavedShot(path: saved, uri: uri is String && uri.isNotEmpty ? uri : null);
   }
 
   @override
-  Future<void> startRecording(String path, {required bool audio}) =>
-      _call<void>('startRecording', {'path': path, 'audio': audio});
+  Future<void> startRecording(String path, {required bool audio, required bool gallery}) =>
+      _call<void>('startRecording', {'path': path, 'audio': audio, 'gallery': gallery});
+
+  /// Deletes a shot from the gallery by its address; false where the phone
+  /// would not.
+  Future<bool> deleteShot(String uri) async {
+    try {
+      return await _channel.invokeMethod<bool>('deleteShot', {'uri': uri}) ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
 
   @override
   Future<void> pauseRecording() => _call<void>('pauseRecording');
@@ -137,6 +150,7 @@ CameraInfo? cameraInfoFrom(Map<Object?, Object?>? map) {
     mirrored: map['mirrored'] == true,
     cameraTransform: map['cameraTransform'] != false,
     displayRotation: _int(map['displayRotation']) ?? 0,
+    galleryNeedsPermission: map['galleryNeedsPermission'] == true,
   );
 }
 
@@ -144,7 +158,12 @@ CameraInfo? cameraInfoFrom(Map<Object?, Object?>? map) {
 RecordedVideo? recordedVideoFrom(Map<Object?, Object?>? map) {
   final path = map?['path'];
   if (path is! String || path.isEmpty) return null;
-  return RecordedVideo(path: path, durationMs: _int(map?['durationMs']) ?? 0);
+  final uri = map?['uri'];
+  return RecordedVideo(
+    path: path,
+    uri: uri is String && uri.isNotEmpty ? uri : null,
+    durationMs: _int(map?['durationMs']) ?? 0,
+  );
 }
 
 /// One event from `slimshot_ai/camera_events`, or null for one this build
@@ -168,7 +187,11 @@ CameraEvent? cameraEventFrom(Object? raw) {
       );
     case 'recordingEnded':
       final video = recordedVideoFrom(raw.cast<Object?, Object?>());
-      return RecordingEnded(path: video?.path, durationMs: video?.durationMs ?? 0);
+      return RecordingEnded(
+        path: video?.path,
+        uri: video?.uri,
+        durationMs: video?.durationMs ?? 0,
+      );
     case 'camera':
       final message = raw['message'];
       return CameraAvailability(

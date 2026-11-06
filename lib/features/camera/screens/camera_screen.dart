@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,15 +15,17 @@ import '../../../core/utils/toast_utils.dart';
 import '../logic/camera_controller.dart';
 import '../logic/camera_files.dart';
 import '../logic/camera_geometry.dart';
+import '../logic/camera_roll.dart';
 import '../services/camera_permissions.dart';
 import '../services/method_channel_camera.dart';
 import '../widgets/camera_controls.dart';
+import '../widgets/shot_views.dart';
 
-/// What the review answered: shoot again, or open the shot in the editor.
-enum CameraReviewOutcome { retake, edit }
+/// Opens the viewer on the camera's shots; answers a video to edit, or null.
+typedef CameraRollOpener = Future<RollShot?> Function(BuildContext context, CameraRoll roll);
 
-typedef CameraReview = Future<CameraReviewOutcome?> Function(BuildContext context, CameraShot shot);
-typedef CameraEdit = void Function(BuildContext context, CameraShot shot);
+/// Hands a video to the editor.
+typedef CameraEdit = void Function(BuildContext context, RollShot shot);
 
 /// The lens the camera was last left on, so it opens there again.
 const kCameraLensKey = 'camera_lens';
@@ -34,9 +37,11 @@ const double kCameraModeSwipePx = 60;
 /// left and the flash at the right; at the foot PHOTO · VIDEO, the shutter
 /// and the flip. A photo is a tap; a video is a tap to start and a tap to
 /// stop, with pause to rest and carry on in the same video. Pinch zooms, a
-/// tap focuses, a sideways swipe changes mode. Every shot goes to the review
-/// ([CameraReviewOutcome]); Edit there hands it to the editor, which takes
-/// the camera's place.
+/// tap focuses, a sideways swipe changes mode. **Every shot is saved the
+/// moment it is taken** — into the gallery's SlimShotAI album — and drops onto
+/// the pile left of the shutter, as a phone's own camera does; the pile opens
+/// the viewer ([CameraRollScreen]), where Edit hands a video to the editor,
+/// which takes the camera's place.
 ///
 /// The screen stays upright — photos and videos are turned to the way the
 /// phone is held natively — and the camera is the phone's for as long as the
@@ -47,15 +52,17 @@ class CameraScreen extends StatefulWidget {
     this.backend,
     this.permissions,
     this.newPath,
-    this.review,
+    this.openRoll,
     this.onEdit,
+    this.loadFrame,
   });
 
   final CameraBackend? backend;
   final CameraPermissions? permissions;
   final ShotPath? newPath;
-  final CameraReview? review;
+  final CameraRollOpener? openRoll;
   final CameraEdit? onEdit;
+  final VideoFrameLoader? loadFrame;
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -68,9 +75,12 @@ class _CameraScreenState extends State<CameraScreen> {
 
   CameraController? _controller;
 
+  /// The camera's shots, newest first: the pile and the viewer.
+  final CameraRoll _roll = CameraRoll();
+
   /// Null while the camera is being asked for.
   CameraAccess? _access;
-  bool _reviewing = false;
+  bool _viewing = false;
 
   double _pinchStartZoom = 1;
   bool _pinching = false;
@@ -85,7 +95,13 @@ class _CameraScreenState extends State<CameraScreen> {
     super.initState();
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     _lifecycle = AppLifecycleListener(onResume: _onResume);
+    _roll.addListener(_onRollChanged);
+    unawaited(_roll.load(exists: (path) => File(path).exists()));
     unawaited(_start());
+  }
+
+  void _onRollChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -95,6 +111,8 @@ class _CameraScreenState extends State<CameraScreen> {
     final controller = _controller;
     controller?.removeListener(_onControllerChanged);
     controller?.dispose();
+    _roll.removeListener(_onRollChanged);
+    _roll.dispose();
     SystemChrome.setPreferredOrientations(const []);
     super.dispose();
   }
@@ -114,6 +132,7 @@ class _CameraScreenState extends State<CameraScreen> {
         backend: _backend,
         newPath: widget.newPath ?? _newShotPath,
         allowMicrophone: _permissions.allowMicrophone,
+        allowStorage: _permissions.allowStorage,
         initialLens: lens,
       );
       controller.addListener(_onControllerChanged);
@@ -156,36 +175,46 @@ class _CameraScreenState extends State<CameraScreen> {
       final message = controller.takeMessage();
       if (message != null) ToastUtils.show(context, message);
     }
+    // A recording the camera ended by itself (the app left mid-take) is
+    // kept like any other.
     final ended = controller.takeEndedShot();
-    if (ended != null) unawaited(_review(ended));
+    if (ended != null) unawaited(_keep(ended));
     setState(() {});
   }
 
   Future<void> _shutter() async {
     final controller = _controller;
-    if (controller == null || _reviewing) return;
+    if (controller == null || _viewing) return;
     HapticFeedback.lightImpact();
     if (controller.mode == CameraMode.photo && !controller.busy) setState(() => _blinkTick++);
     final shot = await controller.shutter();
-    if (shot != null && mounted) await _review(shot);
+    if (shot != null && mounted) await _keep(shot);
   }
 
-  Future<void> _review(CameraShot shot) async {
-    if (_reviewing) return;
-    _reviewing = true;
-    final review = widget.review ?? _pushReview;
-    final outcome = await review(context, shot);
-    _reviewing = false;
-    if (!mounted) return;
-    if (outcome == CameraReviewOutcome.edit) (widget.onEdit ?? _openInEditor)(context, shot);
+  /// Already saved by the camera; the roll remembers it, and it lands on the pile.
+  Future<void> _keep(CameraShot shot) => _roll.add(RollShot(
+        path: shot.path,
+        uri: shot.uri,
+        isVideo: shot is VideoShot,
+        durationMs: shot is VideoShot ? shot.durationMs : 0,
+        takenAt: DateTime.now(),
+      ));
+
+  Future<void> _openRoll() async {
+    if (_viewing || _roll.shots.isEmpty) return;
+    _viewing = true;
+    HapticFeedback.selectionClick();
+    final edit = await (widget.openRoll ?? _pushRoll)(context, _roll);
+    _viewing = false;
+    if (edit != null && mounted) (widget.onEdit ?? _openInEditor)(context, edit);
   }
 
-  static Future<CameraReviewOutcome?> _pushReview(BuildContext context, CameraShot shot) =>
-      context.push<CameraReviewOutcome>('/camera/review', extra: shot);
+  static Future<RollShot?> _pushRoll(BuildContext context, CameraRoll roll) =>
+      context.push<RollShot>('/camera/roll', extra: roll);
 
   /// The editor takes the camera's place: Back from it is Home, and the
   /// camera is let go rather than left running under an edit.
-  static void _openInEditor(BuildContext context, CameraShot shot) {
+  static void _openInEditor(BuildContext context, RollShot shot) {
     context.pushReplacement('/edit/video', extra: [XFile(shot.path)]);
   }
 
@@ -427,7 +456,13 @@ class _CameraScreenState extends State<CameraScreen> {
                               unawaited(controller?.pauseOrResume());
                             },
                           )
-                        : null,
+                        : Center(
+                            child: CameraRollPile(
+                              shots: _roll.shots,
+                              onTap: _openRoll,
+                              loadFrame: widget.loadFrame,
+                            ),
+                          ),
                   ),
                   CameraShutter(
                     mode: controller?.mode ?? CameraMode.photo,

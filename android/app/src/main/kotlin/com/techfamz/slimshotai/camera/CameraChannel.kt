@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.util.Size
@@ -11,6 +12,7 @@ import android.view.Display
 import android.view.OrientationEventListener
 import android.view.Surface
 import android.view.WindowManager
+import android.provider.MediaStore
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -27,9 +29,11 @@ import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
+import androidx.camera.video.PendingRecording
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
@@ -114,6 +118,9 @@ class CameraChannel(
 
     private var recording: Recording? = null
     private var recordingPath: String? = null
+
+    /** The recording goes into the gallery, its file found at the end. */
+    private var recordingToGallery = false
     private var recordingPaused = false
     private var recordedMs = 0L
     private var pendingStop: MethodChannel.Result? = null
@@ -165,12 +172,21 @@ class CameraChannel(
                 result.success(null)
             }
 
-            "takePhoto" -> takePhoto(call.argument<String>("path"), result)
+            "takePhoto" -> takePhoto(
+                call.argument<String>("path"),
+                call.argument<Boolean>("gallery") ?: false,
+                result,
+            )
             "startRecording" -> startRecording(
                 call.argument<String>("path"),
                 call.argument<Boolean>("audio") ?: true,
+                call.argument<Boolean>("gallery") ?: false,
                 result,
             )
+            "deleteShot" -> {
+                val uri = call.argument<String>("uri")
+                result.success(uri != null && GalleryShots.delete(context, Uri.parse(uri)))
+            }
             "pauseRecording" -> {
                 recording?.pause()
                 result.success(null)
@@ -362,6 +378,7 @@ class CameraChannel(
                     providerNow.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) &&
                     providerNow.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)
                 ),
+            "galleryNeedsPermission" to GalleryShots.needsPermission,
         ) + previewInfo()
     }
 
@@ -407,7 +424,7 @@ class CameraChannel(
         cam.cameraControl.startFocusAndMetering(action)
     }
 
-    private fun takePhoto(path: String?, result: MethodChannel.Result) {
+    private fun takePhoto(path: String?, gallery: Boolean, result: MethodChannel.Result) {
         val capture = imageCapture
         if (path.isNullOrEmpty() || capture == null) {
             result.error("camera_unavailable", "The camera is not ready for a photo.", null)
@@ -421,9 +438,17 @@ class CameraChannel(
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                 // Answered once the file is upright in its pixels, so the
                 // review and the editor read the same picture.
+                // Then into the gallery; a gallery that will not take it
+                // leaves the photo in the camera's folder, never lost.
                 photoWorker.execute {
                     PhotoBaker.bakeIfFlipped(file)
-                    mainExecutor.execute { result.success(mapOf("path" to file.absolutePath)) }
+                    val saved = if (gallery) GalleryShots.publishPhoto(context, file) else null
+                    val answer = if (saved != null) {
+                        mapOf("path" to saved.first, "uri" to saved.second.toString())
+                    } else {
+                        mapOf("path" to file.absolutePath)
+                    }
+                    mainExecutor.execute { result.success(answer) }
                 }
             }
 
@@ -436,7 +461,7 @@ class CameraChannel(
     }
 
     @SuppressLint("MissingPermission")
-    private fun startRecording(path: String?, audio: Boolean, result: MethodChannel.Result) {
+    private fun startRecording(path: String?, audio: Boolean, gallery: Boolean, result: MethodChannel.Result) {
         val capture = videoCapture
         if (path.isNullOrEmpty() || capture == null) {
             result.error("camera_unavailable", "The camera is not ready to record.", null)
@@ -447,7 +472,16 @@ class CameraChannel(
             return
         }
         val file = File(path).also { it.parentFile?.mkdirs() }
-        var pending = capture.output.prepareRecording(context, FileOutputOptions.Builder(file).build())
+        // Straight into the gallery: no copy of a long video afterwards.
+        var pending: PendingRecording = if (gallery) {
+            val options = MediaStoreOutputOptions.Builder(
+                context.contentResolver,
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            ).setContentValues(GalleryShots.values(GalleryShots.galleryName(file), "video/mp4")).build()
+            capture.output.prepareRecording(context, options)
+        } else {
+            capture.output.prepareRecording(context, FileOutputOptions.Builder(file).build())
+        }
         // Asked for by the Dart side before recording; without it the video is
         // silent rather than refused.
         val micGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -455,6 +489,7 @@ class CameraChannel(
         if (audio && micGranted) pending = pending.withAudioEnabled()
 
         recordingPath = file.absolutePath
+        recordingToGallery = gallery
         recordingPaused = false
         recordedMs = 0L
         recording = pending.start(mainExecutor) { event ->
@@ -481,10 +516,13 @@ class CameraChannel(
     }
 
     private fun onFinalized(event: VideoRecordEvent.Finalize) {
-        val path = recordingPath
+        val toGallery = recordingToGallery
+        val uri = event.outputResults.outputUri.takeIf { toGallery && it != Uri.EMPTY }
+        val path = if (toGallery) uri?.let { GalleryShots.pathOf(context, it) } else recordingPath
         val durationMs = TimeUnit.NANOSECONDS.toMillis(event.recordingStats.recordedDurationNanos)
         recording = null
         recordingPath = null
+        recordingToGallery = false
         // A file is usable even when the recording ended with an error such as
         // the camera going away mid-take — CameraX finalizes what it has.
         val usable = path != null && File(path).let { it.exists() && it.length() > 0 } &&
@@ -494,8 +532,17 @@ class CameraChannel(
         }
         val waiting = pendingStop
         pendingStop = null
-        val answer = if (usable) mapOf("path" to path, "durationMs" to durationMs) else emptyMap()
-        if (!usable && path != null) File(path).delete()
+        val answer = when {
+            !usable -> emptyMap()
+            uri != null -> mapOf("path" to path, "uri" to uri.toString(), "durationMs" to durationMs)
+            else -> mapOf("path" to path, "durationMs" to durationMs)
+        }
+        if (usable && uri != null && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            GalleryShots.scan(context, path!!, "video/mp4")
+        }
+        if (!usable) {
+            if (uri != null) GalleryShots.delete(context, uri) else path?.let { File(it).delete() }
+        }
         if (waiting != null) {
             waiting.success(answer)
         } else {

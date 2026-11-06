@@ -31,7 +31,15 @@ const String kDiscardCaptionsQuestion = 'Discard these captions?';
 Future<bool> confirmDiscardCaptions(BuildContext context) =>
     _confirmDiscard(context, kDiscardCaptionsQuestion);
 
-Future<bool> _confirmDiscard(BuildContext context, String question) async {
+/// The question asked before a shot is deleted from the phone's gallery.
+String deleteQuestion({required bool isVideo}) => isVideo ? 'Delete this video?' : 'Delete this photo?';
+
+/// Asks before deleting a camera shot: it goes from the gallery too, for
+/// good. The discard dialog with the word that says so. True only for Delete.
+Future<bool> confirmDelete(BuildContext context, {required bool isVideo}) =>
+    _confirmDiscard(context, deleteQuestion(isVideo: isVideo), action: 'Delete');
+
+Future<bool> _confirmDiscard(BuildContext context, String question, {String action = 'Discard'}) async {
   final discard = await showDialog<bool>(
     context: context,
     barrierColor: Colors.black54,
@@ -84,7 +92,7 @@ Future<bool> _confirmDiscard(BuildContext context, String question) async {
                 Expanded(
                   child: _DialogButton(
                     key: const Key('discard_confirm'),
-                    label: 'Discard',
+                    label: action,
                     color: AppColors.error,
                     fill: AppColors.error.withValues(alpha: 0.2),
                     onPressed: () => Navigator.of(context).pop(true),

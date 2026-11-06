@@ -19,6 +19,11 @@ abstract class CameraPermissions {
   /// silently.
   Future<bool> allowMicrophone();
 
+  /// Storage access, which Android 10 and older need for the camera to save
+  /// into the gallery; asked at most once a screen, like the microphone.
+  /// False keeps shots in SlimShot's own folder.
+  Future<bool> allowStorage();
+
   Future<void> openSettings();
 }
 
@@ -26,6 +31,7 @@ abstract class CameraPermissions {
 /// access is off, rather than failing where nobody sees it.
 class PluginCameraPermissions implements CameraPermissions {
   bool _micAsked = false;
+  bool _storageAsked = false;
 
   @override
   Future<CameraAccess> requestCamera() async {
@@ -52,6 +58,18 @@ class PluginCameraPermissions implements CameraPermissions {
       if (_micAsked) return false;
       _micAsked = true;
       return (await Permission.microphone.request()).isGranted;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> allowStorage() async {
+    try {
+      if (await Permission.storage.isGranted) return true;
+      if (_storageAsked) return false;
+      _storageAsked = true;
+      return (await Permission.storage.request()).isGranted;
     } catch (_) {
       return false;
     }

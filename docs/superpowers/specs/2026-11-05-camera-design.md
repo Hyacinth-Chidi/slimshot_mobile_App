@@ -22,12 +22,19 @@ the like come later, one after another, so it is built on a pipeline that can ta
 - **Flip, flash, pinch to zoom, tap to focus.** Flash: off / auto / on for photos, a torch for
   video. Zoom between the camera's own limits.
 - **Front camera saves mirrored**, as it was seen (my call, Snapchat and Instagram do).
-- **Review screen** after every shot: the photo, or the video playing. **Retake · Save · Share ·
-  Edit.** Save copies to the gallery; Share hands over a copy; **Edit** opens the editor on it as
-  a new project. Leaving a shot nobody saved, shared or edited asks first (the result screens'
-  rule) and deletes it.
-- **Files:** a shot is written to the app's own `camera/` folder; an edited one stays there (a
-  draft points at it), anything else is deleted when the review is left.
+- **Saved as it is taken** (amended 2026-11-05, the owner's design after the first device run —
+  the review screen with Retake · Save is gone: a phone's camera does not ask): every shot goes
+  straight into the gallery's **SlimShotAI** album, where the app's exports already go. Android 10
+  and older ask for storage access once; refused, shots stay in SlimShot's own folder.
+- **The pile:** left of the shutter, the last shots stacked — **three cards at most**, the newest
+  on top, two tilted behind. A tap opens **the viewer**: the shot large, newest first, every shot
+  in a strip at the foot; swipe left for older ones, and **one more swipe past the oldest returns
+  to the camera**. **Delete** (see-through, bottom left, asks first), **Share**, and **Edit —
+  videos only, a scissors icon** — which opens the editor on it as a new project.
+- **Only the camera's own shots** are in the pile and the viewer: the app holds no permission to
+  read the whole gallery (the system picker needs none). An in-app picker of the CapCut kind — and
+  the whole gallery in the viewer — needs the media permissions and a Play declaration first; a
+  feature of its own, later.
 - **Permissions:** camera, and the microphone for video, asked when needed; refused for good →
   a way to Settings. `CAMERA` is new to the manifest, with the camera feature declared **not
   required** so Play keeps phones without one.

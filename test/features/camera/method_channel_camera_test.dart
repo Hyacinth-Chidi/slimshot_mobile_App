@@ -22,6 +22,7 @@ void main() {
         'mirrored': true,
         'cameraTransform': false,
         'displayRotation': 90,
+        'galleryNeedsPermission': true,
       })!;
       expect(info.textureId, 3);
       expect(info.lens, CameraLens.front);
@@ -36,6 +37,7 @@ void main() {
       expect(info.mirrored, isTrue);
       expect(info.cameraTransform, isFalse);
       expect(info.displayRotation, 90);
+      expect(info.galleryNeedsPermission, isTrue);
     });
 
     test('without a texture there is no camera', () {
@@ -52,6 +54,7 @@ void main() {
       expect(info.cameraTransform, isTrue);
       expect(info.previewWidth, isNull);
       expect(info.rotation, 0);
+      expect(info.galleryNeedsPermission, isFalse);
     });
 
     test('a zoom range the wrong way round holds at its least', () {
@@ -86,9 +89,14 @@ void main() {
     });
 
     test('a recording that ended by itself, with what it kept or without', () {
-      final kept = cameraEventFrom({'type': 'recordingEnded', 'path': '/c/1.mp4', 'durationMs': 3000})
-          as RecordingEnded;
-      expect(kept.path, '/c/1.mp4');
+      final kept = cameraEventFrom({
+        'type': 'recordingEnded',
+        'path': '/g/1.mp4',
+        'uri': 'content://media/external/video/media/4',
+        'durationMs': 3000,
+      }) as RecordingEnded;
+      expect(kept.path, '/g/1.mp4');
+      expect(kept.uri, 'content://media/external/video/media/4');
       expect(kept.durationMs, 3000);
       final lost = cameraEventFrom({'type': 'recordingEnded'}) as RecordingEnded;
       expect(lost.path, isNull);
@@ -117,7 +125,10 @@ void main() {
     expect(recordedVideoFrom({'path': ''}), isNull);
     final video = recordedVideoFrom({'path': '/c/2.mp4', 'durationMs': 1500})!;
     expect(video.path, '/c/2.mp4');
+    expect(video.uri, isNull, reason: 'kept in SlimShot');
     expect(video.durationMs, 1500);
+    final saved = recordedVideoFrom({'path': '/g/2.mp4', 'uri': 'content://m/2', 'durationMs': 1})!;
+    expect(saved.uri, 'content://m/2');
   });
 
   group('over the channel', () {
@@ -164,7 +175,38 @@ void main() {
     test('a photo answered without a file is a failure', () async {
       answer((_) async => <String, Object?>{});
       final camera = MethodChannelCamera(channel: channel);
-      await expectLater(camera.takePhoto('/c/1.jpg'), throwsA(isA<CameraFailure>()));
+      await expectLater(camera.takePhoto('/c/1.jpg', gallery: true), throwsA(isA<CameraFailure>()));
+    });
+
+    test('a photo is asked for the gallery and comes back with its address', () async {
+      answer((_) async => {
+            'path': '/storage/emulated/0/Pictures/SlimShotAI/SlimShot_IMG_1.jpg',
+            'uri': 'content://media/external/images/media/12',
+          });
+      final camera = MethodChannelCamera(channel: channel);
+      final saved = await camera.takePhoto('/c/IMG_1.jpg', gallery: true);
+      expect(calls.single.arguments, {'path': '/c/IMG_1.jpg', 'gallery': true});
+      expect(saved.path, '/storage/emulated/0/Pictures/SlimShotAI/SlimShot_IMG_1.jpg');
+      expect(saved.uri, 'content://media/external/images/media/12');
+    });
+
+    test('a recording is asked for the gallery', () async {
+      answer((_) async => null);
+      final camera = MethodChannelCamera(channel: channel);
+      await camera.startRecording('/c/VID_1.mp4', audio: true, gallery: false);
+      expect(calls.single.arguments, {'path': '/c/VID_1.mp4', 'audio': true, 'gallery': false});
+    });
+
+    test('a shot is deleted from the gallery by its address', () async {
+      answer((call) async => call.method == 'deleteShot');
+      final camera = MethodChannelCamera(channel: channel);
+      expect(await camera.deleteShot('content://media/external/images/media/12'), isTrue);
+      expect(calls.single.arguments, {'uri': 'content://media/external/images/media/12'});
+    });
+
+    test('a delete the phone refused is no delete', () async {
+      answer((_) async => throw PlatformException(code: 'denied'));
+      expect(await MethodChannelCamera(channel: channel).deleteShot('content://x'), isFalse);
     });
 
     test('closing a camera that is gone says nothing', () async {

@@ -18,6 +18,12 @@ class FakeCamera implements CameraBackend {
   int recordedMs = 0;
   bool? lastAudio;
 
+  /// Whether the last photo or recording was asked to go to the gallery.
+  bool? lastGallery;
+
+  /// Android 10 and older: saving to the gallery needs storage access.
+  bool galleryNeedsPermission = false;
+
   CameraInfo _info(CameraLens lens, CameraMode mode) => CameraInfo(
         textureId: 7,
         lens: lens,
@@ -30,6 +36,7 @@ class FakeCamera implements CameraBackend {
         previewHeight: 1080,
         rotation: 90,
         mirrored: lens == CameraLens.front,
+        galleryNeedsPermission: galleryNeedsPermission,
       );
 
   @override
@@ -71,16 +78,18 @@ class FakeCamera implements CameraBackend {
   Future<void> focus(Offset point) async => calls.add('focus ${point.dx} ${point.dy}');
 
   @override
-  Future<String> takePhoto(String path) async {
+  Future<SavedShot> takePhoto(String path, {required bool gallery}) async {
     calls.add('photo $path');
+    lastGallery = gallery;
     await photoGate?.future;
-    return path;
+    return SavedShot(path: path, uri: gallery ? 'content://media/$path' : null);
   }
 
   @override
-  Future<void> startRecording(String path, {required bool audio}) async {
+  Future<void> startRecording(String path, {required bool audio, required bool gallery}) async {
     calls.add('record $path');
     lastAudio = audio;
+    lastGallery = gallery;
     recordedPath = path;
   }
 
@@ -97,7 +106,11 @@ class FakeCamera implements CameraBackend {
     recordedPath = null;
     return path == null || recordedMs == 0
         ? null
-        : RecordedVideo(path: path, durationMs: recordedMs);
+        : RecordedVideo(
+            path: path,
+            uri: lastGallery == true ? 'content://media/$path' : null,
+            durationMs: recordedMs,
+          );
   }
 
   @override

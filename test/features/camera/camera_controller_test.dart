@@ -7,7 +7,7 @@ import '../../support/fake_camera.dart';
 
 class _FailingPhotoCamera extends FakeCamera {
   @override
-  Future<String> takePhoto(String path) async =>
+  Future<SavedShot> takePhoto(String path, {required bool gallery}) async =>
       throw const CameraFailure('The photo could not be taken.');
 }
 
@@ -15,16 +15,24 @@ void main() {
   late FakeCamera camera;
   late CameraController controller;
   var micAllowed = true;
+  var storageAllowed = true;
+  var storageAsks = 0;
   var pathCount = 0;
 
   setUp(() {
     camera = FakeCamera();
     micAllowed = true;
+    storageAllowed = true;
+    storageAsks = 0;
     pathCount = 0;
     controller = CameraController(
       backend: camera,
       newPath: (extension) async => '/shots/${++pathCount}.$extension',
       allowMicrophone: () async => micAllowed,
+      allowStorage: () async {
+        storageAsks++;
+        return storageAllowed;
+      },
     );
   });
 
@@ -50,11 +58,53 @@ void main() {
         backend: camera,
         newPath: (e) async => '/x.$e',
         allowMicrophone: () async => true,
+        allowStorage: () async => true,
         initialLens: CameraLens.front,
       );
       await again.open();
       expect(camera.calls.first, 'open front photo');
       again.dispose();
+    });
+  });
+
+  group('saved to the gallery', () {
+    test('a photo goes straight to the gallery and carries its address', () async {
+      await controller.open();
+      final shot = await controller.shutter();
+      expect(camera.lastGallery, isTrue);
+      expect(shot!.uri, 'content://media//shots/1.jpg');
+      expect(storageAsks, 0, reason: 'Android 11 and up need no permission for it');
+    });
+
+    test('a video goes straight to the gallery too', () async {
+      await controller.open();
+      await controller.setMode(CameraMode.video);
+      await controller.shutter();
+      camera.recordedMs = 2000;
+      final shot = await controller.shutter();
+      expect(camera.lastGallery, isTrue);
+      expect(shot!.uri, 'content://media//shots/1.mp4');
+    });
+
+    test('where the phone needs storage access it is asked for', () async {
+      camera.galleryNeedsPermission = true;
+      await controller.open();
+      await controller.shutter();
+      expect(storageAsks, 1);
+      expect(camera.lastGallery, isTrue);
+    });
+
+    test('refused, the shot is kept in SlimShot, said once', () async {
+      camera.galleryNeedsPermission = true;
+      storageAllowed = false;
+      await controller.open();
+      final first = await controller.shutter();
+      expect(camera.lastGallery, isFalse);
+      expect(first!.uri, isNull);
+      expect(controller.takeMessage(), kGalleryOffMessage);
+
+      await controller.shutter();
+      expect(controller.takeMessage(), isNull, reason: 'said once');
     });
   });
 
@@ -82,6 +132,7 @@ void main() {
         backend: _FailingPhotoCamera(),
         newPath: (e) async => '/x.$e',
         allowMicrophone: () async => true,
+        allowStorage: () async => true,
       );
       await failing.open();
       expect(await failing.shutter(), isNull);
@@ -163,11 +214,17 @@ void main() {
     test('a recording the camera ended by itself still becomes a shot', () async {
       // The app left the screen mid-take: CameraX finalizes what it has.
       await controller.shutter();
-      camera.emit(const RecordingEnded(path: '/shots/1.mp4', durationMs: 3000));
+      camera.emit(const RecordingEnded(
+        path: '/gallery/1.mp4',
+        uri: 'content://media/1',
+        durationMs: 3000,
+      ));
       await Future<void>.delayed(Duration.zero);
       expect(controller.recording, RecordingState.idle);
       final shot = controller.takeEndedShot();
       expect(shot, isA<VideoShot>());
+      expect(shot!.path, '/gallery/1.mp4', reason: 'where the camera saved it');
+      expect(shot.uri, 'content://media/1');
       expect(controller.takeEndedShot(), isNull, reason: 'taken once');
     });
   });

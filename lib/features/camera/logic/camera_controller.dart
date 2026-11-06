@@ -46,6 +46,7 @@ class CameraInfo {
     this.mirrored = false,
     this.cameraTransform = true,
     this.displayRotation = 0,
+    this.galleryNeedsPermission = false,
   });
 
   final int textureId;
@@ -75,6 +76,11 @@ class CameraInfo {
   /// The screen's rotation from the phone's natural orientation, in degrees.
   final int displayRotation;
 
+  /// Android 10 and older: saving to the gallery, and reading a saved shot
+  /// back, needs storage access. Android 11 and up need none for the app's
+  /// own files.
+  final bool galleryNeedsPermission;
+
   CameraInfo withPreview(PreviewChanged preview) => CameraInfo(
         textureId: textureId,
         lens: lens,
@@ -89,6 +95,7 @@ class CameraInfo {
         mirrored: preview.mirrored,
         cameraTransform: preview.cameraTransform,
         displayRotation: preview.displayRotation,
+        galleryNeedsPermission: galleryNeedsPermission,
       );
 }
 
@@ -127,9 +134,12 @@ class RecordingProgress extends CameraEvent {
 /// A recording ended without being asked to — the app left the screen, or
 /// the camera was taken away. [path] is null when nothing usable was kept.
 class RecordingEnded extends CameraEvent {
-  const RecordingEnded({this.path, this.durationMs = 0});
+  const RecordingEnded({this.path, this.uri, this.durationMs = 0});
 
   final String? path;
+
+  /// The video's address in the gallery; null for one kept in SlimShot.
+  final String? uri;
   final int durationMs;
 }
 
@@ -143,10 +153,20 @@ class CameraAvailability extends CameraEvent {
 }
 
 class RecordedVideo {
-  const RecordedVideo({required this.path, required this.durationMs});
+  const RecordedVideo({required this.path, this.uri, required this.durationMs});
 
   final String path;
+  final String? uri;
   final int durationMs;
+}
+
+/// Where a photo was saved: the file, and its gallery address (null for one
+/// kept in SlimShot's own folder).
+class SavedShot {
+  const SavedShot({required this.path, this.uri});
+
+  final String path;
+  final String? uri;
 }
 
 /// The phone's camera, as the controller needs it. The real one is
@@ -175,9 +195,13 @@ abstract class CameraBackend {
   /// [point] in 0..1 of the whole upright picture, crop included.
   Future<void> focus(Offset point);
 
-  Future<String> takePhoto(String path);
+  /// Takes a photo into [path]; with [gallery] it is then moved into the
+  /// gallery's SlimShotAI album, and the answer says where it landed.
+  Future<SavedShot> takePhoto(String path, {required bool gallery});
 
-  Future<void> startRecording(String path, {required bool audio});
+  /// Records into the gallery's SlimShotAI album with [gallery], into [path]
+  /// without it.
+  Future<void> startRecording(String path, {required bool audio, required bool gallery});
 
   Future<void> pauseRecording();
 
@@ -189,19 +213,22 @@ abstract class CameraBackend {
   Future<void> close();
 }
 
-/// What a press of the shutter made.
+/// What a press of the shutter made, already saved.
 sealed class CameraShot {
-  const CameraShot(this.path);
+  const CameraShot(this.path, {this.uri});
 
   final String path;
+
+  /// The shot's address in the gallery; null for one kept in SlimShot.
+  final String? uri;
 }
 
 class PhotoShot extends CameraShot {
-  const PhotoShot(super.path);
+  const PhotoShot(super.path, {super.uri});
 }
 
 class VideoShot extends CameraShot {
-  const VideoShot(super.path, {required this.durationMs});
+  const VideoShot(super.path, {super.uri, required this.durationMs});
 
   final int durationMs;
 }
@@ -212,10 +239,15 @@ typedef ShotPath = Future<String> Function(String extension);
 /// Whether a recording may take sound; asks the user where it has to.
 typedef MicrophoneGate = Future<bool> Function();
 
+/// Whether shots may go to the gallery where that needs storage access;
+/// asks the user where it has to.
+typedef StorageGate = Future<bool> Function();
+
 const kRecordingWithoutSoundMessage = 'No microphone access — recording without sound.';
 const kNothingRecordedMessage = 'Nothing was recorded.';
 const kRecordingStoppedMessage = 'The recording stopped.';
 const kCameraTakenAwayMessage = 'The camera stopped working.';
+const kGalleryOffMessage = 'Storage access is off: shots are kept in SlimShot only.';
 
 /// The camera screen's decisions, apart from the widgets and the phone: the
 /// mode, the lens, each mode's flash, the zoom, the recording's state, and
@@ -228,10 +260,12 @@ class CameraController extends ChangeNotifier {
     required CameraBackend backend,
     required ShotPath newPath,
     required MicrophoneGate allowMicrophone,
+    required StorageGate allowStorage,
     CameraLens initialLens = CameraLens.back,
   })  : _backend = backend,
         _newPath = newPath,
         _allowMicrophone = allowMicrophone,
+        _allowStorage = allowStorage,
         _lens = initialLens {
     _events = backend.events.listen(_onEvent);
   }
@@ -239,6 +273,7 @@ class CameraController extends ChangeNotifier {
   final CameraBackend _backend;
   final ShotPath _newPath;
   final MicrophoneGate _allowMicrophone;
+  final StorageGate _allowStorage;
   late final StreamSubscription<CameraEvent> _events;
 
   CameraStatus _status = CameraStatus.closed;
@@ -255,6 +290,7 @@ class CameraController extends ChangeNotifier {
   int _recordedMs = 0;
   bool _busy = false;
   bool _saidNoSound = false;
+  bool _saidGalleryOff = false;
   String? _recordingPath;
   CameraShot? _endedShot;
   bool _disposed = false;
@@ -394,8 +430,9 @@ class CameraController extends ChangeNotifier {
     try {
       switch (_mode) {
         case CameraMode.photo:
-          final path = await _backend.takePhoto(await _newPath('jpg'));
-          return PhotoShot(path);
+          final gallery = await _galleryAllowed();
+          final saved = await _backend.takePhoto(await _newPath('jpg'), gallery: gallery);
+          return PhotoShot(saved.path, uri: saved.uri);
         case CameraMode.video:
           if (isRecording) return await _stop();
           await _start();
@@ -439,8 +476,9 @@ class CameraController extends ChangeNotifier {
       _saidNoSound = true;
       _message = kRecordingWithoutSoundMessage;
     }
+    final gallery = await _galleryAllowed();
     final path = await _newPath('mp4');
-    await _backend.startRecording(path, audio: audio);
+    await _backend.startRecording(path, audio: audio, gallery: gallery);
     _recordingPath = path;
     _recordedMs = 0;
     _recording = RecordingState.recording;
@@ -454,7 +492,19 @@ class CameraController extends ChangeNotifier {
       _message = kNothingRecordedMessage;
       return null;
     }
-    return VideoShot(video.path, durationMs: video.durationMs);
+    return VideoShot(video.path, uri: video.uri, durationMs: video.durationMs);
+  }
+
+  /// Every shot goes straight to the gallery; where that needs storage
+  /// access and it is refused, shots stay in SlimShot's own folder, said once.
+  Future<bool> _galleryAllowed() async {
+    if (!(_info?.galleryNeedsPermission ?? false)) return true;
+    if (await _allowStorage()) return true;
+    if (!_saidGalleryOff) {
+      _saidGalleryOff = true;
+      _message = kGalleryOffMessage;
+    }
+    return false;
   }
 
   /// Binds the current lens and mode; false when the phone refused.
@@ -496,7 +546,7 @@ class CameraController extends ChangeNotifier {
         final path = event.path ?? _recordingPath;
         _recordingPath = null;
         if (event.path != null && path != null) {
-          _endedShot = VideoShot(path, durationMs: event.durationMs);
+          _endedShot = VideoShot(path, uri: event.uri, durationMs: event.durationMs);
         } else {
           _message = kRecordingStoppedMessage;
         }
