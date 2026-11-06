@@ -3352,22 +3352,33 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       final videoOverlay = editorState.videoOverlays.firstWhere(
         (v) => v.id == editorState.selectedVideoOverlayId,
       );
+      // A layer with a volume track (a reaction's, lowered while you talk)
+      // is edited through the edit rule, as a clip's Volume is: it shows
+      // and writes the value at the playhead. Every other video layer is
+      // exactly what it was.
+      final tracked = videoOverlay.keyframes.of(OverlayProperty.volume).isNotEmpty;
       return VolumePanel(
-        displayVolume: editorState.previewVolume ?? videoOverlay.volume,
+        displayVolume: editorState.previewVolume ??
+            (tracked ? editorState.overlayEditValue(OverlayProperty.volume) : videoOverlay.volume),
         emptyMessage: null,
         // One snapshot for the drag; the frames between write live. Going
         // through `updateVideoOverlay` per frame pushed an undo entry each
         // time, so Undo walked the drag back a pixel at a time — the same
         // fault the overlay *move* gesture had, and the reason
-        // `updateVideoOverlayLive` exists.
-        onChangeStart: notifier.saveStateForUndo,
+        // `updateVideoOverlayLive` exists. A tracked layer's drag also
+        // pauses, or a moving playhead would leave a trail of diamonds.
+        onChangeStart: tracked ? notifier.beginOverlayEdit : notifier.saveStateForUndo,
         onChanged: (value) {
           // Written to the model immediately so the engine hears it.
           notifier.setPreviewVolume(value);
-          notifier.updateVideoOverlayLive(
-            videoOverlay.id,
-            (v) => v.copyWith(volume: value),
-          );
+          if (tracked) {
+            notifier.setOverlayMotionLive(id: videoOverlay.id, volume: value);
+          } else {
+            notifier.updateVideoOverlayLive(
+              videoOverlay.id,
+              (v) => v.copyWith(volume: value),
+            );
+          }
         },
       );
     }

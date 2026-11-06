@@ -23,7 +23,7 @@ class OverlaySourceTimeTest {
         sourceStart: Double = 0.0,
         sourceEnd: Double = 0.0,
         speed: Double = 1.0,
-        volume: Double = 1.0,
+        volume: Any = 1.0,
         muted: Boolean = false,
         kind: String = "video",
     ): NativeTimelineOverlay = NativeTimelineOverlay.fromMap(
@@ -85,8 +85,29 @@ class OverlaySourceTimeTest {
     @Test
     fun `a video overlay with sound is audible, and the export should mix it`() {
         assertTrue(overlay().hasAudibleSound)
-        assertEquals(1.0, overlay().effectiveVolume, 1e-9)
-        assertEquals(0.4, overlay(volume = 0.4).effectiveVolume, 1e-9)
+        assertEquals(1.0, overlay().effectiveVolumeAt(5.0), 1e-9)
+        assertEquals(0.4, overlay(volume = 0.4).effectiveVolumeAt(5.0), 1e-9)
+    }
+
+    private fun track(base: Double, vararg points: Pair<Double, Double>) = mapOf(
+        "baseValue" to base,
+        "keyframes" to points.map { (p, v) -> mapOf("progress" to p, "value" to v, "interpolation" to "linear") },
+    )
+
+    @Test
+    fun `a keyframed volume is resolved at the overlay's own progress`() {
+        // 2s..10s: progress 0.5 is 6s.
+        val o = overlay(volume = track(1.0, 0.0 to 1.0, 0.5 to 0.25))
+        assertEquals(1.0, o.effectiveVolumeAt(2.0), 1e-9)
+        assertEquals(0.625, o.effectiveVolumeAt(4.0), 1e-9)
+        assertEquals(0.25, o.effectiveVolumeAt(6.0), 1e-9)
+        assertEquals(0.25, o.effectiveVolumeAt(9.0), 1e-9)
+    }
+
+    @Test
+    fun `a volume keyframed up from silence is audible, and a muted one never`() {
+        assertTrue(overlay(volume = track(0.0, 0.0 to 0.0, 1.0 to 1.0)).hasAudibleSound)
+        assertEquals(0.0, overlay(volume = track(1.0, 0.0 to 1.0), muted = true).effectiveVolumeAt(5.0), 1e-9)
     }
 
     @Test
@@ -95,6 +116,6 @@ class OverlaySourceTimeTest {
         assertFalse("volume 0", overlay(volume = 0.0).hasAudibleSound)
         assertFalse("an image has no sound", overlay(kind = "image").hasAudibleSound)
         assertFalse("nor does text", overlay(kind = "text").hasAudibleSound)
-        assertEquals(0.0, overlay(muted = true).effectiveVolume, 1e-9)
+        assertEquals(0.0, overlay(muted = true).effectiveVolumeAt(5.0), 1e-9)
     }
 }

@@ -72,7 +72,9 @@ void main() {
     test('its params are the base values plus the tracks', () {
       final moving = still.copyWithKeyframes(glide);
       final params = moving.params;
-      expect(params.keys, OverlayProperty.values);
+      // Volume is a property only of a layer with a volume track (a
+      // reaction's video layer); every other motion has the five, in order.
+      expect(params.keys, OverlayProperty.values.where((p) => p != OverlayProperty.volume));
       expect(params[OverlayProperty.y]!.baseValue, 20);
       expect(params[OverlayProperty.x]!.keyframes, hasLength(2));
       final back = OverlayMotion.fromParams(params);
@@ -81,6 +83,13 @@ void main() {
       expect(back.rotation, still.rotation);
       expect(back.opacity, still.opacity);
       expect(back.keyframes.of(OverlayProperty.x), glide.of(OverlayProperty.x));
+    });
+
+    test('a motion with a volume has it as its last property, and gives it back', () {
+      const loud = OverlayMotion(position: Offset(10, 20), scale: 1, rotation: 0, opacity: 1, volume: 0.6);
+      expect(loud.params.keys, OverlayProperty.values);
+      expect(OverlayMotion.fromParams(loud.params).volume, 0.6);
+      expect(OverlayMotion.fromParams(still.params).volume, isNull);
     });
 
     test('at() resolves between keyframes', () {

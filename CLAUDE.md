@@ -2117,6 +2117,17 @@ plan beside it in `plans/`. A text, photo or video overlay keyframes **position 
 rotation and opacity** with the clip's diamonds, plus button, easing sheet and edit rule. Text
 colour is deliberately not in this batch: it needs its own export colour pass.
 
+**Volume is a sixth property only for a video layer that already carries a volume track** — a
+reaction's, lowered while you talk (`OverlayProperty.volume`, `OverlayMotion.volume`; the owner's
+call, 2026-11-06, asked "will it affect our editor"). A video layer made in the editor has no
+track, so its diamonds pin the five, its Volume writes `volume` as before and its payload is
+byte-identical (the golden). On a tracked layer the Volume panel shows and writes through the
+edit rule (`setOverlayMotionLive(volume:)`, after `beginOverlayEdit`), capture, removal, move and
+split carry the track, and with every diamond gone it is a plain layer again. On the wire
+`EditorTimelineOverlay.volume` is an `AnimatableDouble`; Kotlin resolves it at the overlay's own
+progress (`effectiveVolumeAt`) in the preview's overlay players and the export mixer, so a flat
+volume is the same number it always was.
+
 **One core, two adapters.** `logic/animation/keyframe_core.dart` is what a diamond *does* —
 capture, remove, move, ease, the edit rule, split — over a `KeyframeParams<P>` map, for any set of
 named `AnimatableDouble`s. Every function returns **the same map instance** when it changes
@@ -5581,14 +5592,33 @@ separate layers**, so the layout, size and sound can still change.
   place shows a dashed, see-through frame — "Select photo or video" (`react_pick`, the Home empty
   card's `DashedFramePainter`) — that opens the picker (`MediaPickerService.pickOneMedia`, one
   photo or video); the shutter with nothing chosen opens it too and records nothing. The layout
-  can be chosen first; the empty window is 9:16 (`kReactionPlaceholderAspect`). Something chosen
-  before opens again on coming back, unasked.
+  can be chosen first; the empty window is 9:16 (`kReactionPlaceholderAspect`). **REACT starts
+  empty every time** (the owner's call): leaving it lets the choice go (reopening it on return was
+  asynchronous, so the empty frame flashed first), and a ✕ beside Replace clears it.
 - **A photo is reacted to as a still** (`PhotoReactionSource`, chosen by the editor's own probe
   in `openReactionSource`): a player with no clock, so it never ends the take, and no sound — no
   sound button, and the microphone counts as hearing only you. In the project it is a photo
   overlay (`kImageOverlayBoxPx` box) from the first instant of the take to its last, with no lead
   trimmed; it carries the reference frame like the video's (`ImageOverlayModel.referenceCanvasSize`,
   converted by `fitImageOverlayToCanvas` through the same `fitOverlaysToCanvas`).
+- **A tap on the video mid-take pauses only the video** (`ReactionTakeSession.toggleVideo`, the
+  owner's call): its frame holds — a play mark on it — while the camera records on, and another
+  tap plays it on from there. **The video reaching its end holds its last frame and the take goes
+  on** until you stop (it used to stop the take, which read as the app ending it by itself); a ✕
+  then sits at the video's top left (`react_take_remove`) and takes it away — **you fill the frame
+  from that moment, still recording**. A take paused while the video is held keeps it held through
+  the resume. A photo has nothing to pause.
+- **A hold is a piece of the take** (`ReactionPiece.hold`: from, to, the video's frame held), and
+  no run of the sync log joins across one. The reaction draws it as **a still of that exact frame**
+  (`ReactionRenderer.stillAt` → `frameAtSize(exact: true)`, `OPTION_CLOSEST`; a frame at the very
+  end is asked `kReactionLastFrameBackMs` back), taken when the reaction is made, kept in the
+  camera's folder with the take (`ReactionTake.cameraFiles`, so a delete and the launch sweep treat
+  it as the take), and laid out exactly as the video is — a photo overlay in its place, the same
+  mask. A still that cannot be taken leaves its hold empty, never costs the reaction. The end hold
+  starts exactly where the video runs out on the recording's clock (the run's own offset says
+  when), so no instant falls between the last frame playing and its still. **A removal splits your
+  clip** (`ReactionTake.removedAtMs`): placed before it, full frame after, a straight cut — the
+  crop that shapes the camera to its place cannot animate.
 
 - **Recorded live, rendered after** (option A, the owner's pick). The camera records only you —
   privately, into its own folder (`CameraMode.react` records as video does, never to the gallery);
@@ -5630,19 +5660,33 @@ separate layers**, so the layout, size and sound can still change.
   until the video has moved; the run's offset is the median. A run that slipped more than
   `kReactionSyncToleranceMs` (40) against the piece before becomes **an overlay piece of its own**,
   so the reaction lines up across every pause. The project starts when the video does (a late
-  start is trimmed off your take), and **ends where the video does**: the take stops itself at the
-  video's end (`kReactionVideoEndSlackMs`), and the moment it overruns is cut, or it would be a
-  half of nothing. **The end is believed only once the video has been seen moving in that run,
-  and only from a player that knows its length** — device-reported, a take stopped by itself a
-  third of a second in and made a 9-frame reaction: `video_player` reads "completed" whenever its
-  position equals its duration, which a length of 0 makes true from the start. Root cause not
-  confirmed on a device; every stop now logs its reason (`REACT: the take stops: …`).
-- **Sound** (`videoSoundReachesMicrophone`): with headphones, or the video's sound turned off, the
-  microphone hears only you, and the file has the video's clean sound with your voice; out loud,
-  the microphone has the video too, so the project keeps the overlay muted — unmuted it would be
-  heard twice, a moment apart. Decided at the take's start. Headphones (`Headphones.kt`): wired,
-  USB, Bluetooth A2DP/SCO, hearing aids, LE headsets — **a Bluetooth speaker counts as headphones**,
-  since nothing tells them apart without a Bluetooth permission.
+  start is trimmed off your take). **The end is believed only once the video has been seen
+  moving in that run, and only from a player that knows its length** — device-reported, a take
+  stopped by itself a third of a second in and made a 9-frame reaction: `video_player` reads
+  "completed" whenever its position equals its duration, which a length of 0 makes true from the
+  start. Root cause not confirmed on a device; the end and every stop log their reason
+  (`REACT: …`). A take made before holds, which stopped a moment after the video's end, is still
+  cut where its video ran out.
+- **Sound** (`videoSoundReachesMicrophone`, `logic/reaction_sound.dart`): with headphones, or the
+  video's sound turned off, the microphone hears only you, and the file has the video's clean
+  sound with your voice. **Out loud the microphone has the video too, so the video is lowered
+  while you talk** (the owner's design): the layer keeps its own clean sound, at
+  `kReactionDuckVolume` (0.25) while you talk and full otherwise, and your microphone comes through
+  only while you talk — `kReactionMicGateVolume` (0.1) the rest of the time — so the speaker's copy
+  it picked up does not double the video. Edges ramp over `kSpeechRampMs` (150). **Where you
+  talked** is found after the take from its loudness (`speechSpans`, over the Extract waveform's
+  `peaks` — its cap raised to 12000 for a take's 50ms steps; Extract asks for its own 200): what
+  stands above the take's quiet level, pauses between words bridged, clicks dropped, each stretch
+  padded. Kept with the take (`ReactionTake.speech`). **Null where talking cannot be told apart**
+  — no sound read, nothing standing out — and then the sound is as recorded (the layer muted), a
+  wrong guess being a silenced voice. The two curves (`speechEnvelope`) are **keyframes**: on your
+  clip's volume (with every other clip property pinned at the same instants, the diamond rule) and
+  on the video layer's **volume track**, which only a reaction's layer carries (the owner's call:
+  see the overlay keyframes section) — so the editor plays the reaction as the file does, and its
+  Volume edits the curve. Every number is a starting point, to be tuned on a phone. Decided at the
+  take's start. Headphones (`Headphones.kt`): wired, USB, Bluetooth A2DP/SCO, hearing aids, LE
+  headsets — **a Bluetooth speaker counts as headphones**, since nothing tells them apart without a
+  Bluetooth permission.
 - **Making it** (`makeReaction`, `EngineReactionRenderer`): both files probed, the project built,
   the camera let go while the engine renders (`NativeTimelinePreviewService` initialize →
   exportVideo → dispose — no editor is open), a ring filling over the frame, the app held
@@ -5664,9 +5708,15 @@ separate layers**, so the layout, size and sound can still change.
 - **Known**: the recording's time is the recorder's report, which trails capture by its encoder's
   few frames, so a reaction may sit a few tens of milliseconds late against the video — a clap
   check on the device says how much; no cancel while the reaction is made; the Window has square
-  corners, as the file does.
+  corners, as the file does; during talk out loud the microphone still carries the speaker's copy
+  under the lowered clean sound, masked by the voice; a reaction opened in Edit shows a diamond
+  wherever its volume moves, on both layers.
 
-**Device checks**: each layout live and in the file, the pictures where they were; the Window
+**Device checks** (the sound and holds, 2026-11-06): talking out loud lowers the video and comes
+through clean, silence between keeps the video full with no echo; headphones unchanged; a tap
+pauses and resumes the video, the file freezing on the same frame; the end holds, ✕ takes the
+video away and you fill the frame, live and in the file; REACT empty on every return; a video
+layer made in the editor sounds and keyframes exactly as before. **Earlier checks**: each layout live and in the file, the pictures where they were; the Window
 dragged and pinched, landing in the file where it was left; record · pause · resume · stop, and a
 take stopped by the video's end; a clap on camera against a clap in the video (the sync); with
 headphones (clean video sound plus voice) and out loud (one copy of the video's sound); the

@@ -231,7 +231,12 @@ internal data class NativeTimelineOverlay(
      * fixing it here fixes both.
      */
     val speed: Double,
-    val volume: Double,
+    /**
+     * A video overlay's own gain, 0..1: a bare number on the wire while
+     * flat, a track once keyframed — resolved at the overlay's own progress,
+     * as its placement is ([effectiveVolumeAt]).
+     */
+    val volume: AnimatableDouble,
     val isMuted: Boolean,
     /** Text overlays only: one entry per drawn character. */
     val glyphs: List<NativeTimelineGlyph>,
@@ -312,10 +317,16 @@ internal data class NativeTimelineOverlay(
      * nothing — asking a decoder for samples nobody will hear costs a codec
      * instance for nothing.
      */
-    val hasAudibleSound: Boolean get() = isVideo && !isMuted && volume > 0.0
+    val hasAudibleSound: Boolean get() =
+        isVideo && !isMuted && (volume.isAnimated || volume.baseValue > 0.0)
 
-    /** The gain this overlay's sound is mixed at: zero once muted. */
-    val effectiveVolume: Double get() = if (isMuted) 0.0 else volume.coerceIn(0.0, 1.0)
+    /**
+     * The gain this overlay's sound is mixed at at [timelineSeconds]: zero
+     * once muted. Clamped here, on the resolved value, because a keyframe
+     * moves it after the parse — the clip rule.
+     */
+    fun effectiveVolumeAt(timelineSeconds: Double): Double =
+        if (isMuted) 0.0 else volume.resolveAt(progressAt(timelineSeconds)).coerceIn(0.0, 1.0)
 
     /** Where this overlay is, and what the animations do to it, at one instant. */
     data class FrameState(
@@ -486,7 +497,7 @@ internal data class NativeTimelineOverlay(
                 speed = (map.number("speed") ?: 1.0).let { if (it > 0.0) it else 1.0 },
                 sourceStart = map.number("sourceStart") ?: 0.0,
                 sourceEnd = map.number("sourceEnd") ?: 0.0,
-                volume = (map.number("volume") ?: 1.0).coerceIn(0.0, 1.0),
+                volume = AnimatableDouble.fromWire(map["volume"], 1.0),
                 isMuted = map["isMuted"] as? Boolean ?: false,
                 glyphs = glyphs,
                 // Absent on every overlay saved before shapes existed, and on

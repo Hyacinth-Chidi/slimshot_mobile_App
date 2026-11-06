@@ -168,7 +168,7 @@ internal class OverlayAudioPlayers(
         // which is what makes an unavoidable flush inaudible rather than a
         // crackle. Device-reported.
         val wantSound = command.playWhenReady && command.seekToSeconds == null
-        val target = if (wantSound) OverlayAudioSync.gain(masterVolume, overlay) else 0f
+        val target = if (wantSound) OverlayAudioSync.gain(masterVolume, overlay, clock) else 0f
         val ticks = if (entry.lastGainTickMs == 0L) {
             1
         } else {

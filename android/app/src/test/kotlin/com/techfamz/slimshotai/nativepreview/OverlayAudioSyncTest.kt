@@ -159,9 +159,9 @@ class OverlayAudioSyncTest {
 
     @Test
     fun `gain is the master volume times the overlay's own`() {
-        assertEquals(0.4f, OverlayAudioSync.gain(0.8f, overlay(volume = 0.5)), 1e-6f)
-        assertEquals(0f, OverlayAudioSync.gain(0.8f, overlay(muted = true)), 0f)
-        assertEquals(0f, OverlayAudioSync.gain(0f, overlay()), 0f)
+        assertEquals(0.4f, OverlayAudioSync.gain(0.8f, overlay(volume = 0.5), 6.0), 1e-6f)
+        assertEquals(0f, OverlayAudioSync.gain(0.8f, overlay(muted = true), 6.0), 0f)
+        assertEquals(0f, OverlayAudioSync.gain(0f, overlay(), 6.0), 0f)
     }
 
     // -------------------------------------------------------------- the tail

@@ -23,8 +23,14 @@ import 'keyframe_core.dart';
 ///
 /// Units are the plain fields': position in the overlay's own canvas pixels
 /// (each model's convention, converted to canvas fractions at the composer),
-/// scale a multiplier, rotation radians, opacity 0..1.
-enum OverlayProperty { x, y, scale, rotation, opacity }
+/// scale a multiplier, rotation radians, opacity 0..1, volume 0..1.
+///
+/// **[volume] belongs only to a video layer that already carries a volume
+/// track** — a reaction's, whose sound is lowered while you talk. Every other
+/// overlay, every video layer made in the editor included, has the first five
+/// alone (the owner's call), so its diamonds, its Volume control and its
+/// payload are exactly what they were. See [OverlayMotion.volume].
+enum OverlayProperty { x, y, scale, rotation, opacity, volume }
 
 /// An overlay's keyframe tracks, by property. Empty is every overlay that
 /// exists today.
@@ -93,6 +99,7 @@ class OverlayMotion {
     required this.scale,
     required this.rotation,
     required this.opacity,
+    this.volume,
     this.keyframes = OverlayKeyframes.none,
   });
 
@@ -100,6 +107,11 @@ class OverlayMotion {
   final double scale;
   final double rotation;
   final double opacity;
+
+  /// A video layer's base volume while it carries a volume track; null for
+  /// every other overlay, which then has no volume property at all.
+  final double? volume;
+
   final OverlayKeyframes keyframes;
 
   bool get hasKeyframes => !keyframes.isEmpty;
@@ -110,16 +122,19 @@ class OverlayMotion {
         OverlayProperty.scale => scale,
         OverlayProperty.rotation => rotation,
         OverlayProperty.opacity => opacity,
+        OverlayProperty.volume => volume ?? 1,
       };
 
   /// Every property as the parameter the shared keyframe core works on: its
-  /// base value, and its track. In [OverlayProperty] order.
+  /// base value, and its track. In [OverlayProperty] order; [OverlayProperty.volume]
+  /// only while there is a [volume].
   KeyframeParams<OverlayProperty> get params => {
         for (final p in OverlayProperty.values)
-          p: AnimatableDouble.sorted(
-            baseValue: _base(p),
-            keyframes: keyframes.of(p),
-          ),
+          if (p != OverlayProperty.volume || volume != null)
+            p: AnimatableDouble.sorted(
+              baseValue: _base(p),
+              keyframes: keyframes.of(p),
+            ),
       };
 
   /// The motion [params] describe — the inverse of [params].
@@ -138,6 +153,7 @@ class OverlayMotion {
       scale: base(OverlayProperty.scale, 1),
       rotation: base(OverlayProperty.rotation, 0),
       opacity: base(OverlayProperty.opacity, 1),
+      volume: params[OverlayProperty.volume]?.baseValue,
       keyframes:
           tracks.isEmpty ? OverlayKeyframes.none : OverlayKeyframes(tracks),
     );
@@ -149,6 +165,7 @@ class OverlayMotion {
         scale: scale,
         rotation: rotation,
         opacity: opacity,
+        volume: volume,
         keyframes: keyframes,
       );
 
@@ -164,6 +181,7 @@ class OverlayMotion {
       scale: v(OverlayProperty.scale),
       rotation: v(OverlayProperty.rotation),
       opacity: v(OverlayProperty.opacity),
+      volume: volume == null ? null : v(OverlayProperty.volume),
     );
   }
 }

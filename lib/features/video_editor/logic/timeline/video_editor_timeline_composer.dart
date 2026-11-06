@@ -331,7 +331,9 @@ class VideoEditorTimelineComposer {
         sourceStart: sourceStart,
         sourceEnd: sourceEnd,
         speed: speed,
-        volume: volume,
+        // The track where the layer carries one, else the bare number it
+        // always sent.
+        volume: params[OverlayProperty.volume] ?? AnimatableDouble(baseValue: volume),
         isMuted: isMuted,
       );
     }

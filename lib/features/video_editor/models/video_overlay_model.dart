@@ -148,11 +148,15 @@ class VideoOverlayModel {
   }
 
   /// Base placement and keyframe tracks, as one value — see [OverlayMotion].
+  /// Its volume is a property only while this layer carries a volume track
+  /// (a reaction's); otherwise the Volume control writes [volume] directly,
+  /// as it always has.
   OverlayMotion get motion => OverlayMotion(
         position: position,
         scale: scale,
         rotation: rotation,
         opacity: opacity,
+        volume: keyframes.of(OverlayProperty.volume).isEmpty ? null : volume,
         keyframes: keyframes,
       );
 
@@ -162,6 +166,7 @@ class VideoOverlayModel {
         scale: m.scale,
         rotation: m.rotation,
         opacity: m.opacity,
+        volume: m.volume ?? volume,
         keyframes: m.keyframes,
       );
 

@@ -484,7 +484,7 @@ internal class AudioExportMixer(
                     timelineEnd = overlay.endSeconds,
                     // The master volume applies, as it does to everything else
                     // audible; the overlay's own mute already zeroed this.
-                    gainAt = { config.gain(masterVolume * overlay.effectiveVolume) },
+                    gainAt = { t -> config.gain(masterVolume * overlay.effectiveVolumeAt(t)) },
                 ),
             )
         }

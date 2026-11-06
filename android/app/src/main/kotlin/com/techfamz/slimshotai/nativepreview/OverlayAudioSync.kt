@@ -124,9 +124,9 @@ internal object OverlayAudioSync {
     /** Float slack so the last stride lands on the target exactly. */
     private const val SETTLE_EPSILON = 1e-4f
 
-    /** The project's volume times the overlay's own; zero once muted. */
-    fun gain(masterVolume: Float, overlay: NativeTimelineOverlay): Float =
-        (masterVolume * overlay.effectiveVolume.toFloat()).coerceIn(0f, 1f)
+    /** The project's volume times the overlay's own at [clock]; zero once muted. */
+    fun gain(masterVolume: Float, overlay: NativeTimelineOverlay, clock: Double): Float =
+        (masterVolume * overlay.effectiveVolumeAt(clock).toFloat()).coerceIn(0f, 1f)
 
     /**
      * Whether the tail's clock is running.

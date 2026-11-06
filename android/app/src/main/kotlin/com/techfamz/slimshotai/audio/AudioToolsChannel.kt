@@ -81,6 +81,7 @@ class AudioToolsChannel : MethodChannel.MethodCallHandler {
     companion object {
         const val channelName = "slimshot_ai/audio_tools"
         private const val DEFAULT_PEAKS = 200
-        private const val MAX_PEAKS = 2000
+        /** Room for a REACT take's loudness, read in 50ms steps for up to ten minutes. */
+        private const val MAX_PEAKS = 12000
     }
 }

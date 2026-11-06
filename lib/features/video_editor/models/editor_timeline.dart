@@ -663,7 +663,7 @@ class EditorTimelineOverlay {
     this.sourceStart = 0,
     this.sourceEnd = 0,
     this.speed = 1.0,
-    this.volume = 1.0,
+    this.volume = const AnimatableDouble(baseValue: 1.0),
     this.isMuted = false,
     this.glyphs,
     this.mask = ClipMask.none,
@@ -768,7 +768,11 @@ class EditorTimelineOverlay {
   /// How fast a video overlay's footage runs, 1.0 being natural. The engine
   /// resolves which source frame is due through it.
   final double speed;
-  final double volume;
+
+  /// A video overlay's own gain: a bare number on the wire while flat — what
+  /// every engine build has read — and a track for a layer that carries one
+  /// (a reaction's, lowered while you talk).
+  final AnimatableDouble volume;
   final bool isMuted;
 
   /// Text overlays only: one entry per drawn character. A `text` overlay with
@@ -819,7 +823,7 @@ class EditorTimelineOverlay {
       'sourceEnd': sourceEnd,
       // Video overlays only; the engine resolves which frame is due through it.
       'speed': speed,
-      'volume': volume,
+      'volume': volume.toJson(),
       'isMuted': isMuted,
       'glyphs': glyphs?.map((glyph) => glyph.toJson()).toList(),
       'backgroundLeft': backgroundLeft,

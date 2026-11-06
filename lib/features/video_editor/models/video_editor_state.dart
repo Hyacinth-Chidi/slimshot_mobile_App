@@ -492,13 +492,15 @@ class VideoEditorState {
   /// no control asks for.
   double overlayEditValue(OverlayProperty property) {
     final ref = keyframeOverlay;
-    if (ref == null) {
-      return switch (property) {
-        OverlayProperty.scale || OverlayProperty.opacity => 1.0,
-        _ => 0.0,
-      };
-    }
-    final param = ref.motion.params[property]!;
+    final neutral = switch (property) {
+      OverlayProperty.scale || OverlayProperty.opacity || OverlayProperty.volume => 1.0,
+      _ => 0.0,
+    };
+    if (ref == null) return neutral;
+    // A layer without a volume track has no volume property; its Volume
+    // control reads the layer itself.
+    final param = ref.motion.params[property];
+    if (param == null) return neutral;
     if (!ref.motion.hasKeyframes) return param.baseValue;
     final progress = overlayProgressOn(ref, currentPlaybackPosition);
     if (progress == null) return param.baseValue;

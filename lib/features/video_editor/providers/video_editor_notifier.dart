@@ -3842,6 +3842,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     double? scale,
     double? rotation,
     double? opacity,
+    double? volume,
   }) {
     final ref = state.keyframeOverlay;
     if (ref == null || (id != null && id != ref.id)) return;
@@ -3851,6 +3852,8 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     var params = before;
     void write(OverlayProperty property, double? value) {
       if (value == null || !value.isFinite) return;
+      // Volume is a property only of a layer that carries a volume track.
+      if (!params.containsKey(property)) return;
       params = writeKeyframedValueIn(
         params,
         property,
@@ -3865,6 +3868,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     write(OverlayProperty.scale, scale);
     write(OverlayProperty.rotation, rotation);
     write(OverlayProperty.opacity, opacity?.clamp(0.0, 1.0).toDouble());
+    write(OverlayProperty.volume, volume?.clamp(0.0, 1.0).toDouble());
     if (identical(params, before)) return;
     final moved = OverlayMotion.fromParams(params);
     _replaceOverlayMotion(ref, moved);
