@@ -493,6 +493,20 @@ class CameraController extends ChangeNotifier {
     if (_mode != CameraMode.photo) unawaited(_allowMicrophone());
   }
 
+  /// Rebinds REACT at another live size — a choppy take steps down —, or
+  /// with null today's way, without leaving REACT.
+  Future<void> setReactLiveSize(int? shortSide) async {
+    if (_mode != CameraMode.react || shortSide == _reactLiveShortSide || !canChangeMode) return;
+    final before = _reactLiveShortSide;
+    _reactLiveShortSide = shortSide;
+    _notify();
+    if (!await _rebind()) {
+      _reactLiveShortSide = before;
+      await _rebind(quietly: true);
+    }
+    _notify();
+  }
+
   Future<void> flip() async {
     if (!canFlip) return;
     final before = _lens;

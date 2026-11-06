@@ -35,7 +35,8 @@ class FakeCamera implements CameraBackend {
   final published = <String>[];
 
   /// REACT recorded live: what the encoder says, what was asked of the recorder.
-  ReactLiveFacts liveFacts = const ReactLiveFacts(fps1080: 60, fps720: 120);
+  /// None by default: REACT is today's way unless a test gives the phone more.
+  ReactLiveFacts liveFacts = ReactLiveFacts.none;
   ReactLiveTake? lastReactLive;
   int? lastLiveShortSide;
   final scenes = <ReactionScene>[];

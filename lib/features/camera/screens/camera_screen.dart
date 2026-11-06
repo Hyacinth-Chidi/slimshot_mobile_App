@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/models/draft_project.dart';
+import '../../../core/services/app_build.dart';
 import '../../../core/services/draft_service.dart';
 import '../../../core/services/media_picker_service.dart';
 import '../../../core/theme/app_colors.dart';
@@ -21,6 +22,8 @@ import '../logic/camera_controller.dart';
 import '../logic/camera_files.dart';
 import '../logic/camera_geometry.dart';
 import '../logic/camera_roll.dart';
+import '../logic/react_capture_store.dart';
+import '../logic/react_live.dart';
 import '../logic/reaction.dart';
 import '../logic/reaction_session.dart';
 import '../services/camera_permissions.dart';
@@ -95,8 +98,11 @@ typedef ReactionMaking = Future<RollShot?> Function(
 /// editor, which takes the camera's place.
 ///
 /// REACT records you beside a video playing — split, or the video in a
-/// window over you — and the reaction is made from the take afterwards
-/// ([makeReaction]): one video for the gallery, two layers for the editor.
+/// window over you. Where the phone can, **recorded live**: the recorder
+/// draws both pictures into the file as you record and mixes the sound, so
+/// stop means the reaction is finished (`react_live.dart`); a phone that
+/// cannot keep up makes the reaction from the take afterwards, as before
+/// ([makeReaction]).
 ///
 /// The screen stays upright — photos and videos are turned to the way the
 /// phone is held natively — and the camera is the phone's for as long as the
@@ -113,6 +119,8 @@ class CameraScreen extends StatefulWidget {
     this.pickReactionVideo,
     this.openReactionVideo,
     this.makeReaction,
+    this.probeReactionSource,
+    this.buildStamp,
   });
 
   final CameraBackend? backend;
@@ -124,6 +132,10 @@ class CameraScreen extends StatefulWidget {
   final ReactionVideoPicker? pickReactionVideo;
   final ReactionVideoOpener? openReactionVideo;
   final ReactionMaking? makeReaction;
+  final ReactionSourceProbe? probeReactionSource;
+
+  /// This install's build, which a step down is remembered against.
+  final Future<String?> Function()? buildStamp;
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -160,6 +172,16 @@ class _CameraScreenState extends State<CameraScreen> {
   ReactionTakeSession? _take;
   bool _headphones = false;
   bool _stoppingTake = false;
+
+  // REACT recorded live: the way this phone records, what is reacted to, and
+  // the take's own state — the video held by a tap, or taken away.
+  ReactLiveFacts? _liveFacts;
+  ReactCapture _capture = ReactCapture.afterwards;
+  ReactCapture? _pendingCapture;
+  ReactionSourceInfo? _liveSource;
+  bool _liveHeld = false;
+  bool _liveRemoved = false;
+  ReactionScene? _sentScene;
 
   /// How far the reaction is made, while it is; null otherwise.
   double? _making;
@@ -268,6 +290,13 @@ class _CameraScreenState extends State<CameraScreen> {
       final message = controller.takeMessage();
       if (message != null) ToastUtils.show(context, message);
     }
+    if (controller.takeReactLiveFailure()) unawaited(_liveFailed());
+    if (!controller.isRecording && controller.reactLive && (_liveHeld || _liveRemoved)) {
+      _liveHeld = false;
+      _liveRemoved = false;
+    }
+    _applyPendingCapture();
+    _sendScene();
     // A recording the camera ended by itself (the app left mid-take) is
     // kept like any other; a REACT take becomes its reaction.
     final ended = controller.takeEndedShot();
@@ -330,7 +359,102 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _enterReact() async {
     final controller = _controller;
     if (controller == null || !controller.canChangeMode) return;
-    await controller.setMode(CameraMode.react, lens: CameraLens.front);
+    final capture = await _chooseCapture();
+    if (!mounted) return;
+    _capture = capture;
+    _sentScene = null;
+    await controller.setMode(CameraMode.react, lens: CameraLens.front, reactLiveShortSide: capture.shortSide);
+    _sendScene();
+  }
+
+  /// Which way this phone records a reaction: what its encoder says (asked
+  /// once a screen), and any step down a choppy take left for this build.
+  Future<ReactCapture> _chooseCapture() async {
+    final facts = _liveFacts ??= await _backend.reactLiveFacts();
+    // A phone that cannot record live needs no remembered step to say so.
+    if (chooseReactCapture(facts) == ReactCapture.afterwards) return ReactCapture.afterwards;
+    final step = await ReactCaptureStore.load(await _build());
+    return chooseReactCapture(facts, step: step);
+  }
+
+  Future<String?> _build() => (widget.buildStamp ?? appBuildStamp)();
+
+  bool get _live => _controller?.reactLive ?? false;
+
+  /// Something is chosen to react to, in whichever way REACT records.
+  bool get _hasReactSource => _live ? _liveSource != null : _reactVideo != null;
+
+  bool get _reactIsPhoto => _live ? (_liveSource?.isPhoto ?? false) : (_reactVideo?.isPhoto ?? false);
+
+  /// A take is running: today's session, or a live recording.
+  bool get _reactTaking => _take != null || (_live && (_controller?.isRecording ?? false));
+
+  bool get _videoGone => _live ? _liveRemoved : (_take?.videoRemoved ?? false);
+
+  /// Sends the live recorder the scene it draws, when it changed.
+  void _sendScene() {
+    final controller = _controller;
+    if (controller == null || !controller.reactLive) return;
+    final info = controller.info;
+    final width = info?.previewWidth;
+    final height = info?.previewHeight;
+    final picture = width != null && height != null ? displayedPreviewSize(width, height, info!.rotation) : null;
+    final cameraAspect = picture == null || picture.height <= 0 ? 9 / 16 : picture.width / picture.height;
+    final scene = reactionScene(
+      layout: _layout,
+      window: _window,
+      cameraAspect: cameraAspect,
+      videoAspect: _reactAspect,
+      hasVideo: _liveSource != null,
+      removed: _liveRemoved,
+    );
+    if (scene == _sentScene) return;
+    _sentScene = scene;
+    unawaited(_quietly(() => _backend.reactScene(scene)));
+  }
+
+  static Future<void> _quietly(Future<void> Function() call) async {
+    try {
+      await call();
+    } on CameraFailure {
+      // The recorder is gone (the mode changed): nothing to draw for.
+    }
+  }
+
+  /// A choppy live take steps this phone down — 1080p to 720p, 720p to the
+  /// way after recording — remembered for the build and said once.
+  Future<void> _afterLiveTake(VideoShot shot) async {
+    if (!takeWasChoppy(frames: shot.frames, missedFrames: shot.missedFrames)) return;
+    final step = stepAfterChoppy(_capture);
+    await ReactCaptureStore.save(step, await _build());
+    final next = chooseReactCapture(_liveFacts ?? ReactLiveFacts.none, step: step);
+    if (!mounted) return;
+    ToastUtils.show(context, next == ReactCapture.afterwards ? kReactStepToAfterMessage : kReactStepTo720Message);
+    _pendingCapture = next;
+    _applyPendingCapture();
+  }
+
+  /// The live recorder failed: this phone makes reactions after recording
+  /// from now on. The controller says so.
+  Future<void> _liveFailed() async {
+    await ReactCaptureStore.save(2, await _build());
+    if (!mounted) return;
+    _pendingCapture = ReactCapture.afterwards;
+    _applyPendingCapture();
+  }
+
+  /// A change of way waits for the take under way to end.
+  void _applyPendingCapture() {
+    final next = _pendingCapture;
+    final controller = _controller;
+    if (next == null || controller == null || !controller.canChangeMode) return;
+    _pendingCapture = null;
+    _capture = next;
+    if (controller.mode != CameraMode.react) return;
+    // What was chosen lives in the recorder: today's way starts empty.
+    if (next == ReactCapture.afterwards) _clearReactVideo();
+    _sentScene = null;
+    unawaited(controller.setReactLiveSize(next.shortSide));
   }
 
   /// Out of REACT: what was chosen is let go — the next REACT starts empty
@@ -341,11 +465,17 @@ class _CameraScreenState extends State<CameraScreen> {
   /// drawn.
   void _clearReactVideo() {
     final video = _reactVideo;
+    final hadLive = _liveSource != null;
     setState(() {
       _reactVideo = null;
       _reactPath = null;
+      _liveSource = null;
+      _liveHeld = false;
+      _liveRemoved = false;
     });
     if (video != null) _disposeAfterFrame(video);
+    if (hadLive) unawaited(_quietly(_backend.reactClearSource));
+    _sendScene();
   }
 
   /// A video's player goes once the frame without it is drawn: the picture
@@ -376,7 +506,36 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  /// What a live reaction reacts to: measured here for the layout, opened in
+  /// the recorder, which plays it.
+  Future<bool> _openLiveSource(String path) async {
+    final info = await (widget.probeReactionSource ?? probeReactionSource)(path);
+    if (!mounted) return false;
+    if (info == null) {
+      ToastUtils.show(context, kReactionVideoFailedMessage, isError: true);
+      return false;
+    }
+    try {
+      await _backend.reactSource(path, photo: info.isPhoto);
+    } on CameraFailure {
+      if (mounted) ToastUtils.show(context, kReactionVideoFailedMessage, isError: true);
+      return false;
+    }
+    if (!mounted) return false;
+    unawaited(_quietly(() => _backend.reactSound(on: _videoSoundOn)));
+    setState(() {
+      _liveSource = info;
+      _reactPath = path;
+      _liveHeld = false;
+      _liveRemoved = false;
+      _window = _window.fittedFor(info.aspect);
+    });
+    _sendScene();
+    return true;
+  }
+
   Future<bool> _openReactVideo(String path) async {
+    if (_live) return _openLiveSource(path);
     final video = await (widget.openReactionVideo ?? openReactionSource)(path);
     if (!mounted) {
       unawaited(video?.dispose());
@@ -398,16 +557,17 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _changeReactVideo() async {
-    if (_take != null) return;
+    if (_reactTaking) return;
     HapticFeedback.selectionClick();
     await _pickReactVideo();
   }
 
   Future<void> _cycleLayout() async {
-    if (_take != null) return;
+    if (_reactTaking) return;
     HapticFeedback.selectionClick();
     final next = ReactionLayout.values[(_layout.index + 1) % ReactionLayout.values.length];
     setState(() => _layout = next);
+    _sendScene();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(kReactLayoutKey, next.name);
@@ -417,14 +577,70 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _toggleVideoSound() async {
-    if (_take != null) return;
+    if (_reactTaking) return;
     HapticFeedback.selectionClick();
     setState(() => _videoSoundOn = !_videoSoundOn);
-    await _reactVideo?.setVolume(_videoSoundOn ? 1 : 0);
+    if (_live) {
+      await _quietly(() => _backend.reactSound(on: _videoSoundOn));
+    } else {
+      await _reactVideo?.setVolume(_videoSoundOn ? 1 : 0);
+    }
+  }
+
+  /// A live take: started with its sound settings — the video lowered while
+  /// you talk only where the microphone hears it — or stopped, landing on
+  /// the pile as one finished video.
+  Future<void> _liveShutter(CameraController controller) async {
+    if (controller.busy) return;
+    if (controller.isRecording) {
+      debugPrint('REACT: the live take stops: the shutter or Back');
+      final shot = await controller.shutter();
+      if (!mounted) return;
+      setState(() {
+        _liveHeld = false;
+        _liveRemoved = false;
+      });
+      _sendScene();
+      if (shot != null) {
+        await _keep(shot);
+        if (shot is VideoShot) await _afterLiveTake(shot);
+      }
+      return;
+    }
+    if (_liveSource == null) {
+      await _pickReactVideo();
+      return;
+    }
+    HapticFeedback.lightImpact();
+    final headphones = await _backend.headphonesConnected();
+    if (!mounted) return;
+    final lower = !_reactIsPhoto && videoSoundReachesMicrophone(headphones: headphones, videoSoundOn: _videoSoundOn);
+    setState(() {
+      _liveHeld = false;
+      _liveRemoved = false;
+    });
+    _sendScene();
+    await controller.shutter(reactLive: ReactLiveTake(lowerVideo: lower));
+    if (mounted) setState(() {});
+  }
+
+  /// A tap on the video mid-take, live: it stops on its frame, or plays on.
+  void _toggleLiveHold() {
+    HapticFeedback.selectionClick();
+    setState(() => _liveHeld = !_liveHeld);
+    unawaited(_quietly(() => _backend.reactPlayback(playing: !_liveHeld)));
+  }
+
+  /// The ended video taken away mid-take, live: you fill the frame.
+  void _removeLiveVideo() {
+    HapticFeedback.selectionClick();
+    setState(() => _liveRemoved = true);
+    _sendScene();
   }
 
   /// Starts a take, or ends the one under way; with nothing chosen yet, asks.
   Future<void> _reactShutter(CameraController controller) async {
+    if (controller.reactLive) return _liveShutter(controller);
     if (_take != null) {
       debugPrint('REACT: the take stops: the shutter or Back');
       return _stopReaction();
@@ -473,8 +689,26 @@ class _CameraScreenState extends State<CameraScreen> {
 
   /// What sits over the video through a take: a play mark while a tap holds
   /// it, the cross that takes it away once it has ended.
-  Widget? _takeVideoChrome(ReactionTakeSession take) {
-    if (take.videoEnded && !take.videoRemoved) {
+  Widget? _takeVideoChrome(ReactionTakeSession take) =>
+      _videoChrome(ended: take.videoEnded, removed: take.videoRemoved, held: take.videoHeld, onRemove: _removeTakeVideo);
+
+  Widget? _liveVideoChrome(CameraController controller) {
+    if (!controller.isRecording) return null;
+    return _videoChrome(
+      ended: controller.reactVideoEnded,
+      removed: _liveRemoved,
+      held: _liveHeld,
+      onRemove: _removeLiveVideo,
+    );
+  }
+
+  Widget? _videoChrome({
+    required bool ended,
+    required bool removed,
+    required bool held,
+    required VoidCallback onRemove,
+  }) {
+    if (ended && !removed) {
       return Align(
         alignment: Alignment.topLeft,
         child: Padding(
@@ -484,12 +718,12 @@ class _CameraScreenState extends State<CameraScreen> {
             icon: LucideIcons.x,
             tooltip: 'Remove video',
             size: 36,
-            onTap: _removeTakeVideo,
+            onTap: onRemove,
           ),
         ),
       );
     }
-    if (take.videoHeld) {
+    if (held) {
       return IgnorePointer(
         child: Center(
           child: Container(
@@ -633,7 +867,7 @@ class _CameraScreenState extends State<CameraScreen> {
         window: _window,
         videoAspect: _reactAspect,
         frame: frame.size,
-        videoGone: _take?.videoRemoved ?? false,
+        videoGone: _videoGone,
       ).shift(frame.topLeft);
       if (!area.contains(tap)) return;
     }
@@ -783,12 +1017,30 @@ class _CameraScreenState extends State<CameraScreen> {
   /// REACT's frame, as the file will be: 9:16 on the screen, you and the
   /// video where the layout puts you.
   /// The shape of what is reacted to, or of the empty window before it.
-  double get _reactAspect => _reactVideo?.aspectRatio ?? kReactionPlaceholderAspect;
+  double get _reactAspect =>
+      (_live ? _liveSource?.aspect : _reactVideo?.aspectRatio) ?? kReactionPlaceholderAspect;
 
   Widget _reactPicture(Size screen, CameraInfo? info) {
     final video = _reactVideo;
     final take = _take;
+    final controller = _controller;
+    final live = controller != null && controller.reactLive;
     final frame = reactionFrameOn(screen);
+    final VoidCallback? onVideoTap;
+    if (live) {
+      final source = _liveSource;
+      onVideoTap = controller.isRecording &&
+              source != null &&
+              !source.isPhoto &&
+              !controller.reactVideoEnded &&
+              !_liveRemoved
+          ? _toggleLiveHold
+          : null;
+    } else {
+      onVideoTap = take != null && video != null && !video.isPhoto && !take.videoEnded
+          ? () => unawaited(_toggleTakeVideo())
+          : null;
+    }
     return Positioned.fromRect(
       rect: frame,
       child: ReactionFrame(
@@ -797,17 +1049,20 @@ class _CameraScreenState extends State<CameraScreen> {
         window: _window,
         videoAspect: _reactAspect,
         video: video?.picture() ?? const SizedBox.shrink(),
-        placeholder: video == null ? _ReactPlaceholder(onTap: () => unawaited(_pickReactVideo())) : null,
-        onVideoTap: take != null && video != null && !video.isPhoto && !take.videoEnded
-            ? () => unawaited(_toggleTakeVideo())
-            : null,
-        videoChrome: take == null ? null : _takeVideoChrome(take),
-        videoGone: take?.videoRemoved ?? false,
+        placeholder: _hasReactSource ? null : _ReactPlaceholder(onTap: () => unawaited(_pickReactVideo())),
+        onVideoTap: onVideoTap,
+        videoChrome: live ? _liveVideoChrome(controller) : (take == null ? null : _takeVideoChrome(take)),
+        videoGone: _videoGone,
+        // Live, the recorder draws both pictures into this one texture.
+        composite: live && info != null ? Texture(textureId: info.textureId) : null,
         camera: (place) => info == null
             ? const SizedBox.expand()
             : CameraPreviewTexture(info: info, screen: place),
-        windowMovable: _take == null,
-        onWindowChanged: (window) => setState(() => _window = window),
+        windowMovable: !_reactTaking,
+        onWindowChanged: (window) {
+          setState(() => _window = window);
+          _sendScene();
+        },
       ),
     );
   }
@@ -942,7 +1197,7 @@ class _CameraScreenState extends State<CameraScreen> {
   /// REACT's own tools, down the right: the layout (a tap moves to the
   /// next), the video's sound, and something else to react to.
   Widget _reactTools() {
-    final video = _reactVideo;
+    final chosen = _hasReactSource;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -960,7 +1215,7 @@ class _CameraScreenState extends State<CameraScreen> {
           },
           onTap: () => unawaited(_cycleLayout()),
         ),
-        if (video != null && !video.isPhoto) ...[
+        if (chosen && !_reactIsPhoto) ...[
           const SizedBox(height: 6),
           CameraRoundButton(
             key: const ValueKey('react_sound'),
@@ -969,7 +1224,7 @@ class _CameraScreenState extends State<CameraScreen> {
             onTap: () => unawaited(_toggleVideoSound()),
           ),
         ],
-        if (video != null) ...[
+        if (chosen) ...[
           const SizedBox(height: 6),
           CameraRoundButton(
             key: const ValueKey('react_change_video'),
@@ -983,7 +1238,7 @@ class _CameraScreenState extends State<CameraScreen> {
             icon: LucideIcons.x,
             tooltip: 'Remove',
             onTap: () {
-              if (_take != null) return;
+              if (_reactTaking) return;
               HapticFeedback.selectionClick();
               _clearReactVideo();
             },

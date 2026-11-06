@@ -29,6 +29,34 @@ abstract class ReactionVideo implements ReactionPlayer {
 /// Opens the video or photo at a path for REACT; null when it will not open.
 typedef ReactionVideoOpener = Future<ReactionVideo?> Function(String path);
 
+/// What a live reaction reacts to, as the screen needs it: its upright shape
+/// and its kind. The live recorder plays it; the screen only lays it out.
+@immutable
+class ReactionSourceInfo {
+  const ReactionSourceInfo({required this.aspect, required this.isPhoto});
+
+  final double aspect;
+  final bool isPhoto;
+}
+
+/// Measures the file at a path for a live reaction; null when it cannot be read.
+typedef ReactionSourceProbe = Future<ReactionSourceInfo?> Function(String path);
+
+/// The editor's own probe — its fits are made from it, so a live reaction's
+/// layout is the editor's for the same file.
+Future<ReactionSourceInfo?> probeReactionSource(String path) async {
+  try {
+    final assets = await MediaImportService().assetsFor([XFile(path)]);
+    final asset = assets.isEmpty ? null : assets.first;
+    if (asset == null) return null;
+    final aspect = asset.aspectRatio;
+    return ReactionSourceInfo(aspect: aspect.isFinite && aspect > 0 ? aspect : 16 / 9, isPhoto: asset.isImage);
+  } catch (error) {
+    debugPrint('REACT: could not probe $path: $error');
+    return null;
+  }
+}
+
 /// The file at [path] opened for REACT: a photo as a still, anything else
 /// through `video_player`. Its kind and a photo's upright shape come from the
 /// editor's own probe, the one its fits are made from.
@@ -148,7 +176,10 @@ class PluginReactionVideo implements ReactionVideo {
 /// A [placeholder] stands in the video's place, unscaled, until there is one.
 /// Through a take, [onVideoTap] answers a tap on the video, [videoChrome] is
 /// laid over its place, and once the video is gone ([videoGone]) you fill
-/// the frame.
+/// the frame. With a [composite] — REACT recorded live, where the recorder
+/// draws both pictures into one texture — that is drawn under everything and
+/// neither picture is drawn here; the video's place keeps its gestures,
+/// placeholder and chrome.
 class ReactionFrame extends StatefulWidget {
   const ReactionFrame({
     super.key,
@@ -163,6 +194,7 @@ class ReactionFrame extends StatefulWidget {
     this.onVideoTap,
     this.videoChrome,
     this.videoGone = false,
+    this.composite,
   });
 
   final ReactionLayout layout;
@@ -179,6 +211,7 @@ class ReactionFrame extends StatefulWidget {
   final VoidCallback? onVideoTap;
   final Widget? videoChrome;
   final bool videoGone;
+  final Widget? composite;
 
   /// Where the camera's picture sits in a frame of [frame] — what a tap to
   /// focus is measured against.
@@ -233,7 +266,8 @@ class _ReactionFrameState extends State<ReactionFrame> {
         final places = reactionPlaces(layout: widget.layout, window: widget.window, videoAspect: widget.videoAspect);
         final cameraRect = widget.videoGone ? Offset.zero & frame : _scaled(places.camera, frame);
         final videoRect = _scaled(places.video, frame);
-        final video = widget.placeholder ?? ClipRect(
+        final composite = widget.composite;
+        final video = widget.placeholder ?? (composite != null ? const SizedBox.expand() : ClipRect(
           child: FittedBox(
             fit: BoxFit.cover,
             clipBehavior: Clip.hardEdge,
@@ -243,14 +277,17 @@ class _ReactionFrameState extends State<ReactionFrame> {
               child: widget.video,
             ),
           ),
-        );
+        ));
         return ClipRect(
           child: Stack(
             children: [
-              Positioned.fromRect(
-                rect: cameraRect,
-                child: ClipRect(child: widget.camera(cameraRect.size)),
-              ),
+              if (composite != null)
+                Positioned.fill(child: composite)
+              else
+                Positioned.fromRect(
+                  rect: cameraRect,
+                  child: ClipRect(child: widget.camera(cameraRect.size)),
+                ),
               if (!widget.videoGone)
                 Positioned.fromRect(
                   key: const ValueKey('reaction_video'),
