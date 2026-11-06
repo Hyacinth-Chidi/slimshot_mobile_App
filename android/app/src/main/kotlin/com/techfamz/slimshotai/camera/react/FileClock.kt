@@ -54,6 +54,21 @@ internal class FileClock {
         return nanos - start - paused
     }
 
+    /**
+     * The moment [fileNanos] was recorded at — the inverse of [fileNanos]. A
+     * file time at a pause's seam is the moment recording resumed. Null
+     * before the start.
+     */
+    @Synchronized
+    fun realNanos(fileNanos: Long): Long? {
+        val start = startNanos ?: return null
+        var real = start + fileNanos
+        for (pause in pauses) {
+            if (real >= pause[0]) real += pause[1] - pause[0] else break
+        }
+        return real
+    }
+
     /** How much the file holds at [nanos]: held still through a pause. */
     @Synchronized
     fun durationNanos(nanos: Long): Long {

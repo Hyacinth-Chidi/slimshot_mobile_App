@@ -44,6 +44,18 @@ class FileClockTest {
     }
 
     @Test
+    fun `a file time maps back to the moment it was recorded`() {
+        val clock = FileClock()
+        clock.start(1_000)
+        clock.pause(3_000)
+        clock.resume(7_000)
+        org.junit.Assert.assertEquals(2_500L, clock.realNanos(1_500))
+        org.junit.Assert.assertEquals(7_000L, clock.realNanos(2_000))
+        org.junit.Assert.assertEquals(8_000L, clock.realNanos(3_000))
+        assertNull(FileClock().realNanos(0))
+    }
+
+    @Test
     fun `a camera timestamp is trusted only on the clock it is compared with`() {
         assertEquals(1_000_000_000L, FileClock.frameNanos(1_000_000_000L, 1_010_000_000L))
         assertEquals(1_010_000_000L, FileClock.frameNanos(5L, 1_010_000_000L))
