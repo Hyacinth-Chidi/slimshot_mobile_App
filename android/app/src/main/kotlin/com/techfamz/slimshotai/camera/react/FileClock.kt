@@ -84,15 +84,31 @@ internal class FileClock {
     }
 
     companion object {
-        /** A camera timestamp within this of its arrival is on the same clock. */
-        const val BASE_TOLERANCE_NANOS = 200_000_000L
+        /** A camera timestamp is at most this far behind its arrival on its own clock. */
+        const val BASE_TOLERANCE_NANOS = 1_000_000_000L
+
+        /** Clock jitter a timestamp may sit ahead of its arrival by. */
+        private const val AHEAD_NANOS = 5_000_000L
 
         /**
-         * A camera frame's moment: its own timestamp where it is on
-         * `nanoTime`'s clock — some cameras stamp with boot time — else when it
-         * arrived.
+         * A camera frame's moment on `nanoTime`'s clock. Cameras stamp with
+         * either that clock or boot time (`elapsedRealtimeNanos`), and the two
+         * differ by however long the phone has slept — often well under a
+         * second, so "close to the arrival" cannot tell them apart. The
+         * timestamp is matched to whichever clock read nearest **after** it
+         * at [arrival] / [arrivalBoot]; a boot-clock stamp is moved onto the
+         * monotonic clock. On neither, the arrival stands in.
          */
-        fun frameNanos(timestamp: Long, arrival: Long): Long =
-            if (abs(arrival - timestamp) < BASE_TOLERANCE_NANOS) timestamp else arrival
+        fun frameNanos(timestamp: Long, arrival: Long, arrivalBoot: Long): Long {
+            val behindMono = arrival - timestamp
+            val behindBoot = arrivalBoot - timestamp
+            val mono = behindMono in -AHEAD_NANOS until BASE_TOLERANCE_NANOS
+            val boot = behindBoot in -AHEAD_NANOS until BASE_TOLERANCE_NANOS
+            return when {
+                mono && (!boot || abs(behindMono) <= abs(behindBoot)) -> timestamp
+                boot -> timestamp - (arrivalBoot - arrival)
+                else -> arrival
+            }
+        }
     }
 }

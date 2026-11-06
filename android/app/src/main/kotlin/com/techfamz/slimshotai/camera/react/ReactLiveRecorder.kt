@@ -7,6 +7,7 @@ import android.opengl.EGLSurface
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import androidx.camera.core.SurfaceRequest
@@ -282,6 +283,7 @@ internal class ReactLiveRecorder(
             cameraInput.updateTexImage()
             cameraInput.getTransformMatrix(cameraMatrix)
             val arrival = System.nanoTime()
+            val arrivalBoot = SystemClock.elapsedRealtimeNanos()
             val stamp = cameraInput.timestamp
             val input = videoInput
             if (videoFrameWaiting && input != null) {
@@ -302,7 +304,9 @@ internal class ReactLiveRecorder(
                 compositor.draw(drawn, PREVIEW_WIDTH, PREVIEW_HEIGHT, camera, video)
                 egl.swap(it)
             }
-            if (isRecording && !stopping) encodeFrame(FileClock.frameNanos(stamp, arrival), drawn, camera, video)
+            if (isRecording && !stopping) {
+                encodeFrame(FileClock.frameNanos(stamp, arrival, arrivalBoot), drawn, camera, video)
+            }
         } catch (error: Exception) {
             Log.w(TAG, "a REACT frame failed", error)
             if (isRecording && !stopping) main.post { fail(error) }

@@ -56,9 +56,24 @@ class FileClockTest {
     }
 
     @Test
-    fun `a camera timestamp is trusted only on the clock it is compared with`() {
-        assertEquals(1_000_000_000L, FileClock.frameNanos(1_000_000_000L, 1_010_000_000L))
-        assertEquals(1_010_000_000L, FileClock.frameNanos(5L, 1_010_000_000L))
+    fun `a camera timestamp on the monotonic clock is kept`() {
+        assertEquals(1_000_000_000L, FileClock.frameNanos(1_000_000_000L, 1_030_000_000L, 5_030_000_000L))
+    }
+
+    @Test
+    fun `a camera timestamp on the boot clock is brought onto the monotonic one`() {
+        assertEquals(1_000_000_000L, FileClock.frameNanos(5_000_000_000L, 1_030_000_000L, 5_030_000_000L))
+    }
+
+    @Test
+    fun `a boot-clock timestamp barely apart from monotonic is still converted, not taken late`() {
+        // The phone slept 100 ms since boot: both clocks are near the timestamp.
+        assertEquals(1_000_000_000L, FileClock.frameNanos(1_100_000_000L, 1_030_000_000L, 1_130_000_000L))
+    }
+
+    @Test
+    fun `a timestamp on no clock it can be matched with falls back to its arrival`() {
+        assertEquals(1_030_000_000L, FileClock.frameNanos(5L, 1_030_000_000L, 5_030_000_000L))
     }
 
     private fun assertEquals(expected: Long, actual: Long?, message: String) =
