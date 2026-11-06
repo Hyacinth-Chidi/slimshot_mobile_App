@@ -442,13 +442,70 @@ class _CameraScreenState extends State<CameraScreen> {
     final take = ReactionTakeSession(
       camera: controller,
       player: video,
+      // The video holds its last frame and the take goes on; the frame now
+      // offers to take it away.
       onVideoEnded: () {
-        debugPrint('REACT: the take stops: the video ended');
-        unawaited(_stopReaction());
+        if (mounted) setState(() {});
       },
     );
     setState(() => _take = take);
     if (!await take.start() && mounted) setState(() => _take = null);
+  }
+
+  /// A tap on the video mid-take: it stops on its frame while you go on, or
+  /// plays on from there.
+  Future<void> _toggleTakeVideo() async {
+    final take = _take;
+    if (take == null) return;
+    HapticFeedback.selectionClick();
+    await take.toggleVideo();
+    if (mounted) setState(() {});
+  }
+
+  /// The ended video taken away mid-take: you fill the frame from now on.
+  void _removeTakeVideo() {
+    final take = _take;
+    if (take == null) return;
+    HapticFeedback.selectionClick();
+    take.removeVideo();
+    setState(() {});
+  }
+
+  /// What sits over the video through a take: a play mark while a tap holds
+  /// it, the cross that takes it away once it has ended.
+  Widget? _takeVideoChrome(ReactionTakeSession take) {
+    if (take.videoEnded && !take.videoRemoved) {
+      return Align(
+        alignment: Alignment.topLeft,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: CameraRoundButton(
+            key: const ValueKey('react_take_remove'),
+            icon: LucideIcons.x,
+            tooltip: 'Remove video',
+            size: 36,
+            onTap: _removeTakeVideo,
+          ),
+        ),
+      );
+    }
+    if (take.videoHeld) {
+      return IgnorePointer(
+        child: Center(
+          child: Container(
+            key: const ValueKey('react_video_held'),
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.background.withValues(alpha: 0.5),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(LucideIcons.play, color: AppColors.textPrimary, size: 22),
+          ),
+        ),
+      );
+    }
+    return null;
   }
 
   Future<void> _pauseOrResume() async {
@@ -576,6 +633,7 @@ class _CameraScreenState extends State<CameraScreen> {
         window: _window,
         videoAspect: _reactAspect,
         frame: frame.size,
+        videoGone: _take?.videoRemoved ?? false,
       ).shift(frame.topLeft);
       if (!area.contains(tap)) return;
     }
@@ -729,6 +787,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Widget _reactPicture(Size screen, CameraInfo? info) {
     final video = _reactVideo;
+    final take = _take;
     final frame = reactionFrameOn(screen);
     return Positioned.fromRect(
       rect: frame,
@@ -739,6 +798,11 @@ class _CameraScreenState extends State<CameraScreen> {
         videoAspect: _reactAspect,
         video: video?.picture() ?? const SizedBox.shrink(),
         placeholder: video == null ? _ReactPlaceholder(onTap: () => unawaited(_pickReactVideo())) : null,
+        onVideoTap: take != null && video != null && !video.isPhoto && !take.videoEnded
+            ? () => unawaited(_toggleTakeVideo())
+            : null,
+        videoChrome: take == null ? null : _takeVideoChrome(take),
+        videoGone: take?.videoRemoved ?? false,
         camera: (place) => info == null
             ? const SizedBox.expand()
             : CameraPreviewTexture(info: info, screen: place),

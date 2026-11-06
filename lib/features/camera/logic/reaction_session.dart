@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -28,11 +29,19 @@ abstract class ReactionPlayer {
 /// against it.
 @immutable
 class ReactionRecording {
-  const ReactionRecording({required this.cameraPath, required this.durationMs, required this.pieces});
+  const ReactionRecording({
+    required this.cameraPath,
+    required this.durationMs,
+    required this.pieces,
+    this.removedAtMs,
+  });
 
   final String cameraPath;
   final int durationMs;
   final List<ReactionPiece> pieces;
+
+  /// When the video was taken away and you filled the frame; null if never.
+  final int? removedAtMs;
 }
 
 /// How far from its end the video counts as over: two frames, so a take
@@ -49,8 +58,11 @@ const int kReactionVideoMovingMs = 20;
 /// **The video starts when the recording is seen to run** — its first
 /// report — not when recording is asked for: the recorder takes a moment to
 /// begin, and a video started early would play its first moment to nobody.
-/// Pause stops both; a resume starts both. The video reaching its end ends
-/// the take through [onVideoEnded].
+/// Pause stops both; a resume starts both. A tap on the video
+/// ([toggleVideo]) stops only the video, its frame held while you go on
+/// recording, and plays it on from there. The video reaching its end holds
+/// its last frame and says so through [onVideoEnded]; from then it can be
+/// taken away ([removeVideo]) and you fill the frame.
 class ReactionTakeSession {
   ReactionTakeSession({
     required this.camera,
@@ -79,11 +91,28 @@ class ReactionTakeSession {
   /// The recording's time at the last moment it was known.
   int _lastRecordingMs = 0;
 
+  /// The recording's time when the open run began.
+  int _runStartMs = 0;
+
   bool _started = false;
   bool _finished = false;
-  bool _saidEnded = false;
+  bool _ended = false;
+  bool _held = false;
+  int? _removedAtMs;
 
   bool get isRunning => _started && !_finished;
+
+  /// The video stopped by a tap, its frame held.
+  bool get videoHeld => _held;
+
+  /// The video played to its end and holds its last frame.
+  bool get videoEnded => _ended;
+
+  /// The video was taken away; you fill the frame.
+  bool get videoRemoved => _removedAtMs != null;
+
+  /// Neither held, ended nor gone: a run opens whenever the camera runs.
+  bool get _videoLive => !_held && !_ended && _removedAtMs == null;
 
   /// Starts recording; the video follows once the recording reports. False
   /// when the camera did not start.
@@ -105,12 +134,17 @@ class ReactionTakeSession {
   }
 
   void _onCamera() {
-    if (_finished || !_awaitingRun || camera.recording != RecordingState.recording) return;
+    if (_finished || !_awaitingRun || !_videoLive || camera.recording != RecordingState.recording) return;
     final recording = camera.recordingNowMs();
     if (recording == null) return;
+    _openRun(recording);
+  }
+
+  void _openRun(int recordingMs) {
     _awaitingRun = false;
-    _lastRecordingMs = recording;
-    _log.beginRun(recordingMs: recording, videoMs: _videoFromMs);
+    _lastRecordingMs = recordingMs;
+    _runStartMs = recordingMs;
+    _log.beginRun(recordingMs: recordingMs, videoMs: _videoFromMs);
     _runVideoFromMs = _videoFromMs;
     unawaited(player.play());
   }
@@ -119,6 +153,12 @@ class ReactionTakeSession {
     if (_finished) return;
     switch (camera.recording) {
       case RecordingState.recording:
+        // A held, ended or removed video is already still: only the camera
+        // pauses, and the hold simply goes on when it resumes.
+        if (!_videoLive) {
+          await camera.pauseOrResume();
+          return;
+        }
         final at = camera.recordingNowMs();
         await Future.wait([player.pause(), camera.pauseOrResume()]);
         if (!_awaitingRun && at != null) {
@@ -135,17 +175,49 @@ class ReactionTakeSession {
     }
   }
 
+  /// A tap on the video while recording: it stops on its frame while you go
+  /// on, or plays on from there. Nothing once it has ended or gone, or while
+  /// the take itself is paused.
+  Future<void> toggleVideo() async {
+    if (!_started || _finished || _ended || _removedAtMs != null) return;
+    if (camera.recording != RecordingState.recording) return;
+    final at = camera.recordingNowMs();
+    if (at == null) return;
+    if (_held) {
+      _held = false;
+      _log.endHold(recordingMs: at);
+      _openRun(at);
+      return;
+    }
+    if (_awaitingRun) return;
+    await player.pause();
+    final frame = await player.positionMs() ?? _videoFromMs;
+    _log.endRun(recordingMs: at);
+    _log.beginHold(recordingMs: at, videoMs: frame);
+    _lastRecordingMs = at;
+    _videoFromMs = frame;
+    _held = true;
+  }
+
+  /// Takes the video away once it has ended: you fill the frame from now on.
+  void removeVideo() {
+    if (!_started || _finished || !_ended || _removedAtMs != null) return;
+    final at = camera.recordingNowMs() ?? _lastRecordingMs;
+    _log.endHold(recordingMs: at);
+    _removedAtMs = at;
+  }
+
   /// Measures the video against the recording once, both running. The take
   /// does this on its own every quarter of a second.
   @visibleForTesting
   Future<void> sample() async {
-    if (_finished || _awaitingRun || camera.recording != RecordingState.recording) return;
+    if (_finished || _awaitingRun || !_videoLive || camera.recording != RecordingState.recording) return;
     final before = camera.recordingNowMs();
     final video = await player.positionMs();
     final after = camera.recordingNowMs();
     if (before == null || after == null || video == null) return;
-    // Paused, stopped or restarted while the player answered.
-    if (_finished || _awaitingRun || camera.recording != RecordingState.recording) return;
+    // Paused, held, stopped or restarted while the player answered.
+    if (_finished || _awaitingRun || !_videoLive || camera.recording != RecordingState.recording) return;
     _lastRecordingMs = after;
     final moving = video > _runVideoFromMs + kReactionVideoMovingMs;
     if (moving) {
@@ -153,14 +225,22 @@ class ReactionTakeSession {
     }
     // The end is believed only once the video has been seen playing in this
     // run, and the length only when the player knows one: a player that
-    // reports 0, or "completed" before it has started, would otherwise end
-    // the take a quarter of a second in.
+    // reports 0, or "completed" before it has started, would otherwise call
+    // the video over a quarter of a second in.
     final duration = player.durationMs;
     final atEnd = duration > 0 && (player.completed || video >= duration - kReactionVideoEndSlackMs);
-    if (!_saidEnded && moving && atEnd) {
-      _saidEnded = true;
+    if (!_ended && moving && atEnd) {
+      _ended = true;
+      // The hold starts exactly where the video runs out on the recording's
+      // clock — the run's own offset says when — so no instant is left
+      // between the last frame playing and its still.
+      final offset = _log.runningOffsetMs ?? video - after;
+      final runsOutAt = math.max(_runStartMs + 1, duration - offset);
+      _log.endRun(recordingMs: runsOutAt);
+      _log.beginHold(recordingMs: runsOutAt, videoMs: duration);
+      unawaited(player.pause());
       debugPrint('REACT: the video ended at ${video}ms of ${duration}ms '
-          '(completed: ${player.completed}); the take stops');
+          '(completed: ${player.completed}); its last frame holds');
       onVideoEnded?.call();
     }
   }
@@ -190,7 +270,9 @@ class ReactionTakeSession {
     _finished = true;
     _sampler?.cancel();
     camera.removeListener(_onCamera);
-    if (!_awaitingRun) _log.endRun(recordingMs: atMs ?? _lastRecordingMs);
+    final at = atMs ?? _lastRecordingMs;
+    if (_log.isRunning) _log.endRun(recordingMs: at);
+    if (_log.isHolding) _log.endHold(recordingMs: at);
   }
 
   ReactionRecording _recording(VideoShot shot) {
@@ -201,6 +283,7 @@ class ReactionTakeSession {
       pieces: pieces.isEmpty
           ? [ReactionPiece(startMs: 0, endMs: shot.durationMs, offsetMs: _videoFromMs)]
           : pieces,
+      removedAtMs: _removedAtMs,
     );
   }
 

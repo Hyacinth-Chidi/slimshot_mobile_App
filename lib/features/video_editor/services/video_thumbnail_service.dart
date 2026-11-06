@@ -138,6 +138,7 @@ class VideoThumbnailService {
     required int timeMs,
     required int width,
     required int height,
+    bool exact = false,
   }) async {
     try {
       final frames = await _channel.invokeListMethod<Uint8List?>('getFrames', {
@@ -145,6 +146,7 @@ class VideoThumbnailService {
         'timesMs': [timeMs],
         'width': width,
         'height': height,
+        if (exact) 'exact': true,
       });
       return frames?.firstOrNull;
     } catch (error) {

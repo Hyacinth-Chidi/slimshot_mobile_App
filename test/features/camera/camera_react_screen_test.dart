@@ -29,13 +29,16 @@ class FakeReactionVideo implements ReactionVideo {
   bool disposed = false;
 
   @override
-  int get durationMs => 60000;
+  int durationMs = 60000;
+
+  /// Where the video says it is.
+  int position = 0;
 
   @override
   bool get completed => false;
 
   @override
-  Future<int?> positionMs() async => 0;
+  Future<int?> positionMs() async => position;
 
   @override
   Future<void> play() async => calls.add('play');
@@ -316,6 +319,69 @@ void main() {
     await tester.tap(key('camera_shutter'));
     await tester.pumpAndSettle();
     expect(picks, 2, reason: 'the shutter asks again, nothing chosen');
+  });
+
+  testWidgets('a tap on the video while recording pauses only the video, and another plays it on', (tester) async {
+    await pumpCamera(tester);
+    await enterAndChoose(tester);
+    await tester.tap(key('camera_shutter'));
+    await tester.pumpAndSettle();
+    camera.emit(const RecordingProgress(durationMs: 0, paused: false));
+    await tester.pumpAndSettle();
+    expect(videos.single.calls.last, 'play');
+
+    await tester.tap(key('reaction_video_tap'));
+    await tester.pump();
+    expect(videos.single.calls.last, 'pause');
+    expect(camera.calls, isNot(contains('pause')), reason: 'you are still being recorded');
+    expect(key('react_video_held'), findsOneWidget);
+
+    await tester.tap(key('reaction_video_tap'));
+    await tester.pump();
+    expect(videos.single.calls.last, 'play');
+    expect(key('react_video_held'), findsNothing);
+    await tester.tap(key('camera_shutter'));
+    await tester.pumpAndSettle();
+    expect(requests.single.recording.pieces.where((p) => p.isHold), hasLength(1));
+  });
+
+  testWidgets('the video at its end holds; its cross takes it away and you fill the frame', (tester) async {
+    await pumpCamera(tester);
+    await enterAndChoose(tester);
+    videos.single.durationMs = 1000;
+    await tester.tap(key('camera_shutter'));
+    await tester.pumpAndSettle();
+    camera.emit(const RecordingProgress(durationMs: 0, paused: false));
+    await tester.pumpAndSettle();
+    expect(key('react_take_remove'), findsNothing, reason: 'not while the video plays');
+
+    videos.single.position = 990;
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(key('react_take_remove'), findsOneWidget);
+    expect(camera.calls, isNot(contains('stop')), reason: 'the take goes on');
+    expect(requests, isEmpty);
+
+    await tester.tap(key('react_take_remove'));
+    await tester.pump();
+    expect(key('reaction_video'), findsNothing);
+    expect(key('react_take_remove'), findsNothing);
+
+    await tester.tap(key('camera_shutter'));
+    await tester.pumpAndSettle();
+    expect(requests.single.recording.removedAtMs, isNotNull);
+  });
+
+  testWidgets('a photo is not paused by a tap: there is nothing to pause', (tester) async {
+    picked = '/picked/meme.jpg';
+    await pumpCamera(tester);
+    await enterAndChoose(tester);
+    await tester.tap(key('camera_shutter'));
+    await tester.pumpAndSettle();
+    camera.emit(const RecordingProgress(durationMs: 0, paused: false));
+    await tester.pumpAndSettle();
+    expect(key('reaction_video_tap'), findsNothing);
+    await tester.tap(key('camera_shutter'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('nothing overflows in REACT on a small phone with large text', (tester) async {

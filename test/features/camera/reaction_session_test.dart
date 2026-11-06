@@ -152,14 +152,100 @@ void main() {
     expect(recording!.pieces.single.offsetMs, 0);
   });
 
-  test('the video reaching its end ends the take', () async {
+  test('the video reaching its end holds its last frame, and you go on recording', () async {
     player = FakeReactionPlayer(() => now, durationMs: 1000);
     final take = session();
     await take.start();
     await report(0);
     now = const Duration(milliseconds: 990);
     await take.sample();
-    expect(ended, 1);
+    expect(ended, 1, reason: 'the screen is told, to offer the cross');
+    expect(take.videoEnded, isTrue);
+    expect(camera.calls, isNot(contains('stop')), reason: 'the take goes on');
+    now = const Duration(milliseconds: 1500);
+    await take.sample();
+    expect(ended, 1, reason: 'said once');
+    now = const Duration(milliseconds: 3000);
+    final recording = await take.stop();
+    expect(recording!.pieces, const [
+      ReactionPiece(startMs: 0, endMs: 1000, offsetMs: 0),
+      ReactionPiece.hold(startMs: 1000, endMs: 3000, atMs: 1000),
+    ], reason: 'the hold starts exactly where the video ran out');
+    expect(recording.removedAtMs, isNull);
+  });
+
+  test('a tap pauses the video while you keep recording, and another plays it on from there', () async {
+    final take = session();
+    await take.start();
+    await report(0);
+    now = const Duration(milliseconds: 1000);
+    await take.toggleVideo();
+    expect(take.videoHeld, isTrue);
+    expect(player.calls.last, 'pause');
+    expect(camera.calls.last, isNot('pause'), reason: 'only the video stops');
+    now = const Duration(milliseconds: 3000);
+    await take.toggleVideo();
+    expect(take.videoHeld, isFalse);
+    expect(player.calls.last, 'play');
+    now = const Duration(milliseconds: 5000);
+    final recording = await take.stop();
+    expect(recording!.pieces, const [
+      ReactionPiece(startMs: 0, endMs: 1000, offsetMs: 0),
+      ReactionPiece.hold(startMs: 1000, endMs: 3000, atMs: 1000),
+      ReactionPiece(startMs: 3000, endMs: 5000, offsetMs: -2000),
+    ]);
+  });
+
+  test('pausing the take while the video is held keeps it held through the resume', () async {
+    final take = session();
+    await take.start();
+    await report(0);
+    now = const Duration(milliseconds: 1000);
+    await take.toggleVideo();
+    now = const Duration(milliseconds: 1500);
+    await take.pauseOrResume();
+    expect(camera.calls.last, 'pause');
+    now = const Duration(milliseconds: 4000);
+    await take.pauseOrResume();
+    expect(camera.calls.last, 'resume');
+    expect(player.calls.last, 'pause', reason: 'the video stays where the tap left it');
+    expect(take.videoHeld, isTrue);
+    now = const Duration(milliseconds: 5000);
+    final recording = await take.stop();
+    expect(recording!.pieces, const [
+      ReactionPiece(startMs: 0, endMs: 1000, offsetMs: 0),
+      ReactionPiece.hold(startMs: 1000, endMs: 2500, atMs: 1000),
+    ]);
+  });
+
+  test('the video taken away after its end: you fill the frame from that moment', () async {
+    player = FakeReactionPlayer(() => now, durationMs: 1000);
+    final take = session();
+    await take.start();
+    await report(0);
+    now = const Duration(milliseconds: 990);
+    await take.sample();
+    now = const Duration(milliseconds: 2000);
+    take.removeVideo();
+    expect(take.videoRemoved, isTrue);
+    await take.toggleVideo();
+    expect(player.calls.where((c) => c == 'play'), hasLength(1), reason: 'nothing to play once gone');
+    now = const Duration(milliseconds: 4000);
+    final recording = await take.stop();
+    expect(recording!.removedAtMs, 2000);
+    expect(recording.pieces.last, const ReactionPiece.hold(startMs: 1000, endMs: 2000, atMs: 1000));
+  });
+
+  test('the video is not taken away while it still plays', () async {
+    final take = session();
+    await take.start();
+    await report(0);
+    now = const Duration(milliseconds: 1000);
+    take.removeVideo();
+    expect(take.videoRemoved, isFalse);
+    now = const Duration(milliseconds: 2000);
+    final recording = await take.stop();
+    expect(recording!.removedAtMs, isNull);
   });
 
   test('a video whose length the player cannot tell never ends the take by itself', () async {

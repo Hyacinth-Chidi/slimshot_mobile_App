@@ -161,37 +161,79 @@ Rect coverCrop({required double contentAspect, required double regionAspect}) {
 bool videoSoundReachesMicrophone({required bool headphones, required bool videoSoundOn}) =>
     videoSoundOn && !headphones;
 
-/// A stretch of the take where the video ran against the recording at one
-/// offset: from [startMs] to [endMs] of the recording, the video at the
-/// recording's time plus [offsetMs].
+/// A stretch of the take: from [startMs] to [endMs] of the recording, either
+/// the video running at the recording's time plus [offsetMs], or — a hold —
+/// the video stopped on its frame at [holdAtMs] (paused by a tap, or at its
+/// end) while you went on recording. A hold is drawn as a still of that
+/// frame ([stillPath], taken when the reaction is made).
 @immutable
 class ReactionPiece {
-  const ReactionPiece({required this.startMs, required this.endMs, required this.offsetMs});
+  const ReactionPiece({required this.startMs, required this.endMs, required this.offsetMs})
+      : holdAtMs = null,
+        stillPath = null;
+
+  const ReactionPiece.hold({required this.startMs, required this.endMs, required int atMs, this.stillPath})
+      : offsetMs = 0,
+        holdAtMs = atMs;
 
   final int startMs;
   final int endMs;
   final int offsetMs;
 
-  Map<String, Object?> toJson() => {'s': startMs, 'e': endMs, 'o': offsetMs};
+  /// The video's time of the frame held, for a hold; null while it plays.
+  final int? holdAtMs;
+
+  /// The held frame as a picture, once taken.
+  final String? stillPath;
+
+  bool get isHold => holdAtMs != null;
+
+  ReactionPiece withStill(String? path) =>
+      isHold ? ReactionPiece.hold(startMs: startMs, endMs: endMs, atMs: holdAtMs!, stillPath: path) : this;
+
+  Map<String, Object?> toJson() => {
+        's': startMs,
+        'e': endMs,
+        'o': offsetMs,
+        if (holdAtMs != null) 'h': holdAtMs,
+        if (stillPath != null) 'p': stillPath,
+      };
 
   static ReactionPiece? fromJson(Object? raw) {
     if (raw is! Map) return null;
     final s = raw['s'];
     final e = raw['e'];
     final o = raw['o'];
-    if (s is! num || e is! num || o is! num) return null;
+    final h = raw['h'];
+    final path = raw['p'];
+    if (s is! num || e is! num) return null;
+    if (h is num) {
+      return ReactionPiece.hold(
+        startMs: s.toInt(),
+        endMs: e.toInt(),
+        atMs: h.toInt(),
+        stillPath: path is String ? path : null,
+      );
+    }
+    if (o is! num) return null;
     return ReactionPiece(startMs: s.toInt(), endMs: e.toInt(), offsetMs: o.toInt());
   }
 
   @override
   bool operator ==(Object other) =>
-      other is ReactionPiece && other.startMs == startMs && other.endMs == endMs && other.offsetMs == offsetMs;
+      other is ReactionPiece &&
+      other.startMs == startMs &&
+      other.endMs == endMs &&
+      other.offsetMs == offsetMs &&
+      other.holdAtMs == holdAtMs &&
+      other.stillPath == stillPath;
 
   @override
-  int get hashCode => Object.hash(startMs, endMs, offsetMs);
+  int get hashCode => Object.hash(startMs, endMs, offsetMs, holdAtMs, stillPath);
 
   @override
-  String toString() => 'ReactionPiece($startMs..$endMs, $offsetMs)';
+  String toString() =>
+      isHold ? 'ReactionPiece.hold($startMs..$endMs, at $holdAtMs)' : 'ReactionPiece($startMs..$endMs, $offsetMs)';
 }
 
 /// How the video ran against the recording through a take.
@@ -203,10 +245,13 @@ class ReactionPiece {
 /// recording's, and its offset is the median sample — one late answer from
 /// the player cannot move it. A run that agrees with the piece before it
 /// joins that piece; one that slipped starts its own, so the reaction lines
-/// up with the video across every pause.
+/// up with the video across every pause. A hold — the video stopped while
+/// the recording went on — is a piece of its own, and no run joins across
+/// one.
 class ReactionSyncLog {
-  final List<_Run> _runs = [];
+  final List<Object> _entries = [];
   _Run? _open;
+  _Hold? _hold;
 
   /// A run starts. Until the first sample, the video is taken to be where it
   /// was asked to start from.
@@ -224,17 +269,40 @@ class ReactionSyncLog {
     _open = null;
     if (run == null || recordingMs <= run.startMs) return;
     run.endMs = recordingMs;
-    _runs.add(run);
+    _entries.add(run);
   }
 
   bool get isRunning => _open != null;
 
+  /// The open run's offset as measured so far; null with no run open.
+  int? get runningOffsetMs => _open?.offsetMs;
+
+  /// The video stops on its frame at [videoMs] while the recording goes on.
+  void beginHold({required int recordingMs, required int videoMs}) {
+    _hold = _Hold(recordingMs, videoMs);
+  }
+
+  void endHold({required int recordingMs}) {
+    final hold = _hold;
+    _hold = null;
+    if (hold == null || recordingMs <= hold.startMs) return;
+    hold.endMs = recordingMs;
+    _entries.add(hold);
+  }
+
+  bool get isHolding => _hold != null;
+
   List<ReactionPiece> pieces({int toleranceMs = kReactionSyncToleranceMs}) {
     final pieces = <ReactionPiece>[];
-    for (final run in _runs) {
+    for (final entry in _entries) {
+      if (entry is _Hold) {
+        pieces.add(ReactionPiece.hold(startMs: entry.startMs, endMs: entry.endMs, atMs: entry.videoMs));
+        continue;
+      }
+      final run = entry as _Run;
       final offset = run.offsetMs;
       final last = pieces.isEmpty ? null : pieces.last;
-      if (last != null && (offset - last.offsetMs).abs() <= toleranceMs) {
+      if (last != null && !last.isHold && (offset - last.offsetMs).abs() <= toleranceMs) {
         pieces[pieces.length - 1] = ReactionPiece(startMs: last.startMs, endMs: run.endMs, offsetMs: last.offsetMs);
       } else {
         pieces.add(ReactionPiece(startMs: run.startMs, endMs: run.endMs, offsetMs: offset));
@@ -259,6 +327,14 @@ class _Run {
   }
 }
 
+class _Hold {
+  _Hold(this.startMs, this.videoMs);
+
+  final int startMs;
+  final int videoMs;
+  int endMs = 0;
+}
+
 /// One finished REACT take: what was recorded, against what, laid out how.
 /// Kept with the reaction in the camera's roll, so Edit can open it later as
 /// the two layers it was made from.
@@ -272,6 +348,7 @@ class ReactionTake {
     required this.video,
     required this.pieces,
     required this.videoSoundInCamera,
+    this.removedAtMs,
   });
 
   /// Names the project made from it.
@@ -290,6 +367,18 @@ class ReactionTake {
   /// The microphone heard the video too ([videoSoundReachesMicrophone]).
   final bool videoSoundInCamera;
 
+  /// The recording's time at which the video was taken away and you filled
+  /// the whole frame; null when it stayed to the end.
+  final int? removedAtMs;
+
+  /// The files of the camera's own this take made: the recording of you and
+  /// each held frame's still. Never the video reacted to.
+  List<String> get cameraFiles => [
+        camera.path,
+        for (final piece in pieces)
+          if (piece.stillPath != null) piece.stillPath!,
+      ];
+
   Map<String, Object?> toJson() => {
         'id': id,
         'layout': layout.name,
@@ -298,6 +387,7 @@ class ReactionTake {
         'video': video.toJson(),
         'pieces': [for (final piece in pieces) piece.toJson()],
         'micHearsVideo': videoSoundInCamera,
+        if (removedAtMs != null) 'removedAt': removedAtMs,
       };
 
   /// Null for anything it cannot read.
@@ -328,6 +418,7 @@ class ReactionTake {
           for (final piece in pieces) ?ReactionPiece.fromJson(piece),
       ],
       videoSoundInCamera: raw['micHearsVideo'] != false,
+      removedAtMs: raw['removedAt'] is num ? (raw['removedAt'] as num).toInt() : null,
     );
   }
 }
@@ -353,15 +444,13 @@ VideoEditorState reactionProject(ReactionTake take) {
 
   // Recording time 0 came before the video started: the project starts when
   // the video does.
-  final leadMs = photo ? 0 : (-pieces.first.offsetMs).clamp(0, math.max(0, cameraMs - 1)).toInt();
+  final first = pieces.first;
+  final leadMs =
+      photo || first.isHold ? 0 : (-first.offsetMs).clamp(0, math.max(0, cameraMs - 1)).toInt();
 
-  // The camera's part: cropped to its region's shape, which then fills the
-  // region exactly — the engine's contain fit spans the full width (or
-  // height), and the pinch scale and pan finish the job.
-  final region = places.camera;
-  final regionAspect = reactionRegionAspect(region);
-  const canvasAspect = 9 / 16;
-  final fitWidth = regionAspect > canvasAspect ? 1.0 : regionAspect / canvasAspect;
+  // From the video's removal on, you fill the frame and nothing is over you.
+  final removedMs = take.removedAtMs;
+  final contentEndMs = removedMs != null && removedMs > leadMs && removedMs < cameraMs ? removedMs : cameraMs;
 
   // The video's part, in the reference frame's pixels. Its quad is the video
   // contain-fitted into the overlay's square box, then scaled.
@@ -372,7 +461,6 @@ VideoEditorState reactionProject(ReactionTake take) {
   final aspect = video.aspectRatio;
   final fitW = aspect >= 1 ? 1.0 : aspect;
   final fitH = aspect >= 1 ? 1 / aspect : 1.0;
-  final boxPx = photo ? kImageOverlayBoxPx : kVideoOverlayBoxPx;
   final box = take.layout == ReactionLayout.float
       ? targetWidth / fitW
       : math.max(targetWidth / fitW, targetHeight / fitH);
@@ -383,37 +471,45 @@ VideoEditorState reactionProject(ReactionTake take) {
       : ClipMask.none;
   final position = Offset((target.center.dx - 0.5) * frame.width, (target.center.dy - 0.5) * frame.height);
 
-  final projectMs = cameraMs - leadMs;
-  final videoMs = (video.durationSeconds * 1000).round();
-  final overlays = <VideoOverlayModel>[];
-  final photos = [
-    if (photo)
-      ImageOverlayModel(
-        id: 'react_photo_${take.id}',
-        imagePath: video.path,
+  ImageOverlayModel still(String id, String path, int fromMs, int toMs) => ImageOverlayModel(
+        id: id,
+        imagePath: path,
         position: position,
-        scale: box / boxPx,
-        startTime: Duration.zero,
-        endTime: Duration(milliseconds: cameraMs),
+        scale: box / kImageOverlayBoxPx,
+        startTime: Duration(milliseconds: fromMs - leadMs),
+        endTime: Duration(milliseconds: toMs - leadMs),
         mask: mask,
         referenceCanvasSize: kReactionFrame,
-      ),
+      );
+
+  final videoMs = (video.durationSeconds * 1000).round();
+  final overlays = <VideoOverlayModel>[];
+  final stills = <ImageOverlayModel>[
+    if (photo) still('react_photo_${take.id}', video.path, leadMs, contentEndMs),
   ];
   for (var i = 0; i < (photo ? 0 : pieces.length); i++) {
     final piece = pieces[i];
     final fromMs = math.max(piece.startMs, leadMs);
-    final toMs = i == pieces.length - 1 ? cameraMs : math.min(piece.endMs, cameraMs);
+    // The last piece runs to the end of what was recorded.
+    final toMs = i == pieces.length - 1 ? contentEndMs : math.min(piece.endMs, contentEndMs);
+    if (toMs <= fromMs) continue;
+    if (piece.isHold) {
+      final path = piece.stillPath;
+      if (path == null) continue;
+      stills.add(still('react_still_${take.id}_$i', path, fromMs, toMs));
+      continue;
+    }
     final videoFromMs = fromMs + piece.offsetMs;
-    if (videoFromMs >= videoMs) break;
+    if (videoFromMs >= videoMs || videoFromMs < 0) continue;
     final startMs = fromMs - leadMs;
-    var endMs = math.min(toMs - leadMs, projectMs);
+    var endMs = toMs - leadMs;
     if (videoFromMs + (endMs - startMs) > videoMs) endMs = startMs + (videoMs - videoFromMs);
-    if (endMs <= startMs || videoFromMs < 0) continue;
+    if (endMs <= startMs) continue;
     overlays.add(VideoOverlayModel(
       id: overlays.isEmpty ? 'react_video_${take.id}' : 'react_video_${take.id}_${overlays.length}',
       videoPath: video.path,
       position: position,
-      scale: box / boxPx,
+      scale: box / kVideoOverlayBoxPx,
       timelineStart: Duration(milliseconds: startMs),
       timelineEnd: Duration(milliseconds: endMs),
       sourceStart: videoFromMs / 1000,
@@ -424,31 +520,50 @@ VideoEditorState reactionProject(ReactionTake take) {
     ));
   }
 
-  // The take stops a moment after the video's last frame, so where the video
-  // ran out the take ends too — that moment would be a half of nothing.
+  // A take made before holds stopped a moment after the video's last frame,
+  // so where the video ran out the take ends too — that moment would be a
+  // half of nothing. A take with holds or a removal ran on deliberately.
   var clipEndSeconds = camera.durationSeconds;
   final last = overlays.isEmpty ? null : overlays.last;
-  if (last != null && (last.sourceEnd * 1000).round() >= videoMs) {
+  final ranOnPurpose = removedMs != null || pieces.any((piece) => piece.isHold);
+  if (!ranOnPurpose && last != null && (last.sourceEnd * 1000).round() >= videoMs) {
     clipEndSeconds = math.min(clipEndSeconds, (leadMs + last.timelineEnd.inMilliseconds) / 1000);
   }
-  final clip = VideoSegment(
-    id: 'react_camera_${take.id}',
-    assetId: camera.id,
-    sourceStart: leadMs / 1000,
-    sourceEnd: clipEndSeconds,
-    canvasScale: AnimatableDouble(baseValue: region.width / fitWidth),
-    canvasOffsetX: AnimatableDouble(baseValue: region.center.dx - 0.5),
-    canvasOffsetY: AnimatableDouble(baseValue: region.center.dy - 0.5),
-    cropRect: coverCrop(contentAspect: camera.aspectRatio, regionAspect: regionAspect),
-  );
+
+  final segments = [
+    _cameraClip('react_camera_${take.id}', camera, places.camera, leadMs / 1000,
+        math.min(clipEndSeconds, contentEndMs / 1000)),
+    if (contentEndMs < cameraMs && contentEndMs / 1000 < clipEndSeconds)
+      _cameraClip('react_camera_${take.id}_full', camera, const Rect.fromLTWH(0, 0, 1, 1), contentEndMs / 1000,
+          clipEndSeconds),
+  ];
 
   return VideoEditorState(
     draftId: 'react_${take.id}',
     assets: [camera],
-    segments: [clip],
-    trimRange: RangeValues(clip.sourceStart, clip.sourceEnd),
+    segments: segments,
+    trimRange: RangeValues(segments.first.sourceStart, segments.first.sourceEnd),
     durationSeconds: camera.durationSeconds,
     videoOverlays: overlays,
-    imageOverlays: photos,
+    imageOverlays: stills,
+  );
+}
+
+/// The camera's part: cropped to [region]'s shape, which then fills the
+/// region exactly — the engine's contain fit spans the full width (or
+/// height), and the pinch scale and pan finish the job.
+VideoSegment _cameraClip(String id, MediaAsset camera, Rect region, double fromSeconds, double toSeconds) {
+  final regionAspect = reactionRegionAspect(region);
+  const canvasAspect = 9 / 16;
+  final fitWidth = regionAspect > canvasAspect ? 1.0 : regionAspect / canvasAspect;
+  return VideoSegment(
+    id: id,
+    assetId: camera.id,
+    sourceStart: fromSeconds,
+    sourceEnd: toSeconds,
+    canvasScale: AnimatableDouble(baseValue: region.width / fitWidth),
+    canvasOffsetX: AnimatableDouble(baseValue: region.center.dx - 0.5),
+    canvasOffsetY: AnimatableDouble(baseValue: region.center.dy - 0.5),
+    cropRect: coverCrop(contentAspect: camera.aspectRatio, regionAspect: regionAspect),
   );
 }

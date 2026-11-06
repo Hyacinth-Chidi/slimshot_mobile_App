@@ -33,6 +33,7 @@ ReactionTake _take({
   MediaAsset? video,
   List<ReactionPiece>? pieces,
   bool videoSoundInCamera = true,
+  int? removedAtMs,
 }) =>
     ReactionTake(
       id: 't1',
@@ -42,6 +43,7 @@ ReactionTake _take({
       video: video ?? _video(),
       pieces: pieces ?? const [ReactionPiece(startMs: 0, endMs: 12000, offsetMs: 0)],
       videoSoundInCamera: videoSoundInCamera,
+      removedAtMs: removedAtMs,
     );
 
 /// Where a composed clip lands on the canvas, in canvas fractions — the
@@ -275,15 +277,73 @@ void main() {
       }
     });
 
+    test("a held frame is a still in the video's place for as long as it was held", () {
+      for (final layout in ReactionLayout.values) {
+        final take = _take(layout: layout, pieces: const [
+          ReactionPiece(startMs: 0, endMs: 4000, offsetMs: 0),
+          ReactionPiece.hold(startMs: 4000, endMs: 9000, atMs: 4000, stillPath: '/camera/still_1.jpg'),
+          ReactionPiece(startMs: 9000, endMs: 12000, offsetMs: -5000),
+        ]);
+        final state = reactionProject(take);
+        expect(state.videoOverlays.map((o) => (o.timelineStart, o.timelineEnd, o.sourceStart)), [
+          (Duration.zero, const Duration(seconds: 4), 0.0),
+          (const Duration(seconds: 9), const Duration(seconds: 12), 4.0),
+        ]);
+        final still = state.imageOverlays.single;
+        expect(still.imagePath, '/camera/still_1.jpg');
+        expect((still.startTime, still.endTime), (const Duration(seconds: 4), const Duration(seconds: 9)));
+        expect(still.referenceCanvasSize, kReactionFrame);
+        final places = reactionPlaces(layout: layout, window: take.window, videoAspect: take.video.aspectRatio);
+        final composed = _compose(take).overlays.where((o) => o.id == still.id).single;
+        _expectRect(_overlayOnCanvas(composed, take.video.aspectRatio), places.video);
+      }
+    });
+
+    test('a video held at its end keeps you recording to the end of the take', () {
+      final state = reactionProject(_take(pieces: const [
+        ReactionPiece(startMs: 0, endMs: 5000, offsetMs: 55000),
+        ReactionPiece.hold(startMs: 5000, endMs: 12000, atMs: 60000, stillPath: '/camera/still_end.jpg'),
+      ]));
+      expect(state.segments.single.sourceEnd, 12, reason: 'the take is not cut where the video ran out');
+      expect(state.imageOverlays.single.endTime, const Duration(seconds: 12));
+    });
+
+    test('a hold whose still could not be taken shows nothing there, and fails nothing', () {
+      final state = reactionProject(_take(pieces: const [
+        ReactionPiece(startMs: 0, endMs: 4000, offsetMs: 0),
+        ReactionPiece.hold(startMs: 4000, endMs: 12000, atMs: 4000),
+      ]));
+      expect(state.imageOverlays, isEmpty);
+      expect(state.videoOverlays, hasLength(1));
+    });
+
+    test('the video removed: you fill the whole frame from that moment', () {
+      for (final layout in ReactionLayout.values) {
+        final take = _take(layout: layout, removedAtMs: 8000, pieces: const [
+          ReactionPiece(startMs: 0, endMs: 5000, offsetMs: 55000),
+          ReactionPiece.hold(startMs: 5000, endMs: 8000, atMs: 60000, stillPath: '/camera/still_end.jpg'),
+        ]);
+        final state = reactionProject(take);
+        expect(state.segments.map((s) => (s.sourceStart, s.sourceEnd)), [(0.0, 8.0), (8.0, 12.0)]);
+        final clips = _compose(take).videoClips;
+        final places = reactionPlaces(layout: layout, window: take.window, videoAspect: take.video.aspectRatio);
+        _expectRect(_clipOnCanvas(clips[0]), places.camera);
+        _expectRect(_clipOnCanvas(clips[1]), const Rect.fromLTWH(0, 0, 1, 1));
+        expect(state.imageOverlays.single.endTime, const Duration(seconds: 8));
+      }
+    });
+
     test('a take survives a round trip', () {
       final take = _take(
         layout: ReactionLayout.float,
         window: const ReactionWindow(centerX: 0.6, centerY: 0.3, width: 0.5),
         pieces: const [
           ReactionPiece(startMs: 0, endMs: 4000, offsetMs: -80),
-          ReactionPiece(startMs: 4000, endMs: 12000, offsetMs: 140),
+          ReactionPiece.hold(startMs: 4000, endMs: 6000, atMs: 3920, stillPath: '/camera/still.jpg'),
+          ReactionPiece(startMs: 6000, endMs: 12000, offsetMs: 140),
         ],
         videoSoundInCamera: false,
+        removedAtMs: 11000,
       );
       final back = ReactionTake.fromJson(take.toJson())!;
       expect(back.toJson(), take.toJson());
@@ -342,6 +402,43 @@ void main() {
         ReactionPiece(startMs: 0, endMs: 2000, offsetMs: -100),
         ReactionPiece(startMs: 2000, endMs: 3000, offsetMs: 100),
       ]);
+    });
+
+    test('a hold keeps the frame the video stopped on until it plays again', () {
+      final log = ReactionSyncLog()
+        ..beginRun(recordingMs: 0, videoMs: 0)
+        ..endRun(recordingMs: 2000)
+        ..beginHold(recordingMs: 2000, videoMs: 1980)
+        ..endHold(recordingMs: 3000)
+        ..beginRun(recordingMs: 3000, videoMs: 1980)
+        ..endRun(recordingMs: 5000);
+      expect(log.pieces(), const [
+        ReactionPiece(startMs: 0, endMs: 2000, offsetMs: 0),
+        ReactionPiece.hold(startMs: 2000, endMs: 3000, atMs: 1980),
+        ReactionPiece(startMs: 3000, endMs: 5000, offsetMs: -1020),
+      ]);
+    });
+
+    test('runs either side of a hold stay apart, even a hold too short to slip them', () {
+      final log = ReactionSyncLog()
+        ..beginRun(recordingMs: 0, videoMs: 0)
+        ..endRun(recordingMs: 2000)
+        ..beginHold(recordingMs: 2000, videoMs: 2000)
+        ..endHold(recordingMs: 2010)
+        ..beginRun(recordingMs: 2010, videoMs: 2000)
+        ..endRun(recordingMs: 4000);
+      expect(log.pieces(), hasLength(3));
+      expect(log.pieces()[2], const ReactionPiece(startMs: 2010, endMs: 4000, offsetMs: -10));
+    });
+
+    test('a hold still open when the take ends closes with it', () {
+      final log = ReactionSyncLog()
+        ..beginRun(recordingMs: 0, videoMs: 0)
+        ..endRun(recordingMs: 2000)
+        ..beginHold(recordingMs: 2000, videoMs: 2000);
+      expect(log.isHolding, isTrue);
+      log.endHold(recordingMs: 7000);
+      expect(log.pieces().last, const ReactionPiece.hold(startMs: 2000, endMs: 7000, atMs: 2000));
     });
 
     test('nothing recorded is no pieces', () {

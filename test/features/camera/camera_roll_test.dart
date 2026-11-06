@@ -123,7 +123,10 @@ void main() {
         height: 1080,
         hasAudio: true,
       ),
-      pieces: [ReactionPiece(startMs: 0, endMs: 8000, offsetMs: -90)],
+      pieces: [
+        ReactionPiece(startMs: 0, endMs: 5000, offsetMs: -90),
+        ReactionPiece.hold(startMs: 5000, endMs: 8000, atMs: 4910, stillPath: '/camera/IMG_still.jpg'),
+      ],
       videoSoundInCamera: true,
     );
 
@@ -147,11 +150,12 @@ void main() {
     test('its take is kept from the launch sweep', () async {
       final roll = CameraRoll();
       await roll.add(reaction());
-      expect(await CameraRoll.storedPaths(), {'/g/SlimShot_VID_r1.mp4', '/camera/VID_take.mp4'});
+      expect(await CameraRoll.storedPaths(),
+          {'/g/SlimShot_VID_r1.mp4', '/camera/VID_take.mp4', '/camera/IMG_still.jpg'});
     });
 
     test("deleting it takes its take too; the video reacted to is the user's", () {
-      expect(cameraFilesOf(reaction()), ['/camera/VID_take.mp4']);
+      expect(cameraFilesOf(reaction()), ['/camera/VID_take.mp4', '/camera/IMG_still.jpg']);
       expect(cameraFilesOf(shot('a.jpg')), isEmpty, reason: 'in the gallery: deleted through its address');
       const private = RollShot(path: '/camera/IMG_1.jpg', isVideo: false, durationMs: 0, takenAt: null);
       expect(cameraFilesOf(private), ['/camera/IMG_1.jpg'], reason: "kept in SlimShot: its file is the camera's");

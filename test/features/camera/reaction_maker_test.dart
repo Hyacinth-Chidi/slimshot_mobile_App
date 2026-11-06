@@ -12,6 +12,14 @@ class FakeRenderer implements ReactionRenderer {
   bool unreadableTake = false;
   bool refusePublish = false;
   bool failRender = false;
+  bool failStills = false;
+  final stillsAsked = <int>[];
+
+  @override
+  Future<String?> stillAt(MediaAsset video, int ms) async {
+    stillsAsked.add(ms);
+    return failStills ? null : '/camera/IMG_still_$ms.jpg';
+  }
 
   @override
   Future<List<MediaAsset>> probe(List<String> paths) async => [
@@ -49,11 +57,17 @@ class FakeRenderer implements ReactionRenderer {
   }
 }
 
-ReactionRequest _request({bool toGallery = true}) => ReactionRequest(
-      recording: const ReactionRecording(
+ReactionRequest _request({
+  bool toGallery = true,
+  List<ReactionPiece> pieces = const [ReactionPiece(startMs: 0, endMs: 6000, offsetMs: -100)],
+  int? removedAtMs,
+}) =>
+    ReactionRequest(
+      recording: ReactionRecording(
         cameraPath: '/camera/VID_take.mp4',
         durationMs: 6000,
-        pieces: [ReactionPiece(startMs: 0, endMs: 6000, offsetMs: -100)],
+        pieces: pieces,
+        removedAtMs: removedAtMs,
       ),
       videoPath: '/picked/clip.mp4',
       layout: ReactionLayout.topBottom,
@@ -86,6 +100,43 @@ void main() {
     expect(shot.reaction!.layout, ReactionLayout.topBottom);
     expect(shot.reaction!.pieces.single.offsetMs, -100);
     expect(shot.reaction!.camera.path, '/camera/VID_take.mp4');
+  });
+
+  test('each held frame is taken as a still, exact, and drawn where it was held', () async {
+    final shot = await makeReaction(
+      _request(
+        removedAtMs: 5500,
+        pieces: const [
+          ReactionPiece(startMs: 0, endMs: 2000, offsetMs: 0),
+          ReactionPiece.hold(startMs: 2000, endMs: 3000, atMs: 2000),
+          ReactionPiece(startMs: 3000, endMs: 4000, offsetMs: 35000),
+          ReactionPiece.hold(startMs: 4000, endMs: 5500, atMs: 40000),
+        ],
+      ),
+      renderer,
+    );
+    expect(renderer.stillsAsked, [2000, 40000 - kReactionLastFrameBackMs],
+        reason: 'a frame at the very end is asked a frame back, where one exists');
+    final take = shot!.reaction!;
+    expect(take.pieces.where((p) => p.isHold).map((p) => p.stillPath),
+        ['/camera/IMG_still_2000.jpg', '/camera/IMG_still_${40000 - kReactionLastFrameBackMs}.jpg']);
+    expect(take.removedAtMs, 5500);
+    final project = renderer.rendered.single;
+    expect(project.imageOverlays.map((o) => o.imagePath), take.pieces.where((p) => p.isHold).map((p) => p.stillPath));
+    expect(project.segments, hasLength(2), reason: 'you fill the frame once the video is gone');
+  });
+
+  test('a still that cannot be taken leaves its hold empty, and the reaction is still made', () async {
+    renderer.failStills = true;
+    final shot = await makeReaction(
+      _request(pieces: const [
+        ReactionPiece(startMs: 0, endMs: 2000, offsetMs: 0),
+        ReactionPiece.hold(startMs: 2000, endMs: 6000, atMs: 2000),
+      ]),
+      renderer,
+    );
+    expect(shot, isNotNull);
+    expect(renderer.rendered.single.imageOverlays, isEmpty);
   });
 
   test('with no gallery the reaction stays in SlimShot', () async {

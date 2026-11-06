@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -7,6 +10,7 @@ import '../../video_editor/models/media_asset.dart';
 import '../../video_editor/models/video_editor_state.dart';
 import '../../video_editor/services/media_import_service.dart';
 import '../../video_editor/services/native_timeline_preview_service.dart';
+import '../../video_editor/services/video_thumbnail_service.dart';
 import '../logic/camera_controller.dart';
 import '../logic/camera_files.dart';
 import '../logic/camera_roll.dart';
@@ -37,6 +41,14 @@ class ReactionRequest {
   final bool toGallery;
 }
 
+/// A frame held at a video's very end is taken this far back: at the end
+/// itself there may be no frame to decode.
+const int kReactionLastFrameBackMs = 40;
+
+/// A still is taken no larger than this on its long side — nothing renders
+/// one larger.
+const int kReactionStillMaxPx = 1280;
+
 /// A rendered reaction: its file and how long it runs.
 @immutable
 class RenderedReaction {
@@ -60,6 +72,10 @@ abstract class ReactionRenderer {
 
   /// Moves [path] into the gallery's album; null where it would not take it.
   Future<SavedShot?> publish(String path);
+
+  /// The frame of [video] at [ms], exactly, as a picture in the camera's
+  /// folder; null where it cannot be had.
+  Future<String?> stillAt(MediaAsset video, int ms);
 }
 
 /// Turns a finished take into the reaction: both files measured, the
@@ -80,6 +96,19 @@ Future<RollShot?> makeReaction(
   final video = find(request.videoPath);
   if (camera == null || video == null || camera.durationSeconds <= 0) return null;
 
+  // Each held frame becomes a still; one that cannot be taken leaves its hold
+  // empty rather than costing the reaction.
+  final videoMs = (video.durationSeconds * 1000).round();
+  final pieces = <ReactionPiece>[];
+  for (final piece in recording.pieces) {
+    if (!piece.isHold || video.isImage) {
+      pieces.add(piece);
+      continue;
+    }
+    final frameMs = math.max(0, math.min(piece.holdAtMs!, videoMs - kReactionLastFrameBackMs));
+    pieces.add(piece.withStill(await renderer.stillAt(video, frameMs)));
+  }
+
   final at = now ?? DateTime.now();
   final take = ReactionTake(
     id: at.millisecondsSinceEpoch.toString(),
@@ -87,8 +116,9 @@ Future<RollShot?> makeReaction(
     window: request.window,
     camera: camera,
     video: video,
-    pieces: recording.pieces,
+    pieces: pieces,
     videoSoundInCamera: request.micHearsVideo,
+    removedAtMs: recording.removedAtMs,
   );
   final rendered = await renderer.render(
     reactionProject(take),
@@ -158,4 +188,29 @@ class EngineReactionRenderer implements ReactionRenderer {
 
   @override
   Future<SavedShot?> publish(String path) => camera.publishVideo(path);
+
+  @override
+  Future<String?> stillAt(MediaAsset video, int ms) async {
+    final long = math.max(video.width, video.height);
+    final scale = long > kReactionStillMaxPx ? kReactionStillMaxPx / long : 1.0;
+    final bytes = await VideoThumbnailService.instance.frameAtSize(
+      path: video.path,
+      timeMs: ms,
+      width: math.max(1, (video.width * scale).round()),
+      height: math.max(1, (video.height * scale).round()),
+      exact: true,
+    );
+    if (bytes == null || bytes.isEmpty) {
+      debugPrint('REACT: no still of ${video.path} at ${ms}ms');
+      return null;
+    }
+    try {
+      final path = await (await CameraFiles.open()).newShotPath('jpg');
+      await File(path).writeAsBytes(bytes, flush: true);
+      return path;
+    } on FileSystemException catch (error) {
+      debugPrint('REACT: the still could not be saved: $error');
+      return null;
+    }
+  }
 }

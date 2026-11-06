@@ -116,7 +116,7 @@ class CameraRoll extends ChangeNotifier {
   static Future<Set<String>> storedPaths() async => {
         for (final shot in await _read()) ...[
           shot.path,
-          if (shot.reaction != null) shot.reaction!.camera.path,
+          if (shot.reaction != null) ...shot.reaction!.cameraFiles,
         ],
       };
 
@@ -149,5 +149,5 @@ class CameraRoll extends ChangeNotifier {
 /// reaction was made against — that is the user's.
 List<String> cameraFilesOf(RollShot shot) => [
       if (shot.uri == null) shot.path,
-      if (shot.reaction != null) shot.reaction!.camera.path,
+      if (shot.reaction != null) ...shot.reaction!.cameraFiles,
     ];

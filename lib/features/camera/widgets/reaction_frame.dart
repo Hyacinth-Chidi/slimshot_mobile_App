@@ -146,6 +146,9 @@ class PluginReactionVideo implements ReactionVideo {
 /// rendered from). Each picture fills its place edge to edge; in the float,
 /// the video's window can be dragged and pinched while [windowMovable].
 /// A [placeholder] stands in the video's place, unscaled, until there is one.
+/// Through a take, [onVideoTap] answers a tap on the video, [videoChrome] is
+/// laid over its place, and once the video is gone ([videoGone]) you fill
+/// the frame.
 class ReactionFrame extends StatefulWidget {
   const ReactionFrame({
     super.key,
@@ -157,6 +160,9 @@ class ReactionFrame extends StatefulWidget {
     this.onWindowChanged,
     this.windowMovable = true,
     this.placeholder,
+    this.onVideoTap,
+    this.videoChrome,
+    this.videoGone = false,
   });
 
   final ReactionLayout layout;
@@ -170,6 +176,9 @@ class ReactionFrame extends StatefulWidget {
   final ValueChanged<ReactionWindow>? onWindowChanged;
   final bool windowMovable;
   final Widget? placeholder;
+  final VoidCallback? onVideoTap;
+  final Widget? videoChrome;
+  final bool videoGone;
 
   /// Where the camera's picture sits in a frame of [frame] — what a tap to
   /// focus is measured against.
@@ -178,8 +187,11 @@ class ReactionFrame extends StatefulWidget {
     required ReactionWindow window,
     required double videoAspect,
     required Size frame,
+    bool videoGone = false,
   }) =>
-      _scaled(reactionPlaces(layout: layout, window: window, videoAspect: videoAspect).camera, frame);
+      videoGone
+          ? Offset.zero & frame
+          : _scaled(reactionPlaces(layout: layout, window: window, videoAspect: videoAspect).camera, frame);
 
   @override
   State<ReactionFrame> createState() => _ReactionFrameState();
@@ -219,7 +231,7 @@ class _ReactionFrameState extends State<ReactionFrame> {
       builder: (context, constraints) {
         final frame = constraints.biggest;
         final places = reactionPlaces(layout: widget.layout, window: widget.window, videoAspect: widget.videoAspect);
-        final cameraRect = _scaled(places.camera, frame);
+        final cameraRect = widget.videoGone ? Offset.zero & frame : _scaled(places.camera, frame);
         final videoRect = _scaled(places.video, frame);
         final video = widget.placeholder ?? ClipRect(
           child: FittedBox(
@@ -239,10 +251,11 @@ class _ReactionFrameState extends State<ReactionFrame> {
                 rect: cameraRect,
                 child: ClipRect(child: widget.camera(cameraRect.size)),
               ),
-              Positioned.fromRect(
-                key: const ValueKey('reaction_video'),
-                rect: videoRect,
-                child: widget.layout == ReactionLayout.float
+              if (!widget.videoGone)
+                Positioned.fromRect(
+                  key: const ValueKey('reaction_video'),
+                  rect: videoRect,
+                  child: _withChrome(_tappable(widget.layout == ReactionLayout.float
                     ? IgnorePointer(
                         ignoring: !widget.windowMovable,
                         child: Listener(
@@ -274,13 +287,30 @@ class _ReactionFrameState extends State<ReactionFrame> {
                           ),
                         ),
                       )
-                    : video,
-              ),
+                    : video)),
+                ),
             ],
           ),
         );
       },
     );
+  }
+
+  Widget _tappable(Widget child) {
+    final onTap = widget.onVideoTap;
+    if (onTap == null) return child;
+    return GestureDetector(
+      key: const ValueKey('reaction_video_tap'),
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: child,
+    );
+  }
+
+  Widget _withChrome(Widget child) {
+    final chrome = widget.videoChrome;
+    if (chrome == null) return child;
+    return Stack(fit: StackFit.expand, children: [child, chrome]);
   }
 }
 
