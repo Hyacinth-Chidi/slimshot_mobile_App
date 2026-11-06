@@ -9,7 +9,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
 import android.view.Surface
-import androidx.camera.core.Preview
+import androidx.camera.core.SurfaceRequest
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -131,8 +131,12 @@ internal class ReactLiveRecorder(
         screen = egl.windowSurface(screenTexture)
     }
 
-    /** CameraX's preview goes into the recorder's camera texture. */
-    val surfaceProvider = Preview.SurfaceProvider { request ->
+    /**
+     * CameraX's preview goes into the recorder's camera texture. The camera's
+     * turn also goes to [onInfo]: CameraX keeps one listener per request, and
+     * the channel reports it to Dart.
+     */
+    fun provideSurface(request: SurfaceRequest, onInfo: (SurfaceRequest.TransformationInfo) -> Unit) {
         val size = request.resolution
         cameraInput.setDefaultBufferSize(size.width, size.height)
         request.setTransformationInfoListener(mainExecutor) { info ->
@@ -142,6 +146,7 @@ internal class ReactLiveRecorder(
             val turned = info.hasCameraTransform()
             cameraTurns = if (turned) 0 else info.rotationDegrees / 90
             cameraMirrored = !turned && info.isMirroring
+            onInfo(info)
         }
         request.provideSurface(cameraSurface, mainExecutor) { }
     }

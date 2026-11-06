@@ -38,7 +38,14 @@ import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.media3.common.util.UnstableApi
+import com.techfamz.slimshotai.camera.react.ReactCapabilityProbe
+import com.techfamz.slimshotai.camera.react.ReactLiveRecorder
+import com.techfamz.slimshotai.camera.react.ReactScene
+import com.techfamz.slimshotai.camera.react.TakeSound
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -79,7 +86,18 @@ import java.util.concurrent.TimeUnit
  * Photos and videos are turned to the way the phone is **held**
  * ([orientation]), while the screen stays upright: a photo taken sideways is a
  * landscape photo, as every camera app saves it.
+ *
+ * **REACT recorded live** is the mode `react_live` (with `liveShortSide`,
+ * 1080 or 720): Preview only, into a [ReactLiveRecorder] that draws your
+ * camera and the video together into its own Flutter texture — the
+ * `textureId` answered — and, while recording, into the file. The record
+ * calls are the video mode's, routed to it; `reactLiveFacts`, `reactSource`,
+ * `reactClearSource`, `reactScene`, `reactPlayback` and `reactSound` are its
+ * own, and it says `reactVideoEnded` and `reactFailed`. The app leaving the
+ * screen mid-take finishes the file and says `recordingEnded`, as the video
+ * mode does.
  */
+@OptIn(UnstableApi::class)
 class CameraChannel(
     private val context: Context,
     private val lifecycleOwner: LifecycleOwner,
@@ -119,6 +137,28 @@ class CameraChannel(
     private var recording: Recording? = null
     private var recordingPath: String? = null
 
+    /** The sound settings of the live take being started. */
+    private var pendingTake = TakeSound.PLAIN
+
+    /** REACT recorded live: the recorder and the Flutter texture it draws into. */
+    private var live: ReactLiveRecorder? = null
+    private var liveEntry: TextureRegistry.SurfaceTextureEntry? = null
+    private var liveShortSide = 1080
+
+    /** The app leaving the screen mid-take: the live file is finished with what it has. */
+    private val lifecycleWatcher = LifecycleEventObserver { _, event ->
+        if (event == Lifecycle.Event.ON_STOP) {
+            val recorder = live
+            if (recorder != null && recorder.isRecording) {
+                recorder.stop { answer -> events?.success(mapOf("type" to "recordingEnded") + answer) }
+            }
+        }
+    }
+
+    init {
+        lifecycleOwner.lifecycle.addObserver(lifecycleWatcher)
+    }
+
     /** The recording goes into the gallery, its file found at the end. */
     private var recordingToGallery = false
     private var recordingPaused = false
@@ -139,6 +179,7 @@ class CameraChannel(
                 lens = call.argument<String>("lens") ?: lens
                 mode = call.argument<String>("mode") ?: mode
                 flash = call.argument<String>("flash") ?: flash
+                call.argument<Int>("liveShortSide")?.let { liveShortSide = it }
                 withProvider(result) { provider ->
                     try {
                         bind(provider)
@@ -172,13 +213,49 @@ class CameraChannel(
                 result.success(null)
             }
 
+            "reactLiveFacts" -> photoWorker.execute {
+                val facts = try {
+                    ReactCapabilityProbe.facts()
+                } catch (error: Exception) {
+                    Log.w(TAG, "REACT live facts failed", error)
+                    emptyMap()
+                }
+                mainExecutor.execute { result.success(facts) }
+            }
+            "reactSource" -> {
+                val recorder = live
+                val path = call.argument<String>("path")
+                if (recorder == null || path.isNullOrEmpty()) {
+                    result.error("react_source_failed", REACT_SOURCE_FAILED, null)
+                } else {
+                    recorder.setSource(path, call.argument<Boolean>("photo") == true) { error ->
+                        if (error == null) result.success(null) else result.error("react_source_failed", error, null)
+                    }
+                }
+            }
+            "reactClearSource" -> {
+                live?.clearSource()
+                result.success(null)
+            }
+            "reactScene" -> {
+                live?.setScene(ReactScene.fromMap(call.arguments as? Map<*, *>))
+                result.success(null)
+            }
+            "reactPlayback" -> {
+                live?.setPlaying(call.argument<Boolean>("playing") == true)
+                result.success(null)
+            }
+            "reactSound" -> {
+                live?.setSpeakerOn(call.argument<Boolean>("on") != false)
+                result.success(null)
+            }
             "takePhoto" -> takePhoto(
                 call.argument<String>("path"),
                 call.argument<Boolean>("gallery") ?: false,
                 result,
             )
             "startRecording" -> startRecording(
-                call.argument<String>("path"),
+                call.argument<String>("path").also { pendingTake = TakeSound.fromMap(call.argument<Map<*, *>>("react")) },
                 call.argument<Boolean>("audio") ?: true,
                 call.argument<Boolean>("gallery") ?: false,
                 result,
@@ -190,11 +267,11 @@ class CameraChannel(
             "publishVideo" -> publishVideo(call.argument<String>("path"), result)
             "headphones" -> result.success(Headphones.connected(context))
             "pauseRecording" -> {
-                recording?.pause()
+                live?.takeIf { mode == MODE_REACT_LIVE }?.pause() ?: recording?.pause()
                 result.success(null)
             }
             "resumeRecording" -> {
-                recording?.resume()
+                live?.takeIf { mode == MODE_REACT_LIVE }?.resume() ?: recording?.resume()
                 result.success(null)
             }
             "stopRecording" -> stopRecording(result)
@@ -227,6 +304,8 @@ class CameraChannel(
         recording = null
         provider.unbindAll()
         camera = null
+        if (mode == MODE_REACT_LIVE) return bindLive(provider)
+        releaseLive()
 
         val selector = selectorFor(provider)
         val entry = texture ?: textureRegistry.createSurfaceTexture().also { texture = it }
@@ -294,6 +373,50 @@ class CameraChannel(
         observe(bound)
         orientation.enable()
         applyFlash()
+    }
+
+    /**
+     * REACT recorded live: Preview only, into the recorder — a low-end phone is
+     * never asked for more than one use case here.
+     */
+    private fun bindLive(provider: ProcessCameraProvider) {
+        val selector = selectorFor(provider)
+        val recorder = live ?: run {
+            val entry = textureRegistry.createSurfaceTexture().also { liveEntry = it }
+            ReactLiveRecorder(context, entry) { event -> events?.success(event) }.also { live = it }
+        }
+        val frame = ResolutionSelector.Builder()
+            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+            .build()
+        val preview = Preview.Builder()
+            .setResolutionSelector(frame)
+            .setTargetRotation(displayRotation())
+            .build()
+        preview.setSurfaceProvider(mainExecutor) { request ->
+            previewSize = request.resolution
+            recorder.provideSurface(request) { info ->
+                rotationDegrees = info.rotationDegrees
+                mirrored = info.isMirroring
+                cameraTransform = info.hasCameraTransform()
+                emitPreview()
+            }
+            emitPreview()
+        }
+        imageCapture = null
+        videoCapture = null
+        val bound = provider.bindToLifecycle(lifecycleOwner, selector, preview)
+        camera = bound
+        observe(bound)
+        orientation.enable()
+        applyFlash()
+    }
+
+    /** Leaving REACT recorded live: the recorder and its texture go. */
+    private fun releaseLive() {
+        live?.release()
+        live = null
+        liveEntry?.release()
+        liveEntry = null
     }
 
     /**
@@ -369,7 +492,7 @@ class CameraChannel(
         val zoom = info?.zoomState?.value
         val providerNow = provider
         return mapOf(
-            "textureId" to texture?.id(),
+            "textureId" to if (mode == MODE_REACT_LIVE) liveEntry?.id() else texture?.id(),
             "lens" to lens,
             "mode" to mode,
             "hasFlash" to (info?.hasFlashUnit() ?: false),
@@ -399,7 +522,7 @@ class CameraChannel(
 
     private fun applyFlash() {
         val cam = camera ?: return
-        if (mode == MODE_VIDEO) {
+        if (mode == MODE_VIDEO || mode == MODE_REACT_LIVE) {
             if (cam.cameraInfo.hasFlashUnit()) {
                 cam.cameraControl.enableTorch(flash == FLASH_ON)
             }
@@ -481,6 +604,19 @@ class CameraChannel(
 
     @SuppressLint("MissingPermission")
     private fun startRecording(path: String?, audio: Boolean, gallery: Boolean, result: MethodChannel.Result) {
+        val recorder = live
+        if (mode == MODE_REACT_LIVE && recorder != null) {
+            if (path.isNullOrEmpty()) {
+                result.error("camera_unavailable", "The camera is not ready to record.", null)
+                return
+            }
+            val micGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+            recorder.start(path, gallery, audio && micGranted, liveShortSide, pendingTake) { error ->
+                if (error == null) result.success(null) else result.error("camera_unavailable", error, null)
+            }
+            return
+        }
         val capture = videoCapture
         if (path.isNullOrEmpty() || capture == null) {
             result.error("camera_unavailable", "The camera is not ready to record.", null)
@@ -571,6 +707,11 @@ class CameraChannel(
     }
 
     private fun stopRecording(result: MethodChannel.Result) {
+        val recorder = live
+        if (mode == MODE_REACT_LIVE && recorder != null) {
+            recorder.stop { answer -> result.success(answer) }
+            return
+        }
         val current = recording
         if (current == null) {
             result.success(emptyMap<String, Any>())
@@ -583,6 +724,8 @@ class CameraChannel(
     private fun close() {
         pendingStop?.success(emptyMap<String, Any>())
         pendingStop = null
+        provider?.unbindAll()
+        releaseLive()
         recording?.close()
         recording = null
         recordingPath?.let { File(it).delete() }
@@ -604,6 +747,7 @@ class CameraChannel(
 
     fun release() {
         close()
+        lifecycleOwner.lifecycle.removeObserver(lifecycleWatcher)
         photoWorker.shutdown()
     }
 
@@ -635,6 +779,8 @@ class CameraChannel(
         const val LENS_BACK = "back"
         const val MODE_PHOTO = "photo"
         const val MODE_VIDEO = "video"
+        const val MODE_REACT_LIVE = "react_live"
+        private const val REACT_SOURCE_FAILED = "This can't be opened."
         const val FLASH_OFF = "off"
         const val FLASH_AUTO = "auto"
         const val FLASH_ON = "on"
