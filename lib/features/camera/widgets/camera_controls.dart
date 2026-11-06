@@ -190,7 +190,7 @@ class CameraShutter extends StatelessWidget {
   }
 }
 
-/// PHOTO · VIDEO: the chosen one white over a purple line.
+/// PHOTO · VIDEO · REACT: the chosen one white over a purple line.
 class CameraModeSwitch extends StatelessWidget {
   const CameraModeSwitch({
     super.key,
@@ -203,51 +203,56 @@ class CameraModeSwitch extends StatelessWidget {
   final bool enabled;
   final ValueChanged<CameraMode> onSelect;
 
-  static const _labels = {CameraMode.photo: 'PHOTO', CameraMode.video: 'VIDEO'};
+  static const _labels = {CameraMode.photo: 'PHOTO', CameraMode.video: 'VIDEO', CameraMode.react: 'REACT'};
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final entry in _labels.entries)
-          GestureDetector(
-            key: ValueKey('camera_mode_${entry.key.name}'),
-            behavior: HitTestBehavior.opaque,
-            onTap: enabled ? () => onSelect(entry.key) : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    entry.value,
-                    style: TextStyle(
-                      fontFamily: kInterfaceFontFamily,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                      color: entry.key == mode
-                          ? AppColors.textPrimary
-                          : AppColors.textPrimary.withValues(alpha: 0.55),
-                      shadows: [Shadow(color: AppColors.background.withValues(alpha: 0.4), blurRadius: 6)],
+    // Smaller only where three modes would not fit across: a narrow phone
+    // with large text.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final entry in _labels.entries)
+            GestureDetector(
+              key: ValueKey('camera_mode_${entry.key.name}'),
+              behavior: HitTestBehavior.opaque,
+              onTap: enabled ? () => onSelect(entry.key) : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      entry.value,
+                      style: TextStyle(
+                        fontFamily: kInterfaceFontFamily,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
+                        color: entry.key == mode
+                            ? AppColors.textPrimary
+                            : AppColors.textPrimary.withValues(alpha: 0.55),
+                        shadows: [Shadow(color: AppColors.background.withValues(alpha: 0.4), blurRadius: 6)],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: entry.key == mode ? 22 : 0,
-                    height: 2,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryStart,
-                      borderRadius: BorderRadius.circular(1),
+                    const SizedBox(height: 4),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: entry.key == mode ? 22 : 0,
+                      height: 2,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryStart,
+                        borderRadius: BorderRadius.circular(1),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

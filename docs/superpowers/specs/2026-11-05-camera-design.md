@@ -41,6 +41,13 @@ the like come later, one after another, so it is built on a pipeline that can ta
 
 ## Step 2 — REACT
 
+**Built 2026-11-06, awaiting device verification** — see CLAUDE.md's REACT section for what was
+decided while building: the take records only you and the reaction is rendered after it by the
+editor's export engine from a two-layer project (option A, the owner's pick); the video takes the
+first place of a split; the Bubble was not built (the Window covers it); the sync is measured per
+run, with a slipped run made a piece of its own; the video's sound is kept clean only where the
+microphone did not hear it (headphones, or the video silent), and muted in the project otherwise.
+
 A third mode, **PHOTO · VIDEO · REACT**. Pick a video from the gallery first; it plays while the
 camera records you. **Both kinds of layout, the owner's call (2026-11-05)**: a **split** —
 **Top / bottom**, **Side by side** — and a **float**: the camera fills the frame and the video

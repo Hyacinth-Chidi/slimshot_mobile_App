@@ -151,9 +151,9 @@ class _CameraRollScreenState extends State<CameraRollScreen> {
 
   static Future<bool> _deleteFromPhone(RollShot shot) async {
     final uri = shot.uri;
-    if (uri != null) return MethodChannelCamera().deleteShot(uri);
-    await (await CameraFiles.open()).delete([shot.path]);
-    return !await File(shot.path).exists();
+    if (uri != null && !await MethodChannelCamera().deleteShot(uri)) return false;
+    await (await CameraFiles.open()).delete(cameraFilesOf(shot));
+    return uri != null || !await File(shot.path).exists();
   }
 
   Future<void> _share() async {

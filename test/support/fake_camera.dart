@@ -24,6 +24,15 @@ class FakeCamera implements CameraBackend {
   /// Android 10 and older: saving to the gallery needs storage access.
   bool galleryNeedsPermission = false;
 
+  /// The phone's sound is going to headphones.
+  bool headphones = false;
+
+  /// The gallery will not take a finished video.
+  bool refusePublish = false;
+
+  /// What [publishVideo] was handed.
+  final published = <String>[];
+
   CameraInfo _info(CameraLens lens, CameraMode mode) => CameraInfo(
         textureId: 7,
         lens: lens,
@@ -111,6 +120,18 @@ class FakeCamera implements CameraBackend {
             uri: lastGallery == true ? 'content://media/$path' : null,
             durationMs: recordedMs,
           );
+  }
+
+  @override
+  Future<bool> headphonesConnected() async => headphones;
+
+  @override
+  Future<SavedShot?> publishVideo(String path) async {
+    calls.add('publish $path');
+    published.add(path);
+    if (refusePublish) return null;
+    final name = path.split('/').last;
+    return SavedShot(path: '/gallery/SlimShot_$name', uri: 'content://media/video/$name');
   }
 
   @override

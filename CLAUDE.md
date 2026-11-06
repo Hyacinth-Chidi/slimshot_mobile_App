@@ -5514,13 +5514,13 @@ first tool card (`home_camera`, `/camera`); the shots open in a viewer (`/camera
   `CameraBackend`, `logic/camera_geometry.dart`): mode, lens (remembered, `camera_lens`), flash,
   zoom (pinch, held to the camera's range, a pill to put it back to 1×), tap to focus (measured on
   the whole picture, crop included, for `DisplayOrientedMeteringPointFactory`), a sideways swipe
-  between PHOTO and VIDEO, and the shutter: a tap for a photo; for a video a tap to start and a tap
-  to stop, **pause and carry on in the same file**, no hold-to-record (the owner's call). While
-  recording only stop, pause and the time show; Back stops the take and reviews it.
+  between PHOTO, VIDEO and REACT, and the shutter: a tap for a photo; for a video a tap to start and
+  a tap to stop, **pause and carry on in the same file**, no hold-to-record (the owner's call).
+  While recording only stop, pause and the time show; Back stops the take and keeps it.
 - **The camera taken away** (another app, Do Not Disturb, a policy) is said in place with Try
   again, and when CameraX opens it again by itself the screen follows (`CameraAvailability`). A
   recording the camera ended by itself — the app leaving the screen mid-take — keeps what it had
-  (CameraX finalises it) and opens the review.
+  (CameraX finalises it), on the pile like any other.
 - **The microphone is asked on the way into video, at most once a screen**
   (`PluginCameraPermissions`); refused, the video records silently and says so once. A permission
   prompt that cannot be shown reads as refused, never as a crash.
@@ -5561,13 +5561,100 @@ first tool card (`home_camera`, `/camera`); the shots open in a viewer (`/camera
   at one width and scaled into each card, so on a narrow phone the four shrink alike rather than
   each by its own label.
 
-**Device-checked on the Infinix (Android 12), the review-era build**: the preview on both lenses,
-a front photo saved upright and mirrored, record · pause · resume · stop into one file, Edit into
-the editor and Back to Home with the edit in Recent Edits. **Still to check**: the pile and the
-viewer; shots in the gallery's SlimShotAI album; Delete removing one from the gallery; storage
-access on Android 10 and older; the preview upright with a person in it; shots held sideways
-saving landscape; flash and torch; pinch, tap to focus, swipe between modes; leaving the app
-mid-take; another app taking the camera; the microphone refused.
+**Device-checked on the Infinix (Android 12)**: the preview on both lenses, a front photo saved
+upright and mirrored, record · pause · resume · stop into one file; photos and a video saved into
+the album, the pile, the viewer, Delete from the gallery, swiping back to the camera, Edit into the
+editor and Back to Home with the edit in Recent Edits — and the owner's own run reported it
+working well (2026-11-05). **Still to check**: storage access on Android 10 and older; shots held
+sideways saving landscape; flash and torch; leaving the app mid-take; another app taking the
+camera; the microphone refused.
+
+### REACT — you and a video, in one file
+
+**Awaiting device verification** (2026-11-06). Spec: the camera spec's step 2. PHOTO · VIDEO ·
+**REACT**: pick a video, record yourself while it plays, and the reaction lands on the pile as one
+finished video in the gallery — and, from the viewer's Edit, opens in the editor as **two
+separate layers**, so the layout, size and sound can still change.
+
+- **Recorded live, rendered after** (option A, the owner's pick). The camera records only you —
+  privately, into its own folder (`CameraMode.react` records as video does, never to the gallery);
+  the video plays beside you through `video_player`; after Stop **the editor's own export engine
+  renders the reaction** from a two-layer project (`reactionProject`). The live frame, the file and
+  the editor read one definition of a layout, `reactionPlaces`, so what was recorded against is what
+  the file shows. Compositing live into the recording (CameraX `CameraEffect`) was the other way:
+  no second pass, but a fixed result and our GL inside CameraX's pipeline on every phone.
+- **Three layouts, both kinds** (the owner's call): **Top and bottom** and **Side by side** — the
+  video in the first place (top, left; my call: what is reacted to reads first), each picture
+  filling its half edge to edge — and the **Window**: you fill the frame, the video in a window in
+  its own shape, dragged and pinched, held inside the frame (`ReactionWindow.fittedFor`). The
+  window anchors on the pointer-down (a `Listener`): the scale gesture starts only after its slop,
+  and its start point is where it was won, so anchoring there left the window ~36 px behind the
+  finger — and a drag re-anchors when a second finger joins. The layout button (right side, with
+  the video's sound and Change video) moves to the next; the last is remembered
+  (`camera_react_layout`). REACT starts on the front camera in one bind (`setMode(lens:)`). The
+  frame is 9:16 on the screen (`reactionFrameOn`), tap to focus measured in the camera's place.
+- **The project**: your take is the main clip, cropped to its place's shape (`coverCrop`) and set
+  there with the clip's pinch scale and pan (the engine's contain fit then spans the place
+  exactly); the video is a video overlay — in a split covering its half and cut to it by a
+  rectangle mask (fractions of the fitted picture, as the renderer samples), in the Window whole.
+  **The overlay is placed in a reference frame's pixels** (`kReactionFrame`, 360×640) and carries
+  it (`VideoOverlayModel.referenceCanvasSize`, `refWidth`/`refHeight`, omitted when null — an
+  overlay placed in the editor writes nothing new): the editor keeps an overlay's place in its own
+  canvas's pixels with a fixed 240 px box, so the same numbers on another canvas would be another
+  place. **The editor converts it once** (`fitOverlayToCanvas`, via `fitOverlaysToCanvas` from
+  `onCanvasSizeChanged` — before the size is published, whose listener sends the overlays — and
+  after a draft loads onto a canvas already laid out), no undo step, then it is any overlay. The
+  render uses `previewCanvasSize: kReactionFrame`, 1080p at 30 fps. A test composes every layout
+  through the editor's composer and checks each picture lands exactly on its place.
+- **The sync is measured, not assumed** (`ReactionSyncLog`, `ReactionTakeSession`). The camera and
+  the player are two clocks. **The video starts when the recording is seen to run** — its first
+  report — not when recording is asked for, or it would play its first moment to nobody. Each
+  stretch between a start or resume and a pause or stop is a run, sampled every 250 ms: the
+  recording's time from `CameraController.recordingNowMs()` (the recorder's last report carried on
+  by a monotonic clock, held while paused, re-based at resume so the pause is not counted) against
+  the player's own position (asked of it — its broadcast value is up to half a second old), skipped
+  until the video has moved; the run's offset is the median. A run that slipped more than
+  `kReactionSyncToleranceMs` (40) against the piece before becomes **an overlay piece of its own**,
+  so the reaction lines up across every pause. The project starts when the video does (a late
+  start is trimmed off your take), and **ends where the video does**: the take stops itself at the
+  video's end (`kReactionVideoEndSlackMs`), and the moment it overruns is cut, or it would be a
+  half of nothing.
+- **Sound** (`videoSoundReachesMicrophone`): with headphones, or the video's sound turned off, the
+  microphone hears only you, and the file has the video's clean sound with your voice; out loud,
+  the microphone has the video too, so the project keeps the overlay muted — unmuted it would be
+  heard twice, a moment apart. Decided at the take's start. Headphones (`Headphones.kt`): wired,
+  USB, Bluetooth A2DP/SCO, hearing aids, LE headsets — **a Bluetooth speaker counts as headphones**,
+  since nothing tells them apart without a Bluetooth permission.
+- **Making it** (`makeReaction`, `EngineReactionRenderer`): both files probed, the project built,
+  the camera let go while the engine renders (`NativeTimelinePreviewService` initialize →
+  exportVideo → dispose — no editor is open), a ring filling over the frame, the app held
+  (`HeldWork`), Back ignored; then `publishVideo` moves it into the SlimShotAI album
+  (`GalleryShots.publishVideo`, off the main thread), it lands on the pile, and the camera opens
+  again on the same video, rewound. A reaction that cannot be made says so
+  (`kReactionFailedMessage`) and **the take is kept on the pile** as a plain video. An export
+  warning toasts, as in the editor.
+- **The roll keeps what a reaction was made from** (`RollShot.reaction`: the take, the video, the
+  layout, the pieces), so **Edit opens it as its layers** (`editorExtraFor`): the draft it already
+  has (`react_<id>`) when it was edited before — a second Edit must not throw that work away — or
+  one built by `draftProjectFrom`, now **the one state-to-draft mapping**, the editor's own save
+  included. A reaction whose take or video is gone opens as its finished file. Deleting a reaction
+  deletes its take (`cameraFilesOf`), never the video reacted to; the launch sweep keeps every take
+  the roll mentions. The video reacted to is the picker's copy — the lifetime a draft's clips have.
+- A replaced or left video's player is disposed **after the frame** that no longer shows it: the
+  `VideoPlayer` on screen holds its controller until then, and video_player asserts on a disposed
+  one.
+- **Known**: the recording's time is the recorder's report, which trails capture by its encoder's
+  few frames, so a reaction may sit a few tens of milliseconds late against the video — a clap
+  check on the device says how much; no cancel while the reaction is made; the Window has square
+  corners, as the file does.
+
+**Device checks**: each layout live and in the file, the pictures where they were; the Window
+dragged and pinched, landing in the file where it was left; record · pause · resume · stop, and a
+take stopped by the video's end; a clap on camera against a clap in the video (the sync); with
+headphones (clean video sound plus voice) and out loud (one copy of the video's sound); the
+reaction in the gallery's album and on the pile; Edit opening the two layers in place, and again
+after editing; Delete taking the take with it; leaving the app mid-take; a long video (the render
+time on the Infinix).
 
 ### Decisions already made â€” don't re-litigate
 

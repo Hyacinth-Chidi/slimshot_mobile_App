@@ -797,6 +797,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final notifier = ref.read(videoEditorProvider.notifier);
     try {
       await notifier.loadDraft(draft);
+      // A canvas laid out before the draft arrived hears of no new size.
+      final canvas = ref.read(videoCanvasSizeProvider);
+      if (canvas != null) notifier.fitOverlaysToCanvas(canvas);
       // Fonts already on the phone draw from the first frame; the rest are
       // fetched by the text listener below.
       await ref.read(fontServiceProvider).registerOnPhone(
@@ -1789,6 +1792,9 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
               showKeyboard ? TextEditorTool.keyboard : TextEditorTool.style,
         ),
         onCanvasSizeChanged: (size) {
+          // Before the size is published: its listener sends the overlays,
+          // and a reaction's must already be on this canvas when it does.
+          ref.read(videoEditorProvider.notifier).fitOverlaysToCanvas(size);
           ref.read(videoCanvasSizeProvider.notifier).state = size;
         },
       );

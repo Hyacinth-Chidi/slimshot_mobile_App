@@ -59,6 +59,14 @@ class VideoOverlayModel {
   /// Empty on every overlay nobody has placed a diamond on.
   OverlayKeyframes keyframes;
 
+  /// The canvas [position] and [scale] were placed against, when that was not
+  /// the editor's own — a REACT project is laid out on a fixed frame before
+  /// any editor exists. Null for every overlay placed in the editor, whose
+  /// pixels are its canvas's. The editor converts an overlay carrying one to
+  /// its own canvas the first time it knows that canvas
+  /// (`fitOverlayToCanvas`), and the reference goes.
+  Size? referenceCanvasSize;
+
   VideoOverlayModel({
     required this.id,
     required this.videoPath,
@@ -81,6 +89,7 @@ class VideoOverlayModel {
     this.mask = ClipMask.none,
     this.chromaKey = ChromaKey.none,
     this.keyframes = OverlayKeyframes.none,
+    this.referenceCanvasSize,
   });
 
   VideoOverlayModel copyWith({
@@ -107,6 +116,8 @@ class VideoOverlayModel {
     ClipMask? mask,
     ChromaKey? chromaKey,
     OverlayKeyframes? keyframes,
+    Size? referenceCanvasSize,
+    bool clearReferenceCanvasSize = false,
   }) {
     return VideoOverlayModel(
       id: id ?? this.id,
@@ -130,6 +141,9 @@ class VideoOverlayModel {
       mask: mask ?? this.mask,
       chromaKey: chromaKey ?? this.chromaKey,
       keyframes: keyframes ?? this.keyframes,
+      referenceCanvasSize: clearReferenceCanvasSize
+          ? null
+          : (referenceCanvasSize ?? this.referenceCanvasSize),
     );
   }
 
@@ -195,6 +209,10 @@ class VideoOverlayModel {
       if (!mask.isNone) 'mask': mask.toJson(),
       if (!chromaKey.isNone) 'chromaKey': chromaKey.toJson(),
       if (!keyframes.isEmpty) 'keyframes': keyframes.toJson(),
+      if (referenceCanvasSize != null) ...{
+        'refWidth': referenceCanvasSize!.width,
+        'refHeight': referenceCanvasSize!.height,
+      },
     };
   }
 
@@ -225,6 +243,14 @@ class VideoOverlayModel {
       mask: ClipMask.fromJson(json['mask']),
       chromaKey: ChromaKey.fromJson(json['chromaKey']),
       keyframes: OverlayKeyframes.fromJson(json['keyframes']),
+      referenceCanvasSize: _referenceSize(json['refWidth'], json['refHeight']),
     );
   }
+}
+
+/// A reference canvas read back: both sides, positive, or none.
+Size? _referenceSize(Object? width, Object? height) {
+  if (width is! num || height is! num) return null;
+  if (!(width > 0) || !(height > 0)) return null;
+  return Size(width.toDouble(), height.toDouble());
 }

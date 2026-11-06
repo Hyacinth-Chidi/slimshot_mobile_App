@@ -204,6 +204,39 @@ void main() {
       expect(calls.single.arguments, {'uri': 'content://media/external/images/media/12'});
     });
 
+    test('react binds the camera as video does', () async {
+      answer((_) async => {'textureId': 9, 'lens': 'front', 'mode': 'video'});
+      await MethodChannelCamera(channel: channel).configure(
+        lens: CameraLens.front,
+        mode: CameraMode.react,
+        flash: CameraFlash.off,
+      );
+      expect(calls.single.arguments, {'lens': 'front', 'mode': 'video', 'flash': 'off'});
+    });
+
+    test('a finished video goes to the gallery and comes back with its address', () async {
+      answer((_) async => {'path': '/storage/SlimShot_R.mp4', 'uri': 'content://media/external/video/media/3'});
+      final saved = await MethodChannelCamera(channel: channel).publishVideo('/c/R.mp4');
+      expect(calls.single.method, 'publishVideo');
+      expect(calls.single.arguments, {'path': '/c/R.mp4'});
+      expect(saved!.path, '/storage/SlimShot_R.mp4');
+      expect(saved.uri, 'content://media/external/video/media/3');
+    });
+
+    test('a gallery that would not take it, or no channel, is no answer', () async {
+      answer((_) async => null);
+      expect(await MethodChannelCamera(channel: channel).publishVideo('/c/R.mp4'), isNull);
+      answer((_) async => throw PlatformException(code: 'x'));
+      expect(await MethodChannelCamera(channel: channel).publishVideo('/c/R.mp4'), isNull);
+    });
+
+    test('headphones are asked of the phone, and unknown is none', () async {
+      answer((call) async => call.method == 'headphones');
+      expect(await MethodChannelCamera(channel: channel).headphonesConnected(), isTrue);
+      answer((_) async => throw PlatformException(code: 'x'));
+      expect(await MethodChannelCamera(channel: channel).headphonesConnected(), isFalse);
+    });
+
     test('a delete the phone refused is no delete', () async {
       answer((_) async => throw PlatformException(code: 'denied'));
       expect(await MethodChannelCamera(channel: channel).deleteShot('content://x'), isFalse);

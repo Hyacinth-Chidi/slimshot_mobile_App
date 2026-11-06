@@ -7,18 +7,27 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/models/draft_project.dart';
+import '../../../core/services/draft_service.dart';
+import '../../../core/services/media_picker_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_fonts.dart';
 import '../../../core/theme/lucide_icons.dart';
 import '../../../core/utils/held_work.dart';
 import '../../../core/utils/toast_utils.dart';
+import '../../audio_tools/pick_video.dart';
+import '../../video_editor/logic/project_draft.dart';
 import '../logic/camera_controller.dart';
 import '../logic/camera_files.dart';
 import '../logic/camera_geometry.dart';
 import '../logic/camera_roll.dart';
+import '../logic/reaction.dart';
+import '../logic/reaction_session.dart';
 import '../services/camera_permissions.dart';
 import '../services/method_channel_camera.dart';
+import '../services/reaction_maker.dart';
 import '../widgets/camera_controls.dart';
+import '../widgets/reaction_frame.dart';
 import '../widgets/shot_views.dart';
 
 /// Opens the viewer on the camera's shots; answers a video to edit, or null.
@@ -33,15 +42,55 @@ const kCameraLensKey = 'camera_lens';
 /// A swipe this far across the picture, and mostly across, changes mode.
 const double kCameraModeSwipePx = 60;
 
+/// The REACT layout last used, so the next reaction starts there.
+const kReactLayoutKey = 'camera_react_layout';
+
+const kReactionFailedMessage = 'The reaction could not be made.';
+const kReactionVideoFailedMessage = "This video can't be played.";
+
+/// Picks the video REACT plays: its path, or null.
+typedef ReactionVideoPicker = Future<String?> Function(BuildContext context);
+
+/// What Edit hands the editor for [shot]: a reaction opens as the two layers
+/// it was made from — the draft it already has, when it was edited before,
+/// so a second Edit does not throw that work away — while both its files are
+/// there ([exists]); anything else, and a reaction missing one, opens as its
+/// finished file, a project of one clip.
+Future<Object> editorExtraFor(
+  RollShot shot, {
+  Future<bool> Function(String path)? exists,
+  Future<DraftProject?> Function(String id)? savedDraft,
+}) async {
+  final take = shot.reaction;
+  final there = exists ?? (path) => File(path).exists();
+  if (take != null && await there(take.camera.path) && await there(take.video.path)) {
+    final project = reactionProject(take);
+    final draft = await (savedDraft ?? DraftService.getDraftById)(project.draftId!) ?? draftProjectFrom(project);
+    if (draft != null) return draft;
+  }
+  return [XFile(shot.path)];
+}
+
+/// Makes the reaction from a finished take ([makeReaction]).
+typedef ReactionMaking = Future<RollShot?> Function(
+  ReactionRequest request, {
+  void Function(double fraction)? onProgress,
+  void Function(String message)? onWarning,
+});
+
 /// The camera, opened from Home: the picture fills the screen; ✕ at the top
-/// left and the flash at the right; at the foot PHOTO · VIDEO, the shutter
-/// and the flip. A photo is a tap; a video is a tap to start and a tap to
-/// stop, with pause to rest and carry on in the same video. Pinch zooms, a
-/// tap focuses, a sideways swipe changes mode. **Every shot is saved the
-/// moment it is taken** — into the gallery's SlimShotAI album — and drops onto
-/// the pile left of the shutter, as a phone's own camera does; the pile opens
-/// the viewer ([CameraRollScreen]), where Edit hands a video to the editor,
-/// which takes the camera's place.
+/// left and the flash at the right; at the foot PHOTO · VIDEO · REACT, the
+/// shutter and the flip. A photo is a tap; a video is a tap to start and a
+/// tap to stop, with pause to rest and carry on in the same video. Pinch
+/// zooms, a tap focuses, a sideways swipe changes mode. **Every shot is saved
+/// the moment it is taken** — into the gallery's SlimShotAI album — and drops
+/// onto the pile left of the shutter, as a phone's own camera does; the pile
+/// opens the viewer ([CameraRollScreen]), where Edit hands a video to the
+/// editor, which takes the camera's place.
+///
+/// REACT records you beside a video playing — split, or the video in a
+/// window over you — and the reaction is made from the take afterwards
+/// ([makeReaction]): one video for the gallery, two layers for the editor.
 ///
 /// The screen stays upright — photos and videos are turned to the way the
 /// phone is held natively — and the camera is the phone's for as long as the
@@ -55,6 +104,9 @@ class CameraScreen extends StatefulWidget {
     this.openRoll,
     this.onEdit,
     this.loadFrame,
+    this.pickReactionVideo,
+    this.openReactionVideo,
+    this.makeReaction,
   });
 
   final CameraBackend? backend;
@@ -63,6 +115,9 @@ class CameraScreen extends StatefulWidget {
   final CameraRollOpener? openRoll;
   final CameraEdit? onEdit;
   final VideoFrameLoader? loadFrame;
+  final ReactionVideoPicker? pickReactionVideo;
+  final ReactionVideoOpener? openReactionVideo;
+  final ReactionMaking? makeReaction;
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -90,6 +145,23 @@ class _CameraScreenState extends State<CameraScreen> {
   int _focusTick = 0;
   int _blinkTick = 0;
 
+  // REACT: the video reacted to, where it goes, and the take under way.
+  String? _reactPath;
+  ReactionVideo? _reactVideo;
+  ReactionLayout _layout = ReactionLayout.topBottom;
+  ReactionWindow _window = ReactionWindow.initial;
+  bool _videoSoundOn = true;
+  ReactionTakeSession? _take;
+  bool _headphones = false;
+  bool _stoppingTake = false;
+
+  /// How far the reaction is made, while it is; null otherwise.
+  double? _making;
+
+  /// What holds the app while a reaction is made — the recording holds it
+  /// through `this`.
+  final Object _makingHold = Object();
+
   @override
   void initState() {
     super.initState();
@@ -97,7 +169,19 @@ class _CameraScreenState extends State<CameraScreen> {
     _lifecycle = AppLifecycleListener(onResume: _onResume);
     _roll.addListener(_onRollChanged);
     unawaited(_roll.load(exists: (path) => File(path).exists()));
+    unawaited(_rememberedLayout());
     unawaited(_start());
+  }
+
+  Future<void> _rememberedLayout() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final name = prefs.getString(kReactLayoutKey);
+      final layout = ReactionLayout.values.where((l) => l.name == name).firstOrNull;
+      if (layout != null && mounted) setState(() => _layout = layout);
+    } catch (_) {
+      // Not remembered: top and bottom.
+    }
   }
 
   void _onRollChanged() {
@@ -108,6 +192,9 @@ class _CameraScreenState extends State<CameraScreen> {
   void dispose() {
     _lifecycle.dispose();
     HeldWork.instance.release(this);
+    HeldWork.instance.release(_makingHold);
+    _take?.dispose();
+    unawaited(_reactVideo?.dispose());
     final controller = _controller;
     controller?.removeListener(_onControllerChanged);
     controller?.dispose();
@@ -176,15 +263,23 @@ class _CameraScreenState extends State<CameraScreen> {
       if (message != null) ToastUtils.show(context, message);
     }
     // A recording the camera ended by itself (the app left mid-take) is
-    // kept like any other.
+    // kept like any other; a REACT take becomes its reaction.
     final ended = controller.takeEndedShot();
-    if (ended != null) unawaited(_keep(ended));
+    if (ended != null) {
+      final take = _take;
+      if (take != null) {
+        unawaited(_reactionEnded(take, ended));
+      } else {
+        unawaited(_keep(ended));
+      }
+    }
     setState(() {});
   }
 
   Future<void> _shutter() async {
     final controller = _controller;
-    if (controller == null || _viewing) return;
+    if (controller == null || _viewing || _making != null) return;
+    if (controller.mode == CameraMode.react) return _reactShutter(controller);
     HapticFeedback.lightImpact();
     if (controller.mode == CameraMode.photo && !controller.busy) setState(() => _blinkTick++);
     final shot = await controller.shutter();
@@ -213,10 +308,211 @@ class _CameraScreenState extends State<CameraScreen> {
       context.push<RollShot>('/camera/roll', extra: roll);
 
   /// The editor takes the camera's place: Back from it is Home, and the
-  /// camera is let go rather than left running under an edit.
-  static void _openInEditor(BuildContext context, RollShot shot) {
-    context.pushReplacement('/edit/video', extra: [XFile(shot.path)]);
+  /// camera is let go rather than left running under an edit. A reaction
+  /// opens as the two layers it was made from — the draft it already has,
+  /// when it was edited before — while both its files are there; otherwise
+  /// the finished file is the project.
+  static Future<void> _openInEditor(BuildContext context, RollShot shot) async {
+    final extra = await editorExtraFor(shot);
+    if (context.mounted) context.pushReplacement('/edit/video', extra: extra);
   }
+
+  // ---- REACT ----
+
+  /// Into REACT: a video to react to first, then the front camera.
+  Future<void> _enterReact() async {
+    final controller = _controller;
+    if (controller == null || !controller.canChangeMode) return;
+    if (_reactVideo == null) {
+      final path = _reactPath;
+      final ready = path != null && await _openReactVideo(path) || await _pickReactVideo();
+      if (!ready || !mounted) return;
+    }
+    await controller.setMode(CameraMode.react, lens: CameraLens.front);
+  }
+
+  /// Out of REACT: the video's player goes — a decoder held for nothing —
+  /// and comes back, on the same video, with REACT.
+  void _leaveReact() {
+    final video = _reactVideo;
+    if (video == null) return;
+    setState(() => _reactVideo = null);
+    _disposeAfterFrame(video);
+  }
+
+  /// A video's player goes once the frame without it is drawn: the picture
+  /// still on screen holds it until then.
+  void _disposeAfterFrame(ReactionVideo video) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(video.dispose()));
+  }
+
+  Future<bool> _pickReactVideo() async {
+    final path = await (widget.pickReactionVideo ?? _pickFromGallery)(context);
+    if (path == null || !mounted) return false;
+    return _openReactVideo(path);
+  }
+
+  static Future<String?> _pickFromGallery(BuildContext context) => pickVideoPath(
+        MediaPickerService().pickVideo,
+        onError: (message) => ToastUtils.show(context, message, isError: true),
+      );
+
+  Future<bool> _openReactVideo(String path) async {
+    final video = await (widget.openReactionVideo ?? PluginReactionVideo.open)(path);
+    if (!mounted) {
+      unawaited(video?.dispose());
+      return false;
+    }
+    if (video == null) {
+      ToastUtils.show(context, kReactionVideoFailedMessage, isError: true);
+      return false;
+    }
+    await video.setVolume(_videoSoundOn ? 1 : 0);
+    final old = _reactVideo;
+    setState(() {
+      _reactVideo = video;
+      _reactPath = path;
+      _window = _window.fittedFor(video.aspectRatio);
+    });
+    if (old != null) _disposeAfterFrame(old);
+    return true;
+  }
+
+  Future<void> _changeReactVideo() async {
+    if (_take != null) return;
+    HapticFeedback.selectionClick();
+    await _pickReactVideo();
+  }
+
+  Future<void> _cycleLayout() async {
+    if (_take != null) return;
+    HapticFeedback.selectionClick();
+    final next = ReactionLayout.values[(_layout.index + 1) % ReactionLayout.values.length];
+    setState(() => _layout = next);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(kReactLayoutKey, next.name);
+    } catch (_) {
+      // Not remembered: the next REACT starts on top and bottom.
+    }
+  }
+
+  Future<void> _toggleVideoSound() async {
+    if (_take != null) return;
+    HapticFeedback.selectionClick();
+    setState(() => _videoSoundOn = !_videoSoundOn);
+    await _reactVideo?.setVolume(_videoSoundOn ? 1 : 0);
+  }
+
+  /// Starts a take, or ends the one under way.
+  Future<void> _reactShutter(CameraController controller) async {
+    if (_take != null) return _stopReaction();
+    final video = _reactVideo;
+    if (video == null || controller.busy) return;
+    HapticFeedback.lightImpact();
+    // Decided when the take starts: whether the microphone will hear the video.
+    _headphones = await _backend.headphonesConnected();
+    if (!mounted) return;
+    final take = ReactionTakeSession(
+      camera: controller,
+      player: video,
+      onVideoEnded: () => unawaited(_stopReaction()),
+    );
+    setState(() => _take = take);
+    if (!await take.start() && mounted) setState(() => _take = null);
+  }
+
+  Future<void> _pauseOrResume() async {
+    HapticFeedback.selectionClick();
+    final take = _take;
+    if (take != null) {
+      await take.pauseOrResume();
+    } else {
+      await _controller?.pauseOrResume();
+    }
+  }
+
+  Future<void> _stopReaction() async {
+    final take = _take;
+    if (take == null || _stoppingTake) return;
+    _stoppingTake = true;
+    final recording = await take.stop();
+    _stoppingTake = false;
+    if (!mounted) return;
+    setState(() => _take = null);
+    if (recording != null) await _makeReaction(recording);
+  }
+
+  /// The app left mid-take: what was recorded becomes the reaction.
+  Future<void> _reactionEnded(ReactionTakeSession take, CameraShot shot) async {
+    final recording = await take.endedBy(shot);
+    if (!mounted) return;
+    setState(() => _take = null);
+    if (recording != null) await _makeReaction(recording);
+  }
+
+  /// The take becomes the reaction: the camera is let go while the editor's
+  /// engine renders it, and the reaction lands on the pile. A reaction that
+  /// cannot be made says so, and the take itself is kept.
+  Future<void> _makeReaction(ReactionRecording recording) async {
+    final controller = _controller;
+    final path = _reactPath;
+    if (controller == null || path == null) return;
+    final toGallery = await controller.galleryAllowed();
+    if (!mounted) return;
+    HeldWork.instance.hold(_makingHold);
+    setState(() => _making = 0);
+    await controller.close();
+    RollShot? shot;
+    try {
+      shot = await (widget.makeReaction ?? _engineMake)(
+        ReactionRequest(
+          recording: recording,
+          videoPath: path,
+          layout: _layout,
+          window: _window,
+          micHearsVideo: videoSoundReachesMicrophone(headphones: _headphones, videoSoundOn: _videoSoundOn),
+          toGallery: toGallery,
+        ),
+        onProgress: (fraction) {
+          if (mounted) setState(() => _making = fraction);
+        },
+        onWarning: (message) {
+          if (mounted) ToastUtils.show(context, message, isWarning: true);
+        },
+      );
+    } catch (error) {
+      debugPrint('REACT: the reaction could not be made: $error');
+    }
+    HeldWork.instance.release(_makingHold);
+    if (!mounted) return;
+    setState(() => _making = null);
+    if (shot != null) {
+      await _roll.add(shot);
+    } else {
+      ToastUtils.show(context, kReactionFailedMessage, isError: true);
+      await _roll.add(RollShot(
+        path: recording.cameraPath,
+        isVideo: true,
+        durationMs: recording.durationMs,
+        takenAt: DateTime.now(),
+      ));
+    }
+    unawaited(_reactVideo?.seekTo(0));
+    if (mounted) await controller.open();
+  }
+
+  Future<RollShot?> _engineMake(
+    ReactionRequest request, {
+    void Function(double fraction)? onProgress,
+    void Function(String message)? onWarning,
+  }) =>
+      makeReaction(
+        request,
+        EngineReactionRenderer(camera: _backend),
+        onProgress: onProgress,
+        onWarning: onWarning,
+      );
 
   Future<void> _flip() async {
     final controller = _controller;
@@ -238,7 +534,20 @@ class _CameraScreenState extends State<CameraScreen> {
     final width = info.previewWidth;
     final height = info.previewHeight;
     if (width == null || height == null) return;
-    final point = focusPointFor(tap, screen, displayedPreviewSize(width, height, info.rotation));
+    // In REACT the camera fills its place in the frame, not the screen.
+    var area = Offset.zero & screen;
+    final video = _reactVideo;
+    if (controller.mode == CameraMode.react && video != null) {
+      final frame = reactionFrameOn(screen);
+      area = ReactionFrame.cameraPlace(
+        layout: _layout,
+        window: _window,
+        videoAspect: video.aspectRatio,
+        frame: frame.size,
+      ).shift(frame.topLeft);
+      if (!area.contains(tap)) return;
+    }
+    final point = focusPointFor(tap - area.topLeft, area.size, displayedPreviewSize(width, height, info.rotation));
     if (point == null) return;
     setState(() {
       _focusAt = tap;
@@ -288,13 +597,22 @@ class _CameraScreenState extends State<CameraScreen> {
     if (controller == null || !controller.canChangeMode) return;
     if (swipe.dx.abs() < kCameraModeSwipePx || swipe.dx.abs() < swipe.dy.abs() * 1.5) return;
     // Left brings the mode to the right of the chosen one, as a list scrolls.
-    final next = swipe.dx < 0 ? CameraMode.video : CameraMode.photo;
+    const modes = CameraMode.values;
+    final index = (modes.indexOf(controller.mode) + (swipe.dx < 0 ? 1 : -1)).clamp(0, modes.length - 1);
+    final next = modes[index];
     if (next != controller.mode) _setMode(next);
   }
 
   void _setMode(CameraMode mode) {
+    final controller = _controller;
+    if (controller == null || mode == controller.mode || !controller.canChangeMode) return;
     HapticFeedback.selectionClick();
-    unawaited(_controller?.setMode(mode));
+    if (mode == CameraMode.react) {
+      unawaited(_enterReact());
+      return;
+    }
+    if (controller.mode == CameraMode.react) _leaveReact();
+    unawaited(controller.setMode(mode));
   }
 
   /// Back while recording stops it, and the review takes what was kept;
@@ -307,10 +625,11 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget build(BuildContext context) {
     final controller = _controller;
     final recording = controller?.isRecording ?? false;
+    final making = _making;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: PopScope(
-        canPop: !recording,
+        canPop: !recording && making == null,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _onBack();
         },
@@ -322,6 +641,7 @@ class _CameraScreenState extends State<CameraScreen> {
               _picture(controller),
               const _Shades(),
               SafeArea(child: _controls(controller)),
+              if (making != null) _MakingReaction(progress: making),
             ],
           ),
         ),
@@ -347,7 +667,10 @@ class _CameraScreenState extends State<CameraScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (showing) CameraPreviewTexture(info: info, screen: screen),
+              if (controller?.mode == CameraMode.react && _reactVideo != null)
+                _reactPicture(screen, showing ? info : null)
+              else if (showing)
+                CameraPreviewTexture(info: info, screen: screen),
               if (_focusAt != null) CameraFocusRing(key: ValueKey(_focusTick), at: _focusAt!),
               // A photo's blink, so a tap is seen to have taken one.
               IgnorePointer(
@@ -364,6 +687,28 @@ class _CameraScreenState extends State<CameraScreen> {
           ),
         );
       },
+    );
+  }
+
+  /// REACT's frame, as the file will be: 9:16 on the screen, you and the
+  /// video where the layout puts you.
+  Widget _reactPicture(Size screen, CameraInfo? info) {
+    final video = _reactVideo!;
+    final frame = reactionFrameOn(screen);
+    return Positioned.fromRect(
+      rect: frame,
+      child: ReactionFrame(
+        key: const ValueKey('reaction_frame'),
+        layout: _layout,
+        window: _window,
+        videoAspect: video.aspectRatio,
+        video: video.picture(),
+        camera: (place) => info == null
+            ? const SizedBox.expand()
+            : CameraPreviewTexture(info: info, screen: place),
+        windowMovable: _take == null,
+        onWindowChanged: (window) => setState(() => _window = window),
+      ),
     );
   }
 
@@ -405,6 +750,12 @@ class _CameraScreenState extends State<CameraScreen> {
             top: 4,
             right: 8,
             child: _flashButton(controller!),
+          ),
+        if (controller?.mode == CameraMode.react && _reactVideo != null && !isRecording)
+          Positioned(
+            top: 60,
+            right: 8,
+            child: _reactTools(),
           ),
         if (notice != null) Center(child: notice),
         Positioned(
@@ -451,10 +802,7 @@ class _CameraScreenState extends State<CameraScreen> {
                             recordDot: recording == RecordingState.paused,
                             tooltip: recording == RecordingState.paused ? 'Resume' : 'Pause',
                             size: 48,
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              unawaited(controller?.pauseOrResume());
-                            },
+                            onTap: () => unawaited(_pauseOrResume()),
                           )
                         : Center(
                             child: CameraRollPile(
@@ -467,7 +815,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   CameraShutter(
                     mode: controller?.mode ?? CameraMode.photo,
                     recording: recording,
-                    enabled: ready && !(controller?.busy ?? true),
+                    enabled: ready && !(controller?.busy ?? true) && _making == null,
                     onTap: _shutter,
                   ),
                   SizedBox(
@@ -491,6 +839,44 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
+  /// REACT's own tools, down the right: the layout (a tap moves to the
+  /// next), the video's sound, and another video.
+  Widget _reactTools() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CameraRoundButton(
+          key: const ValueKey('react_layout'),
+          icon: switch (_layout) {
+            ReactionLayout.topBottom => LucideIcons.rows,
+            ReactionLayout.sideBySide => LucideIcons.columns,
+            ReactionLayout.float => LucideIcons.pictureInPicture2,
+          },
+          tooltip: switch (_layout) {
+            ReactionLayout.topBottom => 'Top and bottom',
+            ReactionLayout.sideBySide => 'Side by side',
+            ReactionLayout.float => 'Window',
+          },
+          onTap: () => unawaited(_cycleLayout()),
+        ),
+        const SizedBox(height: 6),
+        CameraRoundButton(
+          key: const ValueKey('react_sound'),
+          icon: _videoSoundOn ? LucideIcons.volume2 : LucideIcons.volumeX,
+          tooltip: _videoSoundOn ? 'Video sound on' : 'Video sound off',
+          onTap: () => unawaited(_toggleVideoSound()),
+        ),
+        const SizedBox(height: 6),
+        CameraRoundButton(
+          key: const ValueKey('react_change_video'),
+          icon: LucideIcons.replace,
+          tooltip: 'Change video',
+          onTap: () => unawaited(_changeReactVideo()),
+        ),
+      ],
+    );
+  }
+
   Widget _flashButton(CameraController controller) {
     final flash = controller.flash;
     return CameraRoundButton(
@@ -499,7 +885,7 @@ class _CameraScreenState extends State<CameraScreen> {
       tooltip: switch (flash) {
         CameraFlash.off => 'Flash off',
         CameraFlash.auto => 'Flash auto',
-        CameraFlash.on => controller.mode == CameraMode.video ? 'Light on' : 'Flash on',
+        CameraFlash.on => controller.mode == CameraMode.photo ? 'Flash on' : 'Light on',
       },
       chosen: flash == CameraFlash.on,
       badge: flash == CameraFlash.auto ? 'A' : null,
@@ -532,6 +918,52 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
     return null;
+  }
+}
+
+/// The take becoming its reaction: the frame dimmed, a ring filling.
+class _MakingReaction extends StatelessWidget {
+  const _MakingReaction({required this.progress});
+
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: ColoredBox(
+        key: const ValueKey('react_making'),
+        color: AppColors.background.withValues(alpha: 0.72),
+        child: Center(
+          child: SizedBox(
+            width: 72,
+            height: 72,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox.expand(
+                  child: CircularProgressIndicator(
+                    value: progress <= 0 ? null : progress,
+                    strokeWidth: 4,
+                    color: AppColors.primaryStart,
+                    backgroundColor: AppColors.textPrimary.withValues(alpha: 0.15),
+                  ),
+                ),
+                Text(
+                  '${(progress * 100).round()}%',
+                  style: const TextStyle(
+                    fontFamily: kInterfaceFontFamily,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

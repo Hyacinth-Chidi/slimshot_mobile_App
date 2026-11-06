@@ -338,6 +338,83 @@ void main() {
     });
   });
 
+  group('react', () {
+    late Duration now;
+    late CameraController react;
+
+    setUp(() {
+      now = Duration.zero;
+      react = CameraController(
+        backend: camera,
+        newPath: (extension) async => '/shots/${++pathCount}.$extension',
+        allowMicrophone: () async => micAllowed,
+        allowStorage: () async => storageAllowed,
+        clock: () => now,
+      );
+    });
+
+    tearDown(() => react.dispose());
+
+    test('records you privately: only the finished reaction goes to the gallery', () async {
+      await react.open();
+      await react.setMode(CameraMode.react);
+      expect(camera.calls, contains('configure back react off'));
+      await react.shutter();
+      expect(camera.lastGallery, isFalse);
+      camera.recordedMs = 3000;
+      final shot = await react.shutter();
+      expect(shot, isA<VideoShot>().having((s) => s.uri, 'uri', isNull));
+      expect(shot!.path, '/shots/1.mp4');
+    });
+
+    test('a mode can come with a lens, bound in one go', () async {
+      await react.open();
+      final before = camera.calls.length;
+      await react.setMode(CameraMode.react, lens: CameraLens.front);
+      expect(camera.calls.sublist(before), ['configure front react off']);
+      expect(react.lens, CameraLens.front);
+      expect(react.mode, CameraMode.react);
+    });
+
+    test('a mode and lens the phone refused leave both as they were', () async {
+      await react.open();
+      camera.refuseMode = CameraMode.react;
+      await react.setMode(CameraMode.react, lens: CameraLens.front);
+      expect(react.lens, CameraLens.back);
+      expect(react.mode, CameraMode.photo);
+    });
+
+    test('has a torch, as video does', () async {
+      await react.open();
+      await react.setMode(CameraMode.react);
+      await react.cycleFlash();
+      expect(react.flash, CameraFlash.on);
+      await react.cycleFlash();
+      expect(react.flash, CameraFlash.off);
+    });
+
+    test('knows where the recording is between its reports', () async {
+      await react.open();
+      await react.setMode(CameraMode.react);
+      await react.shutter();
+      expect(react.recordingNowMs(), isNull, reason: 'not reported yet: not known to be running');
+
+      now = const Duration(seconds: 10);
+      camera.emit(const RecordingProgress(durationMs: 400, paused: false));
+      await pumpEventQueue();
+      now = const Duration(seconds: 10, milliseconds: 120);
+      expect(react.recordingNowMs(), 520);
+
+      await react.pauseOrResume();
+      now = const Duration(seconds: 15);
+      expect(react.recordingNowMs(), 520, reason: 'paused: the file is not growing');
+
+      await react.pauseOrResume();
+      now = const Duration(seconds: 15, milliseconds: 50);
+      expect(react.recordingNowMs(), 570, reason: 'the pause is not in the file');
+    });
+  });
+
   test('the running time reads minutes and seconds', () {
     expect(formatRecordingTime(0), '0:00');
     expect(formatRecordingTime(65 * 1000), '1:05');

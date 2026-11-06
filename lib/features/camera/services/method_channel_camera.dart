@@ -42,7 +42,8 @@ class MethodChannelCamera implements CameraBackend {
   Future<CameraInfo> _bind(String method, CameraLens lens, CameraMode mode, CameraFlash flash) async {
     final answer = await _call<Map<Object?, Object?>>(method, {
       'lens': lens.name,
-      'mode': mode.name,
+      // REACT records as video does; the phone has no third kind of camera.
+      'mode': mode == CameraMode.react ? CameraMode.video.name : mode.name,
       'flash': flash.name,
     });
     final info = cameraInfoFrom(answer);
@@ -81,6 +82,32 @@ class MethodChannelCamera implements CameraBackend {
       return false;
     } on MissingPluginException {
       return false;
+    }
+  }
+
+  @override
+  Future<bool> headphonesConnected() async {
+    try {
+      return await _channel.invokeMethod<bool>('headphones') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  @override
+  Future<SavedShot?> publishVideo(String path) async {
+    try {
+      final answer = await _channel.invokeMapMethod<Object?, Object?>('publishVideo', {'path': path});
+      final saved = answer?['path'];
+      final uri = answer?['uri'];
+      if (saved is! String || saved.isEmpty) return null;
+      return SavedShot(path: saved, uri: uri is String && uri.isNotEmpty ? uri : null);
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
     }
   }
 

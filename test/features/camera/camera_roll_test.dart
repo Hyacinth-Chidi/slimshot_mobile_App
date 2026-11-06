@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:slimshotai/features/camera/logic/camera_roll.dart';
+import 'package:slimshotai/features/camera/logic/reaction.dart';
+import 'package:slimshotai/features/video_editor/models/media_asset.dart';
 
 RollShot shot(String name, {bool video = false, String? uri, int minute = 0}) => RollShot(
       path: '/g/$name',
@@ -96,5 +98,63 @@ void main() {
     final roll = CameraRoll();
     await roll.add(shot('a.jpg'));
     expect(await CameraRoll.storedPaths(), {'/g/a.jpg'});
+  });
+
+  group('a reaction', () {
+    const take = ReactionTake(
+      id: 'r1',
+      layout: ReactionLayout.sideBySide,
+      window: ReactionWindow.initial,
+      camera: MediaAsset(
+        id: 'c',
+        path: '/camera/VID_take.mp4',
+        type: MediaAssetType.video,
+        durationSeconds: 8,
+        width: 1080,
+        height: 1920,
+        hasAudio: true,
+      ),
+      video: MediaAsset(
+        id: 'v',
+        path: '/picked/clip.mp4',
+        type: MediaAssetType.video,
+        durationSeconds: 30,
+        width: 1920,
+        height: 1080,
+        hasAudio: true,
+      ),
+      pieces: [ReactionPiece(startMs: 0, endMs: 8000, offsetMs: -90)],
+      videoSoundInCamera: true,
+    );
+
+    RollShot reaction() => RollShot(
+          path: '/g/SlimShot_VID_r1.mp4',
+          uri: 'content://media/external/video/1',
+          isVideo: true,
+          durationMs: 8000,
+          takenAt: DateTime(2026, 11, 6),
+          reaction: take,
+        );
+
+    test('keeps what it was made from, so Edit can open it as its layers', () async {
+      final roll = CameraRoll();
+      await roll.add(reaction());
+      final again = CameraRoll();
+      await again.load(exists: (_) async => true);
+      expect(again.shots.single.reaction!.toJson(), take.toJson());
+    });
+
+    test('its take is kept from the launch sweep', () async {
+      final roll = CameraRoll();
+      await roll.add(reaction());
+      expect(await CameraRoll.storedPaths(), {'/g/SlimShot_VID_r1.mp4', '/camera/VID_take.mp4'});
+    });
+
+    test("deleting it takes its take too; the video reacted to is the user's", () {
+      expect(cameraFilesOf(reaction()), ['/camera/VID_take.mp4']);
+      expect(cameraFilesOf(shot('a.jpg')), isEmpty, reason: 'in the gallery: deleted through its address');
+      const private = RollShot(path: '/camera/IMG_1.jpg', isVideo: false, durationMs: 0, takenAt: null);
+      expect(cameraFilesOf(private), ['/camera/IMG_1.jpg'], reason: "kept in SlimShot: its file is the camera's");
+    });
   });
 }

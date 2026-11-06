@@ -52,12 +52,26 @@ internal object GalleryShots {
      * Moves a finished photo into the album. Null when the gallery would not
      * take it — the photo then stays where it is, not lost.
      */
-    fun publishPhoto(context: Context, file: File): Pair<String, Uri>? {
+    fun publishPhoto(context: Context, file: File): Pair<String, Uri>? = publish(context, file, "image/jpeg")
+
+    /**
+     * Moves a finished video into the album — a REACT reaction, rendered
+     * after the take. Null when the gallery would not take it; the file then
+     * stays where it is.
+     */
+    fun publishVideo(context: Context, file: File): Pair<String, Uri>? = publish(context, file, "video/mp4")
+
+    private fun publish(context: Context, file: File, mime: String): Pair<String, Uri>? {
         val resolver = context.contentResolver
-        val values = values(galleryName(file), "image/jpeg")
+        val values = values(galleryName(file), mime)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) values.put(MediaStore.MediaColumns.IS_PENDING, 1)
+        val collection = if (mime.startsWith("video/")) {
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
         val uri = try {
-            resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            resolver.insert(collection, values)
         } catch (error: Exception) {
             Log.w(TAG, "the gallery refused ${file.name}", error)
             null
@@ -69,7 +83,7 @@ internal object GalleryShots {
                 resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
             }
             val path = pathOf(context, uri) ?: throw IOException("no path for $uri")
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) scan(context, path, "image/jpeg")
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) scan(context, path, mime)
             file.delete()
             Pair(path, uri)
         } catch (error: Exception) {

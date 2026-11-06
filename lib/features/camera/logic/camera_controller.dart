@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart';
 /// Which camera on the phone.
 enum CameraLens { front, back }
 
-/// What the shutter makes.
-enum CameraMode { photo, video }
+/// What the shutter makes. REACT records you as video does, while a video
+/// plays beside you — privately: the reaction made from the take is what
+/// goes to the gallery, not the take.
+enum CameraMode { photo, video, react }
 
 /// A photo's flash; in video it is the torch, which is only off or on.
 enum CameraFlash { off, auto, on }
@@ -210,6 +212,14 @@ abstract class CameraBackend {
   /// Null when nothing usable was recorded.
   Future<RecordedVideo?> stopRecording();
 
+  /// The phone's sound is going to headphones, where the microphone cannot
+  /// hear it.
+  Future<bool> headphonesConnected();
+
+  /// Moves a finished video — a reaction — into the gallery's SlimShotAI
+  /// album. Null where the gallery would not take it; the file then stays.
+  Future<SavedShot?> publishVideo(String path);
+
   Future<void> close();
 }
 
@@ -262,10 +272,12 @@ class CameraController extends ChangeNotifier {
     required MicrophoneGate allowMicrophone,
     required StorageGate allowStorage,
     CameraLens initialLens = CameraLens.back,
+    Duration Function()? clock,
   })  : _backend = backend,
         _newPath = newPath,
         _allowMicrophone = allowMicrophone,
         _allowStorage = allowStorage,
+        _clock = clock ?? _monotonicClock,
         _lens = initialLens {
     _events = backend.events.listen(_onEvent);
   }
@@ -274,7 +286,11 @@ class CameraController extends ChangeNotifier {
   final ShotPath _newPath;
   final MicrophoneGate _allowMicrophone;
   final StorageGate _allowStorage;
+  final Duration Function() _clock;
   late final StreamSubscription<CameraEvent> _events;
+
+  static final Stopwatch _monotonic = Stopwatch()..start();
+  static Duration _monotonicClock() => _monotonic.elapsed;
 
   CameraStatus _status = CameraStatus.closed;
   CameraInfo? _info;
@@ -284,10 +300,15 @@ class CameraController extends ChangeNotifier {
   final Map<CameraMode, CameraFlash> _flashFor = {
     CameraMode.photo: CameraFlash.off,
     CameraMode.video: CameraFlash.off,
+    CameraMode.react: CameraFlash.off,
   };
   double _zoom = 1;
   RecordingState _recording = RecordingState.idle;
   int _recordedMs = 0;
+
+  /// When [_recordedMs] was last true: the recording's last report, or the
+  /// resume since. Null until the running recording has reported.
+  Duration? _progressAt;
   bool _busy = false;
   bool _saidNoSound = false;
   bool _saidGalleryOff = false;
@@ -320,6 +341,19 @@ class CameraController extends ChangeNotifier {
 
   bool get canFlip => canChangeMode && (_info?.canFlip ?? false);
 
+  /// Where the running recording is now, in milliseconds of its file: its
+  /// last report carried on to this instant, held still while paused. Null
+  /// until the recording has reported, which is when it is known to run.
+  ///
+  /// REACT times the video against this. The reports come as the recorder
+  /// writes, and between them the file grows at the clock's own rate.
+  int? recordingNowMs() {
+    final at = _progressAt;
+    if (!isRecording || at == null) return null;
+    if (_recording == RecordingState.paused) return _recordedMs;
+    return _recordedMs + (_clock() - at).inMilliseconds;
+  }
+
   /// The notice to show, once.
   String? takeMessage() {
     final said = _message;
@@ -351,18 +385,24 @@ class CameraController extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> setMode(CameraMode mode) async {
+  /// Changes mode — and, with [lens], the lens with it in the one bind:
+  /// REACT starts on the front camera, and two binds in a row would show the
+  /// back camera for a moment.
+  Future<void> setMode(CameraMode mode, {CameraLens? lens}) async {
     if (mode == _mode || !canChangeMode) return;
     final before = _mode;
+    final lensBefore = _lens;
     _mode = mode;
+    if (lens != null && (_info?.canFlip ?? false)) _lens = lens;
     _notify();
     if (!await _rebind()) {
       _mode = before;
+      _lens = lensBefore;
       await _rebind(quietly: true);
     }
     _notify();
     // Asked on the way into video, so the shutter starts at once.
-    if (_mode == CameraMode.video) unawaited(_allowMicrophone());
+    if (_mode != CameraMode.photo) unawaited(_allowMicrophone());
   }
 
   Future<void> flip() async {
@@ -386,7 +426,7 @@ class CameraController extends ChangeNotifier {
           CameraFlash.auto => CameraFlash.on,
           CameraFlash.on => CameraFlash.off,
         },
-      CameraMode.video => now == CameraFlash.on ? CameraFlash.off : CameraFlash.on,
+      CameraMode.video || CameraMode.react => now == CameraFlash.on ? CameraFlash.off : CameraFlash.on,
     };
     _flashFor[_mode] = next;
     _notify();
@@ -434,6 +474,7 @@ class CameraController extends ChangeNotifier {
           final saved = await _backend.takePhoto(await _newPath('jpg'), gallery: gallery);
           return PhotoShot(saved.path, uri: saved.uri);
         case CameraMode.video:
+        case CameraMode.react:
           if (isRecording) return await _stop();
           await _start();
           return null;
@@ -451,10 +492,15 @@ class CameraController extends ChangeNotifier {
     if (!isRecording || _busy) return;
     try {
       if (_recording == RecordingState.recording) {
+        final at = recordingNowMs();
         await _backend.pauseRecording();
+        if (at != null) _recordedMs = at;
         _recording = RecordingState.paused;
       } else {
         await _backend.resumeRecording();
+        // The file grows again from where it stopped, not from the report
+        // before the pause.
+        if (_progressAt != null) _progressAt = _clock();
         _recording = RecordingState.recording;
       }
     } on CameraFailure catch (failure) {
@@ -476,8 +522,9 @@ class CameraController extends ChangeNotifier {
       _saidNoSound = true;
       _message = kRecordingWithoutSoundMessage;
     }
-    final gallery = await _galleryAllowed();
+    final gallery = _mode == CameraMode.video && await _galleryAllowed();
     final path = await _newPath('mp4');
+    _progressAt = null;
     await _backend.startRecording(path, audio: audio, gallery: gallery);
     _recordingPath = path;
     _recordedMs = 0;
@@ -488,12 +535,17 @@ class CameraController extends ChangeNotifier {
     final video = await _backend.stopRecording();
     _recording = RecordingState.idle;
     _recordingPath = null;
+    _progressAt = null;
     if (video == null) {
       _message = kNothingRecordedMessage;
       return null;
     }
     return VideoShot(video.path, uri: video.uri, durationMs: video.durationMs);
   }
+
+  /// Whether what the camera makes may go to the gallery — asked where that
+  /// needs storage access (Android 10 and older), said once when refused.
+  Future<bool> galleryAllowed() => _galleryAllowed();
 
   /// Every shot goes straight to the gallery; where that needs storage
   /// access and it is refused, shots stay in SlimShot's own folder, said once.
@@ -540,6 +592,7 @@ class CameraController extends ChangeNotifier {
       case RecordingProgress():
         if (!isRecording) return;
         _recordedMs = event.durationMs;
+        if (!event.paused && _recording == RecordingState.recording) _progressAt = _clock();
       case RecordingEnded():
         if (!isRecording) return;
         _recording = RecordingState.idle;

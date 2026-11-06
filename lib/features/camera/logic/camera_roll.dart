@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'reaction.dart';
+
 /// Where the camera remembers its shots.
 const kCameraRollKey = 'camera_roll';
 
@@ -18,6 +20,7 @@ class RollShot {
     required this.isVideo,
     required this.durationMs,
     required this.takenAt,
+    this.reaction,
   });
 
   /// The file itself — in the gallery's SlimShotAI album, or in SlimShot's
@@ -32,6 +35,11 @@ class RollShot {
   final int durationMs;
   final DateTime? takenAt;
 
+  /// For a REACT reaction, what it was made from — the take of you and the
+  /// video reacted to — so Edit opens it as those two layers. Null for any
+  /// other shot.
+  final ReactionTake? reaction;
+
   bool get inGallery => uri != null;
 
   Map<String, Object?> toJson() => {
@@ -40,6 +48,7 @@ class RollShot {
         'video': isVideo,
         if (durationMs > 0) 'ms': durationMs,
         if (takenAt != null) 'at': takenAt!.millisecondsSinceEpoch,
+        if (reaction != null) 'react': reaction!.toJson(),
       };
 
   /// Null for an entry it cannot read.
@@ -56,6 +65,7 @@ class RollShot {
       isVideo: raw['video'] == true,
       durationMs: ms is num ? ms.toInt() : 0,
       takenAt: at is num ? DateTime.fromMillisecondsSinceEpoch(at.toInt()) : null,
+      reaction: ReactionTake.fromJson(raw['react']),
     );
   }
 }
@@ -101,8 +111,14 @@ class CameraRoll extends ChangeNotifier {
     await _write(next);
   }
 
-  /// The files the roll keeps, for the launch sweep of the camera's folder.
-  static Future<Set<String>> storedPaths() async => {for (final shot in await _read()) shot.path};
+  /// The files the roll keeps, for the launch sweep of the camera's folder:
+  /// every shot, and every reaction's take.
+  static Future<Set<String>> storedPaths() async => {
+        for (final shot in await _read()) ...[
+          shot.path,
+          if (shot.reaction != null) shot.reaction!.camera.path,
+        ],
+      };
 
   static Future<List<RollShot>> _read() async {
     try {
@@ -126,3 +142,12 @@ class CameraRoll extends ChangeNotifier {
     }
   }
 }
+
+/// The files deleting [shot] leaves in the camera's own folder, to go with
+/// it: the shot itself where it was kept inside SlimShot (one in the gallery
+/// goes through its address), and a reaction's take. Never the video a
+/// reaction was made against — that is the user's.
+List<String> cameraFilesOf(RollShot shot) => [
+      if (shot.uri == null) shot.path,
+      if (shot.reaction != null) shot.reaction!.camera.path,
+    ];

@@ -187,6 +187,8 @@ class CameraChannel(
                 val uri = call.argument<String>("uri")
                 result.success(uri != null && GalleryShots.delete(context, Uri.parse(uri)))
             }
+            "publishVideo" -> publishVideo(call.argument<String>("path"), result)
+            "headphones" -> result.success(Headphones.connected(context))
             "pauseRecording" -> {
                 recording?.pause()
                 result.success(null)
@@ -458,6 +460,23 @@ class CameraChannel(
                 result.error("photo_failed", "The photo could not be taken.", null)
             }
         })
+    }
+
+    /**
+     * A finished video into the gallery's album, copied off the main thread —
+     * a reaction is tens of megabytes. Answers its path and address there, or
+     * nothing when the gallery would not take it (the file then stays).
+     */
+    private fun publishVideo(path: String?, result: MethodChannel.Result) {
+        if (path.isNullOrEmpty()) {
+            result.success(null)
+            return
+        }
+        photoWorker.execute {
+            val saved = GalleryShots.publishVideo(context, File(path))
+            val answer = saved?.let { mapOf("path" to it.first, "uri" to it.second.toString()) }
+            mainExecutor.execute { result.success(answer) }
+        }
     }
 
     @SuppressLint("MissingPermission")

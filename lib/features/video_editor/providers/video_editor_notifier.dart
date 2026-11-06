@@ -25,6 +25,8 @@ import '../logic/filter_presets.dart';
 import '../logic/timeline/lane_layout.dart';
 import '../logic/timeline/timeline_geometry.dart';
 import '../logic/clip_to_overlay.dart';
+import '../logic/overlay_box_fit.dart';
+import '../logic/project_draft.dart';
 import '../models/filter_preset.dart';
 import '../models/text_overlay_model.dart';
 import '../models/image_overlay_model.dart';
@@ -299,6 +301,17 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// ✎ makes them an ordinary editor project (the owner's call).
   void setSavesDraft(bool value) => _savesDraft = value;
 
+  /// Converts every overlay placed against a frame other than this editor's
+  /// canvas — a REACT project is laid out on a fixed 9:16 frame before any
+  /// editor exists — to [canvas], once (`fitOverlayToCanvas`). Not an edit:
+  /// no undo step, and nothing changes for an overlay placed here.
+  void fitOverlaysToCanvas(Size canvas) {
+    if (!state.videoOverlays.any((o) => o.referenceCanvasSize != null)) return;
+    state = state.copyWith(
+      videoOverlays: [for (final o in state.videoOverlays) fitOverlayToCanvas(o, canvas)],
+    );
+  }
+
   Future<void> saveDraft() async {
     if (!_savesDraft) return;
     if (state.sourceVideo == null || state.draftId == null) return;
@@ -317,51 +330,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     }
 
     try {
-      final draft = DraftProject(
-        id: state.draftId!,
-        sourceVideoPath: state.sourceVideo!.path,
-        createdAt:
-            DateTime.now(), // Real creation time would need to be tracked, but this is fine for updating
-        updatedAt: DateTime.now(),
-        durationSeconds: state.durationSeconds,
-        // The length the editor shows (`totalEditedDurationProvider`), for
-        // the home screen widget.
-        editedSeconds: projectEndSeconds(
-          segments: state.segments,
-          audios: state.audioTracks,
-          texts: state.textOverlays,
-          images: state.imageOverlays,
-          videos: state.videoOverlays,
-          effects: state.effectBars,
-        ),
-        thumbnailPath: thumbnailPath,
-        assets: state.assets.map((e) => e.toJson()).toList(),
-        segments: state.segments.map((e) => e.toJson()).toList(),
-        textOverlays: state.textOverlays.map((e) => e.toJson()).toList(),
-        imageOverlays: state.imageOverlays.map((e) => e.toJson()).toList(),
-        videoOverlays: state.videoOverlays.map((e) => e.toJson()).toList(),
-        audioTracks: state.audioTracks.map((e) => e.toJson()).toList(),
-        effectBars: state.effectBars.map((e) => e.toJson()).toList(),
-        selectedRatioName: state.selectedRatio.name,
-        customCropRect: [
-          state.customCropRect.left,
-          state.customCropRect.top,
-          state.customCropRect.width,
-          state.customCropRect.height,
-        ],
-        videoScale: state.videoScale,
-        videoPanX: state.videoPan.dx,
-        videoPanY: state.videoPan.dy,
-        filterName: state.selectedFilter?.name,
-        filterIntensity: state.filterIntensity,
-        backgroundType: state.backgroundType.name,
-        backgroundColorValue: state.backgroundColor.value,
-        backgroundBlurIntensity: state.backgroundBlurIntensity,
-        backgroundImagePath: state.backgroundImagePath,
-        adjustments: state.adjustments,
-        isMuted: state.isMuted,
-        captionSettings: state.captionSettings?.toJson(),
-      );
+      final draft = draftProjectFrom(state, thumbnailPath: thumbnailPath)!;
 
       print('DEBUG: Calling DraftService.saveDraft');
       await DraftService.saveDraft(draft);
