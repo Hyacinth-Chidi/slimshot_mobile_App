@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/painting.dart';
 import 'package:slimshotai/features/camera/logic/camera_controller.dart';
+import 'package:slimshotai/features/camera/logic/react_live.dart';
 
 /// A camera that does what it is told and remembers it.
 class FakeCamera implements CameraBackend {
@@ -33,6 +34,17 @@ class FakeCamera implements CameraBackend {
   /// What [publishVideo] was handed.
   final published = <String>[];
 
+  /// REACT recorded live: what the encoder says, what was asked of the recorder.
+  ReactLiveFacts liveFacts = const ReactLiveFacts(fps1080: 60, fps720: 120);
+  ReactLiveTake? lastReactLive;
+  int? lastLiveShortSide;
+  final scenes = <ReactionScene>[];
+  final playback = <bool>[];
+  final sound = <bool>[];
+  bool refuseSource = false;
+  int recordedFrames = 0;
+  int recordedMissedFrames = 0;
+
   CameraInfo _info(CameraLens lens, CameraMode mode) => CameraInfo(
         textureId: 7,
         lens: lens,
@@ -58,8 +70,9 @@ class FakeCamera implements CameraBackend {
     required CameraLens lens,
     required CameraMode mode,
     required CameraFlash flash,
+    int? liveShortSide,
   }) async {
-    calls.add('open ${lens.name} ${mode.name}');
+    calls.add('open ${lens.name} ${mode.name}${liveShortSide == null ? '' : ' live$liveShortSide'}');
     if (failOpen) throw const CameraFailure('The camera is in use.');
     openedLens = lens;
     openedMode = mode;
@@ -71,8 +84,10 @@ class FakeCamera implements CameraBackend {
     required CameraLens lens,
     required CameraMode mode,
     required CameraFlash flash,
+    int? liveShortSide,
   }) async {
-    calls.add('configure ${lens.name} ${mode.name} ${flash.name}');
+    calls.add('configure ${lens.name} ${mode.name} ${flash.name}${liveShortSide == null ? '' : ' live$liveShortSide'}');
+    lastLiveShortSide = liveShortSide;
     if (mode == refuseMode) throw const CameraFailure('Video is not available.');
     return _info(lens, mode);
   }
@@ -95,12 +110,39 @@ class FakeCamera implements CameraBackend {
   }
 
   @override
-  Future<void> startRecording(String path, {required bool audio, required bool gallery}) async {
+  Future<void> startRecording(
+    String path, {
+    required bool audio,
+    required bool gallery,
+    ReactLiveTake? reactLive,
+  }) async {
     calls.add('record $path');
     lastAudio = audio;
     lastGallery = gallery;
+    lastReactLive = reactLive;
     recordedPath = path;
   }
+
+  @override
+  Future<ReactLiveFacts> reactLiveFacts() async => liveFacts;
+
+  @override
+  Future<void> reactSource(String path, {required bool photo}) async {
+    calls.add('source $path ${photo ? 'photo' : 'video'}');
+    if (refuseSource) throw const CameraFailure("This can't be opened.");
+  }
+
+  @override
+  Future<void> reactClearSource() async => calls.add('clear source');
+
+  @override
+  Future<void> reactScene(ReactionScene scene) async => scenes.add(scene);
+
+  @override
+  Future<void> reactPlayback({required bool playing}) async => playback.add(playing);
+
+  @override
+  Future<void> reactSound({required bool on}) async => sound.add(on);
 
   @override
   Future<void> pauseRecording() async => calls.add('pause');
@@ -119,6 +161,8 @@ class FakeCamera implements CameraBackend {
             path: path,
             uri: lastGallery == true ? 'content://media/$path' : null,
             durationMs: recordedMs,
+            frames: recordedFrames,
+            missedFrames: recordedMissedFrames,
           );
   }
 

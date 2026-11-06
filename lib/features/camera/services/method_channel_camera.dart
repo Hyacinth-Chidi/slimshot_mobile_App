@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 import '../logic/camera_controller.dart';
+import '../logic/react_live.dart';
 
 /// The phone's camera over `slimshot_ai/camera` (`CameraChannel.kt`).
 class MethodChannelCamera implements CameraBackend {
@@ -28,23 +29,33 @@ class MethodChannelCamera implements CameraBackend {
     required CameraLens lens,
     required CameraMode mode,
     required CameraFlash flash,
+    int? liveShortSide,
   }) =>
-      _bind('open', lens, mode, flash);
+      _bind('open', lens, mode, flash, liveShortSide);
 
   @override
   Future<CameraInfo> configure({
     required CameraLens lens,
     required CameraMode mode,
     required CameraFlash flash,
+    int? liveShortSide,
   }) =>
-      _bind('configure', lens, mode, flash);
+      _bind('configure', lens, mode, flash, liveShortSide);
 
-  Future<CameraInfo> _bind(String method, CameraLens lens, CameraMode mode, CameraFlash flash) async {
+  Future<CameraInfo> _bind(
+    String method,
+    CameraLens lens,
+    CameraMode mode,
+    CameraFlash flash,
+    int? liveShortSide,
+  ) async {
+    final live = mode == CameraMode.react && liveShortSide != null;
     final answer = await _call<Map<Object?, Object?>>(method, {
       'lens': lens.name,
-      // REACT records as video does; the phone has no third kind of camera.
-      'mode': mode == CameraMode.react ? CameraMode.video.name : mode.name,
+      // Today's REACT records as video does; recorded live it is a mode of its own.
+      'mode': live ? 'react_live' : (mode == CameraMode.react ? CameraMode.video.name : mode.name),
       'flash': flash.name,
+      if (live) 'liveShortSide': liveShortSide,
     });
     final info = cameraInfoFrom(answer);
     if (info == null) throw const CameraFailure(kCameraUnavailableMessage);
@@ -70,8 +81,45 @@ class MethodChannelCamera implements CameraBackend {
   }
 
   @override
-  Future<void> startRecording(String path, {required bool audio, required bool gallery}) =>
-      _call<void>('startRecording', {'path': path, 'audio': audio, 'gallery': gallery});
+  Future<void> startRecording(
+    String path, {
+    required bool audio,
+    required bool gallery,
+    ReactLiveTake? reactLive,
+  }) =>
+      _call<void>('startRecording', {
+        'path': path,
+        'audio': audio,
+        'gallery': gallery,
+        if (reactLive != null) 'react': reactLive.toJson(),
+      });
+
+  @override
+  Future<ReactLiveFacts> reactLiveFacts() async {
+    try {
+      return ReactLiveFacts.fromMap(await _channel.invokeMapMethod<Object?, Object?>('reactLiveFacts'));
+    } on PlatformException {
+      return ReactLiveFacts.none;
+    } on MissingPluginException {
+      return ReactLiveFacts.none;
+    }
+  }
+
+  @override
+  Future<void> reactSource(String path, {required bool photo}) =>
+      _call<void>('reactSource', {'path': path, 'photo': photo});
+
+  @override
+  Future<void> reactClearSource() => _call<void>('reactClearSource');
+
+  @override
+  Future<void> reactScene(ReactionScene scene) => _call<void>('reactScene', scene.toJson());
+
+  @override
+  Future<void> reactPlayback({required bool playing}) => _call<void>('reactPlayback', {'playing': playing});
+
+  @override
+  Future<void> reactSound({required bool on}) => _call<void>('reactSound', {'on': on});
 
   /// Deletes a shot from the gallery by its address; false where the phone
   /// would not.
@@ -150,7 +198,11 @@ const kPhotoFailedMessage = 'The photo could not be taken.';
 
 CameraLens _lensFrom(Object? raw) => raw == 'front' ? CameraLens.front : CameraLens.back;
 
-CameraMode _modeFrom(Object? raw) => raw == 'video' ? CameraMode.video : CameraMode.photo;
+CameraMode _modeFrom(Object? raw) => switch (raw) {
+      'video' => CameraMode.video,
+      'react_live' => CameraMode.react,
+      _ => CameraMode.photo,
+    };
 
 int? _int(Object? raw) => raw is num ? raw.toInt() : null;
 
@@ -190,6 +242,8 @@ RecordedVideo? recordedVideoFrom(Map<Object?, Object?>? map) {
     path: path,
     uri: uri is String && uri.isNotEmpty ? uri : null,
     durationMs: _int(map?['durationMs']) ?? 0,
+    frames: _int(map?['frames']) ?? 0,
+    missedFrames: _int(map?['missedFrames']) ?? 0,
   );
 }
 
@@ -219,6 +273,11 @@ CameraEvent? cameraEventFrom(Object? raw) {
         uri: video?.uri,
         durationMs: video?.durationMs ?? 0,
       );
+    case 'reactVideoEnded':
+      return const ReactVideoEnded();
+    case 'reactFailed':
+      final failure = raw['message'];
+      return ReactRecorderFailed(message: failure is String ? failure : null);
     case 'camera':
       final message = raw['message'];
       return CameraAvailability(

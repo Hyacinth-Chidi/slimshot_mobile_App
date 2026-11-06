@@ -1,6 +1,9 @@
+import 'dart:ui';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/camera/logic/camera_controller.dart';
+import 'package:slimshotai/features/camera/logic/react_live.dart';
 import 'package:slimshotai/features/camera/services/method_channel_camera.dart';
 
 void main() {
@@ -120,6 +123,21 @@ void main() {
     });
   });
 
+  test('the live recorder speaks: the video ended, the recorder failed', () {
+    expect(cameraEventFrom({'type': 'reactVideoEnded'}), isA<ReactVideoEnded>());
+    expect(
+      cameraEventFrom({'type': 'reactFailed', 'message': 'codec gone'}),
+      isA<ReactRecorderFailed>().having((e) => e.message, 'message', 'codec gone'),
+    );
+  });
+
+  test('a live take answers with its frame counts', () {
+    final video = recordedVideoFrom({'path': '/g/R.mp4', 'durationMs': 4000, 'frames': 120, 'missedFrames': 3})!;
+    expect(video.frames, 120);
+    expect(video.missedFrames, 3);
+    expect(recordedVideoFrom({'path': '/g/R.mp4'})!.frames, 0);
+  });
+
   test('a finished recording needs a file', () {
     expect(recordedVideoFrom({}), isNull);
     expect(recordedVideoFrom({'path': ''}), isNull);
@@ -212,6 +230,65 @@ void main() {
         flash: CameraFlash.off,
       );
       expect(calls.single.arguments, {'lens': 'front', 'mode': 'video', 'flash': 'off'});
+    });
+
+    test('react recorded live binds react_live at its size', () async {
+      answer((_) async => {'textureId': 11, 'lens': 'front', 'mode': 'react_live'});
+      final info = await MethodChannelCamera(channel: channel).configure(
+        lens: CameraLens.front,
+        mode: CameraMode.react,
+        flash: CameraFlash.off,
+        liveShortSide: 1080,
+      );
+      expect(calls.single.arguments, {'lens': 'front', 'mode': 'react_live', 'flash': 'off', 'liveShortSide': 1080});
+      expect(info.textureId, 11);
+      expect(info.mode, CameraMode.react);
+    });
+
+    test('a live take sends its sound settings with its start', () async {
+      answer((_) async => null);
+      await MethodChannelCamera(channel: channel).startRecording(
+        '/c/V.mp4',
+        audio: true,
+        gallery: true,
+        reactLive: const ReactLiveTake(lowerVideo: true),
+      );
+      expect(calls.single.arguments, {
+        'path': '/c/V.mp4',
+        'audio': true,
+        'gallery': true,
+        'react': {'lowerVideo': true, 'duck': 0.25, 'gate': 0.1, 'rampMs': 150},
+      });
+    });
+
+    test("the live recorder's own calls", () async {
+      answer((call) async => call.method == 'reactLiveFacts' ? {'fps1080': 60, 'fps720': 120} : null);
+      final camera = MethodChannelCamera(channel: channel);
+      final facts = await camera.reactLiveFacts();
+      expect(facts.fps1080, 60);
+      await camera.reactSource('/p/clip.mp4', photo: false);
+      await camera.reactClearSource();
+      const scene = ReactionScene(
+        camera: ReactionQuad(dst: Rect.fromLTWH(0, 0, 1, 1), src: Rect.fromLTWH(0, 0, 1, 1)),
+      );
+      await camera.reactScene(scene);
+      await camera.reactPlayback(playing: false);
+      await camera.reactSound(on: true);
+      expect(
+        calls.map((c) => c.method),
+        ['reactLiveFacts', 'reactSource', 'reactClearSource', 'reactScene', 'reactPlayback', 'reactSound'],
+      );
+      expect(calls[1].arguments, {'path': '/p/clip.mp4', 'photo': false});
+      expect(calls[3].arguments, scene.toJson());
+      expect(calls[4].arguments, {'playing': false});
+      expect(calls[5].arguments, {'on': true});
+    });
+
+    test('a source the recorder would not open is a failure; facts it would not give are none', () async {
+      answer((_) async => throw PlatformException(code: 'react_source_failed', message: 'not this one'));
+      final camera = MethodChannelCamera(channel: channel);
+      await expectLater(camera.reactSource('/p/x.mp4', photo: false), throwsA(isA<CameraFailure>()));
+      expect((await camera.reactLiveFacts()).fps1080, 0);
     });
 
     test('a finished video goes to the gallery and comes back with its address', () async {

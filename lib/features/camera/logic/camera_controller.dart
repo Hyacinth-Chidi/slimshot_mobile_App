@@ -3,6 +3,8 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 
+import 'react_live.dart';
+
 /// Which camera on the phone.
 enum CameraLens { front, back }
 
@@ -145,6 +147,19 @@ class RecordingEnded extends CameraEvent {
   final int durationMs;
 }
 
+/// REACT recorded live: the video reacted to played to its end.
+class ReactVideoEnded extends CameraEvent {
+  const ReactVideoEnded();
+}
+
+/// REACT recorded live: the recorder stopped working mid-take ([message] is
+/// the phone's own words, for the log).
+class ReactRecorderFailed extends CameraEvent {
+  const ReactRecorderFailed({this.message});
+
+  final String? message;
+}
+
 /// The camera opened, or was taken away — another app, a policy — with
 /// [message] saying why. CameraX opens it again by itself when it can.
 class CameraAvailability extends CameraEvent {
@@ -155,11 +170,21 @@ class CameraAvailability extends CameraEvent {
 }
 
 class RecordedVideo {
-  const RecordedVideo({required this.path, this.uri, required this.durationMs});
+  const RecordedVideo({
+    required this.path,
+    this.uri,
+    required this.durationMs,
+    this.frames = 0,
+    this.missedFrames = 0,
+  });
 
   final String path;
   final String? uri;
   final int durationMs;
+
+  /// A live reaction's frames written, and camera frames that never made it.
+  final int frames;
+  final int missedFrames;
 }
 
 /// Where a photo was saved: the file, and its gallery address (null for one
@@ -176,10 +201,13 @@ class SavedShot {
 abstract class CameraBackend {
   Stream<CameraEvent> get events;
 
+  /// [liveShortSide] binds REACT recorded live at that size (1080 or 720);
+  /// null is today's REACT, recorded as video.
   Future<CameraInfo> open({
     required CameraLens lens,
     required CameraMode mode,
     required CameraFlash flash,
+    int? liveShortSide,
   });
 
   /// Binds another lens or mode, with that mode's [flash] from the start —
@@ -188,6 +216,7 @@ abstract class CameraBackend {
     required CameraLens lens,
     required CameraMode mode,
     required CameraFlash flash,
+    int? liveShortSide,
   });
 
   Future<void> setFlash(CameraFlash flash);
@@ -203,7 +232,29 @@ abstract class CameraBackend {
 
   /// Records into the gallery's SlimShotAI album with [gallery], into [path]
   /// without it.
-  Future<void> startRecording(String path, {required bool audio, required bool gallery});
+  Future<void> startRecording(
+    String path, {
+    required bool audio,
+    required bool gallery,
+    ReactLiveTake? reactLive,
+  });
+
+  /// What the phone's encoder says it can do, for choosing how REACT records.
+  Future<ReactLiveFacts> reactLiveFacts();
+
+  /// Opens what a live reaction reacts to; throws [CameraFailure] when it will not open.
+  Future<void> reactSource(String path, {required bool photo});
+
+  Future<void> reactClearSource();
+
+  /// Where the live recorder draws each picture.
+  Future<void> reactScene(ReactionScene scene);
+
+  /// A tap on the video mid-take: it stops on its frame, or plays on.
+  Future<void> reactPlayback({required bool playing});
+
+  /// The video's sound from the speaker, on or off.
+  Future<void> reactSound({required bool on});
 
   Future<void> pauseRecording();
 
@@ -238,9 +289,19 @@ class PhotoShot extends CameraShot {
 }
 
 class VideoShot extends CameraShot {
-  const VideoShot(super.path, {super.uri, required this.durationMs});
+  const VideoShot(
+    super.path, {
+    super.uri,
+    required this.durationMs,
+    this.frames = 0,
+    this.missedFrames = 0,
+  });
 
   final int durationMs;
+
+  /// A live reaction's frames written, and camera frames that never made it.
+  final int frames;
+  final int missedFrames;
 }
 
 /// Where a new shot is written, for a file extension (`jpg`, `mp4`).
@@ -320,6 +381,11 @@ class CameraController extends ChangeNotifier {
   /// only this failure lifts when the camera comes back.
   bool _takenAway = false;
 
+  /// REACT recorded live at this short side; null for today's REACT.
+  int? _reactLiveShortSide;
+  bool _reactVideoEnded = false;
+  bool _reactLiveFailed = false;
+
   CameraStatus get status => _status;
   CameraInfo? get info => _info;
   String? get message => _message;
@@ -333,6 +399,19 @@ class CameraController extends ChangeNotifier {
   bool get busy => _busy;
 
   bool get isRecording => _recording != RecordingState.idle;
+
+  /// REACT is bound to record live.
+  bool get reactLive => _mode == CameraMode.react && _reactLiveShortSide != null;
+
+  /// A live take's video played to its end; cleared when a take starts.
+  bool get reactVideoEnded => _reactVideoEnded;
+
+  /// The live recorder failed, once.
+  bool takeReactLiveFailure() {
+    final failed = _reactLiveFailed;
+    _reactLiveFailed = false;
+    return failed;
+  }
 
   /// The flash as it is: off on a lens that has none.
   CameraFlash get flash => (_info?.hasFlash ?? false) ? _flashFor[_mode]! : CameraFlash.off;
@@ -375,7 +454,12 @@ class CameraController extends ChangeNotifier {
     _message = null;
     _notify();
     try {
-      _info = await _backend.open(lens: _lens, mode: _mode, flash: _flashFor[_mode]!);
+      _info = await _backend.open(
+        lens: _lens,
+        mode: _mode,
+        flash: _flashFor[_mode]!,
+        liveShortSide: _liveSize,
+      );
       _adopt(_info!);
       _status = CameraStatus.ready;
     } on CameraFailure catch (failure) {
@@ -387,17 +471,21 @@ class CameraController extends ChangeNotifier {
 
   /// Changes mode — and, with [lens], the lens with it in the one bind:
   /// REACT starts on the front camera, and two binds in a row would show the
-  /// back camera for a moment.
-  Future<void> setMode(CameraMode mode, {CameraLens? lens}) async {
+  /// back camera for a moment. [reactLiveShortSide] records REACT live at
+  /// that size; without it, REACT is today's.
+  Future<void> setMode(CameraMode mode, {CameraLens? lens, int? reactLiveShortSide}) async {
     if (mode == _mode || !canChangeMode) return;
     final before = _mode;
     final lensBefore = _lens;
+    final liveBefore = _reactLiveShortSide;
     _mode = mode;
+    _reactLiveShortSide = mode == CameraMode.react ? reactLiveShortSide : null;
     if (lens != null && (_info?.canFlip ?? false)) _lens = lens;
     _notify();
     if (!await _rebind()) {
       _mode = before;
       _lens = lensBefore;
+      _reactLiveShortSide = liveBefore;
       await _rebind(quietly: true);
     }
     _notify();
@@ -462,8 +550,9 @@ class CameraController extends ChangeNotifier {
   }
 
   /// A photo, or the start or end of a video. Null when nothing was made
-  /// yet — a recording started — or nothing could be.
-  Future<CameraShot?> shutter() async {
+  /// yet — a recording started — or nothing could be. A live REACT take
+  /// starts with its sound settings, [reactLive].
+  Future<CameraShot?> shutter({ReactLiveTake? reactLive}) async {
     if (_status != CameraStatus.ready || _busy) return null;
     _busy = true;
     _notify();
@@ -476,7 +565,7 @@ class CameraController extends ChangeNotifier {
         case CameraMode.video:
         case CameraMode.react:
           if (isRecording) return await _stop();
-          await _start();
+          await _start(reactLive);
           return null;
       }
     } on CameraFailure catch (failure) {
@@ -516,16 +605,23 @@ class CameraController extends ChangeNotifier {
     await _backend.close();
   }
 
-  Future<void> _start() async {
+  Future<void> _start(ReactLiveTake? reactLive) async {
     final audio = await _allowMicrophone();
     if (!audio && !_saidNoSound) {
       _saidNoSound = true;
       _message = kRecordingWithoutSoundMessage;
     }
-    final gallery = _mode == CameraMode.video && await _galleryAllowed();
+    // A live reaction is the finished file, so it goes where a video goes.
+    final gallery = (_mode == CameraMode.video || this.reactLive) && await _galleryAllowed();
     final path = await _newPath('mp4');
     _progressAt = null;
-    await _backend.startRecording(path, audio: audio, gallery: gallery);
+    _reactVideoEnded = false;
+    await _backend.startRecording(
+      path,
+      audio: audio,
+      gallery: gallery,
+      reactLive: this.reactLive ? reactLive ?? const ReactLiveTake(lowerVideo: false) : null,
+    );
     _recordingPath = path;
     _recordedMs = 0;
     _recording = RecordingState.recording;
@@ -540,7 +636,13 @@ class CameraController extends ChangeNotifier {
       _message = kNothingRecordedMessage;
       return null;
     }
-    return VideoShot(video.path, uri: video.uri, durationMs: video.durationMs);
+    return VideoShot(
+      video.path,
+      uri: video.uri,
+      durationMs: video.durationMs,
+      frames: video.frames,
+      missedFrames: video.missedFrames,
+    );
   }
 
   /// Whether what the camera makes may go to the gallery — asked where that
@@ -562,7 +664,12 @@ class CameraController extends ChangeNotifier {
   /// Binds the current lens and mode; false when the phone refused.
   Future<bool> _rebind({bool quietly = false}) async {
     try {
-      final info = await _backend.configure(lens: _lens, mode: _mode, flash: _flashFor[_mode]!);
+      final info = await _backend.configure(
+        lens: _lens,
+        mode: _mode,
+        flash: _flashFor[_mode]!,
+        liveShortSide: _liveSize,
+      );
       _info = info;
       _adopt(info);
       _status = CameraStatus.ready;
@@ -576,6 +683,8 @@ class CameraController extends ChangeNotifier {
       return false;
     }
   }
+
+  int? get _liveSize => _mode == CameraMode.react ? _reactLiveShortSide : null;
 
   void _adopt(CameraInfo info) {
     // The phone may answer with the other lens where it has only that one.
@@ -603,6 +712,11 @@ class CameraController extends ChangeNotifier {
         } else {
           _message = kRecordingStoppedMessage;
         }
+      case ReactVideoEnded():
+        _reactVideoEnded = true;
+      case ReactRecorderFailed():
+        _reactLiveFailed = true;
+        _message = kReactLiveFailedMessage;
       case CameraAvailability():
         if (event.open) {
           if (!_takenAway) return;

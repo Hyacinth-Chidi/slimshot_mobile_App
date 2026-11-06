@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/camera/logic/camera_controller.dart';
+import 'package:slimshotai/features/camera/logic/react_live.dart';
 
 import '../../support/fake_camera.dart';
 
@@ -412,6 +413,78 @@ void main() {
       await react.pauseOrResume();
       now = const Duration(seconds: 15, milliseconds: 50);
       expect(react.recordingNowMs(), 570, reason: 'the pause is not in the file');
+    });
+  });
+
+  group('react recorded live', () {
+    test("binds the live way at its size; without one, today's way", () async {
+      await controller.open();
+      await controller.setMode(CameraMode.react, lens: CameraLens.front, reactLiveShortSide: 720);
+      expect(camera.calls, contains('configure front react off live720'));
+      expect(controller.reactLive, isTrue);
+      await controller.setMode(CameraMode.photo);
+      await controller.setMode(CameraMode.react, lens: CameraLens.front);
+      expect(camera.calls.last, 'configure front react off');
+      expect(controller.reactLive, isFalse);
+    });
+
+    test('a live take goes to the gallery, with its sound settings', () async {
+      await controller.open();
+      await controller.setMode(CameraMode.react, reactLiveShortSide: 1080);
+      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: true));
+      expect(camera.lastGallery, isTrue, reason: 'the take is the finished reaction');
+      expect(camera.lastReactLive?.lowerVideo, isTrue);
+    });
+
+    test("today's way stays private and sends no sound settings", () async {
+      await controller.open();
+      await controller.setMode(CameraMode.react);
+      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: true));
+      expect(camera.lastGallery, isFalse);
+      expect(camera.lastReactLive, isNull);
+    });
+
+    test('stop hands back how many frames made it and how many were lost', () async {
+      await controller.open();
+      await controller.setMode(CameraMode.react, reactLiveShortSide: 1080);
+      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: false));
+      camera.recordedMs = 4000;
+      camera.recordedFrames = 120;
+      camera.recordedMissedFrames = 3;
+      final shot = await controller.shutter() as VideoShot;
+      expect(shot.frames, 120);
+      expect(shot.missedFrames, 3);
+    });
+
+    test("the video's end is said, and a new take starts without it", () async {
+      await controller.open();
+      await controller.setMode(CameraMode.react, reactLiveShortSide: 1080);
+      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: false));
+      camera.emit(const ReactVideoEnded());
+      await pumpEventQueue();
+      expect(controller.reactVideoEnded, isTrue);
+      camera.recordedMs = 1000;
+      await controller.shutter();
+      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: false));
+      expect(controller.reactVideoEnded, isFalse);
+    });
+
+    test('a recorder that failed is said once', () async {
+      await controller.open();
+      await controller.setMode(CameraMode.react, reactLiveShortSide: 1080);
+      camera.emit(const ReactRecorderFailed(message: 'codec gone'));
+      await pumpEventQueue();
+      expect(controller.takeMessage(), kReactLiveFailedMessage);
+      expect(controller.takeReactLiveFailure(), isTrue);
+      expect(controller.takeReactLiveFailure(), isFalse);
+    });
+
+    test('pausing a live take pauses the recording', () async {
+      await controller.open();
+      await controller.setMode(CameraMode.react, reactLiveShortSide: 1080);
+      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: false));
+      await controller.pauseOrResume();
+      expect(camera.calls.last, 'pause');
     });
   });
 
