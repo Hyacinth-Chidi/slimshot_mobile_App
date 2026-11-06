@@ -85,6 +85,16 @@ void main() {
     expect(key('react_pick'), findsOneWidget);
   });
 
+  testWidgets('entering REACT gives the recorder your camera at once, before anything is chosen', (tester) async {
+    await pumpCamera(tester);
+    await tester.tap(key('camera_mode_react'));
+    await tester.pumpAndSettle();
+    expect(camera.scenes, isNotEmpty, reason: 'without a scene the recorder draws black');
+    final places = reactionPlaces(layout: ReactionLayout.topBottom, window: ReactionWindow.initial, videoAspect: 9 / 16);
+    expect(camera.scenes.last.camera.dst, places.camera);
+    expect(camera.scenes.last.video, isNull);
+  });
+
   testWidgets('choosing a video opens it in the recorder, and the scene puts it in its place', (tester) async {
     await pumpCamera(tester);
     await enterAndChoose(tester);

@@ -145,6 +145,9 @@ class CameraChannel(
     private var liveEntry: TextureRegistry.SurfaceTextureEntry? = null
     private var liveShortSide = 1080
 
+    /** The latest scene, kept for a recorder made after it arrived. */
+    private var liveScene = ReactScene.EMPTY
+
     /** The app leaving the screen mid-take: the live file is finished with what it has. */
     private val lifecycleWatcher = LifecycleEventObserver { _, event ->
         if (event == Lifecycle.Event.ON_STOP) {
@@ -238,7 +241,8 @@ class CameraChannel(
                 result.success(null)
             }
             "reactScene" -> {
-                live?.setScene(ReactScene.fromMap(call.arguments as? Map<*, *>))
+                liveScene = ReactScene.fromMap(call.arguments as? Map<*, *>)
+                live?.setScene(liveScene)
                 result.success(null)
             }
             "reactPlayback" -> {
@@ -383,7 +387,10 @@ class CameraChannel(
         val selector = selectorFor(provider)
         val recorder = live ?: run {
             val entry = textureRegistry.createSurfaceTexture().also { liveEntry = it }
-            ReactLiveRecorder(context, entry) { event -> events?.success(event) }.also { live = it }
+            ReactLiveRecorder(context, entry) { event -> events?.success(event) }.also {
+                it.setScene(liveScene)
+                live = it
+            }
         }
         val frame = ResolutionSelector.Builder()
             .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)

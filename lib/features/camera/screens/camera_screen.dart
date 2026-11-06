@@ -362,8 +362,10 @@ class _CameraScreenState extends State<CameraScreen> {
     final capture = await _chooseCapture();
     if (!mounted) return;
     _capture = capture;
-    _sentScene = null;
     await controller.setMode(CameraMode.react, lens: CameraLens.front, reactLiveShortSide: capture.shortSide);
+    // A scene sent while REACT was being bound had no recorder to go to:
+    // without this one, the recorder drew black until something was chosen.
+    _sentScene = null;
     _sendScene();
   }
 
@@ -453,8 +455,11 @@ class _CameraScreenState extends State<CameraScreen> {
     if (controller.mode != CameraMode.react) return;
     // What was chosen lives in the recorder: today's way starts empty.
     if (next == ReactCapture.afterwards) _clearReactVideo();
-    _sentScene = null;
-    unawaited(controller.setReactLiveSize(next.shortSide));
+    unawaited(controller.setReactLiveSize(next.shortSide).then((_) {
+      if (!mounted) return;
+      _sentScene = null;
+      _sendScene();
+    }));
   }
 
   /// Out of REACT: what was chosen is let go — the next REACT starts empty

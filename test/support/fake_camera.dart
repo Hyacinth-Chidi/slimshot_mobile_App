@@ -136,8 +136,13 @@ class FakeCamera implements CameraBackend {
   @override
   Future<void> reactClearSource() async => calls.add('clear source');
 
+  /// As the phone: a scene sent before REACT is bound live has no recorder to
+  /// go to, and is lost.
   @override
-  Future<void> reactScene(ReactionScene scene) async => scenes.add(scene);
+  Future<void> reactScene(ReactionScene scene) async {
+    if (lastLiveShortSide == null) return;
+    scenes.add(scene);
+  }
 
   @override
   Future<void> reactPlayback({required bool playing}) async => playback.add(playing);
