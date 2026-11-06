@@ -5724,6 +5724,70 @@ reaction in the gallery's album and on the pile; Edit opening the two layers in 
 after editing; Delete taking the take with it; leaving the app mid-take; a long video (the render
 time on the Infinix).
 
+### REACT recorded live — stop means finished
+
+**Awaiting device verification** (2026-11-06). Spec:
+`docs/superpowers/specs/2026-11-06-react-live-recording-design.md`, plan beside it in `plans/`.
+Measured on the Infinix, a reaction made after the take waited about **1.7 s per second
+recorded** (37 s → 64 s; 3½ min → 5 min 54 s: the picture ~1.05 s/s, the sound mix 0.42, the
+loudness read 0.18) — a 30-minute reaction would wait ~50 minutes. The owner: *"better, faster,
+without harming the editor engines — my screen recording is 100x faster."* So where the phone can,
+REACT records the way a screen recorder or a dual-camera app does: **both pictures are drawn
+straight into the file as you record, and the sound mixed live; stop means finished.**
+
+- **The recorder** (`camera/react/ReactLiveRecorder`): CameraX binds **Preview only** (mode
+  `react_live`) into the recorder's camera `SurfaceTexture`; an ExoPlayer plays the video into its
+  video texture and its sound to the speaker (the sound button is `reactSound`); a photo is a
+  bitmap texture. Every camera frame is drawn once by `ReactCompositor` into a **second Flutter
+  texture** (720x1280, never the camera's own entry) and, while recording, again into an H.264
+  encoder stamped with its file time. **What the screen shows is the very drawing the file gets.**
+  Its own EGL (recordable config) — the editor's `EglCore`, `VideoFrameEncoder` and `ExportMuxer`
+  are untouched; the camera feature has its own small copies (`ReactEgl`, `ReactVideoEncoder`,
+  `ReactMuxer`, `ReactAacEncoder`). It only *calls* `PcmAudioSource`, `ExportCapabilities` and
+  `StillImageDecoder`.
+- **Dart computes, Kotlin draws** (`reactionScene` → `ReactScene`): the layout stays
+  `reactionPlaces` / `coverCrop`, sent as `dst`/`src` rects; `ReactGeometry` turns them into
+  vertices, turning and mirroring a camera buffer only where CameraX did not
+  (`hasCameraTransform`). Window drag, layout, ✕ and the end's ✕ each send a scene.
+- **Time is one clock** (`FileClock`, `nanoTime` minus pauses): camera frames by their timestamp
+  where it is on that clock (`frameNanos`), the microphone by `AudioRecord.getTimestamp`; the
+  video's sound in the file is decoded separately (`PcmAudioSource`) at the moment the player
+  **showed** (`MediaTimeMap`, sampled every 30 ms and at every play/pause/end), so it stays with
+  the picture through tap-holds, the end hold and pauses.
+- **Sound out loud** (`LiveTalkGate`, `ReactAudioMixer`): the video's clean sound lowered to
+  `kReactionDuckVolume` while you talk, the microphone held to `kReactionMicGateVolume` while you
+  don't — the numbers travel from Dart in the start (`ReactLiveTake`). **Talking is what the
+  microphone hears above the video's own sound at that moment** (the bleed learned as the 10th
+  percentile of mic-minus-video, the room while the video is silent), so loud music is not a voice.
+  **Where it cannot tell it opens everything** (warm-up, the bleed not yet learned, a "bleed" above
+  −6 dB — continuous talking from the first moment): a voice is never held back on a guess. The
+  mix runs ~0.45 s behind live (arrival lag + a 250 ms look-ahead so the dip starts with the first
+  word). A photo, or headphones, lowers nothing.
+- **The file goes straight into the gallery** through a MediaStore pending entry and its file
+  descriptor (`ReactOutput`) — no copy of a long file; the camera folder where the gallery is
+  refused. It lands on the pile as **one finished video** (no `reaction`, the owner's call: Edit
+  opens it as one clip). Reactions made before keep their two layers.
+- **The way per phone, never a test run** (`react_live.dart`, `ReactCaptureStore`): the encoder's
+  achievable (else supported) fps at 1080x1920 and 720x1280 (`ReactCapabilityProbe`) — ≥ 40 at
+  1080 records 1080, ≥ 30 at 720 records 720, else today's way; the take counts camera frames that
+  never made it (`MissedFrames`, against the camera's own median gap, so a 15 fps low-light camera
+  is not choppy); a take missing ≥ max(10, 5%) steps the phone down one size, remembered per build
+  (`appBuildStamp`) and said once (`kReactStepTo720Message` / `kReactStepToAfterMessage`). A
+  recorder that dies mid-take finishes what it can (`recordingEnded`), says `reactFailed`, and the
+  phone goes today's way from then on (`kReactLiveFailedMessage`).
+- **Today's way is untouched** and stays the fallback: `camera_react_screen_test.dart` pins it (its
+  fake phone has no live capability; the live tests opt in).
+- **Known**: the recorder's teardown releases its camera texture right after `unbindAll`, without
+  waiting for CameraX's surface-result callback; the media-time map is sampled at 30 ms, so the
+  video's sound can sit up to a frame off its picture; Edit can no longer change a live reaction's
+  layout.
+
+**Device checks**: entering REACT on the Infinix (1080 or 720 — `REACT live facts` in logcat); a
+long take finished within a second or two of stop, in the gallery and on the pile; the file matching
+the screen in every layout and the window; tap-hold, the end hold and its ✕, pause/resume; out loud
+the video dipping under talk with no echo between, headphones untouched, a photo; a choppy take's
+step down; leaving the app mid-take; the editor's preview and export unchanged.
+
 ### Decisions already made â€” don't re-litigate
 
 | Question | Decision |
