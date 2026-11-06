@@ -129,27 +129,37 @@ void main() {
     expect(key('react_pick'), findsOneWidget);
   });
 
-  testWidgets('out loud the video is lowered while you talk; with headphones it is not', (tester) async {
+  testWidgets("out loud the microphone cancels the speaker's echo; with headphones there is none", (tester) async {
     await pumpCamera(tester);
     await enterAndChoose(tester);
     await startTake(tester);
-    expect(camera.lastReactLive!.lowerVideo, isTrue);
+    expect(camera.lastReactLive!.cancelEcho, isTrue);
     expect(camera.lastGallery, isTrue);
     await stopTake(tester);
     camera.headphones = true;
     await startTake(tester);
-    expect(camera.lastReactLive!.lowerVideo, isFalse);
+    expect(camera.lastReactLive!.cancelEcho, isFalse);
     await stopTake(tester);
   });
 
-  testWidgets('a photo is never lowered: there is nothing to lower', (tester) async {
+  testWidgets("with the video's sound off nothing plays to the microphone", (tester) async {
+    await pumpCamera(tester);
+    await enterAndChoose(tester);
+    await tester.tap(key('react_sound'));
+    await tester.pumpAndSettle();
+    await startTake(tester);
+    expect(camera.lastReactLive!.cancelEcho, isFalse);
+    await stopTake(tester);
+  });
+
+  testWidgets('a photo has no sound to echo', (tester) async {
     picked = '/picked/meme.jpg';
     await pumpCamera(tester);
     await enterAndChoose(tester);
     expect(camera.calls, contains('source /picked/meme.jpg photo'));
     expect(key('react_sound'), findsNothing);
     await startTake(tester);
-    expect(camera.lastReactLive!.lowerVideo, isFalse);
+    expect(camera.lastReactLive!.cancelEcho, isFalse);
     await stopTake(tester);
   });
 

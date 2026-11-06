@@ -619,13 +619,14 @@ class _CameraScreenState extends State<CameraScreen> {
     HapticFeedback.lightImpact();
     final headphones = await _backend.headphonesConnected();
     if (!mounted) return;
-    final lower = !_reactIsPhoto && videoSoundReachesMicrophone(headphones: headphones, videoSoundOn: _videoSoundOn);
+    final cancelEcho =
+        !_reactIsPhoto && videoSoundReachesMicrophone(headphones: headphones, videoSoundOn: _videoSoundOn);
     setState(() {
       _liveHeld = false;
       _liveRemoved = false;
     });
     _sendScene();
-    await controller.shutter(reactLive: ReactLiveTake(lowerVideo: lower));
+    await controller.shutter(reactLive: ReactLiveTake(cancelEcho: cancelEcho));
     if (mounted) setState(() {});
   }
 

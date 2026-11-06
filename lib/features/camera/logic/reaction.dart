@@ -5,7 +5,6 @@ import 'package:flutter/material.dart' show RangeValues;
 import 'package:flutter/foundation.dart';
 
 import '../../video_editor/logic/animation/animatable_double.dart';
-import '../../video_editor/logic/animation/overlay_keyframes.dart';
 import '../../video_editor/logic/mask/clip_mask.dart';
 import '../../video_editor/logic/overlay_box_fit.dart';
 import '../../video_editor/models/image_overlay_model.dart';
@@ -13,7 +12,6 @@ import '../../video_editor/models/media_asset.dart';
 import '../../video_editor/models/video_editor_state.dart';
 import '../../video_editor/models/video_overlay_model.dart';
 import '../../video_editor/models/video_segment.dart';
-import 'reaction_sound.dart';
 
 /// How REACT puts you and the video in one frame.
 ///
@@ -351,7 +349,6 @@ class ReactionTake {
     required this.pieces,
     required this.videoSoundInCamera,
     this.removedAtMs,
-    this.speech,
   });
 
   /// Names the project made from it.
@@ -374,11 +371,6 @@ class ReactionTake {
   /// the whole frame; null when it stayed to the end.
   final int? removedAtMs;
 
-  /// Where you talked, found from the take's loudness ([speechSpans]) when
-  /// the microphone heard the video; null where it was not looked for or
-  /// could not be told apart — the sound is then left as recorded.
-  final List<ReactionSpeech>? speech;
-
   /// The files of the camera's own this take made: the recording of you and
   /// each held frame's still. Never the video reacted to.
   List<String> get cameraFiles => [
@@ -396,7 +388,6 @@ class ReactionTake {
         'pieces': [for (final piece in pieces) piece.toJson()],
         'micHearsVideo': videoSoundInCamera,
         if (removedAtMs != null) 'removedAt': removedAtMs,
-        if (speech != null) 'speech': [for (final s in speech!) s.toJson()],
       };
 
   /// Null for anything it cannot read.
@@ -428,9 +419,6 @@ class ReactionTake {
       ],
       videoSoundInCamera: raw['micHearsVideo'] != false,
       removedAtMs: raw['removedAt'] is num ? (raw['removedAt'] as num).toInt() : null,
-      speech: raw['speech'] is List
-          ? [for (final s in raw['speech'] as List) ?ReactionSpeech.fromJson(s)]
-          : null,
     );
   }
 }
@@ -459,12 +447,6 @@ VideoEditorState reactionProject(ReactionTake take) {
   final first = pieces.first;
   final leadMs =
       photo || first.isHold ? 0 : (-first.offsetMs).clamp(0, math.max(0, cameraMs - 1)).toInt();
-
-  // Out loud with talking found, the video keeps its own clean sound, lowered
-  // while you talk, and your microphone comes through only then. Otherwise
-  // the sound is as it was recorded: out loud, the microphone already has
-  // the video and the layer stays muted.
-  final speech = take.videoSoundInCamera ? take.speech : null;
 
   // From the video's removal on, you fill the frame and nothing is over you.
   final removedMs = take.removedAtMs;
@@ -532,17 +514,14 @@ VideoEditorState reactionProject(ReactionTake take) {
       timelineEnd: Duration(milliseconds: endMs),
       sourceStart: videoFromMs / 1000,
       sourceEnd: (videoFromMs + endMs - startMs) / 1000,
-      isMuted: take.videoSoundInCamera && speech == null,
+      // Out loud the microphone already has the video: unmuted, it would be
+      // heard twice, a moment apart. Otherwise its clean sound plays beside
+      // your voice, both at full.
+      isMuted: take.videoSoundInCamera,
       mask: mask,
       referenceCanvasSize: kReactionFrame,
     );
-    overlays.add(speech == null
-        ? layer
-        : _lowered(
-            layer,
-            speechEnvelope(speech,
-                fromMs: fromMs, toMs: fromMs + endMs - startMs, inside: kReactionDuckVolume, outside: 1),
-          ));
+    overlays.add(layer);
   }
 
   // A take made before holds stopped a moment after the video's last frame,
@@ -561,16 +540,7 @@ VideoEditorState reactionProject(ReactionTake take) {
     if (contentEndMs < cameraMs && contentEndMs / 1000 < clipEndSeconds)
       _cameraClip('react_camera_${take.id}_full', camera, const Rect.fromLTWH(0, 0, 1, 1), contentEndMs / 1000,
           clipEndSeconds),
-  ].map((clip) => speech == null
-      ? clip
-      : _gated(
-          clip,
-          speechEnvelope(speech,
-              fromMs: (clip.sourceStart * 1000).round(),
-              toMs: (clip.sourceEnd * 1000).round(),
-              inside: 1,
-              outside: kReactionMicGateVolume),
-        )).toList();
+  ];
 
   return VideoEditorState(
     draftId: 'react_${take.id}',
@@ -580,48 +550,6 @@ VideoEditorState reactionProject(ReactionTake take) {
     durationSeconds: camera.durationSeconds,
     videoOverlays: overlays,
     imageOverlays: stills,
-  );
-}
-
-/// [value] at every one of [points]' instants: a property held where it is
-/// at each diamond — a diamond pins every property, the editor's rule.
-List<Keyframe> _pinned(double value, List<(double, double)> points) =>
-    [for (final point in points) Keyframe(progress: point.$1, value: value)];
-
-List<Keyframe> _curve(List<(double, double)> points) =>
-    [for (final point in points) Keyframe(progress: point.$1, value: point.$2)];
-
-/// [layer] with its volume following [points] — lowered while you talk —
-/// and every other property pinned where it is at the same instants. A
-/// stretch with no talking in it plays at full volume, with no curve.
-VideoOverlayModel _lowered(VideoOverlayModel layer, List<(double, double)> points) {
-  if (points.isEmpty) return layer;
-  return layer.copyWith(
-    keyframes: OverlayKeyframes({
-      OverlayProperty.x: _pinned(layer.position.dx, points),
-      OverlayProperty.y: _pinned(layer.position.dy, points),
-      OverlayProperty.scale: _pinned(layer.scale, points),
-      OverlayProperty.rotation: _pinned(layer.rotation, points),
-      OverlayProperty.opacity: _pinned(layer.opacity, points),
-      OverlayProperty.volume: _curve(points),
-    }),
-  );
-}
-
-/// [clip] with its volume following [points] — your microphone let through
-/// while you talk — and every other property pinned at the same instants.
-/// A stretch with no talking in it holds the microphone back throughout.
-VideoSegment _gated(VideoSegment clip, List<(double, double)> points) {
-  if (points.isEmpty) return clip.copyWith(volume: const AnimatableDouble(baseValue: kReactionMicGateVolume));
-  AnimatableDouble pin(AnimatableDouble property) =>
-      AnimatableDouble(baseValue: property.baseValue, keyframes: _pinned(property.baseValue, points));
-  return clip.copyWith(
-    canvasScale: pin(clip.canvasScale),
-    canvasOffsetX: pin(clip.canvasOffsetX),
-    canvasOffsetY: pin(clip.canvasOffsetY),
-    canvasRotation: pin(clip.canvasRotation),
-    opacity: pin(clip.opacity),
-    volume: AnimatableDouble(baseValue: 1, keyframes: _curve(points)),
   );
 }
 

@@ -634,7 +634,7 @@ class CameraController extends ChangeNotifier {
       path,
       audio: audio,
       gallery: gallery,
-      reactLive: this.reactLive ? reactLive ?? const ReactLiveTake(lowerVideo: false) : null,
+      reactLive: this.reactLive ? reactLive ?? const ReactLiveTake(cancelEcho: false) : null,
     );
     _recordingPath = path;
     _recordedMs = 0;

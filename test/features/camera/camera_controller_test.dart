@@ -431,15 +431,15 @@ void main() {
     test('a live take goes to the gallery, with its sound settings', () async {
       await controller.open();
       await controller.setMode(CameraMode.react, reactLiveShortSide: 1080);
-      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: true));
+      await controller.shutter(reactLive: const ReactLiveTake(cancelEcho: true));
       expect(camera.lastGallery, isTrue, reason: 'the take is the finished reaction');
-      expect(camera.lastReactLive?.lowerVideo, isTrue);
+      expect(camera.lastReactLive?.cancelEcho, isTrue);
     });
 
     test("today's way stays private and sends no sound settings", () async {
       await controller.open();
       await controller.setMode(CameraMode.react);
-      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: true));
+      await controller.shutter(reactLive: const ReactLiveTake(cancelEcho: true));
       expect(camera.lastGallery, isFalse);
       expect(camera.lastReactLive, isNull);
     });
@@ -447,7 +447,7 @@ void main() {
     test('stop hands back how many frames made it and how many were lost', () async {
       await controller.open();
       await controller.setMode(CameraMode.react, reactLiveShortSide: 1080);
-      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: false));
+      await controller.shutter(reactLive: const ReactLiveTake(cancelEcho: false));
       camera.recordedMs = 4000;
       camera.recordedFrames = 120;
       camera.recordedMissedFrames = 3;
@@ -459,13 +459,13 @@ void main() {
     test("the video's end is said, and a new take starts without it", () async {
       await controller.open();
       await controller.setMode(CameraMode.react, reactLiveShortSide: 1080);
-      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: false));
+      await controller.shutter(reactLive: const ReactLiveTake(cancelEcho: false));
       camera.emit(const ReactVideoEnded());
       await pumpEventQueue();
       expect(controller.reactVideoEnded, isTrue);
       camera.recordedMs = 1000;
       await controller.shutter();
-      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: false));
+      await controller.shutter(reactLive: const ReactLiveTake(cancelEcho: false));
       expect(controller.reactVideoEnded, isFalse);
     });
 
@@ -482,7 +482,7 @@ void main() {
     test('pausing a live take pauses the recording', () async {
       await controller.open();
       await controller.setMode(CameraMode.react, reactLiveShortSide: 1080);
-      await controller.shutter(reactLive: const ReactLiveTake(lowerVideo: false));
+      await controller.shutter(reactLive: const ReactLiveTake(cancelEcho: false));
       await controller.pauseOrResume();
       expect(camera.calls.last, 'pause');
     });

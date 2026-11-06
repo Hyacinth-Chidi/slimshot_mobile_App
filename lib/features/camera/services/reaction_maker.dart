@@ -6,7 +6,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../audio_tools/audio_tools_service.dart';
 import '../../video_editor/models/media_asset.dart';
 import '../../video_editor/models/video_editor_state.dart';
 import '../../video_editor/services/media_import_service.dart';
@@ -17,7 +16,6 @@ import '../logic/camera_files.dart';
 import '../logic/camera_roll.dart';
 import '../logic/reaction.dart';
 import '../logic/reaction_session.dart';
-import '../logic/reaction_sound.dart';
 
 /// What a finished take needs to become a reaction.
 @immutable
@@ -78,10 +76,6 @@ abstract class ReactionRenderer {
   /// The frame of [video] at [ms], exactly, as a picture in the camera's
   /// folder; null where it cannot be had.
   Future<String?> stillAt(MediaAsset video, int ms);
-
-  /// The loudness of [path]'s sound in [count] equal steps, each 0..1; null
-  /// where it cannot be read.
-  Future<List<double>?> soundLevels(String path, int count);
 }
 
 /// Turns a finished take into the reaction: both files measured, the
@@ -115,20 +109,6 @@ Future<RollShot?> makeReaction(
     pieces.add(piece.withStill(await renderer.stillAt(video, frameMs)));
   }
 
-  // Out loud the microphone heard the video too: where you talked is found
-  // from your take, so the video can be lowered under it. With headphones
-  // there is nothing to lower and nothing is listened to.
-  List<ReactionSpeech>? speech;
-  if (request.micHearsVideo) {
-    final cameraMs = (camera.durationSeconds * 1000).round();
-    final count = math.min(kSpeechMaxBuckets, math.max(1, cameraMs ~/ kSpeechBucketMs));
-    final levels = await renderer.soundLevels(camera.path, count);
-    if (levels != null && levels.isNotEmpty) {
-      speech = speechSpans(levels, bucketMs: cameraMs / levels.length);
-    }
-    debugPrint('REACT: talking found: ${speech ?? 'none told apart; the sound stays as recorded'}');
-  }
-
   final at = now ?? DateTime.now();
   final take = ReactionTake(
     id: at.millisecondsSinceEpoch.toString(),
@@ -139,7 +119,6 @@ Future<RollShot?> makeReaction(
     pieces: pieces,
     videoSoundInCamera: request.micHearsVideo,
     removedAtMs: recording.removedAtMs,
-    speech: speech,
   );
   final rendered = await renderer.render(
     reactionProject(take),
@@ -209,16 +188,6 @@ class EngineReactionRenderer implements ReactionRenderer {
 
   @override
   Future<SavedShot?> publish(String path) => camera.publishVideo(path);
-
-  @override
-  Future<List<double>?> soundLevels(String path, int count) async {
-    try {
-      return await AudioToolsService().peaks(path, count: count);
-    } catch (error) {
-      debugPrint("REACT: the take's sound could not be read: $error");
-      return null;
-    }
-  }
 
   @override
   Future<String?> stillAt(MediaAsset video, int ms) async {

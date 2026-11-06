@@ -249,13 +249,13 @@ void main() {
         '/c/V.mp4',
         audio: true,
         gallery: true,
-        reactLive: const ReactLiveTake(lowerVideo: true),
+        reactLive: const ReactLiveTake(cancelEcho: true),
       );
       expect(calls.single.arguments, {
         'path': '/c/V.mp4',
         'audio': true,
         'gallery': true,
-        'react': {'lowerVideo': true, 'duck': 0.25, 'gate': 0.1, 'rampMs': 150},
+        'react': {'cancelEcho': true},
       });
     });
 

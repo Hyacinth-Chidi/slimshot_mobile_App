@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/camera/logic/camera_controller.dart';
 import 'package:slimshotai/features/camera/logic/reaction.dart';
-import 'package:slimshotai/features/camera/logic/reaction_sound.dart';
 import 'package:slimshotai/features/camera/logic/reaction_session.dart';
 import 'package:slimshotai/features/camera/services/reaction_maker.dart';
 import 'package:slimshotai/features/video_editor/models/media_asset.dart';
@@ -15,16 +14,6 @@ class FakeRenderer implements ReactionRenderer {
   bool failRender = false;
   bool failStills = false;
   final stillsAsked = <int>[];
-
-  /// The take's loudness, as the engine reads it; null where it cannot.
-  List<double>? levels = [for (var i = 0; i < 120; i++) i >= 40 && i < 60 ? 0.9 : 0.08];
-  final levelsAsked = <(String, int)>[];
-
-  @override
-  Future<List<double>?> soundLevels(String path, int count) async {
-    levelsAsked.add((path, count));
-    return levels;
-  }
 
   @override
   Future<String?> stillAt(MediaAsset video, int ms) async {
@@ -150,24 +139,18 @@ void main() {
     expect(renderer.rendered.single.imageOverlays, isEmpty);
   });
 
-  test('out loud, where you talked is found from your take and kept with it', () async {
+  test('out loud the reaction keeps the sound as recorded: your microphone, which heard the video', () async {
     final shot = await makeReaction(_request(), renderer);
-    expect(renderer.levelsAsked, [('/camera/VID_take.mp4', 6000 ~/ kSpeechBucketMs)]);
-    expect(shot!.reaction!.speech, const [ReactionSpeech(2000 - kSpeechLeadMs, 3000 + kSpeechTailMs)]);
-    expect(renderer.rendered.single.videoOverlays.single.isMuted, isFalse, reason: 'its clean sound, lowered while you talk');
-  });
-
-  test('with headphones your take is not listened to: nothing is lowered', () async {
-    final shot = await makeReaction(_request(micHearsVideo: false), renderer);
-    expect(renderer.levelsAsked, isEmpty);
-    expect(shot!.reaction!.speech, isNull);
-  });
-
-  test('a take whose sound cannot be read is left as it was recorded', () async {
-    renderer.levels = null;
-    final shot = await makeReaction(_request(), renderer);
-    expect(shot!.reaction!.speech, isNull);
     expect(renderer.rendered.single.videoOverlays.single.isMuted, isTrue);
+    expect(renderer.rendered.single.videoOverlays.single.keyframes.isEmpty, isTrue);
+    expect(shot!.reaction!.videoSoundInCamera, isTrue);
+  });
+
+  test("with headphones the reaction has the video's clean sound and your voice, both at full", () async {
+    final shot = await makeReaction(_request(micHearsVideo: false), renderer);
+    expect(renderer.rendered.single.videoOverlays.single.isMuted, isFalse);
+    expect(renderer.rendered.single.segments.single.volume.isAnimated, isFalse);
+    expect(shot!.reaction!.videoSoundInCamera, isFalse);
   });
 
   test('with no gallery the reaction stays in SlimShot', () async {

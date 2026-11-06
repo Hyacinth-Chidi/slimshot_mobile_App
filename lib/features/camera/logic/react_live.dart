@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 
 import 'reaction.dart';
-import 'reaction_sound.dart';
 
 /// REACT recorded live: your camera and the video are drawn together straight
 /// into the file as you record, and the sound mixed as it happens, so stop
@@ -167,27 +166,17 @@ ReactionScene reactionScene({
   );
 }
 
-/// A live take's sound: whether the video is lowered while you talk (out
-/// loud, where the microphone hears it), and by how much — the numbers the
-/// reaction made afterwards uses, defined once, here in Dart.
+/// A live take's sound. The file has your voice and the video's own clean
+/// sound, both at full, the way a screen recorder mixes the phone's sound
+/// with its microphone. Out loud the microphone also hears the speaker play
+/// the video, and that copy is an echo under the clean sound, so it records
+/// through the phone's echo canceller ([cancelEcho]) — the call input
+/// Android's own screen recorder uses for its microphone.
 @immutable
 class ReactLiveTake {
-  const ReactLiveTake({
-    required this.lowerVideo,
-    this.duckVolume = kReactionDuckVolume,
-    this.micGateVolume = kReactionMicGateVolume,
-    this.rampMs = kSpeechRampMs,
-  });
+  const ReactLiveTake({required this.cancelEcho});
 
-  final bool lowerVideo;
-  final double duckVolume;
-  final double micGateVolume;
-  final int rampMs;
+  final bool cancelEcho;
 
-  Map<String, Object?> toJson() => {
-        'lowerVideo': lowerVideo,
-        'duck': duckVolume,
-        'gate': micGateVolume,
-        'rampMs': rampMs,
-      };
+  Map<String, Object?> toJson() => {'cancelEcho': cancelEcho};
 }

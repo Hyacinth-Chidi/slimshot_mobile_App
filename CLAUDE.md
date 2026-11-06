@@ -2118,8 +2118,10 @@ rotation and opacity** with the clip's diamonds, plus button, easing sheet and e
 colour is deliberately not in this batch: it needs its own export colour pass.
 
 **Volume is a sixth property only for a video layer that already carries a volume track** — a
-reaction's, lowered while you talk (`OverlayProperty.volume`, `OverlayMotion.volume`; the owner's
-call, 2026-11-06, asked "will it affect our editor"). A video layer made in the editor has no
+reaction's made while REACT lowered the video under talk (`OverlayProperty.volume`,
+`OverlayMotion.volume`; the owner's call, 2026-11-06, asked "will it affect our editor"). That
+lowering is gone (the REACT section) and nothing makes a track now; the support stays for the
+reactions and drafts that have one. A video layer made in the editor has no
 track, so its diamonds pin the five, its Volume writes `volume` as before and its payload is
 byte-identical (the golden). On a tracked layer the Volume panel shows and writes through the
 edit rule (`setOverlayMotionLive(volume:)`, after `beginOverlayEdit`), capture, removal, move and
@@ -5667,26 +5669,17 @@ separate layers**, so the layout, size and sound can still change.
   start. Root cause not confirmed on a device; the end and every stop log their reason
   (`REACT: …`). A take made before holds, which stopped a moment after the video's end, is still
   cut where its video ran out.
-- **Sound** (`videoSoundReachesMicrophone`, `logic/reaction_sound.dart`): with headphones, or the
-  video's sound turned off, the microphone hears only you, and the file has the video's clean
-  sound with your voice. **Out loud the microphone has the video too, so the video is lowered
-  while you talk** (the owner's design): the layer keeps its own clean sound, at
-  `kReactionDuckVolume` (0.25) while you talk and full otherwise, and your microphone comes through
-  only while you talk — `kReactionMicGateVolume` (0.1) the rest of the time — so the speaker's copy
-  it picked up does not double the video. Edges ramp over `kSpeechRampMs` (150). **Where you
-  talked** is found after the take from its loudness (`speechSpans`, over the Extract waveform's
-  `peaks` — its cap raised to 12000 for a take's 50ms steps; Extract asks for its own 200): what
-  stands above the take's quiet level, pauses between words bridged, clicks dropped, each stretch
-  padded. Kept with the take (`ReactionTake.speech`). **Null where talking cannot be told apart**
-  — no sound read, nothing standing out — and then the sound is as recorded (the layer muted), a
-  wrong guess being a silenced voice. The two curves (`speechEnvelope`) are **keyframes**: on your
-  clip's volume (with every other clip property pinned at the same instants, the diamond rule) and
-  on the video layer's **volume track**, which only a reaction's layer carries (the owner's call:
-  see the overlay keyframes section) — so the editor plays the reaction as the file does, and its
-  Volume edits the curve. Every number is a starting point, to be tuned on a phone. Decided at the
-  take's start. Headphones (`Headphones.kt`): wired, USB, Bluetooth A2DP/SCO, hearing aids, LE
-  headsets — **a Bluetooth speaker counts as headphones**, since nothing tells them apart without a
-  Bluetooth permission.
+- **Sound** (`videoSoundReachesMicrophone`, in `reaction.dart`): with headphones, or the video's
+  sound turned off, the microphone hears only you, and the file has the video's clean sound with
+  your voice, both at full. **Out loud the microphone has the video too**, so the video's layer is
+  muted and the sound is your microphone, which heard it: after the take nothing can take the
+  speaker's copy out of the microphone, and the clean sound beside it would be heard twice, a
+  moment apart. (Lowering the video while you talk — talking found from the take's loudness,
+  volume keyframes on both layers — was built and **removed at the owner's call, 2026-11-06**:
+  they want both at full, the way a screen recorder records; a take saved with its `speech` opens
+  without the curves.) Decided at the take's start. Headphones (`Headphones.kt`): wired, USB,
+  Bluetooth A2DP/SCO, hearing aids, LE headsets — **a Bluetooth speaker counts as headphones**,
+  since nothing tells them apart without a Bluetooth permission.
 - **Making it** (`makeReaction`, `EngineReactionRenderer`): both files probed, the project built,
   the camera let go while the engine renders (`NativeTimelinePreviewService` initialize →
   exportVideo → dispose — no editor is open), a ring filling over the frame, the app held
@@ -5708,12 +5701,10 @@ separate layers**, so the layout, size and sound can still change.
 - **Known**: the recording's time is the recorder's report, which trails capture by its encoder's
   few frames, so a reaction may sit a few tens of milliseconds late against the video — a clap
   check on the device says how much; no cancel while the reaction is made; the Window has square
-  corners, as the file does; during talk out loud the microphone still carries the speaker's copy
-  under the lowered clean sound, masked by the voice; a reaction opened in Edit shows a diamond
-  wherever its volume moves, on both layers.
+  corners, as the file does.
 
-**Device checks** (the sound and holds, 2026-11-06): talking out loud lowers the video and comes
-through clean, silence between keeps the video full with no echo; headphones unchanged; a tap
+**Device checks** (the sound and holds, 2026-11-06): out loud, your microphone as it heard you and
+the video, nothing lowered; headphones, the clean video sound and your voice; a tap
 pauses and resumes the video, the file freezing on the same frame; the end holds, ✕ takes the
 video away and you fill the frame, live and in the file; REACT empty on every return; a video
 layer made in the editor sounds and keyframes exactly as before. **Earlier checks**: each layout live and in the file, the pictures where they were; the Window
@@ -5754,15 +5745,27 @@ straight into the file as you record, and the sound mixed live; stop means finis
   video's sound in the file is decoded separately (`PcmAudioSource`) at the moment the player
   **showed** (`MediaTimeMap`, sampled every 30 ms and at every play/pause/end), so it stays with
   the picture through tap-holds, the end hold and pauses.
-- **Sound out loud** (`LiveTalkGate`, `ReactAudioMixer`): the video's clean sound lowered to
-  `kReactionDuckVolume` while you talk, the microphone held to `kReactionMicGateVolume` while you
-  don't — the numbers travel from Dart in the start (`ReactLiveTake`). **Talking is what the
-  microphone hears above the video's own sound at that moment** (the bleed learned as the 10th
-  percentile of mic-minus-video, the room while the video is silent), so loud music is not a voice.
-  **Where it cannot tell it opens everything** (warm-up, the bleed not yet learned, a "bleed" above
-  −6 dB — continuous talking from the first moment): a voice is never held back on a guess. The
-  mix runs ~0.45 s behind live (arrival lag + a 250 ms look-ahead so the dip starts with the first
-  word). A photo, or headphones, lowers nothing.
+- **Sound, the way a screen recorder mixes it** (`ReactAudioMixer`; **awaiting device
+  verification**): your voice and the video's own clean sound, **both at full, always**. Lowering
+  the video while you talk (`LiveTalkGate`) was built and removed at the owner's call, 2026-11-06:
+  *"in screen recording it records device sound and mic perfectly"* — and they heard an echo and
+  small glitches. **Out loud the microphone is the phone's call input** (`VOICE_COMMUNICATION`,
+  with `AcousticEchoCanceler` attached where the phone has one; `ReactLiveTake.cancelEcho`), whose
+  echo canceller takes the speaker's copy out — the input Android's own screen recorder records its
+  microphone through, for the same reason. With headphones, the video's sound off or a photo,
+  nothing plays to the microphone and it is the camcorder input. Over the video's sound the voice
+  is lifted ×1.4 (the screen recorder's own number), and the sum goes through `MixLimiter`
+  (ceiling 0.98, 100 ms release), never a clamp, whose every over is a crackle.
+- **The two sounds are continuous streams** — the glitches' cause. The microphone was placed
+  block by block by its own timestamp, which jitters, leaving gaps and overlaps of a few samples,
+  each a click; it is laid end to end now (`MicPlacer`: anchored at the start, after a pause and
+  after a real gap past 60 ms; drift past 20 ms followed a sample at a time; with no timestamp,
+  the least-delayed arrival). The video's decoder was sought at every 40 ms of drift, a flush each
+  time; now only on a real jump past 200 ms (`VideoSoundFollower`), drift past 15 ms taken up a
+  sample per 10 ms block through the decoder's own resampler (`PcmAudioSource`'s rate curve, so
+  no step in the wave), and its sound fades over 5 ms where it starts, stops or jumps — a
+  tap-hold never clicks. The mix runs ~0.2 s behind live. `REACT microphone:` in logcat names the
+  input and whether a canceller was attached.
 - **The file goes straight into the gallery** through a MediaStore pending entry and its file
   descriptor (`ReactOutput`) — no copy of a long file; the camera folder where the gallery is
   refused. It lands on the pile as **one finished video** (no `reaction`, the owner's call: Edit
@@ -5780,12 +5783,15 @@ straight into the file as you record, and the sound mixed live; stop means finis
 - **Known**: the recorder's teardown releases its camera texture right after `unbindAll`, without
   waiting for CameraX's surface-result callback; the media-time map is sampled at 30 ms, so the
   video's sound can sit up to a frame off its picture; Edit can no longer change a live reaction's
-  layout.
+  layout; **the echo canceller is the phone's**, and no test reaches it — one whose reference leaves
+  out media playback cancels nothing, and the take keeps the speaker's copy; the call input is
+  tuned for calls, so a voice can come out a little narrower than through the camcorder input.
 
 **Device checks**: entering REACT on the Infinix (1080 or 720 — `REACT live facts` in logcat); a
 long take finished within a second or two of stop, in the gallery and on the pile; the file matching
 the screen in every layout and the window; tap-hold, the end hold and its ✕, pause/resume; out loud
-the video dipping under talk with no echo between, headphones untouched, a photo; a choppy take's
+your voice and the video both at full with no echo of the speaker and no clicks (`REACT
+microphone:` says the canceller was attached), headphones the same, a photo; a choppy take's
 step down; leaving the app mid-take; the editor's preview and export unchanged.
 
 ### Decisions already made â€” don't re-litigate

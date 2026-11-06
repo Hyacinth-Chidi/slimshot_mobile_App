@@ -137,8 +137,8 @@ void main() {
   });
 
   test("a take's sound settings travel with its start", () {
-    expect(const ReactLiveTake(lowerVideo: true).toJson(), {'lowerVideo': true, 'duck': 0.25, 'gate': 0.1, 'rampMs': 150});
-    expect(const ReactLiveTake(lowerVideo: false).toJson()['lowerVideo'], isFalse);
+    expect(const ReactLiveTake(cancelEcho: true).toJson(), {'cancelEcho': true});
+    expect(const ReactLiveTake(cancelEcho: false).toJson(), {'cancelEcho': false});
   });
 
   group('the remembered step', () {

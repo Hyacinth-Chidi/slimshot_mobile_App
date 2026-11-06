@@ -2,8 +2,6 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slimshotai/features/camera/logic/reaction.dart';
-import 'package:slimshotai/features/camera/logic/reaction_sound.dart';
-import 'package:slimshotai/features/video_editor/logic/animation/overlay_keyframes.dart';
 import 'package:slimshotai/features/video_editor/logic/mask/clip_mask.dart';
 import 'package:slimshotai/features/video_editor/logic/timeline/video_editor_timeline_composer.dart';
 import 'package:slimshotai/features/video_editor/models/editor_timeline.dart';
@@ -36,7 +34,6 @@ ReactionTake _take({
   List<ReactionPiece>? pieces,
   bool videoSoundInCamera = true,
   int? removedAtMs,
-  List<ReactionSpeech>? speech,
 }) =>
     ReactionTake(
       id: 't1',
@@ -47,7 +44,6 @@ ReactionTake _take({
       pieces: pieces ?? const [ReactionPiece(startMs: 0, endMs: 12000, offsetMs: 0)],
       videoSoundInCamera: videoSoundInCamera,
       removedAtMs: removedAtMs,
-      speech: speech,
     );
 
 /// Where a composed clip lands on the canvas, in canvas fractions — the
@@ -337,76 +333,32 @@ void main() {
       }
     });
 
-    test('out loud with talking found, the video keeps its own sound, lowered while you talk', () {
-      final take = _take(speech: const [ReactionSpeech(4000, 6000)]);
-      final state = reactionProject(take);
-      final overlay = state.videoOverlays.single;
-      expect(overlay.isMuted, isFalse, reason: 'its clean sound, not the speaker copy alone');
-      final volume = overlay.keyframes.of(OverlayProperty.volume);
-      expect(
-        volume.map((k) => (k.progress, k.value)),
-        speechEnvelope(take.speech!, fromMs: 0, toMs: 12000, inside: kReactionDuckVolume, outside: 1),
-      );
-      for (final p in OverlayProperty.values) {
-        expect(overlay.keyframes.of(p).map((k) => k.progress), volume.map((k) => k.progress),
-            reason: '$p is pinned at every diamond');
-      }
-      expect(overlay.shownAt(5).volume, moreOrLessEquals(kReactionDuckVolume));
-      expect(overlay.shownAt(1).volume, moreOrLessEquals(1));
+    test('out loud the microphone already has the video, so its layer is muted', () {
+      final state = reactionProject(_take());
+      expect(state.videoOverlays.single.isMuted, isTrue, reason: 'unmuted it would be heard twice, a moment apart');
+      expect(state.videoOverlays.single.keyframes.isEmpty, isTrue);
+      expect(state.segments.single.volume.isAnimated, isFalse);
     });
 
-    test('out loud with talking found, your microphone comes through only while you talk', () {
-      final take = _take(speech: const [ReactionSpeech(4000, 6000)]);
-      final clip = reactionProject(take).segments.single;
-      expect(
-        clip.volume.keyframes.map((k) => (k.progress, k.value)),
-        speechEnvelope(take.speech!, fromMs: 0, toMs: 12000, inside: 1, outside: kReactionMicGateVolume),
-      );
-      for (final property in [clip.canvasScale, clip.canvasOffsetX, clip.canvasOffsetY, clip.canvasRotation, clip.opacity]) {
-        expect(property.keyframes.map((k) => k.progress), clip.volume.keyframes.map((k) => k.progress),
-            reason: 'every property is pinned at each diamond');
-        expect(property.keyframes.every((k) => k.value == property.baseValue), isTrue, reason: 'pinned where it is');
-      }
-    });
-
-    test('with headphones nothing is lowered and nothing held back', () {
-      final state = reactionProject(_take(videoSoundInCamera: false, speech: const [ReactionSpeech(4000, 6000)]));
+    test('with headphones the video keeps its own clean sound beside your voice, both at full', () {
+      final state = reactionProject(_take(videoSoundInCamera: false));
       expect(state.videoOverlays.single.isMuted, isFalse);
       expect(state.videoOverlays.single.keyframes.isEmpty, isTrue);
       expect(state.segments.single.volume.isAnimated, isFalse);
     });
 
-    test('out loud with no talking found, the sound is as it was recorded', () {
-      final state = reactionProject(_take());
-      expect(state.videoOverlays.single.isMuted, isTrue, reason: 'the microphone already has it');
+    test('a take saved while the video was lowered under talking opens with no volume curves', () {
+      final saved = {
+        ..._take().toJson(),
+        'speech': [
+          [4000, 6000],
+        ],
+      };
+      final state = reactionProject(ReactionTake.fromJson(saved)!);
+      expect(state.videoOverlays.single.isMuted, isTrue);
       expect(state.videoOverlays.single.keyframes.isEmpty, isTrue);
       expect(state.segments.single.volume.isAnimated, isFalse);
-    });
-
-    test('a lead trimmed off the take and a removal move the curves with them', () {
-      final take = _take(
-        speech: const [ReactionSpeech(4000, 6000), ReactionSpeech(9000, 10000)],
-        removedAtMs: 8000,
-        pieces: const [ReactionPiece(startMs: 0, endMs: 8000, offsetMs: -500)],
-      );
-      final state = reactionProject(take);
-      final overlay = state.videoOverlays.single;
-      expect(
-        overlay.keyframes.of(OverlayProperty.volume).map((k) => (k.progress, k.value)),
-        speechEnvelope(take.speech!, fromMs: 500, toMs: 8000, inside: kReactionDuckVolume, outside: 1),
-      );
-      final full = state.segments.last;
-      expect(
-        full.volume.keyframes.map((k) => (k.progress, k.value)),
-        speechEnvelope(take.speech!, fromMs: 8000, toMs: 12000, inside: 1, outside: kReactionMicGateVolume),
-        reason: 'the full-frame half has its own curve, over its own stretch',
-      );
-    });
-
-    test('the engine is sent both curves', () {
-      final timeline = _compose(_take(speech: const [ReactionSpeech(4000, 6000)]));
-      expect(timeline.overlays.single.volume.isAnimated, isTrue);
-      expect(timeline.videoClips.single.volume.isAnimated, isTrue);
+      expect(ReactionTake.fromJson(saved)!.toJson().containsKey('speech'), isFalse);
     });
 
     test('a take survives a round trip', () {
@@ -420,7 +372,6 @@ void main() {
         ],
         videoSoundInCamera: false,
         removedAtMs: 11000,
-        speech: const [ReactionSpeech(500, 2000), ReactionSpeech(7000, 9000)],
       );
       final back = ReactionTake.fromJson(take.toJson())!;
       expect(back.toJson(), take.toJson());
