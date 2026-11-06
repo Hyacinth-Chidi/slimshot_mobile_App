@@ -291,15 +291,31 @@ void main() {
         reason: 'moving the window is not a swipe between modes');
   });
 
-  testWidgets('leaving REACT lets the video go; coming back opens it again, no new pick', (tester) async {
+  testWidgets('leaving REACT lets the video go; coming back starts empty', (tester) async {
     await pumpCamera(tester);
     await enterAndChoose(tester);
     await tester.tap(key('camera_mode_video'));
     await tester.pumpAndSettle();
     expect(videos.single.disposed, isTrue);
     await enterReact(tester);
-    expect(picks, 1);
-    expect(videos, hasLength(2));
+    expect(videos, hasLength(1), reason: 'nothing reopened');
+    expect(key('react_pick'), findsOneWidget);
+    expect(key('fake_video_picture'), findsNothing);
+  });
+
+  testWidgets('the cross clears what was chosen, back to the empty frame', (tester) async {
+    await pumpCamera(tester);
+    await enterReact(tester);
+    expect(key('react_remove'), findsNothing, reason: 'nothing to clear yet');
+    await choose(tester);
+    await tester.tap(key('react_remove'));
+    await tester.pumpAndSettle();
+    expect(videos.single.disposed, isTrue);
+    expect(key('react_pick'), findsOneWidget);
+    expect(key('react_remove'), findsNothing);
+    await tester.tap(key('camera_shutter'));
+    await tester.pumpAndSettle();
+    expect(picks, 2, reason: 'the shutter asks again, nothing chosen');
   });
 
   testWidgets('nothing overflows in REACT on a small phone with large text', (tester) async {

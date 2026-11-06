@@ -325,23 +325,27 @@ class _CameraScreenState extends State<CameraScreen> {
 
   // ---- REACT ----
 
-  /// Into REACT, at once, on the front camera. What to react to is chosen
-  /// from the frame (or the shutter); one chosen before opens again.
+  /// Into REACT, at once, on the front camera, always empty: what to react
+  /// to is chosen from the frame (or the shutter).
   Future<void> _enterReact() async {
     final controller = _controller;
     if (controller == null || !controller.canChangeMode) return;
-    final path = _reactPath;
-    if (_reactVideo == null && path != null) unawaited(_openReactVideo(path));
     await controller.setMode(CameraMode.react, lens: CameraLens.front);
   }
 
-  /// Out of REACT: the video's player goes — a decoder held for nothing —
-  /// and comes back, on the same video, with REACT.
-  void _leaveReact() {
+  /// Out of REACT: what was chosen is let go — the next REACT starts empty
+  /// (the owner's call).
+  void _leaveReact() => _clearReactVideo();
+
+  /// Back to the empty frame; the player goes once the frame without it is
+  /// drawn.
+  void _clearReactVideo() {
     final video = _reactVideo;
-    if (video == null) return;
-    setState(() => _reactVideo = null);
-    _disposeAfterFrame(video);
+    setState(() {
+      _reactVideo = null;
+      _reactPath = null;
+    });
+    if (video != null) _disposeAfterFrame(video);
   }
 
   /// A video's player goes once the frame without it is drawn: the picture
@@ -908,6 +912,17 @@ class _CameraScreenState extends State<CameraScreen> {
             icon: LucideIcons.replace,
             tooltip: 'Change',
             onTap: () => unawaited(_changeReactVideo()),
+          ),
+          const SizedBox(height: 6),
+          CameraRoundButton(
+            key: const ValueKey('react_remove'),
+            icon: LucideIcons.x,
+            tooltip: 'Remove',
+            onTap: () {
+              if (_take != null) return;
+              HapticFeedback.selectionClick();
+              _clearReactVideo();
+            },
           ),
         ],
       ],
