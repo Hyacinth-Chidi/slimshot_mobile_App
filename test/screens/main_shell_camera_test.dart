@@ -75,6 +75,15 @@ void main() {
     expect(stack().last, '/camera');
   });
 
+  // The owner's call, seen on the device: flat, like the bar beside it.
+  testWidgets('the circle casts no shadow', (tester) async {
+    await pumpShell(tester);
+    final circle = tester.widget<Container>(find.descendant(of: camera, matching: find.byType(Container)).first);
+    final decoration = circle.decoration! as BoxDecoration;
+    expect(decoration.shape, BoxShape.circle);
+    expect(decoration.boxShadow, anyOf(isNull, isEmpty));
+  });
+
   testWidgets('a screen reader hears a button named Camera', (tester) async {
     final semantics = tester.ensureSemantics();
     await pumpShell(tester);

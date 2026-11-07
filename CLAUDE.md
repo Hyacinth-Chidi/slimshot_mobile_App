@@ -4966,7 +4966,7 @@ frame and every icon jumped sideways (66px in a frame, measured), and a 320dp ph
 - **The camera's circle sits on the bar's row, to its right** (`NavCameraButton`, `nav_camera`,
   `main_shell_camera_test.dart`; **awaiting device verification**; the owner's pick of three
   mockups, 2026-11-07): the bar's height, `kNavCameraGap` (12) from it, purple with a white
-  camera, on every tab. Floating above the bar it would sit on Home's last recent edit, and in the
+  camera, flat — no shadow under it (taken off on the device), on every tab. Floating above the bar it would sit on Home's last recent edit, and in the
   bar's middle three tabs split two and one; beside it nothing is covered and the bar keeps one
   shape on every tab. The row is wider by the circle (max 480 for 400), so on a wide screen the
   bar keeps the width it had alone; on a phone the bar gives the room, as it already could.

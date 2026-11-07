@@ -17,7 +17,8 @@ const double _kPressedScale = 0.9;
 /// the bar's height (the owner's pick of three mockups, 2026-11-07). Beside
 /// the bar it covers nothing on any screen — floating above it would sit on
 /// Home's last recent edit — and the bar keeps one shape on every tab. White
-/// on purple, the app's chosen-state colours.
+/// on purple, the app's chosen-state colours, and flat like the bar: a drop
+/// shadow under it was taken off on the device (the owner's call).
 class NavCameraButton extends StatefulWidget {
   const NavCameraButton({super.key, required this.onTap});
 
@@ -66,13 +67,6 @@ class _NavCameraButtonState extends State<NavCameraButton> {
                 colors: [AppColors.primaryStart, AppColors.primaryEnd],
               ),
               border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryDeep.withValues(alpha: 0.55),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
             ),
             child: const Icon(LucideIcons.camera, color: Colors.white, size: 26),
           ),
