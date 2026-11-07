@@ -144,7 +144,7 @@ void main() {
   // tools are solid tiles.
   testWidgets('the tool cards are solid, not glass', (tester) async {
     await pumpHome(tester);
-    for (final title in ['Camera', 'Auto\ncaptions', 'Compress\nVideo', 'Compress\nPhoto']) {
+    for (final title in ['Auto\ncaptions', 'Compress\nVideo', 'Compress\nPhoto']) {
       final text = find.text(title);
       expect(find.ancestor(of: text, matching: find.byType(FrostedGlass)),
           findsNothing, reason: title);
@@ -185,35 +185,17 @@ void main() {
     expect(find.text('Privacy\nStrip'), findsNothing);
   });
 
-  // The camera is a feature of its own, first in the row (the owner's
-  // approval of the design; easy to move).
-  testWidgets('the camera is the first tool, before Auto captions', (tester) async {
+  // The camera's door is the circle beside the nav (the owner's pick,
+  // 2026-11-07; main_shell_camera_test.dart), not a tool card.
+  testWidgets('the camera is not one of the tools', (tester) async {
     await pumpHome(tester);
-    double left(String title) => tester.getTopLeft(find.text(title)).dx;
-    expect(left('Camera'), lessThan(left('Auto\ncaptions')));
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('home_camera')),
-        matching: find.byIcon(LucideIcons.camera),
-      ),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('home_camera')), findsNothing);
+    expect(find.text('Camera'), findsNothing);
   });
 
-  testWidgets('a tap on Camera opens the camera', (tester) async {
-    await pumpHome(tester);
-    await tester.tap(find.text('Camera'));
-    await _settle(tester);
-    expect(
-      appRouter.routerDelegate.currentConfiguration.matches
-          .map((m) => m.matchedLocation),
-      ['/home', '/camera'],
-    );
-  });
-
-  // Four cards in one row on a narrow phone: the labels shrink alike, and
+  // Three cards in one row on a narrow phone: the labels shrink alike, and
   // nothing spills out of a card.
-  testWidgets('the four tools fit a 320dp phone with large text', (tester) async {
+  testWidgets('the three tools fit a 320dp phone with large text', (tester) async {
     tester.view.physicalSize = const Size(960, 1920);
     tester.view.devicePixelRatio = 3;
     tester.platformDispatcher.textScaleFactorTestValue = 1.3;
@@ -225,7 +207,6 @@ void main() {
     await _settle(tester);
     expect(tester.takeException(), isNull);
     for (final key in [
-      'home_camera',
       'home_auto_captions',
       'home_compress_video',
       'home_compress_photo',

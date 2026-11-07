@@ -4963,6 +4963,13 @@ frame and every icon jumped sideways (66px in a frame, measured), and a 320dp ph
   readers. A press squeezes the tab to 90%, back with a little give; with animations off
   everything moves at once.
 - **The bar's size is unchanged** (68px), so the screens' bottom padding for it still holds.
+- **The camera's circle sits on the bar's row, to its right** (`NavCameraButton`, `nav_camera`,
+  `main_shell_camera_test.dart`; **awaiting device verification**; the owner's pick of three
+  mockups, 2026-11-07): the bar's height, `kNavCameraGap` (12) from it, purple with a white
+  camera, on every tab. Floating above the bar it would sit on Home's last recent edit, and in the
+  bar's middle three tabs split two and one; beside it nothing is covered and the bar keeps one
+  shape on every tab. The row is wider by the circle (max 480 for 400), so on a wide screen the
+  bar keeps the width it had alone; on a phone the bar gives the room, as it already could.
 
 ### The app icon — drawn from the logo, an adaptive icon on Android
 
@@ -5489,8 +5496,9 @@ reopened from Recents after backing out (nothing repeats).
 **Awaiting device verification.** Spec: `docs/superpowers/specs/2026-11-05-camera-design.md`
 (step 2, REACT, is there too). A camera opened from Home, **not an editor tool** — the owner's
 words: a full camera, Snapchat-like, that grows features later (face tracking and the like); what
-it shoots is saved the moment it is taken and can be shared or opened in the editor. Home's
-first tool card (`home_camera`, `/camera`); the shots open in a viewer (`/camera/roll`).
+it shoots is saved the moment it is taken and can be shared or opened in the editor. Its door is
+the circle beside the floating nav, on every tab (`nav_camera`, `/camera`; the tab bar section —
+it was Home's first tool card until 2026-11-07); the shots open in a viewer (`/camera/roll`).
 
 - **CameraX, driven from Kotlin** (`camera/CameraChannel.kt`; channel `slimshot_ai/camera`,
   events `slimshot_ai/camera_events`; `androidx.camera` 1.6.2), not the Flutter `camera` plugin,
@@ -5570,9 +5578,9 @@ first tool card (`home_camera`, `/camera`); the shots open in a viewer (`/camera
   off. **At launch `sweepCameraFiles` deletes what a killed app left there**, keeping every shot
   any draft's saved form mentions, every shot the roll keeps, and anything newer than the
   launch.
-- **Home's four tools share one scale** (`kHomeToolContentWidth` 72, `kHomeToolGap` 10): laid out
-  at one width and scaled into each card, so on a narrow phone the four shrink alike rather than
-  each by its own label.
+- **Home's tools share one scale** (`kHomeToolContentWidth` 72, `kHomeToolGap` 10): laid out
+  at one width and scaled into each card, so on a narrow phone they shrink alike rather than
+  each by its own label. Three since the camera moved beside the nav.
 
 **Device-checked on the Infinix (Android 12)**: the preview on both lenses, a front photo saved
 upright and mirrored, record · pause · resume · stop into one file; photos and a video saved into

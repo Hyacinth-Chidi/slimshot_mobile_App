@@ -208,10 +208,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The camera: its own screen, and the editor only if a shot is taken
   /// there to be edited (the editor then saves a draft, which Recent Edits
   /// hears through [DraftRefreshNotifier]).
-  Future<void> _handleCamera() async {
-    await context.push('/camera');
-  }
-
   /// Auto captions without the timeline: one video, then the editor in its
   /// captions mode. ✎ there makes it an editor project, so Recent Edits is
   /// read again on the way back.
@@ -378,17 +374,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           SizedBox(height: layout.gapAboveTools),
           Row(
             children: [
-              Expanded(
-                child: _GridActionCard(
-                  key: const ValueKey('home_camera'),
-                  title: 'Camera',
-                  icon: LucideIcons.camera,
-                  height: layout.tools,
-                  onTap: _handleCamera,
-                  delay: 225,
-                ),
-              ),
-              const SizedBox(width: kHomeToolGap),
               Expanded(
                 child: _GridActionCard(
                   key: const ValueKey('home_auto_captions'),
@@ -667,7 +652,7 @@ class _GridActionCardState extends State<_GridActionCard> {
               // The icon and its words keep their size until the card is
               // too short or too narrow for them, then shrink together
               // rather than overflow it. Laid out at one width for every
-              // card, so the four shrink alike on a narrow phone rather
+              // card, so the three shrink alike on a narrow phone rather
               // than each by its own label.
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
