@@ -43,7 +43,7 @@ class _Phone {
 /// Every common shape from the shortest 18:9 up, with three-button and
 /// gesture navigation, larger text and several densities. Nothing here is
 /// one phone: a layout tuned to any one of them would fail another.
-const _phonesWithRoomForSix = [
+const _phonesWithRoomForTwoRows = [
   _Phone(360, 720),
   _Phone(360, 720, bottom: 16),
   _Phone(360, 760, top: 36),
@@ -108,7 +108,7 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-/// Home's recent edits: up to six, filling the room down to the nav, and
+/// Home's recent edits: up to five, filling the room down to the nav, and
 /// every part of Home sized from the height the phone gives it. Where both
 /// rows cannot sit above the nav, the second runs on under it through a
 /// blur and scrolls up from under it inside the drafts' own box — the rest
@@ -157,21 +157,21 @@ void main() {
     expect(find.text('Recent Drafts'), findsNothing);
   });
 
-  testWidgets('Home shows the six latest edits', (tester) async {
+  testWidgets("Home shows the five latest edits — the sixth place is the camera's", (tester) async {
     await pumpHome(tester, _tall, drafts: 7);
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 5; i++) {
       expect(_card(i), findsOneWidget, reason: 'd$i');
     }
-    expect(_card(6), findsNothing);
+    expect(_card(5), findsNothing);
   });
 
-  for (final phone in _phonesWithRoomForSix) {
-    testWidgets('on a $phone all six sit above the nav, and nothing scrolls',
+  for (final phone in _phonesWithRoomForTwoRows) {
+    testWidgets('on a $phone both rows sit above the nav, and nothing scrolls',
         (tester) async {
       await pumpHome(tester, phone, drafts: 6);
       expect(tester.takeException(), isNull);
       final nav = tester.getRect(find.byType(FloatingNavBar));
-      for (var i = 0; i < 6; i++) {
+      for (var i = 0; i < 5; i++) {
         final card = tester.getRect(_card(i));
         expect(card.bottom, lessThanOrEqualTo(nav.top + 1e-3), reason: 'd$i');
         expect(
@@ -185,7 +185,7 @@ void main() {
       expect(_scroll(tester, 'home_page').maxScrollExtent, closeTo(0, 1e-3));
       // Where the cards gave up height, the room went to them: the second
       // row ends at the gap above the nav, give or take the rounding.
-      final last = tester.getRect(_card(5));
+      final last = tester.getRect(_card(4));
       if (last.height < kHomeDraftRowHeight.full) {
         expect(nav.top - last.bottom, lessThan(kHomeDraftNavGap + 2 + 1e-3));
       }
@@ -198,7 +198,7 @@ void main() {
         kHomeHeroHeight.full);
     expect(tester.getSize(find.byKey(const ValueKey('home_compress_video'))).height,
         kHomeToolsHeight.full);
-    expect(tester.getRect(_card(5)).height, kHomeDraftRowHeight.full);
+    expect(tester.getRect(_card(4)).height, kHomeDraftRowHeight.full);
   });
 
   testWidgets('a shorter phone shows the same page smaller: New Video and the '
@@ -213,7 +213,7 @@ void main() {
         (size - give.least) / (give.full - give.least);
     expect(share(hero, kHomeHeroHeight),
         closeTo(share(tools, kHomeToolsHeight), 1e-6));
-    expect(tester.getRect(_card(5)).height, lessThan(kHomeDraftRowHeight.full));
+    expect(tester.getRect(_card(4)).height, lessThan(kHomeDraftRowHeight.full));
   });
 
   testWidgets('on a 16:9 phone the second row runs on under the nav at the '
@@ -223,7 +223,7 @@ void main() {
     final nav = tester.getRect(find.byType(FloatingNavBar));
     expect(tester.getRect(_card(2)).bottom, lessThanOrEqualTo(nav.top),
         reason: 'the first row above the nav');
-    final last = tester.getRect(_card(5));
+    final last = tester.getRect(_card(4));
     expect(last.top, lessThan(nav.top));
     expect(last.bottom, greaterThan(nav.top), reason: 'not cut off above the nav');
     expect(last.height, kHomeDraftRowHeight.least, reason: 'laid out whole');
@@ -231,7 +231,7 @@ void main() {
     final header = tester.getRect(find.text('SlimShot AI'));
     await tester.drag(_card(0), const Offset(0, -400));
     await _settle(tester);
-    expect(tester.getRect(_card(5)).bottom, lessThanOrEqualTo(nav.top));
+    expect(tester.getRect(_card(4)).bottom, lessThanOrEqualTo(nav.top));
     expect(tester.getRect(find.text('SlimShot AI')), header);
     expect(_scroll(tester, 'home_page').maxScrollExtent, closeTo(0, 1e-3));
   });
@@ -253,7 +253,7 @@ void main() {
 
   for (final phone in [_tall, const _Phone(360, 806, top: 36), const _Phone(360, 720)]) {
     testWidgets('on a $phone, before any edit, the card standing in takes '
-        'the six\'s place, keeping more room above the nav than they do, and '
+        'the edits\' place, keeping more room above the nav than they do, and '
         'nothing blurs', (tester) async {
       await pumpHome(tester, phone);
       final nav = tester.getRect(find.byType(FloatingNavBar));
@@ -271,10 +271,10 @@ void main() {
       await _settle(tester);
       expect(_emptyCard, findsNothing);
       final first = tester.getRect(_card(0));
-      final last = tester.getRect(_card(5));
+      final last = tester.getRect(_card(4));
       expect(first.top, closeTo(empty.top, 1e-3));
       expect(first.left, closeTo(empty.left, 1e-3));
-      expect(last.right, closeTo(empty.right, 1e-3));
+      expect(tester.getRect(_card(2)).right, closeTo(empty.right, 1e-3));
       // Down to the second row's foot, or its own room above the nav,
       // whichever comes first.
       expect(empty.bottom,

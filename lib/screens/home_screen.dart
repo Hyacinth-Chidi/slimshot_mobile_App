@@ -33,8 +33,10 @@ import 'home_camera_button.dart';
 import 'home_header.dart';
 import 'home_layout.dart';
 
-/// How many recent edits Home shows; Workspace has them all.
-const int _kRecentDrafts = 6;
+/// How many recent edits Home shows; Workspace has them all. Five, so the
+/// sixth place — bottom right — is the floating camera's, with no edit under
+/// it (the owner's call, 2026-11-09).
+const int _kRecentDrafts = 5;
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -470,12 +472,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
 
   /// The recent edits, in the room from under their title to the bottom of
-  /// the screen: up to six, three to a row, scrolling inside their own box.
+  /// the screen: up to five, three to a row — the sixth place is the
+  /// camera's — scrolling inside their own box.
   /// Where two rows fit above the nav, they sit there ([HomeLayout]); where
   /// they cannot, the second row runs on under the nav, blurred, until the
   /// drafts are scrolled up out from under it — the padding under the last
   /// row is what lets it clear the nav. Before any edit, a dashed card takes
-  /// the six's place ([HomeLayout.emptyCard]).
+  /// the edits' place ([HomeLayout.emptyCard]).
   Widget _recentDraftsArea(double navClearance, HomeLayout layout) {
     if (_isLoadingDrafts) {
       return const Align(

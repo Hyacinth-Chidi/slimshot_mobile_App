@@ -118,13 +118,20 @@ void main() {
     expect(stack(), ['/home', '/camera']);
   });
 
-  // It sits on the last recent edit's corner, so it must be drawn over the
-  // drafts and take the tap there, never pass it to the edit underneath.
-  testWidgets('over the recent edits, the tap is the camera\'s', (tester) async {
-    await pumpShell(tester, drafts: 6);
+  // Home shows five recent edits (the owner's call, 2026-11-09) so the
+  // sixth place, bottom right, is the camera's: no edit sits under it.
+  testWidgets('it sits in the sixth place, over no recent edit', (tester) async {
+    await pumpShell(tester, drafts: 7);
     final button = tester.getRect(camera);
-    final last = tester.getRect(find.byKey(const ValueKey('recent_draft_d5')));
-    expect(button.overlaps(last), isTrue, reason: 'the case this test is about');
+    Rect card(int i) => tester.getRect(find.byKey(ValueKey('recent_draft_d$i')));
+    final cards = find.byWidgetPredicate(
+        (w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('recent_draft_d'));
+    expect(cards, findsWidgets);
+    for (final rect in cards.evaluate().map((e) => tester.getRect(find.byWidget(e.widget)))) {
+      expect(button.overlaps(rect), isFalse, reason: '$rect');
+    }
+    expect(button.left, greaterThan(card(4).right), reason: 'right of the second row');
+    expect(button.top, greaterThan(card(2).bottom), reason: 'below the first row');
     await tester.tapAt(button.center);
     await _settle(tester);
     expect(stack(), ['/home', '/camera']);

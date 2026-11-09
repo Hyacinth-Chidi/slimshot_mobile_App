@@ -4856,11 +4856,13 @@ light, not paint.**
   secondary, not tertiary. The coin is **`AppColors.credit`** (amber).
 - **The credits pill is pinned to the right edge** (`HomeHeader`'s brand is `Expanded`): a
   `Flexible` brand let a short balance sit against it.
-- **Six recent edits fill the room down to the nav, on every phone** (`home_layout.dart`,
+- **Two rows of recent edits fill the room down to the nav, on every phone** (`home_layout.dart`,
   `home_layout_test.dart`, `home_recent_edits_test.dart`, **awaiting device verification**; the
   owner's design after rejecting three mockups). The section is **"Recent Edits"** (the owner's
   word, matching the home screen widget's "Continue editing"; the empty card says "Your recent
-  edits will appear here"); the code still says drafts. The six, three to a row, take
+  edits will appear here"); the code still says drafts. **Five of them, not six** (the owner's
+  call, 2026-11-09): the sixth place, bottom right, is the floating camera's, so no edit sits
+  under it. The two rows, three to a row, take
   everything from under the title to the bottom of the screen and scroll **inside their own box
   — never the page**. The nav sits 12dp above the system's bar on every tab
   (`kFloatingNavBottomMargin`; `kFloatingNavClearance` is that plus the 68dp bar).
@@ -4892,10 +4894,10 @@ light, not paint.**
   where not even one row fits above the nav — a phone on its side. The layout is the same
   whatever the number of edits, so nothing moves when the fourth one is made.
 
-  **Before any edit, a dashed card takes the six's place** (`recent_drafts_empty`,
+  **Before any edit, a dashed card takes the edits' place** (`recent_drafts_empty`,
   `HomeLayout.emptyCard`; the owner's call, 2026-10-28, replacing the 120dp glass card they had
-  first asked to keep): where the six's first row would start and as wide as the rows — a test
-  adds six edits to an empty Home and finds them on the card's edges — down to the second row's
+  first asked to keep): where the edits' first row would start and as wide as the rows — a test
+  adds edits to an empty Home and finds them on the card's edges — down to the second row's
   foot or **20dp above the nav, whichever comes first** (`kHomeEmptyCardNavGap`; the owner's
   call: at the cards' 8dp, one large frame crowded the nav), never under 120dp
   (`kHomeEmptyCardLeast`). It is **the home screen widget's empty
@@ -4908,7 +4910,7 @@ light, not paint.**
   exactly when the least fits, nothing left over but the rounding, more room never shrinking
   anything), and the real Home on eleven phone shapes, 360 × 720 to 600 × 960, three densities
   and three text sizes. The test file loads Plus Jakarta Sans: the test font draws every letter
-  a full em wide. **The blur band may go once the owner has seen the six fit** — their call,
+  a full em wide. **The blur band may go once the owner has seen the rows fit** — their call,
   pending.
 - **Account sheets sit on the same light**, everywhere (`AccountSheetFrame.glows`, the home
   composition moved closer in for a shorter shape; the top glow is wide because over a near-black
@@ -5500,8 +5502,9 @@ open in a viewer (`/camera/roll`).
   `home_camera_float`, `home_camera_test.dart`; **awaiting device verification**; the owner's
   call, 2026-11-09): the bar's height, `kHomeCameraGap` (12) above the bar and lined up with its
   right edge however wide the screen, purple with a white camera, flat (a shadow under it was
-  taken off on the device), on Home only. It sits on the last recent edit's corner — the cost the
-  mockup named — so Home draws it over the drafts and a tap there is the camera's. It was Home's
+  taken off on the device), on Home only. **It has the sixth place of the recent edits to itself**:
+  Home shows five, so no edit sits under it (on a 16:9 phone, where the second row runs on under
+  the nav, it sits over the first row's corner and is drawn over it). It was Home's
   first tool card until 2026-11-07, then a circle beside the nav on every tab.
 
 - **CameraX, driven from Kotlin** (`camera/CameraChannel.kt`; channel `slimshot_ai/camera`,

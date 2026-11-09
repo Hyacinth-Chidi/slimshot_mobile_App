@@ -65,7 +65,7 @@ const _gives = [
 /// which phone it is.
 ///
 /// Everything under the header gives up the same share of what it can, from
-/// its full size down to its least, as far as it takes for the six recent
+/// its full size down to its least, as far as it takes for the recent
 /// edits to sit above the nav in two rows: the gaps, New Video, the tool
 /// cards and the draft cards together, so a shorter phone shows the same
 /// page smaller rather than one part squeezed. A tall phone shows it all at
@@ -138,7 +138,7 @@ class HomeLayout {
         navClearance;
     final height = math.max(room, top + oneRow);
 
-    // Before any edit, a card takes the six's place: the two rows, as far as
+    // Before any edit, a card takes the edits' place: the two rows, as far as
     // its own room above the nav allows.
     final twoRowsTall = 2 * draftRow + kHomeDraftSpacing;
     final aboveNav = height - top - kHomeEmptyCardNavGap - navClearance;
