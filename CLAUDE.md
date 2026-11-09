@@ -4476,6 +4476,40 @@ render lands the clip plays forward, and export still refuses a reversed clip wi
 name, which is the honest state. `rerenderMissingProxies: false` exists only so tests, which have
 no FFmpeg, can exercise the heal.
 
+### Leaving the editor — "Save as draft?" for a new project
+
+**Awaiting device verification** (the owner's calls, 2026-11-09). The editor used to save a draft
+on every way out, silently, so a project tried and abandoned still landed in Recent Edits. Now
+**Back and the back arrow** (one path, `_leaveEditor`, only once no tool is open) ask **"Save as
+draft?"** — Save keeps it, **Don't save throws it away entirely**, a tap outside or Back stays —
+but **only for a project that was not in Recent Edits when the editor opened**
+(`asksToSaveOnLeave`, `logic/leave_editor.dart`; `discard_draft_test.dart`). An edit opened from
+Recent Edits is a draft already and saves silently as before, so a Back press can never wipe
+earlier work (the owner's pick of three). A draft *built* but never saved — a reaction opened from
+the camera the first time — is as new as picked media. The lookup runs as the editor opens,
+before a cover or a background photo can save a draft along the way, and a lookup that fails
+asks.
+
+- **Don't save** (`VideoEditorNotifier.discardDraft`): saving is switched off first, so the
+  editor's own save as it closes cannot bring it back; then `DraftService.deleteDraft` takes the
+  entry, the thumbnail and every file `DraftFiles` keeps for it (proxies, cover, frozen frames,
+  background photo, recorded and extracted sound). **`deleteDraft` no longer throws for an id with
+  no entry** — a project thrown away before anything saved it still has files. The picks the
+  project was made from go too (`FileUtils.deleteTempFiles`, which touches only the cache, so a
+  camera shot is never touched).
+- **Not asked**: captions mode (its own Back), and a tap on the home screen widget, which saves the
+  draft explicitly before Home acts, as before.
+
+**Every question the app asks is the question and two buttons** (`_ask` in
+`core/widgets/discard_dialog.dart`, `discard_dialog_test.dart`; the owner's pick, A of three
+mockups, 2026-11-09). It was narrow (60 off each side), 24 over a large icon and 16 under the
+buttons — tall and bottom-heavy for one short line. Now: **no icon**, the colours of the two
+buttons say which is risky; **`kQuestionDialogPadding` (20) on every side**, a test measuring all
+four; 296 wide on a 360dp phone (32 off each side), no wider than 340; the question 17 bold,
+centred, 16 above the buttons. Three button styles: quiet (Cancel), risky (red on red tint:
+Discard, Delete, Don't save) and chosen (white on purple: Save). Discard, Delete, Discard these
+captions and Save as draft all draw it.
+
 ### Speed curves — source time as an integral
 
 **Device-verified by the user:** the export is right, the preview's picture follows the curve, and
@@ -5400,8 +5434,8 @@ handing it over, so the original may go at once).
   compress result and the export screen alike, by ✕ or Back (each
   routes Back through the same leave with a `PopScope`). **One nobody saved or shared is asked
   about first**: "Discard this video?",
-  "Discard these 5 photos?" (`confirmDiscard`, `core/widgets/discard_dialog.dart`, the drafts'
-  Delete Draft? look) — Cancel or a tap outside stays. Saving marks it kept, and so does a share
+  "Discard these 5 photos?" (`confirmDiscard`, `core/widgets/discard_dialog.dart`; the
+  question's look is under "Leaving the editor") — Cancel or a tap outside stays. Saving marks it kept, and so does a share
   sheet closed on a target: `MediaSaveService.shareFiles` answers whether it was **not** dismissed,
   so a phone that cannot say how the share went counts as kept and nobody is asked twice.
 - **A result never deletes the files it was made from.** A result handed back as it was

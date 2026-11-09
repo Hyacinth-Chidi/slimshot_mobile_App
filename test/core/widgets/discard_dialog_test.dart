@@ -49,6 +49,56 @@ void main() {
     expect(answers, [false, false]);
   });
 
+  // The owner's pick of three mockups (2026-11-09): the question and its two
+  // buttons and nothing else — no icon stacked over one short line, the same
+  // space on every side. It was narrow, 24 over the question and 16 under
+  // the buttons, which read tall and bottom-heavy.
+  group('balanced', () {
+    Future<void> phone(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await ask(tester);
+    }
+
+    final surface = find.byKey(kQuestionDialogKey);
+
+    testWidgets('the same space on every side', (tester) async {
+      await phone(tester);
+      final box = tester.getRect(surface);
+      final question = tester.getRect(find.text('Discard this video?'));
+      final cancel = tester.getRect(find.byKey(const Key('discard_cancel')));
+      final discard = tester.getRect(find.byKey(const Key('discard_confirm')));
+      expect(question.top - box.top, moreOrLessEquals(kQuestionDialogPadding, epsilon: 0.5));
+      expect(box.bottom - cancel.bottom, moreOrLessEquals(kQuestionDialogPadding, epsilon: 0.5));
+      expect(cancel.left - box.left, moreOrLessEquals(kQuestionDialogPadding, epsilon: 0.5));
+      expect(box.right - discard.right, moreOrLessEquals(kQuestionDialogPadding, epsilon: 0.5));
+      expect(question.center.dx, moreOrLessEquals(box.center.dx, epsilon: 0.5));
+    });
+
+    testWidgets('no icon over the question', (tester) async {
+      await phone(tester);
+      expect(find.descendant(of: surface, matching: find.byType(Icon)), findsNothing);
+    });
+
+    testWidgets('on a 360dp phone it is 296 wide, centred', (tester) async {
+      await phone(tester);
+      final box = tester.getRect(surface);
+      expect(box.width, moreOrLessEquals(296, epsilon: 0.5));
+      expect(box.center.dx, moreOrLessEquals(180, epsilon: 0.5));
+    });
+
+    testWidgets('it fits a 320dp phone at 1.3× text', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await ask(tester);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   // Captions made from Home and never exported: the credits were spent on
   // them, so they are asked about, never lost to a stray Back.
   testWidgets('the captions question: Discard is yes, Cancel stays',

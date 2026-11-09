@@ -47,6 +47,7 @@ import '../features/video_editor/services/overlay_sync.dart';
 import '../features/video_editor/services/preview_text_atlases.dart';
 import '../features/video_editor/services/text_overlay_rasterizer.dart';
 import '../core/models/draft_project.dart';
+import '../features/video_editor/logic/leave_editor.dart';
 import '../features/video_editor/logic/animation/clip_keyframes.dart';
 import '../features/video_editor/logic/animation/overlay_keyframes.dart';
 import '../features/video_editor/widgets/editor_playback_controls.dart';
@@ -495,6 +496,14 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// area shorter and drop the timeline.
   static const double _kToolbarHeight = 60.0;
 
+  /// Whether Back asks "Save as draft?" — a project that was not in Recent
+  /// Edits when the editor opened ([asksToSaveOnLeave]).
+  late final Future<bool> _asksToSaveOnLeave;
+
+  /// Set once leaving has begun, so a second Back during the save does not
+  /// ask again or pop twice.
+  bool _leaving = false;
+
   final AudioPlayerManager _audioPlayerManager = AudioPlayerManager();
   final NativeTimelinePreviewService _nativePreviewService =
       NativeTimelinePreviewService();
@@ -623,6 +632,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     if (widget.captionsMode) {
       ref.read(videoEditorProvider.notifier).setSavesDraft(false);
     }
+    // Whether leaving asks "Save as draft?", looked up as the editor opens —
+    // before a cover or a background photo can save a draft along the way.
+    // A lookup that fails asks: a question costs a tap, a lost project more.
+    _asksToSaveOnLeave =
+        asksToSaveOnLeave(widget.draft).catchError((Object _) => true);
     // Export's ad ahead of its moment: the consent step, the SDK and the
     // interstitial after an export.
     unawaited(AdService.prepare(AdPlacement.export));
@@ -791,6 +805,37 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     unawaited(_nativePreviewSubscription?.cancel() ?? Future<void>.value());
     unawaited(_nativePreviewService.dispose());
     super.dispose();
+  }
+
+  /// Back and the back arrow, with no tool open. A project that was not in
+  /// Recent Edits when the editor opened asks "Save as draft?" first: Save
+  /// keeps it, Don't save throws it away with every file made for it and the
+  /// picks it was made from, and a tap outside stays (the owner's call,
+  /// 2026-11-09). One opened from Recent Edits is a draft already and saves
+  /// as it always did.
+  Future<void> _leaveEditor() async {
+    if (_leaving) return;
+    final notifier = ref.read(videoEditorProvider.notifier);
+    if (await _asksToSaveOnLeave) {
+      if (!mounted) return;
+      final choice = await askSaveDraft(context);
+      if (choice == null || !mounted || _leaving) return;
+      _leaving = true;
+      if (choice == DraftChoice.discard) {
+        await notifier.discardDraft();
+        // Copies the picker made for this project alone; a camera shot or
+        // anything else outside the cache is never touched.
+        unawaited(FileUtils.deleteTempFiles(
+          [for (final file in widget.initialMedia) file.path],
+        ));
+      } else {
+        await notifier.saveDraft();
+      }
+    } else {
+      _leaving = true;
+      await notifier.saveDraft();
+    }
+    if (mounted) context.pop();
   }
 
   Future<void> _loadDraft(DraftProject draft) async {
@@ -2145,12 +2190,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       currentResolutionLabel: _resolutionLabel,
       onResolutionTap: _showExportOptionsPopup,
       resolutionButtonKey: _resolutionButtonKey,
-      onBack: () async {
-        await ref.read(videoEditorProvider.notifier).saveDraft();
-        if (context.mounted) {
-          context.pop();
-        }
-      },
+      onBack: _leaveEditor,
     ).animate().fadeIn().slideX(begin: 0.2);
   }
 
@@ -3877,10 +3917,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
           case BackAction.leaveEditor:
             break;
         }
-        await ref.read(videoEditorProvider.notifier).saveDraft();
-        if (context.mounted) {
-          Navigator.of(context).pop();
-        }
+        await _leaveEditor();
       },
       child: Scaffold(
         backgroundColor: AppColors.background, // match dark theme

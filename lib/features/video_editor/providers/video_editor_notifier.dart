@@ -301,6 +301,17 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   /// ✎ makes them an ordinary editor project (the owner's call).
   void setSavesDraft(bool value) => _savesDraft = value;
 
+  /// "Don't save" on leaving a new project (the owner's call, 2026-11-09):
+  /// its draft, if a cover or a background photo saved one along the way,
+  /// every file made for it, and nothing saved after — the editor saves once
+  /// more as it closes, and that save must not bring it back.
+  Future<void> discardDraft() async {
+    _savesDraft = false;
+    final id = state.draftId;
+    if (id == null) return;
+    await DraftService.deleteDraft(id);
+  }
+
   /// Converts every overlay placed against a frame other than this editor's
   /// canvas — a REACT project is laid out on a fixed 9:16 frame before any
   /// editor exists — to [canvas], once (`fitOverlayToCanvas`). Not an edit:

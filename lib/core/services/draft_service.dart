@@ -96,14 +96,18 @@ class DraftService {
     final prefs = await SharedPreferences.getInstance();
     final items = await getDrafts();
     
-    final itemToRemove = items.firstWhere((item) => item.id == id, orElse: () => throw Exception('Draft not found'));
-    _deleteThumbnail(itemToRemove.thumbnailPath);
+    // A project thrown away before anything saved it has no entry, and
+    // still has files made for it — a recorded voice, a frozen frame.
+    final index = items.indexWhere((item) => item.id == id);
+    if (index >= 0) _deleteThumbnail(items[index].thumbnailPath);
     // The draft's folder and every file named for it: proxies, cover, frozen
     // frames, background photo.
     await DraftFiles.deleteAll(id);
 
-    items.removeWhere((item) => item.id == id);
-    await _saveAll(items, prefs);
+    if (index >= 0) {
+      items.removeAt(index);
+      await _saveAll(items, prefs);
+    }
     DraftRefreshNotifier.instance.refresh();
   }
 
