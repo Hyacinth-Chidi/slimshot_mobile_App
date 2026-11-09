@@ -29,6 +29,7 @@ import '../core/widgets/floating_nav_bar.dart';
 import '../features/home_widget/launch_actions.dart';
 import '../features/push/push_controller.dart';
 import '../features/push/push_providers.dart';
+import 'home_camera_button.dart';
 import 'home_header.dart';
 import 'home_layout.dart';
 
@@ -208,6 +209,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The camera: its own screen, and the editor only if a shot is taken
   /// there to be edited (the editor then saves a draft, which Recent Edits
   /// hears through [DraftRefreshNotifier]).
+  Future<void> _handleCamera() async {
+    await context.push('/camera');
+  }
+
   /// Auto captions without the timeline: one video, then the editor in its
   /// captions mode. ✎ there makes it an editor project, so Recent Edits is
   /// read again on the way back.
@@ -355,6 +360,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
             ),
+
+          // The camera floats over everything above, bottom right, lined
+          // up with the bar's right edge however wide the screen: the same
+          // centred row the shell lays the bar in, a gap above it.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: kFloatingNavClearance + kHomeCameraGap,
+            child: SafeArea(
+              top: false,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(maxWidth: kFloatingNavMaxWidth),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: kFloatingNavSideMargin),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: HomeCameraButton(
+                        key: kHomeCameraKey,
+                        onTap: _handleCamera,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

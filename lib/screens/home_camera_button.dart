@@ -1,34 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../theme/app_colors.dart';
-import '../theme/lucide_icons.dart';
-import 'floating_nav_bar.dart';
+import '../core/theme/app_colors.dart';
+import '../core/theme/lucide_icons.dart';
+import '../core/widgets/floating_nav_bar.dart';
 
-/// The space between the bar and the camera's circle.
-const double kNavCameraGap = 12;
+/// The space between the circle and the bar under it.
+const double kHomeCameraGap = 12;
 
-const Key kNavCameraKey = ValueKey('nav_camera');
+/// The circle's size: the bar's height, the size it was judged at on the
+/// device beside the bar.
+const double kHomeCameraSize = kFloatingNavBarHeight;
+
+const Key kHomeCameraKey = ValueKey('home_camera_float');
 
 /// How far a press squeezes the circle: the bar's own tabs give as much.
 const double _kPressedScale = 0.9;
 
-/// The camera's door: a circle of its own on the nav's row, right of the bar,
-/// the bar's height (the owner's pick of three mockups, 2026-11-07). Beside
-/// the bar it covers nothing on any screen — floating above it would sit on
-/// Home's last recent edit — and the bar keeps one shape on every tab. White
-/// on purple, the app's chosen-state colours, and flat like the bar: a drop
-/// shadow under it was taken off on the device (the owner's call).
-class NavCameraButton extends StatefulWidget {
-  const NavCameraButton({super.key, required this.onTap});
+/// The camera's door: a circle floating on Home, bottom right above the nav
+/// (the owner's call, 2026-11-09, after a first build put it beside the bar
+/// on every tab). It sits on the last recent edit's corner, so Home draws it
+/// over the drafts. White on purple, the app's chosen-state colours, and
+/// flat: a drop shadow under it was taken off on the device (the owner's
+/// call).
+class HomeCameraButton extends StatefulWidget {
+  const HomeCameraButton({super.key, required this.onTap});
 
   final VoidCallback onTap;
 
   @override
-  State<NavCameraButton> createState() => _NavCameraButtonState();
+  State<HomeCameraButton> createState() => _HomeCameraButtonState();
 }
 
-class _NavCameraButtonState extends State<NavCameraButton> {
+class _HomeCameraButtonState extends State<HomeCameraButton> {
   bool _pressed = false;
 
   void _press(bool down) {
@@ -57,8 +61,8 @@ class _NavCameraButtonState extends State<NavCameraButton> {
           duration: still ? Duration.zero : const Duration(milliseconds: 140),
           curve: Curves.easeOutBack,
           child: Container(
-            width: kFloatingNavBarHeight,
-            height: kFloatingNavBarHeight,
+            width: kHomeCameraSize,
+            height: kHomeCameraSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: const LinearGradient(

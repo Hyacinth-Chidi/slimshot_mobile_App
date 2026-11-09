@@ -185,8 +185,8 @@ void main() {
     expect(find.text('Privacy\nStrip'), findsNothing);
   });
 
-  // The camera's door is the circle beside the nav (the owner's pick,
-  // 2026-11-07; main_shell_camera_test.dart), not a tool card.
+  // The camera's door is the circle floating over Home (the owner's call,
+  // 2026-11-09; home_camera_test.dart), not a tool card.
   testWidgets('the camera is not one of the tools', (tester) async {
     await pumpHome(tester);
     expect(find.byKey(const ValueKey('home_camera')), findsNothing);

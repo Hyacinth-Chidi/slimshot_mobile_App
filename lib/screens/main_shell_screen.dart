@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 
 import '../core/theme/app_colors.dart';
 import '../core/widgets/floating_nav_bar.dart';
-import '../core/widgets/nav_camera_button.dart';
 
 const List<FloatingNavItem> _kTabs = [
   FloatingNavItem(icon: Icons.home_rounded, label: 'Home'),
@@ -31,9 +30,7 @@ class MainShellScreen extends StatelessWidget {
         children: [
           navigationShell,
 
-          // The floating bar, and the camera's circle on its row. The row
-          // is wider by the circle, so on a wide screen the bar keeps the
-          // width it had alone.
+          // Floating Nav Bar Overlay
           Positioned(
             left: 0,
             right: 0,
@@ -41,26 +38,15 @@ class MainShellScreen extends StatelessWidget {
             child: SafeArea(
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: 400 + kNavCameraGap + kFloatingNavBarHeight,
-                  ),
+                  constraints:
+                      const BoxConstraints(maxWidth: kFloatingNavMaxWidth),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: FloatingNavBar(
-                            items: _kTabs,
-                            currentIndex: navigationShell.currentIndex,
-                            onTap: _goBranch,
-                          ),
-                        ),
-                        const SizedBox(width: kNavCameraGap),
-                        NavCameraButton(
-                          key: kNavCameraKey,
-                          onTap: () => context.push('/camera'),
-                        ),
-                      ],
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: kFloatingNavSideMargin),
+                    child: FloatingNavBar(
+                      items: _kTabs,
+                      currentIndex: navigationShell.currentIndex,
+                      onTap: _goBranch,
                     ),
                   ),
                 ),

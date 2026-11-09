@@ -72,6 +72,13 @@ const double kFloatingNavBottomMargin = 12;
 /// The bar's height: its tabs and the glass around them.
 const double kFloatingNavBarHeight = 68;
 
+/// The widest the shell lets the bar's row be, its side margins included,
+/// centred on a wide screen.
+const double kFloatingNavMaxWidth = 400;
+
+/// The gap the shell leaves either side of the bar.
+const double kFloatingNavSideMargin = 24;
+
 /// How far the bar reaches up from the bottom of the screen, above the
 /// system's inset. Content that must clear the bar pads by this much.
 const double kFloatingNavClearance =
