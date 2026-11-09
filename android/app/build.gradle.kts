@@ -18,6 +18,16 @@ if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
 
+// An APK for a store that takes one file for every phone — Palm Store, where
+// many phones are 32-bit — passes -Pslimshot.storeApk=true (`flutter build apk
+// --target-platform android-arm,android-arm64 -P slimshot.storeApk=true`). It
+// keeps only the ARM libraries phones run (the video library ships an x86_64
+// copy of its own, ~50 MB, that the Flutter flag does not drop) and compresses the
+// native libraries, which Android stores uncompressed by default, so the
+// download is not twice what it needs to be. Off by default: the Play bundle
+// and the test builds are exactly what they were.
+val storeApk = (project.findProperty("slimshot.storeApk") as String?) == "true"
+
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
@@ -48,6 +58,17 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    if (storeApk) {
+        // Excluded at packaging: an ndk abiFilters is overridden by the
+        // Flutter plugin, and the x86_64 copy shipped anyway.
+        packaging {
+            jniLibs {
+                useLegacyPackaging = true
+                excludes += listOf("lib/x86/**", "lib/x86_64/**")
+            }
+        }
     }
 
     signingConfigs {

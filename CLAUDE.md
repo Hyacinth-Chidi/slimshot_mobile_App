@@ -14,7 +14,17 @@ flutter test
 flutter analyze --no-pub
 flutter build apk --debug
 flutter build appbundle --release --dart-define-from-file=env/env.json
+# One APK for a store that is not Play (Palm Store): ARM only, libraries compressed
+flutter build apk --release --target-platform android-arm,android-arm64 -P slimshot.storeApk=true --dart-define-from-file=env/env.json
 ```
+
+**Palm Store takes an APK, not the Play bundle** (2026-11-09). One file serves every phone there,
+and many are 32-bit, so it carries `armeabi-v7a` and `arm64-v8a`. `-P slimshot.storeApk=true`
+(`android/app/build.gradle.kts`) drops the x86_64 copy the FFmpeg kit ships (~50 MB; the
+`--target-platform` flag drops only Flutter's own) and compresses the native libraries, which
+Android stores uncompressed by default: 225 MB became 95 MB. Off by default, so the Play bundle
+and the test builds are unchanged. **It is signed with the upload key, not Play's**, so Google
+sign-in works in it only once that key's SHA-1 is on the Android OAuth client in Google Cloud.
 
 **A release changes the version in two places**: `pubspec.yaml`'s `version:` and
 `lib/core/app_version.dart`, which the update check and Settings read (`app_version_test.dart`
