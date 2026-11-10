@@ -1531,7 +1531,7 @@ overlays and audio. `laneSpansOf` includes bars, so moving, trimming, snapping, 
 and closing empty lanes are the lane rules already there (`lane_layout.dart`), each gesture one
 undo step through `beginTimelineGesture` / `endTimelineGesture`.
 
-- **Effects is on the main menu** (id `effects`, after Overlay) and opens the effects sheet.
+- **Effects is on the main menu** (id `effects`, after Auto captions) and opens the effects sheet.
   **The sheet acts on the selected bar**: with none, a tap adds one; with one, a tap changes its
   effect — so browsing while the sheet is open does not litter the timeline, and closing before a
   tap adds nothing. No None tile (Delete removes a bar, Undo backs out an add), no title, no
@@ -2112,8 +2112,8 @@ all of them sample through those two functions. It sits **after `gradeClip`** (f
 clip is fading what the user sees; fading first would push a filter's colour offset onto a
 vanishing clip) and **before the effect chain** (a blurred clip at 50% is a blurred clip,
 half-present). Resolved per tick by both engines through `opacityAt`, clamped where resolved
-because a keyframe can overshoot; per-lane, change-guarded. The Opacity tool sits beside Volume on
-the clip menu — a fade of the picture next to a fade of the sound — and writes through
+because a keyframe can overshoot; per-lane, change-guarded. The Opacity tool is on
+the clip menu — a fade of the picture, as Volume is a fade of the sound — and writes through
 `setClipProperty`, so a fade in is two diamonds. Overlay opacity goes through the same rule since
 overlay keyframes (next section) — a text's included. Fading to
 the project background rather than to black was the open question; the background it is, since
@@ -2366,7 +2366,7 @@ using it. The screen takes the first pick from the same picker Add uses and re-s
 ### Move to overlay — a clip lifts onto the overlay track
 
 **Awaiting device verification.** CapCut's "Overlay" on a clip, the car-crash edit's first step:
-**Overlay** on the clip menu (beside Replace; id `to_overlay`) moves the selected clip to the first
+**Overlay** on the clip menu (last; id `to_overlay`) moves the selected clip to the first
 free overlay lane **at the same time**, **drawn exactly where it was**, and the main track closes
 the gap — the tutorial's own behaviour, checked frame by frame. One undo step; the new overlay is
 selected on its own menu. A photo becomes a photo overlay, a video a video overlay.

@@ -156,6 +156,9 @@ class EditorMenu {
 const double _kTransitionPlayLeadSeconds = 0.6;
 const double _kTransitionPlayTailSeconds = 0.4;
 
+/// The main menu, **most used first** (the owner's call, 2026-11-10): the
+/// tools people reach for on every project come before the ones a project
+/// needs once, so the common edits need no scrolling along the toolbar.
 const EditorMenu _rootMenu = EditorMenu(
   id: 'root',
   tools: [
@@ -190,49 +193,46 @@ const EditorMenu _rootMenu = EditorMenu(
       label: 'Auto captions',
       icon: LucideIcons.subtitles,
     ),
-    EditorTool(id: 'overlay', label: 'Overlay', icon: LucideIcons.layers),
     // Effects are bars on the timeline, dropped at the playhead with nothing
     // selected — so they open from here, not from a clip.
     EditorTool(id: 'effects', label: 'Effects', icon: LucideIcons.sparkles),
+    EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
+    EditorTool(id: 'overlay', label: 'Overlay', icon: LucideIcons.layers),
     // **Transform's children are root tools now, and Transform is a tool of its
     // own.** The submenu was a tap tax on four things a user reaches for
     // directly — Crop especially, which is one of the most common edits and was
     // two taps deep. Transform keeps the name because it is still what it does:
     // scale, rotate and position the clip on the canvas, in one sheet.
     EditorTool(id: 'crop', label: 'Crop', icon: LucideIcons.crop),
+    EditorTool(id: 'background', label: 'Background', icon: LucideIcons.image),
+    // Brightness, contrast, saturation and temperature — the corrections a
+    // filter preset is not. Project-level from here; per clip from the clip
+    // menu, the same way Filters works.
+    EditorTool(id: 'adjust', label: 'Adjust', icon: LucideIcons.slidersHorizontal),
     EditorTool(
       id: 'transform',
       label: 'Transform',
       icon: LucideIcons.move,
     ),
     EditorTool(id: 'zoom', label: 'Zoom', icon: LucideIcons.zoomIn),
-    EditorTool(id: 'background', label: 'Background', icon: LucideIcons.image),
-    EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
-    // Brightness, contrast, saturation and temperature — the corrections a
-    // filter preset is not. Project-level from here; per clip from the clip
-    // menu, the same way Filters works.
-    EditorTool(id: 'adjust', label: 'Adjust', icon: LucideIcons.slidersHorizontal),
     // **No Animate here.** An animation belongs to the thing being animated:
     // `animation` opens `AnimationDrawer` from the image- and video-overlay
     // menus, and text has the Animation tab in its editor sheet. The root
     // menu has nothing selected, so there was no target — and the id
     // `animate` was handled by nothing at all, falling through to a "coming
-    // soon" placeholder for a feature that ships one tap away. Same wrong
-    // signpost as Effects below, same removal.
-    // **No Effects here.** An effect belongs to a clip, so the real sheet is
-    // gated on the clip menu — and this entry fell through to a "coming soon"
-    // placeholder for a feature that ships one tap away, on the clip's own
-    // menu. A wrong signpost rather than an unfinished tool, which is why it
-    // goes where the audio menu's genuinely-unbuilt entry stays.
+    // soon" placeholder for a feature that ships one tap away.
     // **Labelled for what it opens.** The picker offers emoji; GIFs and
     // stickers need a content provider that does not exist yet, and a tool
-    // saying "Stickers" that shows emoji is the same wrong signpost the root
-    // menu's Effects entry was. The id stays `stickers` because it is
-    // persisted and matched elsewhere — only the label is the user's.
+    // saying "Stickers" that shows emoji is a wrong signpost. The id stays
+    // `stickers` because it is persisted and matched elsewhere — only the
+    // label is the user's.
     EditorTool(id: 'stickers', label: 'Emoji', icon: LucideIcons.smile),
   ],
 );
 
+/// A selected clip's menu, **most used first** like the main menu (the
+/// owner's call, 2026-11-10). Delete is fourth: it sat last of seventeen,
+/// a scroll away for one of the commonest things done to a clip.
 const EditorMenu _editMenu = EditorMenu(
   id: 'edit',
   tools: [
@@ -241,30 +241,44 @@ const EditorMenu _editMenu = EditorMenu(
       label: 'Split',
       icon: LucideIcons.splitSquareHorizontal,
     ),
-    // Hold the frame under the playhead as a 3s still, cut in where it is.
-    EditorTool(id: 'freeze', label: 'Freeze', icon: LucideIcons.snowflake),
     EditorTool(id: 'speed', label: 'Speed', icon: LucideIcons.gauge),
-    // A ramp, which the Speed slider structurally cannot express — and which
-    // keyframes cannot hold either, because speed decides what progress means.
-    // Its own tool beside Speed, so the common case stays one drag.
-    EditorTool(
-      id: 'speed_curve',
-      label: 'Curve',
-      icon: LucideIcons.trendingUp,
-    ),
     EditorTool(id: 'volume', label: 'Volume', icon: LucideIcons.volume2),
-    // The clip's own presence, beside Volume — a fade of the picture next to
-    // a fade of the sound. Keyframable like every clip property.
-    EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
-    // Also on the root menu. Here because the root menu is hidden while a
-    // clip is selected, and a tool reachable only by deselecting the clip you
-    // want to transform is not reachable.
-    EditorTool(id: 'transform', label: 'Transform', icon: LucideIcons.move),
+    EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
     // **This clip's** crop — freehand, no ratio — as distinct from the root
     // menu's Crop, which is the project's. A different id so the two panels
     // and the two rects cannot be confused; the same label because to the
     // user it is the same verb applied to a smaller thing.
     EditorTool(id: 'clip_crop', label: 'Crop', icon: LucideIcons.crop),
+    // Same tool as the root menu, but reached with a clip selected — opening it
+    // from here grades that clip rather than the whole project.
+    EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
+    EditorTool(id: 'adjust', label: 'Adjust', icon: LucideIcons.slidersHorizontal),
+    EditorTool(
+      id: 'transition',
+      label: 'Transition',
+      icon: LucideIcons.arrowLeftRight,
+    ),
+    // Also on the root menu. Here because the root menu is hidden while a
+    // clip is selected, and a tool reachable only by deselecting the clip you
+    // want to transform is not reachable.
+    EditorTool(id: 'transform', label: 'Transform', icon: LucideIcons.move),
+    // Swap the media under this clip, keeping the edit.
+    EditorTool(id: 'replace', label: 'Replace', icon: LucideIcons.replace),
+    EditorTool(id: 'reverse', label: 'Reverse', icon: LucideIcons.rewind),
+    // Hold the frame under the playhead as a 3s still, cut in where it is.
+    EditorTool(id: 'freeze', label: 'Freeze', icon: LucideIcons.snowflake),
+    // A ramp, which the Speed slider structurally cannot express — and which
+    // keyframes cannot hold either, because speed decides what progress means.
+    // Its own tool rather than a mode of Speed, so the common case stays one
+    // drag.
+    EditorTool(
+      id: 'speed_curve',
+      label: 'Curve',
+      icon: LucideIcons.trendingUp,
+    ),
+    // The clip's own presence — a fade of the picture, as Volume is a fade of
+    // the sound. Keyframable like every clip property.
+    EditorTool(id: 'opacity', label: 'Opacity', icon: LucideIcons.contrast),
     // A window over the picture, placed on the canvas — an in-place panel like
     // Crop, for the same reason.
     EditorTool(id: 'mask', label: 'Mask', icon: LucideIcons.scan),
@@ -272,26 +286,9 @@ const EditorMenu _editMenu = EditorMenu(
     // sibling, and next to it for that reason: both decide which of the clip's
     // pixels survive, one by place and one by colour.
     EditorTool(id: 'chroma', label: 'Chroma', icon: LucideIcons.pipette),
-    EditorTool(
-      id: 'transition',
-      label: 'Transition',
-      icon: LucideIcons.arrowLeftRight,
-    ),
-    EditorTool(id: 'reverse', label: 'Reverse', icon: LucideIcons.rewind),
-    // Swap the media under this clip, keeping the edit.
-    EditorTool(id: 'replace', label: 'Replace', icon: LucideIcons.replace),
     // CapCut's "Overlay" on a clip: lifts it one lane down at the same time,
-    // where it was drawn, and the main track closes up. Beside Replace — both
-    // re-house the clip.
+    // where it was drawn, and the main track closes up.
     EditorTool(id: 'to_overlay', label: 'Overlay', icon: LucideIcons.squareStack),
-    // Same tool as the root menu, but reached with a clip selected — opening it
-    // from here grades that clip rather than the whole project.
-    EditorTool(id: 'filters', label: 'Filters', icon: LucideIcons.sliders),
-    EditorTool(id: 'adjust', label: 'Adjust', icon: LucideIcons.slidersHorizontal),
-    // Beside Filters because a clip's effect and its look are siblings: both
-    // change how this one clip is drawn. **Only here, never on the root menu**
-    // — an effect belongs to a clip, and the root menu has none selected.
-    EditorTool(id: 'delete', label: 'Delete', icon: LucideIcons.trash2),
   ],
 );
 

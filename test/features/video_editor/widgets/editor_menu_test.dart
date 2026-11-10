@@ -22,19 +22,63 @@ void main() {
     return text.substring(start, end);
   }
 
-  test('Effects is on the main menu, right after Overlay, and not on the clip menu',
-      () {
+  /// Every id in a menu declaration, the menu's own first.
+  List<String?> idsOf(String varName) => RegExp(r"id: '([a-z_]+)'")
+      .allMatches(menuSource(varName))
+      .map((m) => m.group(1))
+      .toList();
+
+  // The owner's call (2026-11-10): the tools people reach for most come
+  // first, so the common edits need no scrolling along the toolbar. Delete in
+  // particular sat last of seventeen on the clip menu.
+  test('the main menu runs most used first', () {
+    expect(idsOf('_rootMenu'), [
+      'root',
+      'edit',
+      'add',
+      'audio',
+      'text',
+      'auto_captions',
+      'effects',
+      'filters',
+      'overlay',
+      'crop',
+      'background',
+      'adjust',
+      'transform',
+      'zoom',
+      'stickers',
+    ]);
+  });
+
+  test('the clip menu runs most used first, Delete fourth', () {
+    expect(idsOf('_editMenu'), [
+      'edit',
+      'split',
+      'speed',
+      'volume',
+      'delete',
+      'clip_crop',
+      'filters',
+      'adjust',
+      'transition',
+      'transform',
+      'replace',
+      'reverse',
+      'freeze',
+      'speed_curve',
+      'opacity',
+      'mask',
+      'chroma',
+      'to_overlay',
+    ]);
+  });
+
+  test('Effects is on the main menu, handled, and not on the clip menu', () {
     // Effects are bars on the timeline now, placed at the playhead with
     // nothing selected — so they open from the main menu. A clip no longer
     // carries an effect, so its menu offers none.
-    final root = menuSource('_rootMenu');
-    final overlay = root.indexOf("id: 'overlay'");
-    final effects = root.indexOf("id: 'effects'");
-    expect(effects, greaterThan(overlay));
-    expect(overlay, isNot(-1));
-    final between = root.substring(overlay, effects);
-    expect(RegExp(r"id: '").allMatches(between).length, 1,
-        reason: 'nothing sits between Overlay and Effects');
+    expect(menuSource('_rootMenu'), contains("id: 'effects'"));
     expect(menuSource('_editMenu'), isNot(contains("id: 'effects'")));
     expect(screen.readAsStringSync(), contains("tool.id == 'effects'"));
   });
