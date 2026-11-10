@@ -241,6 +241,9 @@ void main() {
       await c.tapRow(_b);
       await settle();
       h.server.gates['file:a']!.complete();
+      // The download is written to disk, which a loaded run does not finish
+      // in `settle`'s 20ms — this failed once in a full suite, never alone.
+      await until(() => c.inLibrary('a'));
       await settle();
       expect(c.inLibrary('a'), isTrue, reason: 'kept');
       expect(h.player.played.where((p) => p.endsWith('a.mp3')), isEmpty);
