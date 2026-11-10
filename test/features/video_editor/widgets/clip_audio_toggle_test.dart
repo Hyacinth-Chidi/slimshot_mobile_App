@@ -13,6 +13,8 @@ import 'package:slimshotai/features/video_editor/widgets/timeline/scrollable_tim
 /// on the clips' row (the owner's ask, 2026-11-10).
 void main() {
   late VideoEditorNotifier n;
+  // Whether the clips were muted at each pause the timeline asked for.
+  late List<bool> pausedWhileMuted;
 
   Future<void> pumpTimeline(
     WidgetTester tester, {
@@ -31,6 +33,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final clips = segments ?? [VideoSegment(id: 'c', sourceStart: 0, sourceEnd: 10)];
     n = VideoEditorNotifier(VideoEditorService())..state = VideoEditorState(segments: clips);
+    pausedWhileMuted = [];
     await tester.pumpWidget(ProviderScope(
       overrides: [videoEditorProvider.overrideWith((ref) => n)],
       child: MaterialApp(
@@ -39,7 +42,7 @@ void main() {
             width: 400,
             height: 400,
             child: ScrollableTimeline(
-              onPausePlayback: () {},
+              onPausePlayback: () => pausedWhileMuted.add(n.state.isMuted),
               inputPath: '/v.mp4',
               durationSeconds: 10,
               trimRange: const RangeValues(0, 10),
@@ -80,6 +83,17 @@ void main() {
     await tester.pump();
     expect(n.state.isMuted, isFalse);
     expect(find.descendant(of: toggle, matching: find.byIcon(LucideIcons.volume2)), findsOneWidget);
+  });
+
+  testWidgets('a tap pauses first, so the engine hears the mute', (tester) async {
+    // The editor pushes a timeline to the engine only while paused — every
+    // edit pauses first — so a mute tapped mid-playback would otherwise go
+    // unheard until the next pause.
+    await pumpTimeline(tester);
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(pausedWhileMuted, [false], reason: 'paused once, before the mute');
+    expect(n.state.isMuted, isTrue);
   });
 
   testWidgets('a screen reader hears what a tap will do', (tester) async {

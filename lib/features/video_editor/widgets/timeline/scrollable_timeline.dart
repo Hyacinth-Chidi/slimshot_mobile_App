@@ -2143,6 +2143,10 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
         behavior: HitTestBehavior.opaque,
         onTap: () {
           HapticFeedback.selectionClick();
+          // Every edit pauses first: the engine is handed a timeline only
+          // while paused, so a mute tapped mid-playback would go unheard
+          // until the next pause.
+          widget.onPausePlayback();
           ref.read(videoEditorProvider.notifier).setClipAudioMuted(!muted);
         },
         child: Center(

@@ -3456,7 +3456,9 @@ would show the stale cover), deletes the previous cover file, and saves the draf
 a speaker just left of the cover card, on the clips' row, tracked over the scroll like the card.
 A tap mutes the main track's own sound — the clips — in the preview and in the file; music,
 sound effects, voiceovers and video overlays keep theirs, as in CapCut. One undo step
-(`setClipAudioMuted`), none when nothing changes. The glyph is the state (speaker, or struck
+(`setClipAudioMuted`), none when nothing changes. **A tap pauses first**, as every edit does —
+the engine is handed a timeline only while paused, so a mute tapped mid-playback went unheard
+until the next pause (found reviewing the branch). The glyph is the state (speaker, or struck
 through) with no caption — the minimal-copy rule — and a screen reader hears what a tap will
 do. Recording mode takes no taps on it, as it takes none on the track. **It rides the draft's
 `isMuted`, which was half-built**: nothing on screen reached it (the "Mute Audio" panel was
