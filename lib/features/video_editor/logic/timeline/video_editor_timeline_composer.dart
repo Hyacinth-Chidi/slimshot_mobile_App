@@ -135,7 +135,7 @@ class VideoEditorTimelineComposer {
       canvas: EditorTimelineCanvas(
         backgroundColor: state.backgroundColor,
         backgroundType: state.backgroundType.name,
-        backgroundBlurIntensity: state.backgroundBlurIntensity,
+        backgroundBlurStrength: state.backgroundBlurStrength,
         // Only while the photo is in use: a resting photo is the sheet's
         // business, not the engine's.
         backgroundImagePath: state.backgroundType == EditorBackgroundType.image

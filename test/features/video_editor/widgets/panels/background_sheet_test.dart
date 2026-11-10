@@ -285,4 +285,49 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(BackgroundSheet), findsNothing);
   });
+  // The owner's ask (2026-11-10): "the blur is okay but it's so clear that it
+  // looks like a mirror, so a slider to control how clear or blurry it will
+  // be". One slider, there only while the blur is the background.
+  group('blur strength', () {
+    final slider = find.byKey(BackgroundSheet.blurStrengthKey);
+
+    testWidgets('the slider is there only while the blur is in use', (tester) async {
+      final n = notifierWith(type: EditorBackgroundType.blur);
+      await pump(tester, n);
+      expect(slider, findsOneWidget);
+
+      n.setBackground(Colors.black);
+      await tester.pumpAndSettle();
+      expect(slider, findsNothing);
+    });
+
+    testWidgets('choosing Blur brings the slider in', (tester) async {
+      await pump(tester, notifierWith());
+      await tester.tap(find.byKey(BackgroundSheet.blurTileKey));
+      await tester.pumpAndSettle();
+      expect(slider, findsOneWidget);
+    });
+
+    testWidgets("it shows the project's strength", (tester) async {
+      final n = notifierWith(type: EditorBackgroundType.blur);
+      n.state = n.state.copyWith(backgroundBlurStrength: 0.8);
+      await pump(tester, n);
+      expect(tester.widget<Slider>(slider).value, 0.8);
+      expect(find.text('80%'), findsOneWidget);
+    });
+
+    testWidgets('a drag blurs live, and is one undo step', (tester) async {
+      final n = notifierWith(type: EditorBackgroundType.blur);
+      await pump(tester, n);
+      final start = n.state.backgroundBlurStrength;
+
+      await tester.drag(slider, const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(n.state.backgroundBlurStrength, greaterThan(start));
+
+      n.undo();
+      expect(n.state.backgroundBlurStrength, start);
+      expect(n.state.canUndo, isFalse);
+    });
+  });
 }

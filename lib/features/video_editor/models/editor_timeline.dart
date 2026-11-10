@@ -137,7 +137,7 @@ class EditorTimelineCanvas {
   const EditorTimelineCanvas({
     required this.backgroundColor,
     required this.backgroundType,
-    required this.backgroundBlurIntensity,
+    required this.backgroundBlurStrength,
     this.backgroundImagePath,
     required this.cropRatio,
     required this.customCropRect,
@@ -178,7 +178,9 @@ class EditorTimelineCanvas {
 
   final Color backgroundColor;
   final String backgroundType;
-  final double backgroundBlurIntensity;
+  /// How blurred a `blur` background is, 0..1 — the engine's
+  /// `BackgroundBlur.strengthOf` reads it.
+  final double backgroundBlurStrength;
 
   /// The background photo's path when [backgroundType] is `image`, else null
   /// and **absent from the JSON** — a build that predates the photo reads the
@@ -204,7 +206,7 @@ class EditorTimelineCanvas {
       },
       'colorMatrix': colorMatrix,
       'backgroundType': backgroundType,
-      'backgroundBlurIntensity': backgroundBlurIntensity,
+      'backgroundBlurStrength': backgroundBlurStrength,
       if (backgroundImagePath != null) 'backgroundImagePath': backgroundImagePath,
       'cropRatio': cropRatio,
       'customCropRect': {

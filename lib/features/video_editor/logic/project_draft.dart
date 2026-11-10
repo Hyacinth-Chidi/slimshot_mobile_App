@@ -1,5 +1,6 @@
 import '../../../core/models/draft_project.dart';
 import '../models/video_editor_state.dart';
+import 'background_blur.dart';
 import 'timeline/project_end.dart';
 
 /// [state] as the draft it saves to — the one mapping, read by the editor's
@@ -57,7 +58,10 @@ DraftProject? draftProjectFrom(
     filterIntensity: state.filterIntensity,
     backgroundType: state.backgroundType.name,
     backgroundColorValue: state.backgroundColor.toARGB32(),
-    backgroundBlurIntensity: state.backgroundBlurIntensity,
+    // Absent at the default, so a project that never touched the slider
+    // saves what it always did.
+    backgroundBlurStrength:
+        state.backgroundBlurStrength == kDefaultBackgroundBlurStrength ? null : state.backgroundBlurStrength,
     backgroundImagePath: state.backgroundImagePath,
     adjustments: state.adjustments,
     isMuted: state.isMuted,

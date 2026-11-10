@@ -126,7 +126,6 @@ void main() {
             filterIntensity: 1,
             backgroundType: 'image',
             backgroundColorValue: 0xFF000000,
-            backgroundBlurIntensity: 20,
             backgroundImagePath: path,
             isMuted: false,
           );

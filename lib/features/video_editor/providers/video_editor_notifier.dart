@@ -14,6 +14,7 @@ import '../../../core/utils/user_facing_error.dart';
 import '../../sound_library/data/catalog_models.dart';
 import '../../sound_library/data/sound_library.dart';
 import '../logic/animation/animatable_double.dart';
+import '../logic/background_blur.dart';
 import '../logic/animation/clip_keyframes.dart';
 import '../logic/animation/keyframe_core.dart';
 import '../logic/animation/overlay_keyframes.dart';
@@ -545,7 +546,9 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       filterAppliesToAll: !segments.any((s) => s.filterId != null),
       backgroundType: _backgroundTypeFromDraft(draft),
       backgroundColor: Color(draft.backgroundColorValue),
-      backgroundBlurIntensity: draft.backgroundBlurIntensity,
+      backgroundBlurStrength: clampBackgroundBlurStrength(
+        draft.backgroundBlurStrength ?? kDefaultBackgroundBlurStrength,
+      ),
       backgroundImagePath: draft.backgroundImagePath,
       adjustments: draft.adjustments,
       isMuted: draft.isMuted,
@@ -2144,8 +2147,16 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     }
   }
 
-  void setBackgroundBlurIntensity(double intensity) {
-    state = state.copyWith(backgroundBlurIntensity: intensity);
+  /// The one undo step a drag of the blur slider takes, at its start.
+  void beginBackgroundBlurEdit() => saveStateForUndo();
+
+  /// One frame of the blur slider, written live — the canvas follows the
+  /// finger — and held to the slider. No undo step of its own: the drag took
+  /// one when it began ([beginBackgroundBlurEdit]).
+  void setBackgroundBlurStrength(double strength) {
+    state = state.copyWith(
+      backgroundBlurStrength: clampBackgroundBlurStrength(strength),
+    );
   }
 
   void setVideoTransform({double? videoScale, Offset? videoPan}) {

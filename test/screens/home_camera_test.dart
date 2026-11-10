@@ -34,7 +34,6 @@ DraftProject _draft(int i) => DraftProject(
       filterIntensity: 1,
       backgroundType: 'black',
       backgroundColorValue: 0xFF000000,
-      backgroundBlurIntensity: 20,
       isMuted: false,
     );
 

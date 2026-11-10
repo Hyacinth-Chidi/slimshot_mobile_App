@@ -10,6 +10,7 @@ import com.techfamz.slimshotai.export.CaptionAudioRenderer
 import com.techfamz.slimshotai.export.CaptionAudioSources
 import com.techfamz.slimshotai.export.ExportCapabilities
 import com.techfamz.slimshotai.export.VideoExportEngine
+import com.techfamz.slimshotai.nativepreview.gl.BackgroundBlur
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
 import com.techfamz.slimshotai.nativepreview.gl.effects.EffectPreviewAnswer
 import com.techfamz.slimshotai.nativepreview.gl.effects.EffectPreviewRequest
@@ -153,7 +154,10 @@ class NativeTimelinePreviewManager(
                 if (backgroundType == "image") canvas?.get("backgroundImagePath") as? String else null,
                 synchronous = true,
             )
-            renderer?.setBackgroundBlur(backgroundType == "blur")
+            renderer?.setBackgroundBlur(
+                backgroundType == "blur",
+                BackgroundBlur.strengthOf(canvas),
+            )
         }
 
         val overlays = NativeTimelineOverlays.fromTimeline(timeline)

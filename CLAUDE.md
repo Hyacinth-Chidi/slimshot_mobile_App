@@ -376,12 +376,29 @@ are the chosen colour in preview and export alike. **`blur` is the clip blurred 
 (**awaiting device verification**): each frame the renderer draws the lanes on screen
 *cover-fitted* — the cover fit derived from the contain fit the engine already pushed
 (`BackgroundFit.coverFitFromContain`; the pinch scale cancels out of the ratio), centred, unrotated,
-fully present — into a quarter-size target, runs the effect `BlurPass` chain over it twice (four
+fully present — into a small copy, runs the effect `BlurPass` chain over it twice (four
 passes, the cap), and hands the result to `backgroundAt()` in place of a photo with fit (1,1) and
 **no v flip** (`uBackgroundImageFlip` is 1 for a bitmap, 0 for a texture the renderer drew).
 Preview and export share it through `composite`. The tail past the last clip has nothing to blur
 and shows the colour, which stays black for `blur` as the fallback; a device whose GL refuses the
-quarter-size buffers falls back to that colour **and says so once** through `onWarning`.
+copy falls back to that colour **and says so once** through `onWarning`.
+
+**How blurred is the user's** (`BackgroundBlur`, `BackgroundBlurTest`,
+`background_blur_strength_test.dart`; **awaiting device verification**; the owner's ask,
+2026-11-10: "the blur is okay but it's so clear that it looks like a mirror"). It blurred by
+`BlurPass`'s full-resolution cap, 1.4% of the short side per pass — a softening, where a
+background wants the clip's colours and none of its shapes. Now a slider over the sheet's grid,
+there only while Blur is in use, sets `backgroundBlurStrength` (0 light .. 1 heavy, halfway by
+default — `kDefaultBackgroundBlurStrength`, Kotlin's `DEFAULT_STRENGTH`), live on the canvas
+through the timeline's soft path, one undo step a drag. A pass's radius runs from 0.02 to 0.13
+of the short side, so the default is over five times the old blur and the lightest a little past
+it. **The copy is 180 texels on its short side whatever the frame**
+(`BackgroundBlur.copySize`) — the preview's canvas and a 1080 or 2K file blur on one grid, so they
+match texel for texel, and the strongest blur keeps its 16 taps a side within 1.5 texels, where a
+gaussian starts to band. The strength rides the canvas (`canvas.backgroundBlurStrength`), read by
+`BackgroundBlur.strengthOf` in both engines; the draft writes it only when it is not the default.
+**It replaced `backgroundBlurIntensity`**, a value from the old export (20) that drafts carried and
+nothing read or set; a draft with it opens at the default.
 
 **The picker is `BackgroundSheet`**: a photo tile, then square 64px colour tiles (the crop panel's
 tile width; square because a colour needs no label), applied live, one undo step each
@@ -420,7 +437,8 @@ out before it is pending) and uploaded at the next draw like a photo lane's bitm
 change-guards on the path, because every `setTimeline` re-sends the canvas. A photo that will not
 decode falls back to the colour **and warns**, through the same `onWarning` the lane fallback uses.
 **Blur is the second tile**, beside Photo — the two "picture" fills before the flat colours — and
-sets `EditorBackgroundType.blur`, one undo step; the engine side is in the canvas section above.
+sets `EditorBackgroundType.blur`, one undo step, bringing in the strength slider over the grid;
+the engine side is in the canvas section above.
 
 **Per-clip canvas transform (pinch to scale, drag to move — CapCut-style).** With a clip selected,
 pinching the preview scales it about the contain-fit and a one-finger drag moves it; double-tap

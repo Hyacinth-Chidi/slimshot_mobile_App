@@ -231,7 +231,6 @@ void main() {
         filterIntensity: 1,
         backgroundType: 'black',
         backgroundColorValue: 0xFF000000,
-        backgroundBlurIntensity: 20,
         isMuted: false,
       );
       final n = VideoEditorNotifier(VideoEditorService());

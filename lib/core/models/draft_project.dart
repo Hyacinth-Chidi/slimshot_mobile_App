@@ -44,7 +44,10 @@ class DraftProject {
   // Background
   final String backgroundType;
   final int backgroundColorValue;
-  final double backgroundBlurIntensity;
+  /// The blur background's strength (0..1); absent from the JSON at the
+  /// default. Drafts before the slider carried `backgroundBlurIntensity`, a
+  /// value from the old export that nothing read — ignored on reading.
+  final double? backgroundBlurStrength;
 
   /// The project's copy of a background photo; absent from the JSON when none.
   final String? backgroundImagePath;
@@ -81,7 +84,7 @@ class DraftProject {
     required this.filterIntensity,
     required this.backgroundType,
     required this.backgroundColorValue,
-    required this.backgroundBlurIntensity,
+    this.backgroundBlurStrength,
     this.backgroundImagePath,
     this.adjustments = ColorAdjustments.none,
     required this.isMuted,
@@ -113,7 +116,7 @@ class DraftProject {
       'filterIntensity': filterIntensity,
       'backgroundType': backgroundType,
       'backgroundColorValue': backgroundColorValue,
-      'backgroundBlurIntensity': backgroundBlurIntensity,
+      if (backgroundBlurStrength != null) 'backgroundBlurStrength': backgroundBlurStrength,
       if (backgroundImagePath != null) 'backgroundImagePath': backgroundImagePath,
       if (!adjustments.isIdentity) 'adjustments': adjustments.toJson(),
       'isMuted': isMuted,
@@ -151,7 +154,7 @@ class DraftProject {
       filterIntensity: (json['filterIntensity'] as num?)?.toDouble() ?? 1.0,
       backgroundType: json['backgroundType'] as String? ?? 'black',
       backgroundColorValue: json['backgroundColorValue'] as int? ?? 0xFF000000,
-      backgroundBlurIntensity: (json['backgroundBlurIntensity'] as num?)?.toDouble() ?? 20.0,
+      backgroundBlurStrength: (json['backgroundBlurStrength'] as num?)?.toDouble(),
       backgroundImagePath: json['backgroundImagePath'] as String?,
       adjustments: ColorAdjustments.fromJson(json['adjustments']),
       isMuted: json['isMuted'] as bool? ?? false,

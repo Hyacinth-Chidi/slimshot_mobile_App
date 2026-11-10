@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/theme/lucide_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/utils/toast_utils.dart';
 import '../../../../core/widgets/dashed_frame_painter.dart';
 import '../../models/video_editor_state.dart';
@@ -93,6 +94,9 @@ class BackgroundSheet extends ConsumerWidget {
   /// The blur tile, second in the grid.
   static const Key blurTileKey = Key('background_blur_tile');
 
+  /// How blurred the blur is: a slider over the grid while the blur is in use.
+  static const Key blurStrengthKey = Key('background_blur_strength');
+
   /// The key of a colour's tile, for tests and for anything that needs to
   /// find one.
   static Key tileKey(Color colour) =>
@@ -159,6 +163,21 @@ class BackgroundSheet extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 10),
+              // How blurred, while the blur is the background: the canvas
+              // follows the finger, and a drag is one undo step. It slides in
+              // and out with the motion the editor's panels use.
+              AnimatedSize(
+                duration: AppMotion.enter,
+                curve: AppMotion.enterCurve,
+                alignment: Alignment.topCenter,
+                child: usingBlur
+                    ? _BlurStrengthRow(
+                        value: state.backgroundBlurStrength,
+                        onChangeStart: notifier.beginBackgroundBlurEdit,
+                        onChanged: notifier.setBackgroundBlurStrength,
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
               // Loose, so a short list takes only its height and a long one
               // stops at the cap and scrolls.
               Flexible(
@@ -382,6 +401,62 @@ class _ChosenPhotoTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// How blurred the blur is (the owner's ask, 2026-11-10: it read as a mirror
+/// of the clip). The effects sheet's intensity row — glyph, slider,
+/// percentage — without its label: the Blur tile it tunes is lit just below.
+class _BlurStrengthRow extends StatelessWidget {
+  const _BlurStrengthRow({
+    required this.value,
+    required this.onChangeStart,
+    required this.onChanged,
+  });
+
+  final double value;
+  final VoidCallback onChangeStart;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(_kEdge, 0, _kEdge, 8),
+      child: Row(
+        children: [
+          const Icon(LucideIcons.aperture, color: AppColors.textSecondary, size: 16),
+          Expanded(
+            child: SliderTheme(
+              data: const SliderThemeData(
+                activeTrackColor: AppColors.primaryStart,
+                inactiveTrackColor: Colors.white12,
+                thumbColor: Colors.white,
+                trackHeight: 2,
+                overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
+              ),
+              child: Slider(
+                key: BackgroundSheet.blurStrengthKey,
+                value: value,
+                onChangeStart: (_) => onChangeStart(),
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 44,
+            child: Text(
+              '${(value * 100).round()}%',
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

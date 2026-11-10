@@ -344,11 +344,13 @@ internal class TransitionRenderer(
 
     /**
      * The clip blurred behind itself as the letterbox fill. Rendered per frame
-     * from the lanes on screen — cover-fitted into a quarter-size target, then
-     * the effect blur run over it twice — and handed to `backgroundAt()` in
-     * place of a photo. Allocated on the first blurred frame, never before.
+     * from the lanes on screen — cover-fitted into a small copy, then the
+     * effect blur run over it twice at [blurStrength] ([BackgroundBlur]) —
+     * and handed to `backgroundAt()` in place of a photo. Allocated on the
+     * first blurred frame, never before.
      */
     @Volatile private var blurBackground = false
+    @Volatile private var blurStrength = BackgroundBlur.DEFAULT_STRENGTH
     private var blurTarget: RenderTarget? = null
     private var blurPasses: List<BlurPass>? = null
     private val blurChain = EffectPassChain { message ->
@@ -1055,10 +1057,19 @@ internal class TransitionRenderer(
      * decode falls back to the colour **and says so** through `onWarning`,
      * because a background that silently stays black reads as a broken tile.
      */
-    /** Whether the letterbox shows the clip blurred behind itself. */
-    fun setBackgroundBlur(enabled: Boolean) {
-        if (released || enabled == blurBackground) return
+    /**
+     * Whether the letterbox shows the clip blurred behind itself, and how
+     * blurred (0 light .. 1 heavy, the background sheet's slider). Every
+     * `setTimeline` re-sends the canvas, so an unchanged pair draws nothing.
+     */
+    fun setBackgroundBlur(
+        enabled: Boolean,
+        strength: Float = BackgroundBlur.DEFAULT_STRENGTH,
+    ) {
+        if (released) return
+        if (enabled == blurBackground && strength == blurStrength) return
         blurBackground = enabled
+        blurStrength = strength
         requestRender()
     }
 
@@ -1652,8 +1663,7 @@ internal class TransitionRenderer(
      */
     private fun renderBlurredBackground(viewportWidth: Int, viewportHeight: Int): Int {
         if (!lanes.any { it.hasContent }) return 0
-        val width = (viewportWidth / BLUR_BACKGROUND_DOWNSCALE).coerceAtLeast(1)
-        val height = (viewportHeight / BLUR_BACKGROUND_DOWNSCALE).coerceAtLeast(1)
+        val (width, height) = BackgroundBlur.copySize(viewportWidth, viewportHeight)
 
         val existing = blurTarget
         val target = if (existing != null && existing.width == width && existing.height == height) {
@@ -1672,7 +1682,12 @@ internal class TransitionRenderer(
             blurTarget = created
             created
         }
-        val passes = blurPasses ?: BlurPass.chain(BlurPass.MAX_RADIUS_FRACTION).also { blurPasses = it }
+        val passes = blurPasses
+            ?: BlurPass.chain(maxRadiusFraction = BackgroundBlur.MAX_RADIUS_FRACTION)
+                .also { blurPasses = it }
+        // Per frame: the slider moves it, and the passes take it as a uniform.
+        val radius = BackgroundBlur.radiusFractionFor(blurStrength)
+        for (pass in passes) pass.radiusFraction = radius
 
         target.bind()
         drawLanes(BackgroundFill.COLOUR, cover = true)
@@ -2508,14 +2523,6 @@ internal class TransitionRenderer(
 
         /** Below this an opacity change is not worth a redraw. */
         private const val OPACITY_EPSILON = 0.001f
-
-        /**
-         * The blurred background renders at 1/N of the canvas. Quarter size is
-         * where the 16-tap kernel run twice reaches a frosted look, and the
-         * upsample back is what a blur wants anyway; it also makes the pass
-         * cheap enough for the low-end target on every frame.
-         */
-        private const val BLUR_BACKGROUND_DOWNSCALE = 4
     }
 }
 

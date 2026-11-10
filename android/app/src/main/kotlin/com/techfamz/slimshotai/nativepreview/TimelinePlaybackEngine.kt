@@ -16,6 +16,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.image.ImageOutput
+import com.techfamz.slimshotai.nativepreview.gl.BackgroundBlur
 import com.techfamz.slimshotai.nativepreview.gl.TransitionDraw
 import com.techfamz.slimshotai.nativepreview.gl.TransitionRenderer
 import com.techfamz.slimshotai.nativepreview.gl.effects.EffectStackController
@@ -1331,9 +1332,10 @@ internal class TimelinePlaybackEngine(
         renderer.setBackgroundImagePath(
             if (backgroundType == "image") canvas?.get("backgroundImagePath") as? String else null,
         )
-        // The clip blurred behind itself; the colour above stays black as the
-        // fallback for a device whose GL refuses the buffers.
-        renderer.setBackgroundBlur(backgroundType == "blur")
+        // The clip blurred behind itself, as blurred as the sheet's slider
+        // says; the colour above stays black as the fallback for a device
+        // whose GL refuses the buffers.
+        renderer.setBackgroundBlur(backgroundType == "blur", BackgroundBlur.strengthOf(canvas))
 
         // The canvas rect is no longer read here: each clip carries its own
         // composed rect and `applyLaneFits` pushes it per lane, the same way

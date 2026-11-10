@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../logic/animation/animatable_double.dart';
+import '../logic/background_blur.dart';
 import '../logic/animation/clip_keyframes.dart';
 import '../logic/animation/keyframe_core.dart';
 import '../logic/animation/overlay_keyframes.dart';
@@ -183,7 +184,7 @@ class VideoEditorState {
     this.currentPlaybackPosition = 0.0,
     this.backgroundType = EditorBackgroundType.black,
     this.backgroundColor = Colors.black,
-    this.backgroundBlurIntensity = 20.0,
+    this.backgroundBlurStrength = kDefaultBackgroundBlurStrength,
     this.backgroundImagePath,
     this.adjustments = ColorAdjustments.none,
     this.captionSettings,
@@ -266,7 +267,9 @@ class VideoEditorState {
   final double currentPlaybackPosition;
   final EditorBackgroundType backgroundType;
   final Color backgroundColor;
-  final double backgroundBlurIntensity;
+  /// How blurred the `blur` background is, 0 light .. 1 heavy — the
+  /// background sheet's slider ([kDefaultBackgroundBlurStrength] halfway).
+  final double backgroundBlurStrength;
 
   /// The project's own copy of a background photo, when one has been picked.
   ///
@@ -800,7 +803,7 @@ class VideoEditorState {
     double? currentPlaybackPosition,
     EditorBackgroundType? backgroundType,
     Color? backgroundColor,
-    double? backgroundBlurIntensity,
+    double? backgroundBlurStrength,
     String? backgroundImagePath,
     bool clearBackgroundImagePath = false,
     ColorAdjustments? adjustments,
@@ -875,7 +878,7 @@ class VideoEditorState {
           currentPlaybackPosition ?? this.currentPlaybackPosition,
       backgroundType: backgroundType ?? this.backgroundType,
       backgroundColor: backgroundColor ?? this.backgroundColor,
-      backgroundBlurIntensity: backgroundBlurIntensity ?? this.backgroundBlurIntensity,
+      backgroundBlurStrength: backgroundBlurStrength ?? this.backgroundBlurStrength,
       backgroundImagePath: clearBackgroundImagePath
           ? null
           : backgroundImagePath ?? this.backgroundImagePath,
