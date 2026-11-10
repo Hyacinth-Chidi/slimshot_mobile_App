@@ -3433,6 +3433,21 @@ strip cache keys by `(path, timeMs)` only and sizes share a key; going through i
 **timestamped** `cover_<draftId>_<ts>.jpg` (`FileImage` caches by path, so overwriting one file
 would show the stale cover), deletes the previous cover file, and saves the draft.
 
+**Mute clip audio** (`_clipAudioToggle`; `clip_audio_toggle_test.dart`, `clip_audio_mute_test.dart`,
+`ClipAudioMuteTest`; **awaiting device verification**; the owner's ask, 2026-11-10, after CapCut):
+a speaker just left of the cover card, on the clips' row, tracked over the scroll like the card.
+A tap mutes the main track's own sound — the clips — in the preview and in the file; music,
+sound effects, voiceovers and video overlays keep theirs, as in CapCut. One undo step
+(`setClipAudioMuted`), none when nothing changes. The glyph is the state (speaker, or struck
+through) with no caption — the minimal-copy rule — and a screen reader hears what a tap will
+do. Recording mode takes no taps on it, as it takes none on the track. **It rides the draft's
+`isMuted`, which was half-built**: nothing on screen reached it (the "Mute Audio" panel was
+unreachable — the main menu's Audio always opens its submenu — and is deleted), the preview
+ignored it, and the export muted the clips *and* the video overlays. Now
+`NativeTimelineClips.clipsMuted` is the one reading of the wire for both engines; `isMuted` is
+in the playback signature, so a tap reaches the engine, through the soft path; and the export's
+`masterVolume` is `clipVolume`, which no longer touches an overlay.
+
 **The text editor sheet is the one text-styling surface** (`text_editor_dialog.dart`). Four
 labeled tabs — Keyboard / Style / Font / Animation — at a fixed panel height so switching tabs
 never resizes the sheet. Style opens with one-tap **presets** (bundles of colour/stroke/

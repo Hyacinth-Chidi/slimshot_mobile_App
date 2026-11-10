@@ -44,7 +44,7 @@ internal class VideoExportEngine(
         /** The effect bars, drawn by [EffectStack] on the export clock. */
         val effects: List<NativeTimelineEffect> = emptyList(),
         val audioTracks: List<AudioExportMixer.TimelineAudioTrack>,
-        val masterVolume: Double,
+        val clipVolume: Double,
         /**
          * The composed project duration. Exceeds the last clip's end when
          * audio or an overlay outlasts the video; the export then keeps
@@ -169,7 +169,7 @@ internal class VideoExportEngine(
             clips = request.clips,
             audioTracks = request.audioTracks,
             overlays = request.overlays,
-            masterVolume = request.masterVolume,
+            clipVolume = request.clipVolume,
             transitions = request.transitions,
             durationSeconds = duration,
         )

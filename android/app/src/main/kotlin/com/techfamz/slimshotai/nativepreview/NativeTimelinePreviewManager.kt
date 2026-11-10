@@ -162,8 +162,9 @@ class NativeTimelinePreviewManager(
         // through `overlays`, at its own speed — listing it here as well mixed
         // it twice.
         val audioTracks = TimelineAudioTracks.fromTimeline(timeline)
-        // A muted project exports silent rather than exporting the wrong sound.
-        val masterVolume = if (timeline["isMuted"] == true) 0.0 else 1.0
+        // "Mute clip audio": the clips export silent, as they play in the
+        // preview; every other sound keeps its own.
+        val clipVolume = if (NativeTimelineClips.clipsMuted(timeline)) 0.0 else 1.0
 
         // The composed project duration. Longer than the last clip when audio
         // or an overlay outlasts the video — the engine renders that tail as
@@ -194,7 +195,7 @@ class NativeTimelinePreviewManager(
                         overlays = overlays,
                         effects = NativeTimelineEffect.listFrom(timeline),
                         audioTracks = audioTracks,
-                        masterVolume = masterVolume,
+                        clipVolume = clipVolume,
                         totalDurationSeconds = totalDurationSeconds,
                         canvasWidth = exportWidth,
                         canvasHeight = exportHeight,

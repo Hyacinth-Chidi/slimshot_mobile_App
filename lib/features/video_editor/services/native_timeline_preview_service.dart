@@ -213,6 +213,8 @@ class NativeTimelinePreviewService {
       'audioTracks': timeline.audioClips
           .map((clip) => clip.toJson())
           .toList(growable: false),
+      // "Mute clip audio": the engine silences the clips' own sound.
+      'isMuted': timeline.isMuted,
     });
   }
 

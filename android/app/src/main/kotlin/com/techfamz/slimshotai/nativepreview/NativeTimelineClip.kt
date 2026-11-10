@@ -537,4 +537,15 @@ internal object NativeTimelineClips {
             NativeTimelineClip.fromMap(map, fallbackSource)
         }
     }
+
+    /**
+     * "Mute clip audio": whether the clips' own sound is off — `isMuted` on
+     * the wire. Read here so playback and export cannot disagree about it.
+     * Music, sound effects, voiceovers and video overlays are not clips, and
+     * keep their sound.
+     */
+    fun clipsMuted(timeline: Map<String, Any?>): Boolean = timeline["isMuted"] == true
+
+    /** A clip's [gain] with the mute applied: a muted clip is silent whatever its volume. */
+    fun clipGain(clipsMuted: Boolean, gain: Double): Double = if (clipsMuted) 0.0 else gain
 }

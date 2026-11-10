@@ -48,7 +48,7 @@ internal class CaptionAudioRenderer(
             clips = selection.clips,
             audioTracks = selection.tracks,
             overlays = selection.overlays,
-            masterVolume = 1.0,
+            clipVolume = 1.0,
             transitions = transitions,
             durationSeconds = selection.durationSeconds,
             config = MixConfig.CAPTIONS,

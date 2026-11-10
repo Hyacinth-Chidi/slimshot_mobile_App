@@ -663,7 +663,13 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     }
   }
 
-  void setMuted(bool isMuted) {
+  /// CapCut's "Mute clip audio": the main track's own sound off or back on,
+  /// in the preview and the file alike. Music, sound effects, voiceovers and
+  /// video overlays keep theirs. One undo step, and none when nothing
+  /// changes.
+  void setClipAudioMuted(bool isMuted) {
+    if (state.isMuted == isMuted) return;
+    saveStateForUndo();
     state = state.copyWith(isMuted: isMuted);
   }
 

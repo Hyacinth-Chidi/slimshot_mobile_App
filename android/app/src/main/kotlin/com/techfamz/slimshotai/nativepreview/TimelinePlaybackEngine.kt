@@ -192,9 +192,21 @@ internal class TimelinePlaybackEngine(
         if (volumeOverrides.remove(clipId) != null) applyAudio(timelinePositionSeconds())
     }
 
-    /** The clip's gain now: the live slider value if one is held, else its keyframed volume. */
+    /**
+     * "Mute clip audio", from the last timeline. Adopted on both of
+     * [setTimeline]'s paths, so muting takes the soft one and reloads nothing.
+     */
+    private var clipsMuted = false
+
+    /**
+     * The clip's gain now: the live slider value if one is held, else its
+     * keyframed volume — and nothing while the clips are muted.
+     */
     private fun clipGain(clip: NativeTimelineClip, position: Double): Double =
-        volumeOverrides[clip.id] ?: clip.volumeAt(clip.clipProgressAt(position))
+        NativeTimelineClips.clipGain(
+            clipsMuted,
+            volumeOverrides[clip.id] ?: clip.volumeAt(clip.clipProgressAt(position)),
+        )
 
     fun setClipTransform(
         clipId: String,
@@ -302,6 +314,9 @@ internal class TimelinePlaybackEngine(
 
         val parsedTransitions = NativeTimelineTransitionIntents.fromTimeline(timeline)
         val canvas = timeline["canvas"] as? Map<*, *>
+        // Read before the paths part: a mute alone changes nothing that plays,
+        // so it takes the soft path, and the next tick's `applyAudio` hears it.
+        clipsMuted = NativeTimelineClips.clipsMuted(timeline)
 
         // Property-only edits go the soft way: adopt the new values without
         // touching the players. Rebuilding the lanes replaces the media items

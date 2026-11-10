@@ -68,7 +68,6 @@ import '../features/video_editor/models/audio_track_model.dart';
 import '../features/video_editor/widgets/text_overlay/text_editor_dialog.dart';
 import '../features/video_editor/widgets/canvas/native_timeline_preview_view.dart';
 import '../features/video_editor/widgets/canvas/video_preview_canvas.dart';
-import '../features/video_editor/widgets/panels/audio_panel.dart';
 import '../features/video_editor/widgets/panels/crop_panel.dart';
 import '../features/video_editor/widgets/panels/placeholder_panel.dart';
 import '../features/video_editor/widgets/panels/speed_panel.dart';
@@ -3189,9 +3188,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       case 'edit':
         content = _buildTrimPanel();
         break;
-      case 'audio':
-        content = _buildAudioPanel();
-        break;
       case 'volume':
         content = _buildVolumePanel();
         break;
@@ -3400,17 +3396,6 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-    );
-  }
-
-  Widget _buildAudioPanel() {
-    final editorState = ref.watch(videoEditorProvider);
-    return AudioPanel(
-      isMuted: editorState.isMuted,
-      onChanged: (value) {
-        HapticFeedback.selectionClick();
-        ref.read(videoEditorProvider.notifier).setMuted(value);
-      },
     );
   }
 

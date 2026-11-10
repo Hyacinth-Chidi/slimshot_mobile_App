@@ -282,6 +282,12 @@ class ScrollableTimeline extends ConsumerStatefulWidget {
     this.onScrubEnd,
   });
 
+  /// The project cover card before 00:00.
+  static const Key coverCardKey = ValueKey('timeline-cover-card');
+
+  /// "Mute clip audio", just left of the cover card.
+  static const Key clipAudioToggleKey = ValueKey('timeline-clip-audio-toggle');
+
   @override
   ConsumerState<ScrollableTimeline> createState() => _ScrollableTimelineState();
 }
@@ -382,6 +388,11 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
 
   /// Width of the project cover card in the run-in before 00:00.
   static const double _coverTileWidth = 44.0;
+
+  /// "Mute clip audio" left of the cover: its touch area, and the gap to the
+  /// card.
+  static const double _clipAudioToggleWidth = 40.0;
+  static const double _clipAudioToggleGap = 4.0;
 
   /// Which trim handle is being held, so it can show it has been grabbed.
   _TrimHandle? _activeTrimHandle;
@@ -2118,6 +2129,41 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
     );
   }
 
+  /// "Mute clip audio" (the owner's ask, 2026-11-10, after CapCut): the main
+  /// track's own sound off, or back on — music, sound effects, voiceovers and
+  /// video overlays keep theirs. A speaker, struck through or not, and no
+  /// caption: the glyph already says which it is. One undo step a tap.
+  Widget _clipAudioToggle(bool muted) {
+    return Semantics(
+      key: ScrollableTimeline.clipAudioToggleKey,
+      container: true,
+      button: true,
+      label: muted ? 'Turn on clip audio' : 'Mute clip audio',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          ref.read(videoEditorProvider.notifier).setClipAudioMuted(!muted);
+        },
+        child: Center(
+          child: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLight,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(
+              muted ? LucideIcons.volumeX : LucideIcons.volume2,
+              size: 18,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showCoverPicker(VideoEditorState editorState) async {
     final segments = List<VideoSegment>.from(widget.segments);
     if (segments.isEmpty) return;
@@ -2484,11 +2530,25 @@ class _ScrollableTimelineState extends ConsumerState<ScrollableTimeline> {
                 return Stack(
                   children: [
                     Positioned(
+                      key: ScrollableTimeline.coverCardKey,
                       top: top,
                       left: left,
                       width: _coverTileWidth,
                       height: _filmstripHeight,
                       child: _coverTileBody(editorState),
+                    ),
+                    // CapCut's place for it: just left of the cover, on the
+                    // clips' row. Recording mode takes no touches here, as
+                    // it takes none on the track.
+                    Positioned(
+                      top: top,
+                      left: left - _clipAudioToggleGap - _clipAudioToggleWidth,
+                      width: _clipAudioToggleWidth,
+                      height: _filmstripHeight,
+                      child: IgnorePointer(
+                        ignoring: widget.recordingTake != null,
+                        child: _clipAudioToggle(editorState.isMuted),
+                      ),
                     ),
                   ],
                 );

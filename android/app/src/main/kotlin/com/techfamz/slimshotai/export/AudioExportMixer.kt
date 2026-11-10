@@ -18,7 +18,7 @@ import com.techfamz.slimshotai.nativepreview.NativeTimelineOverlay
  * Mixes the timeline's audio and encodes it as AAC.
  *
  * The gain rules are the preview's, not a second set: a clip plays at
- * `masterVolume * clip.volume`, and across a transition the two clips are
+ * `clipVolume * clip.volume`, and across a transition the two clips are
  * cross-faded **equal-power** — `cos` out, `sin` in — which is what keeps the
  * combined loudness steady through the blend instead of dipping in the middle.
  * Those are the same expressions `TimelinePlaybackEngine.applyAudio` uses.
@@ -40,7 +40,12 @@ internal class AudioExportMixer(
      * needs — the same shape an imported track already is.
      */
     private val overlays: List<NativeTimelineOverlay> = emptyList(),
-    private val masterVolume: Double,
+    /**
+     * The clips' own sound: 1, or 0 under "Mute clip audio". Clips only —
+     * music, sound effects, voiceovers and video overlays keep theirs, as
+     * they do in the preview.
+     */
+    private val clipVolume: Double,
     private val transitions: List<NativeTimelineTransitionIntent>,
     private val durationSeconds: Double,
     /** Rate, channels, bit rate and gain rule — the export's unless a caller says otherwise. */
@@ -127,7 +132,7 @@ internal class AudioExportMixer(
         Log.i(
             TAG,
             "audio prepare: ${sources.size} source(s) from ${clips.size} clip(s) " +
-                "and ${audioTracks.size} track(s), masterVolume=$masterVolume",
+                "and ${audioTracks.size} track(s), clipVolume=$clipVolume",
         )
         return sources.isNotEmpty()
     }
@@ -409,7 +414,7 @@ internal class AudioExportMixer(
                 skipped += "${clip.id}:reversed"
                 continue
             }
-            if (!config.unityGain && masterVolume <= 0.0) {
+            if (!config.unityGain && clipVolume <= 0.0) {
                 skipped += "muted"
                 continue
             }
@@ -454,7 +459,7 @@ internal class AudioExportMixer(
                     // rather than replacing it.
                     gainAt = { t ->
                         config.gain(
-                            masterVolume * clip.volumeAt(clip.clipProgressAt(t)),
+                            clipVolume * clip.volumeAt(clip.clipProgressAt(t)),
                             crossfadeGain(clip, t),
                         )
                     },
@@ -482,9 +487,10 @@ internal class AudioExportMixer(
                     reader = reader,
                     timelineStart = overlay.startSeconds,
                     timelineEnd = overlay.endSeconds,
-                    // The master volume applies, as it does to everything else
-                    // audible; the overlay's own mute already zeroed this.
-                    gainAt = { t -> config.gain(masterVolume * overlay.effectiveVolumeAt(t)) },
+                    // Not the clips' mute: an overlay is not a clip, and keeps
+                    // its sound as it does in the preview. Its own mute already
+                    // zeroed this.
+                    gainAt = { t -> config.gain(overlay.effectiveVolumeAt(t)) },
                 ),
             )
         }
