@@ -270,7 +270,11 @@ internal class TimelinePlaybackEngine(
 
         val parsed = parseClips(timeline)
         if (parsed.isEmpty()) {
-            emit("error", "message" to "Native preview timeline has no playable clips.")
+            emit(
+                "error",
+                "code" to "timeline_failed",
+                "message" to "Native preview timeline has no playable clips.",
+            )
             return
         }
 
@@ -287,7 +291,11 @@ internal class TimelinePlaybackEngine(
 
         for (clip in parsed) {
             if (!File(clip.playbackVideoPath).exists()) {
-                emit("error", "message" to "Source video does not exist: ${clip.playbackVideoPath}")
+                emit(
+                    "error",
+                    "code" to "missing_file",
+                    "message" to "Source video does not exist: ${clip.playbackVideoPath}",
+                )
                 return
             }
         }
@@ -619,7 +627,14 @@ internal class TimelinePlaybackEngine(
             val message = error.message ?: error.errorCodeName
             Log.e(TAG, "Lane ${lane.index} error: $message", error)
             if (lane.index == masterLane) {
-                emit("error", "message" to message)
+                // The code picks the editor's plain line; the message is for
+                // the log.
+                val code = if (error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) {
+                    "missing_file"
+                } else {
+                    "playback_failed"
+                }
+                emit("error", "code" to code, "message" to "${error.errorCodeName}: $message")
             } else {
                 // A second decoder failed to come up. Playback continues on the
                 // master lane; the shader falls back to showing one clip, which

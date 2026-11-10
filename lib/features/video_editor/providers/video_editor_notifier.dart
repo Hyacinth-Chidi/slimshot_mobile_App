@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/models/draft_project.dart';
 import '../../../core/services/draft_service.dart';
 import '../../../core/utils/file_utils.dart';
+import '../../../core/utils/user_facing_error.dart';
 import '../../sound_library/data/catalog_models.dart';
 import '../../sound_library/data/sound_library.dart';
 import '../logic/animation/animatable_double.dart';
@@ -987,7 +988,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     // the freeze ask it too, so none of them can offer a cut this refuses.
     final point = _clipCutPoint(segments, timelineSeconds);
     if (point == null) {
-      throw Exception(
+      throw UserFacingError(
         segments.isEmpty || segmentIndexAt(timelineSeconds, segments) < 0
             ? 'There is nothing to split.'
             : 'Move the playhead further into the clip to split it.',
@@ -1155,19 +1156,19 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     final position = state.currentPlaybackPosition;
     final index = segmentIndexAt(position, segments);
     if (index < 0) {
-      throw Exception('Move the playhead onto a clip to freeze a frame.');
+      throw const UserFacingError('Move the playhead onto a clip to freeze a frame.');
     }
     final segment = segments[index];
     final asset = state.assetFor(segment);
     if (asset == null) {
-      throw Exception('This clip has no source to freeze.');
+      throw const UserFacingError('This clip has no source to freeze.');
     }
     if (asset.isImage) {
-      throw Exception('This clip is already a still.');
+      throw const UserFacingError('This clip is already a still.');
     }
     final draftId = state.draftId;
     if (draftId == null) {
-      throw Exception('Save the project before freezing a frame.');
+      throw const UserFacingError('Save the project before freezing a frame.');
     }
 
     final starts = segmentTimelineStarts(segments);
@@ -1192,7 +1193,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       height,
     );
     if (bytes == null || bytes.isEmpty) {
-      throw Exception('Could not read a frame here.');
+      throw const UserFacingError('Could not read a frame here.');
     }
 
     final dir = destinationDir ?? await getApplicationDocumentsDirectory();
@@ -1748,10 +1749,10 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
 
     final asset = state.assetFor(segment);
     if (asset == null || asset.path.isEmpty) {
-      throw StateError('Cannot reverse a clip without a source video.');
+      throw const UserFacingError('This clip has no video to reverse.');
     }
     if (asset.isImage) {
-      throw StateError('A photo has nothing to reverse.');
+      throw const UserFacingError('A photo has nothing to reverse.');
     }
     final sourceVideoPath = asset.path;
 
@@ -2721,7 +2722,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
     // Check if playhead is within this audio track's bounds
     if (globalPlayhead <= audioTrack.timelineStart ||
         globalPlayhead >= audioTrack.timelineEnd) {
-      throw Exception('Playhead is outside the selected audio track');
+      throw const UserFacingError('Move the playhead onto the track to split it.');
     }
 
     final splitOffset = globalPlayhead - audioTrack.timelineStart;
@@ -3736,7 +3737,7 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       globalPlayhead,
     );
     if (cut == null) {
-      throw Exception(
+      throw const UserFacingError(
         'Move the playhead further into the overlay to split it.',
       );
     }

@@ -656,6 +656,16 @@ the credit beside the shader in `LayeredTransitions.kt` does not ship in the APK
   still there — a tap outside still closes — it just draws nothing. It also carries the two
   settings every sheet shared (`isScrollControlled`, transparent route background).
 - `unawaited(...)` for fire-and-forget. `ToastUtils.show(context, msg, isError:)` for user feedback.
+- **A toast never shows an error's own text** (device-reported, 2026-11-10: exception class
+  names, player error codes and a file's full path reached people word for word). A caught error
+  becomes a toast through `userMessageFor(e, fallback:)` (`core/utils/user_facing_error.dart`): a
+  `UserFacingError` — a refusal written for the user, like the blade's "Move the playhead further
+  into the clip to split it." — speaks for itself, anything else is the plain fallback and goes
+  to the log. `no_raw_error_toasts_test.dart` scans `lib/` for a toast interpolating `e`/`error`.
+  The preview engine's `error` events carry a `code` and `previewEventToast` picks the line;
+  **its `warning` events are logged, not toasted** — every one is the preview's own compromise,
+  and the owner's rule is a toast only when the exported file differs. The export screen still
+  toasts the export's warnings, written plainly in Kotlin.
 - **A toast is a compact pill at the top of the screen, never a banner**
   (`core/utils/toast_utils.dart`, **awaiting device verification**).
   Device-reported: the old full-width `AwesomeSnackbarContent` card was
@@ -1395,8 +1405,9 @@ nothing to flush.** `seekTo` (with its flush) is mid-stream only, where outputs 
 produced. The video-overlay decoder had the identical pattern and got the identical fix — this
 likely also explains any frozen video overlay in past exports.
 
-Defenses retained around it, each **toasting through `exportWarning`** so the device names the
-failing mechanism without a logcat: a decoder that still produces nothing gets **one full reopen**
+Defenses retained around it — **logged, no longer toasted** (2026-11-10: the engine's words in a
+toast alarmed the person exporting, and a recovery step may well succeed; a clip that stays
+unreadable is still said plainly when the export gives up on it): a decoder that still produces nothing gets **one full reopen**
 (`LaneState.recoveryStage`, keyed per clip so a hopeless clip cannot loop the export into
 re-reading its file), then a nearest-earlier-frame rescue (covers a trim past the video track's
 last sample — containers routinely outlive their video track); a decoder whose `open()` genuinely

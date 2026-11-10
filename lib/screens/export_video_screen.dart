@@ -11,6 +11,7 @@ import '../core/theme/app_colors.dart';
 import '../core/utils/file_utils.dart';
 import '../core/utils/result_exit.dart';
 import '../core/utils/toast_utils.dart';
+import '../core/utils/user_facing_error.dart';
 import '../core/widgets/discard_dialog.dart';
 import '../features/video_editor/models/media_asset.dart';
 import '../features/video_editor/models/video_editor_state.dart';
@@ -145,7 +146,11 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
       _exit.release();
       if (!mounted) return;
       setState(() => _isExporting = false);
-      ToastUtils.show(context, 'Export failed: $e', isError: true);
+      ToastUtils.show(
+        context,
+        userMessageFor(e, fallback: 'Export failed. Try again.'),
+        isError: true,
+      );
       return;
     }
 
@@ -225,7 +230,13 @@ class _ExportVideoScreenState extends State<ExportVideoScreen> {
       _exit.markKept();
       if (mounted) ToastUtils.show(context, 'Saved to gallery!');
     } catch (e) {
-      if (mounted) ToastUtils.show(context, 'Failed to save: $e', isError: true);
+      if (mounted) {
+        ToastUtils.show(
+          context,
+          userMessageFor(e, fallback: "Couldn't save to the gallery."),
+          isError: true,
+        );
+      }
     }
   }
 

@@ -177,7 +177,7 @@ internal class VideoExportEngine(
             mixer.prepare()
         } catch (error: Exception) {
             Log.w(TAG, "Audio could not be prepared; exporting video only", error)
-            onWarning("Exported without sound: ${error.javaClass.simpleName} ${error.message}")
+            onWarning("Exported without sound.")
             mixer.release()
             false
         }
@@ -220,7 +220,8 @@ internal class VideoExportEngine(
                 // ran and produced nothing, say so with the counters rather
                 // than handing over a mute file as a clean success.
                 if (mixer.producedNothing) {
-                    onWarning("Exported without sound — ${mixer.diagnostics}")
+                    Log.w(TAG, "Audio pass produced nothing: ${mixer.diagnostics}")
+                    onWarning("Exported without sound.")
                 }
             } else {
                 Log.i(TAG, "No audio sources; exporting video only")
@@ -234,7 +235,7 @@ internal class VideoExportEngine(
             if (video.degradedTransitions > 0) {
                 onWarning(
                     "${video.degradedTransitions} transition(s) exported as a cut: " +
-                        "this device would not run a second video decoder.",
+                        "this phone can't play two videos at once.",
                 )
             }
 
@@ -279,8 +280,8 @@ internal class VideoExportEngine(
                     "to ${encodeWidth}x$encodeHeight",
             )
             onWarning(
-                "Exported at ${encodeWidth}x$encodeHeight — this device's encoder " +
-                    "would not accept ${request.canvasWidth}x${request.canvasHeight}.",
+                "Exported at ${encodeWidth}x$encodeHeight: this phone can't save " +
+                    "videos at ${request.canvasWidth}x${request.canvasHeight}.",
             )
         }
 
@@ -568,20 +569,18 @@ internal class VideoExportEngine(
                     lane.recoveryClipId = clip.id
                     lane.recoveryStage = 0
                 }
-                // Both branches toast through `exportWarning` as well as log:
-                // these paths only fire when something is already wrong, and
-                // the device names the failing mechanism without a logcat.
+                // Both branches go to the log only. They used to toast as well,
+                // naming the file and the decoder, so a device could say what
+                // failed without a logcat — but a recovery step may well
+                // succeed, and the engine's words in a toast only alarmed the
+                // person exporting (device-reported, 2026-11-10). A clip that
+                // stays unreadable is still said, plainly, when it gives up.
                 when (lane.recoveryStage) {
                     0 -> {
                         Log.w(
                             TAG,
                             "clip ${clip.id}: decoder produced nothing; " +
                                 "reopening once",
-                        )
-                        onWarning(
-                            "Decoder for " +
-                                "${File(clip.playbackVideoPath).name} " +
-                                "produced no frames — reopened.",
                         )
                         lane.recoveryStage = 1
                         lane.release()
@@ -593,10 +592,6 @@ internal class VideoExportEngine(
                             TAG,
                             "clip ${clip.id}: still no frame at ${targetUs}us; " +
                                 "showing nearest earlier frame",
-                        )
-                        onWarning(
-                            "${File(clip.playbackVideoPath).name}: still no " +
-                                "frame after reopen — showing nearest frame.",
                         )
                         lane.recoveryStage = 2
                         decoder.seekTo(targetUs)
@@ -697,10 +692,7 @@ internal class VideoExportEngine(
                 // is a lie that reads as a freeze. Background is honest.
                 renderer.invalidateLane(clip.laneIndex)
                 renderer.clearLaneImage(clip.laneIndex)
-                onWarning(
-                    "A clip could not be decoded and shows as background " +
-                        "(${File(clip.playbackVideoPath).name}).",
-                )
+                onWarning("A clip couldn't be read and shows as background.")
             } else {
                 lane.clipId = null
                 // Export runs faster than realtime, so bare retries would all
@@ -746,8 +738,7 @@ internal class VideoExportEngine(
         }
         if (diagnostics.blankFrames > 0) {
             onWarning(
-                "${diagnostics.blankFrames} frame(s) had nothing to draw and " +
-                    "exported black.",
+                "${diagnostics.blankFrames} frame(s) came out black.",
             )
         }
         // A handful of late frames is decode jitter and shows as a repeated
@@ -767,8 +758,8 @@ internal class VideoExportEngine(
         }
         if (diagnostics.skippedOverlayDecoders > 0) {
             onWarning(
-                "${diagnostics.skippedOverlayDecoders} video overlay(s) skipped: " +
-                    "this device cannot run that many decoders at once.",
+                "${diagnostics.skippedOverlayDecoders} video overlay(s) left out: " +
+                    "this phone can't play that many videos at once.",
             )
         }
     }

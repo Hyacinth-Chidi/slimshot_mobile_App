@@ -17,6 +17,7 @@ import '../core/theme/app_motion.dart';
 import '../core/utils/file_utils.dart';
 import '../core/utils/held_work.dart';
 import '../core/utils/toast_utils.dart';
+import '../core/utils/user_facing_error.dart';
 import '../core/widgets/discard_dialog.dart';
 import '../core/widgets/permission_dialog.dart';
 import '../core/services/ad_service.dart';
@@ -31,6 +32,7 @@ import 'package:slimshotai/features/video_editor/models/video_overlay_model.dart
 import '../features/video_editor/logic/effects/effect_stack.dart';
 import '../features/video_editor/logic/text_overlay_geometry.dart';
 import '../features/video_editor/logic/text_template_catalog.dart';
+import '../features/video_editor/logic/preview_event_toast.dart';
 import '../features/video_editor/widgets/panels/text_templates_sheet.dart';
 import '../features/video_editor/logic/tool_dismissal.dart';
 import '../features/video_editor/logic/toolbar_visibility.dart';
@@ -857,7 +859,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       await _syncNativeEffects(ref.read(videoEditorProvider));
     } catch (e) {
       if (!mounted) return;
-      ToastUtils.show(context, 'Error loading draft: $e', isError: true);
+      ToastUtils.show(
+        context,
+        userMessageFor(e, fallback: "Couldn't open this edit."),
+        isError: true,
+      );
     }
   }
 
@@ -887,7 +893,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       await _syncNativeEffects(ref.read(videoEditorProvider));
     } catch (e) {
       if (!mounted) return;
-      ToastUtils.show(context, 'Error loading media: $e', isError: true);
+      ToastUtils.show(
+        context,
+        userMessageFor(e, fallback: "Couldn't open those files."),
+        isError: true,
+      );
     }
   }
 
@@ -908,7 +918,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       if (mounted) HapticFeedback.selectionClick();
     } catch (e) {
       if (!mounted) return;
-      ToastUtils.show(context, 'Could not add media: $e', isError: true);
+      ToastUtils.show(
+        context,
+        userMessageFor(e, fallback: "Couldn't add those files."),
+        isError: true,
+      );
     }
   }
 
@@ -923,20 +937,13 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
 
   void _handleNativePreviewEvent(NativeTimelinePreviewEvent event) {
     if (!mounted) return;
-    if (event.type == 'error') {
-      ToastUtils.show(
-        context,
-        event.message ?? 'Native preview error',
-        isError: true,
-      );
-    } else if (event.type == 'warning') {
-      // A compromise the engine made, not a failure: the second decoder a
-      // transition wanted, or the buffers an effect needed. The picture is
-      // still playing, so this is not `isError` — but it must be *said*, or
-      // the preview quietly differs from what the project describes and
-      // nothing explains why. The export screen has always surfaced its own
-      // `exportWarning`; the preview dropped these on the floor until now.
-      ToastUtils.show(context, event.message ?? 'Preview compromise');
+    if (event.type == 'error' || event.type == 'warning') {
+      // The engine's own words are for the log; the toast, when there is one,
+      // says it plainly — and a warning, the preview's own compromise, gets
+      // none (`previewEventToast`).
+      debugPrint('[NativePreview] ${event.type} ${event.code ?? ''}: ${event.message}');
+      final toast = previewEventToast(event);
+      if (toast != null) ToastUtils.show(context, toast, isError: true);
     } else if (event.type == 'textReady' || event.type == 'textGone') {
       // Which texts the engine now draws, or no longer can. Flutter stops
       // drawing a text only after the engine says it has it.
@@ -1140,7 +1147,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       unawaited(_probeExportCapabilitiesOnce(state));
     } catch (e) {
       if (!mounted) return;
-      ToastUtils.show(context, 'Native preview unavailable: $e', isError: true);
+      ToastUtils.show(
+        context,
+        userMessageFor(e, fallback: "The preview couldn't load."),
+        isError: true,
+      );
     }
   }
 
@@ -1284,7 +1295,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       if (mounted) HapticFeedback.selectionClick();
     } catch (e) {
       if (!mounted) return;
-      ToastUtils.show(context, 'Could not replace the clip: $e', isError: true);
+      ToastUtils.show(
+        context,
+        userMessageFor(e, fallback: "Couldn't replace the clip."),
+        isError: true,
+      );
     }
   }
 
@@ -1298,7 +1313,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       HapticFeedback.selectionClick();
     } catch (e) {
       if (!mounted) return;
-      ToastUtils.show(context, e.toString(), isError: true);
+      ToastUtils.show(
+        context,
+        userMessageFor(e, fallback: "Couldn't freeze this frame."),
+        isError: true,
+      );
     }
   }
 
@@ -1318,7 +1337,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       notifier.splitAtPlayhead(position);
       HapticFeedback.selectionClick();
     } catch (e) {
-      ToastUtils.show(context, e.toString(), isError: true);
+      ToastUtils.show(
+        context,
+        userMessageFor(e, fallback: "Couldn't split here."),
+        isError: true,
+      );
     }
   }
 
@@ -1906,7 +1929,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       notifier.addImageOverlay(overlay);
     } catch (e) {
       if (mounted) {
-        ToastUtils.show(context, 'Failed to pick image: $e', isError: true);
+        ToastUtils.show(
+          context,
+          userMessageFor(e, fallback: "Couldn't open that photo."),
+          isError: true,
+        );
       }
     }
   }
@@ -1946,7 +1973,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       notifier.addVideoOverlay(overlay);
     } catch (e) {
       if (mounted) {
-        ToastUtils.show(context, 'Failed to pick video: $e', isError: true);
+        ToastUtils.show(
+          context,
+          userMessageFor(e, fallback: "Couldn't open that video."),
+          isError: true,
+        );
       }
     }
   }
@@ -2100,7 +2131,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     if (previewCanvasSize == null) {
       ToastUtils.show(
         context,
-        "Cannot export video. Missing parameters.",
+        "The editor isn't ready to export yet. Try again in a moment.",
         isError: true,
       );
       return false;
@@ -2146,7 +2177,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
       return kept ?? false;
     } catch (e) {
       if (mounted) {
-        ToastUtils.show(context, e.toString(), isError: true);
+        ToastUtils.show(
+          context,
+          userMessageFor(e, fallback: "Couldn't start the export."),
+          isError: true,
+        );
         notifier.setExporting(false);
       }
       return false;
@@ -2788,7 +2823,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                   notifier.splitAudioTrack(editorState.currentPlaybackPosition);
                   HapticFeedback.selectionClick();
                 } catch (e) {
-                  ToastUtils.show(context, e.toString(), isError: true);
+                  ToastUtils.show(
+                    context,
+                    userMessageFor(e, fallback: "Couldn't split here."),
+                    isError: true,
+                  );
                 }
               } else if (tool.id == 'volume') {
                 notifier.openRevertibleTool('volume');
@@ -2983,7 +3022,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                         );
                         HapticFeedback.selectionClick();
                       } catch (e) {
-                        ToastUtils.show(context, e.toString(), isError: true);
+                        ToastUtils.show(
+                          context,
+                          userMessageFor(e, fallback: "Couldn't split here."),
+                          isError: true,
+                        );
                       }
                     } else {
                       _splitAtPlayhead();
@@ -3037,7 +3080,11 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                           );
                         } catch (e) {
                           if (!context.mounted) return;
-                          ToastUtils.show(context, e.toString(), isError: true);
+                          ToastUtils.show(
+                            context,
+                            userMessageFor(e, fallback: "Couldn't reverse the clip."),
+                            isError: true,
+                          );
                         }
                       }
                     } else {

@@ -21,6 +21,7 @@ import '../core/services/draft_service.dart';
 import '../core/services/draft_refresh_notifier.dart';
 import '../core/models/draft_project.dart';
 import '../core/utils/toast_utils.dart';
+import '../core/utils/user_facing_error.dart';
 import '../core/widgets/frosted_glass.dart';
 import '../core/widgets/permission_dialog.dart';
 import '../core/widgets/colour_field_backdrop.dart';
@@ -159,7 +160,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onCancel: () {},
         );
       } else {
-        ToastUtils.show(context, 'Error picking media: $e', isError: true);
+        ToastUtils.show(
+          context,
+          userMessageFor(e, fallback: "Couldn't open those files."),
+          isError: true,
+        );
       }
     }
   }
@@ -181,7 +186,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onCancel: () {},
         );
       } else {
-        ToastUtils.show(context, 'Error picking video: $e', isError: true);
+        ToastUtils.show(
+          context,
+          userMessageFor(e, fallback: "Couldn't open that video."),
+          isError: true,
+        );
       }
     }
   }
@@ -203,7 +212,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onCancel: () {},
         );
       } else {
-        ToastUtils.show(context, 'Error picking photo: $e', isError: true);
+        ToastUtils.show(
+          context,
+          userMessageFor(e, fallback: "Couldn't open those photos."),
+          isError: true,
+        );
       }
     }
   }
@@ -235,7 +248,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onCancel: () {},
         );
       } else {
-        ToastUtils.show(context, 'Error picking video: $e', isError: true);
+        ToastUtils.show(
+          context,
+          userMessageFor(e, fallback: "Couldn't open that video."),
+          isError: true,
+        );
       }
     }
   }

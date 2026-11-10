@@ -782,10 +782,17 @@ class NativeTimelinePreviewEvent {
     this.progress,
     this.overlayId,
     this.path,
+    this.code,
   });
 
   final String type;
   final double? positionSeconds;
+
+  /// On `error` events: what kind of failure — `missing_file`,
+  /// `playback_failed`, `timeline_failed`, `render_failed`. The editor's toast
+  /// says it in plain words; [message] is the engine's own account, for the
+  /// log.
+  final String? code;
 
   /// On `textReady` / `textGone`: the text's overlay entry (`text_<id>`) and
   /// the atlas the engine now draws it from, or can no longer — the path
@@ -821,6 +828,7 @@ class NativeTimelinePreviewEvent {
       progress: (event['progress'] as num?)?.toDouble(),
       overlayId: event['overlayId'] as String?,
       path: event['path'] as String?,
+      code: event['code'] as String?,
     );
   }
 }

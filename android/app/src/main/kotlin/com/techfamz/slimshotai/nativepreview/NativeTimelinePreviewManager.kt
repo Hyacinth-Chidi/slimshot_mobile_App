@@ -356,6 +356,7 @@ class NativeTimelinePreviewManager(
                         sendEvent(
                             mapOf(
                                 "type" to "error",
+                                "code" to "timeline_failed",
                                 "message" to "Native preview timeline failed: ${
                                     error.message ?: error.javaClass.simpleName
                                 }",
@@ -607,7 +608,7 @@ class NativeTimelinePreviewManager(
                 mainHandler.post { engine?.attachLaneSurface(laneIndex, surface) }
             },
             onError = { message ->
-                sendEvent(mapOf("type" to "error", "message" to message))
+                sendEvent(mapOf("type" to "error", "code" to "render_failed", "message" to message))
             },
             onWarning = ::sendRenderWarning,
             // Which preview texts the engine now draws, or no longer can; the

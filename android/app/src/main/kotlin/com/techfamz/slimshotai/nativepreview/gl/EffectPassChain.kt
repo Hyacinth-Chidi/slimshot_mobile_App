@@ -122,7 +122,7 @@ internal class EffectPassChain(private val onWarning: (String) -> Unit) {
             Log.e(TAG, "Effect targets refused at ${width}x$height; effects disabled")
             warnOnce(
                 "targets",
-                "This device could not allocate the effect buffers, so effects are off.",
+                "This phone can't draw effects, so they were left out.",
             )
             return false
         }
@@ -167,7 +167,7 @@ internal class EffectPassChain(private val onWarning: (String) -> Unit) {
         if (unavailable || a == null || b == null) {
             warnOnce(
                 "unavailable",
-                "Effects are unavailable on this device; the video is unprocessed.",
+                "This phone can't draw effects, so they were left out.",
             )
             return sceneTextureId
         }
@@ -178,8 +178,7 @@ internal class EffectPassChain(private val onWarning: (String) -> Unit) {
         val effective = if (passes.size > MAX_EFFECT_PASSES) {
             warnOnce(
                 "cap",
-                "An effect asked for ${passes.size} passes; only the first " +
-                    "$MAX_EFFECT_PASSES were applied.",
+                "Too many effects at once; some were left out.",
             )
             passes.subList(0, MAX_EFFECT_PASSES)
         } else {

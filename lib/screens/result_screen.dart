@@ -13,6 +13,7 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/lucide_icons.dart';
 import '../core/utils/result_exit.dart';
 import '../core/utils/toast_utils.dart';
+import '../core/utils/user_facing_error.dart';
 import '../core/widgets/before_after_slider.dart';
 import '../core/widgets/discard_dialog.dart';
 import '../features/compression/providers/compression_provider.dart';
@@ -190,7 +191,11 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       if (mounted) ToastUtils.show(context, 'Saved to gallery');
     } catch (e) {
       if (mounted) {
-        ToastUtils.show(context, 'Could not save: $e', isError: true);
+        ToastUtils.show(
+          context,
+          userMessageFor(e, fallback: "Couldn't save to the gallery."),
+          isError: true,
+        );
       }
     }
   }
