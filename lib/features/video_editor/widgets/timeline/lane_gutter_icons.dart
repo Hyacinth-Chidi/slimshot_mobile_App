@@ -9,11 +9,11 @@ import '../../models/text_overlay_model.dart';
 import '../../models/video_overlay_model.dart';
 
 /// A kind of thing a lane can hold, as the gutter before 00:00 marks it.
-enum LaneGutterKind { music, soundEffect, text, caption, image, video, effect }
+enum LaneGutterKind { music, soundEffect, voice, text, caption, image, video, effect }
 
 /// One mark per kind of thing [lane] holds, for the gutter before 00:00.
 /// Captions are text, but a lane of them reads as captions; sound effects
-/// are audio, but are told apart from music on the timeline.
+/// and voices are audio, but are told apart from music on the timeline.
 List<LaneGutterKind> laneGutterKinds({
   required int lane,
   required List<AudioTrackModel> audios,
@@ -23,10 +23,14 @@ List<LaneGutterKind> laneGutterKinds({
   required List<EffectBarModel> effects,
 }) {
   return [
-    if (audios.any((a) => a.laneIndex == lane && !a.isSoundEffect))
+    if (audios.any(
+      (a) => a.laneIndex == lane && !a.isSoundEffect && !a.isVoice,
+    ))
       LaneGutterKind.music,
     if (audios.any((a) => a.laneIndex == lane && a.isSoundEffect))
       LaneGutterKind.soundEffect,
+    if (audios.any((a) => a.laneIndex == lane && a.isVoice))
+      LaneGutterKind.voice,
     if (texts.any((t) => t.laneIndex == lane && !t.isCaption))
       LaneGutterKind.text,
     if (texts.any((t) => t.laneIndex == lane && t.isCaption))
@@ -49,6 +53,8 @@ Widget laneGutterGlyph(
       return SoundEffectIcon(size: size, color: color);
     case LaneGutterKind.music:
       icon = LucideIcons.music;
+    case LaneGutterKind.voice:
+      icon = LucideIcons.mic;
     case LaneGutterKind.text:
       icon = LucideIcons.type;
     case LaneGutterKind.caption:

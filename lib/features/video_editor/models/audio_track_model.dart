@@ -13,6 +13,15 @@ class AudioTrackModel {
   /// draft only when true, so a track from before reads as ordinary audio.
   final bool isSoundEffect;
 
+  /// Made by Text to speech from a text: drawn in the voice colour with the
+  /// microphone in its lane's gutter. Written to a draft only when true.
+  final bool isVoice;
+
+  /// The text this voice speaks, by id — only so that voicing that text
+  /// again replaces this clip rather than stacking a second one. A copy of a
+  /// voice lets go of it: the copy is the user's. Written only when set.
+  final String? voiceForTextId;
+
   const AudioTrackModel({
     required this.id,
     required this.filePath,
@@ -23,6 +32,8 @@ class AudioTrackModel {
     this.volume = 1.0,
     this.laneIndex = 0,
     this.isSoundEffect = false,
+    this.isVoice = false,
+    this.voiceForTextId,
   });
 
   double get trimmedDuration => sourceEnd - sourceStart;
@@ -38,6 +49,9 @@ class AudioTrackModel {
     double? volume,
     int? laneIndex,
     bool? isSoundEffect,
+    bool? isVoice,
+    String? voiceForTextId,
+    bool clearVoiceForTextId = false,
   }) {
     return AudioTrackModel(
       id: id ?? this.id,
@@ -49,6 +63,10 @@ class AudioTrackModel {
       volume: volume ?? this.volume,
       laneIndex: laneIndex ?? this.laneIndex,
       isSoundEffect: isSoundEffect ?? this.isSoundEffect,
+      isVoice: isVoice ?? this.isVoice,
+      voiceForTextId: clearVoiceForTextId
+          ? null
+          : voiceForTextId ?? this.voiceForTextId,
     );
   }
 
@@ -63,6 +81,8 @@ class AudioTrackModel {
       'volume': volume,
       'laneIndex': laneIndex,
       if (isSoundEffect) 'isSoundEffect': true,
+      if (isVoice) 'isVoice': true,
+      if (voiceForTextId != null) 'voiceForTextId': voiceForTextId,
     };
   }
 
@@ -77,6 +97,9 @@ class AudioTrackModel {
       volume: (json['volume'] as num?)?.toDouble() ?? 1.0,
       laneIndex: json['laneIndex'] as int? ?? 0,
       isSoundEffect: json['isSoundEffect'] == true,
+      isVoice: json['isVoice'] == true,
+      voiceForTextId:
+          json['voiceForTextId'] is String ? json['voiceForTextId'] as String : null,
     );
   }
 }

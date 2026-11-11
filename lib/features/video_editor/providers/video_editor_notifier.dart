@@ -54,6 +54,7 @@ import '../logic/color/color_adjustments.dart';
 import '../logic/mask/clip_mask.dart';
 import '../../../core/services/draft_files.dart';
 import '../logic/speed/speed_curve.dart';
+import '../logic/speech/voice_clip.dart';
 import '../logic/chroma/chroma_key.dart';
 
 /// True when a stored crop rect is the whole frame — i.e. not a crop at all.
@@ -3067,6 +3068,9 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       timelineStart: start,
       laneIndex: lane,
+      // A copy of a voice is the user's: voicing its text again replaces
+      // the voice it was copied from, never the copy.
+      clearVoiceForTextId: true,
     );
     state = state.copyWith(audioTracks: [...state.audioTracks, copy]);
     selectAudioTrack(copy.id);
@@ -4082,6 +4086,56 @@ class VideoEditorNotifier extends StateNotifier<VideoEditorState> {
   void placeAudioTrack(AudioTrackModel track) {
     addAudioTrack(track);
     selectAudioTrack(track.id);
+  }
+
+  /// The voices one Generate made, each at the start its text had when
+  /// Generate was tapped — even if the text has moved or gone since — on the
+  /// first free lane: **one undo step for the whole generation**.
+  ///
+  /// A text voiced again loses its earlier voice clip in the same step. Its
+  /// file stays on disk, because Undo brings the clip back and it must still
+  /// play; the editor sweeps voice files no track uses when it closes
+  /// (`DraftFiles.sweepVoices`).
+  ///
+  /// The voice of [selectTextId] — the text the sheet was opened from —
+  /// becomes the selection, so its menu offers Volume at once. A text with no
+  /// voice here (Apply to all from a caption) leaves the selection as it was.
+  void placeVoices(List<VoiceClip> voices, {String? selectTextId}) {
+    if (voices.isEmpty) return;
+    saveStateForUndo();
+    final replaced = {for (final v in voices) v.textId};
+    final kept = [
+      for (final t in state.audioTracks)
+        if (!replaced.contains(t.voiceForTextId)) t,
+    ];
+    final selected = state.selectedAudioId;
+    state = state.copyWith(
+      audioTracks: kept,
+      clearSelectedAudioId:
+          selected != null && !kept.any((t) => t.id == selected),
+    );
+    String? select;
+    for (final voice in voices) {
+      final track = AudioTrackModel(
+        id: const Uuid().v4(),
+        filePath: voice.filePath,
+        sourceDuration: voice.durationSeconds,
+        sourceStart: 0,
+        sourceEnd: voice.durationSeconds,
+        timelineStart: voice.startSeconds,
+        laneIndex: firstFreeLane(
+          _laneSpans,
+          voice.startSeconds,
+          voice.startSeconds + voice.durationSeconds,
+        ),
+        isVoice: true,
+        voiceForTextId: voice.textId,
+      );
+      state = state.copyWith(audioTracks: [...state.audioTracks, track]);
+      if (voice.textId == selectTextId) select = track.id;
+    }
+    _compactLanes();
+    if (select != null) selectAudioTrack(select);
   }
 
   void updateAudioTrack(AudioTrackModel updatedTrack) {

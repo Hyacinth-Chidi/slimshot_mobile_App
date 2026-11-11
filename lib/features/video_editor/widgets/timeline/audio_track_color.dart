@@ -4,9 +4,15 @@ import '../../../../core/theme/app_colors.dart';
 import '../../models/audio_track_model.dart';
 
 /// An audio clip's fill on the timeline: purple for music and the user's
-/// own sound, orange for a sound effect. The fill does not change with
-/// selection — that is the border's job — only while the clip is carried.
+/// own sound, orange for a sound effect, green for a voice from Text to
+/// speech. The fill does not change with selection — that is the border's
+/// job — only while the clip is carried.
 Color audioTrackColor(AudioTrackModel audio, {bool dragging = false}) {
+  if (audio.isVoice) {
+    return dragging
+        ? AppColors.voiceTrack
+        : AppColors.voiceTrack.withValues(alpha: 0.5);
+  }
   if (audio.isSoundEffect) {
     return dragging
         ? AppColors.soundEffect
