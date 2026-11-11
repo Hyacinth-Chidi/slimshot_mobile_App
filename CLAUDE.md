@@ -2964,9 +2964,14 @@ voice's lane wears in the gutter. The door is `requireAccount`, then the sheet.
   one MP3, and Auto captions with Source *Audio tracks* captions it — how a faceless video gets
   word-highlighted captions in time with its voice. Every ending has one plain line
   (`speechErrorMessage`); the words go to the log.
-- **Known:** Cancel after the server took the credits stops the run with no voice and no refund,
-  and Generate again is a new request — captions' Cancel behaves alike. The sheet holds the
-  editor while open, so no text moves during a run; positions are taken at Generate all the same.
+- **One key for the editor's runs** (`SpeechKey`, held by the editor screen): Back, Cancel or
+  closing the sheet ends a run, and Generate makes a new one — under the same key while the
+  request is the same, so a request that had landed and been charged is answered with its own
+  job, never charged again. Another voice or other texts take a fresh key.
+- **Known:** Cancel after the server took the credits, then another voice or other texts, is a new
+  request and a new charge; the cancelled job's credits are not returned (the server has no
+  cancel). The sheet holds the editor while open, so no text moves during a run; positions are
+  taken at Generate all the same.
 - **Device checks**: one text and Apply to all; each clip at its text's start, green, playing in
   the preview and in the exported file; samples playing with no charge; a shortfall carried on by
   an ad; a failure saying the credits were returned; offline; re-voicing replacing the old clip,
