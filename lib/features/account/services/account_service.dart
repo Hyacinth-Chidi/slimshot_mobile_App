@@ -95,6 +95,21 @@ class AccountService {
         ),
       );
 
+  /// The feature name Text to speech is priced under.
+  static const String textToSpeechFeature = 'text_to_speech';
+
+  /// What a voice will cost for [characters] — the code points of the
+  /// trimmed texts about to be sent, which the server counts again.
+  Future<CreditQuote> quoteCharacters(int characters) async =>
+      CreditQuote.fromJson(
+        await _api.send(
+          () => _api.jsonRequest('POST', '/credits/quote', {
+            'feature': textToSpeechFeature,
+            'characters': characters,
+          }),
+        ),
+      );
+
   /// A new session for one rewarded ad: its nonce goes into the ad's
   /// server-side verification, and is what the reward is asked about.
   Future<AdSession> startAdSession() async => AdSession.fromJson(

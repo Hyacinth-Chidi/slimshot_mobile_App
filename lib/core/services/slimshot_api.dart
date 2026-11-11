@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -149,16 +150,37 @@ class SlimshotApi {
   Future<Map<String, dynamic>> send(
     http.BaseRequest Function() build, {
     Duration timeout = defaultTimeout,
+  }) async =>
+      _decode(await _signedIn(build, timeout));
+
+  /// Sends the request [build] makes as the signed-in user, as [send] does,
+  /// and returns the answer's bytes — for a download, the one answer that is
+  /// not the JSON envelope. A refusal is the envelope as ever, and throws
+  /// exactly as [send]'s does.
+  Future<Uint8List> sendForBytes(
+    http.BaseRequest Function() build, {
+    Duration timeout = defaultTimeout,
   }) async {
+    final response = await _signedIn(build, timeout);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.bodyBytes;
+    }
+    throw _refusal(response, _body(response));
+  }
+
+  /// The signed-in round trip [send] and [sendForBytes] share: an answer
+  /// that is not a 401, or the sign-in sheet's cue.
+  Future<http.Response> _signedIn(
+    http.BaseRequest Function() build,
+    Duration timeout,
+  ) async {
     final tokens = await _session.read();
     if (tokens == null) {
       throw const SlimshotApiException(SlimshotApiException.signInRequired);
     }
     var response =
         await _perform(_authorised(build(), tokens.accessToken), timeout);
-    if (response.statusCode != HttpStatus.unauthorized) {
-      return _decode(response);
-    }
+    if (response.statusCode != HttpStatus.unauthorized) return response;
     if (_errorCode(response) != 'UNAUTHENTICATED') {
       await _session.endIfCurrent(tokens.accessToken);
       throw const SlimshotApiException(SlimshotApiException.signInRequired);
@@ -174,9 +196,7 @@ class SlimshotApi {
       throw const SlimshotApiException(SlimshotApiException.signInRequired);
     }
     response = await _perform(_authorised(build(), fresh.accessToken), timeout);
-    if (response.statusCode != HttpStatus.unauthorized) {
-      return _decode(response);
-    }
+    if (response.statusCode != HttpStatus.unauthorized) return response;
     await _session.endIfCurrent(fresh.accessToken);
     throw const SlimshotApiException(SlimshotApiException.signInRequired);
   }
