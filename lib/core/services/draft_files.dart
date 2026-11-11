@@ -44,6 +44,43 @@ class DraftFiles {
     return dir;
   }
 
+  /// The prefix of a voice Text to speech made (`tts_<textId>_<ms>.mp3`).
+  /// Not `voice_`: Record names its takes `voice_<ms>.m4a`, in the same
+  /// folder.
+  static const String voiceFilePrefix = 'tts_';
+
+  /// Deletes the draft's voices from text that no track in [keep] uses —
+  /// called when the editor closes, after its last save.
+  ///
+  /// Voicing a text again takes its earlier clip off the timeline at once,
+  /// but not its file: Undo brings the clip back and it must still play. Once
+  /// the editor closes there is no undo left, so a voice no track points at
+  /// is nobody's. Only `tts_` files are touched — a recorded take or a video's
+  /// sound in the same folder is left alone — and a `.part` a download left
+  /// behind goes with them. Compared by file name, so a path stored with
+  /// other separators still keeps its file.
+  static Future<void> sweepVoices(
+    String draftId, {
+    required Set<String> keep,
+    Directory? root,
+  }) async {
+    final kept = {for (final path in keep) _nameOf(path)};
+    final dir = Directory('${(await _root(root)).path}/drafts/$draftId/audio');
+    try {
+      if (!await dir.exists()) return;
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = _nameOf(entity.path);
+        if (!name.startsWith(voiceFilePrefix) || kept.contains(name)) continue;
+        try {
+          await entity.delete();
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  static String _nameOf(String path) => path.split(RegExp(r'[/\\]')).last;
+
   /// Root-level files named for a draft: the cover, frozen frames and the
   /// background photo, which predate the folder and are named
   /// `<kind>_<draftId>_<stamp>.<ext>`.

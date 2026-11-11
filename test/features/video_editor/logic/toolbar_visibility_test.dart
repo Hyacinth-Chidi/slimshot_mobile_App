@@ -156,6 +156,19 @@ void main() {
     expect(declaredTools('_textOverlayMenu'), contains('caption_style'));
   });
 
+  test('Text to speech is shown only with a server address', () {
+    // The voices are made on the server; a build without one has nowhere to
+    // send the words.
+    expect(visible('text_to_speech', text: true, captionServer: false), isFalse);
+    expect(visible('text_to_speech', text: true, captionServer: true), isTrue);
+    expect(
+      visible('text_to_speech', text: true, caption: true, captionServer: true),
+      isTrue,
+      reason: 'a caption is voiced on its own, from its own menu',
+    );
+    expect(declaredTools('_textOverlayMenu'), contains('text_to_speech'));
+  });
+
   test('Auto captions is offered only in a build that has a server', () {
     // "Not offered before it works": without SLIMSHOT_API_URL there is
     // nothing to send the audio to.

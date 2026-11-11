@@ -52,6 +52,9 @@ bool isToolbarToolVisible(
       // Not offered before it works: a build without a server address has
       // nowhere to send the audio.
       return hasCaptionServer;
+    case 'text_to_speech':
+      // The voices are made on the same server, and offered on a caption too.
+      return hasCaptionServer;
     case 'sound_effects':
       // The sound library lives on the server; without one there is nothing
       // to list or fetch.

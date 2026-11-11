@@ -322,15 +322,28 @@ void main() {
     );
   });
 
-  test('a selected caption offers Caption style right after Edit, handled',
-      () {
+  test('Text to speech is the text menu\'s second tool, with a handler', () {
+    // The feature this audience comes for — videos that never talk to
+    // camera — so, by the most-used-first rule, straight after Edit; on a
+    // caption too, which is voiced on its own.
+    expect(idsOf('_textOverlayMenu').take(3), ['text_overlay', 'text_edit', 'text_to_speech']);
+    expect(
+      screen.readAsStringSync(),
+      contains("tool.id == 'text_to_speech'"),
+      reason: 'a declared tool with no handler is a dead signpost',
+    );
+  });
+
+  test('a selected caption offers Caption style after Edit and Text to speech, '
+      'handled', () {
     // A caption's look is changed on the caption, where it can be judged
     // against the footage — not in the sheet that generates captions. It
-    // sits right after Edit: restyling is the first thing done to a set.
+    // sits near the front: restyling is among the first things done to a set.
     final menu = menuSource('_textOverlayMenu');
     int at(String id) => menu.indexOf("id: '$id'");
     const order = [
       'text_edit',
+      'text_to_speech',
       'caption_style',
       'captions',
       'text_templates',

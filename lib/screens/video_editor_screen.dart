@@ -87,10 +87,19 @@ import '../features/video_editor/logic/captions/caption_settings.dart';
 import '../features/video_editor/logic/captions/captions_mode.dart';
 import '../features/video_editor/logic/new_text.dart';
 import '../features/video_editor/logic/text_look.dart';
+import '../features/account/account_gate.dart';
+import '../features/video_editor/logic/speech/speech_request.dart';
+import '../features/video_editor/logic/speech/voice_clip.dart';
+import '../features/video_editor/providers/speech_sheet_memory_provider.dart';
 import '../features/video_editor/services/caption_access.dart';
 import '../features/video_editor/services/caption_pipeline.dart';
 import '../features/video_editor/services/caption_run.dart';
 import '../features/video_editor/services/caption_service.dart';
+import '../features/video_editor/services/speech_pipeline.dart';
+import '../features/video_editor/services/speech_run.dart';
+import '../features/video_editor/services/speech_service.dart';
+import '../features/video_editor/services/voice_sample_player.dart';
+import '../features/video_editor/widgets/panels/text_to_speech_sheet.dart';
 import '../features/video_editor/widgets/panels/auto_caption_sheet.dart';
 import '../features/video_editor/widgets/panels/caption_style_sheet.dart';
 import '../features/video_editor/widgets/panels/caption_batch_sheet.dart';
@@ -407,7 +416,12 @@ const EditorMenu _textMenu = EditorMenu(
 /// already means the photo and video overlays' drawer. Copy and Delete are the
 /// handlers every overlay menu shares.
 ///
-/// **A caption gets two more, right after Edit** — shown only for a caption
+/// **Text to speech is second, after Edit** — the feature this audience comes
+/// for, videos that never talk to camera — in a build with a server address
+/// (`isToolbarToolVisible`), on a caption too. It wears the microphone, the
+/// mark a voice's lane wears in the timeline's gutter.
+///
+/// **A caption gets two more after it** — shown only for a caption
 /// (`isToolbarToolVisible`): Caption style, the set's look and highlight, and
 /// Captions, the list of its whole set. A caption's look is changed on the
 /// caption, where it can be judged against the footage, not in the sheet that
@@ -416,6 +430,11 @@ const EditorMenu _textOverlayMenu = EditorMenu(
   id: 'text_overlay',
   tools: [
     EditorTool(id: 'text_edit', label: 'Edit', icon: LucideIcons.pencil),
+    EditorTool(
+      id: 'text_to_speech',
+      label: 'Text to speech',
+      icon: LucideIcons.mic,
+    ),
     EditorTool(
       id: 'caption_style',
       label: 'Caption style',
@@ -782,9 +801,19 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     }
 
     // Save draft when leaving the editor (nothing while captions mode keeps
-    // no draft)
+    // no draft), then let go of the voices from text no track uses: a text
+    // voiced again lost its earlier clip at once, but its file was kept for
+    // Undo, and there is no undo once the editor closes.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(videoEditorProvider.notifier).saveDraft();
+      final notifier = ref.read(videoEditorProvider.notifier);
+      final state = ref.read(videoEditorProvider);
+      final draftId = state.draftId;
+      final keep = {for (final track in state.audioTracks) track.filePath};
+      unawaited(notifier.saveDraft().whenComplete(() {
+        if (draftId != null) {
+          unawaited(DraftFiles.sweepVoices(draftId, keep: keep));
+        }
+      }));
     });
 
     final recording = _recordController;
@@ -1597,6 +1626,104 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
         unawaited(_nativePreviewService.cancelCaptionAudio());
         api.close();
       },
+    );
+    return (pipeline: pipeline, close: api.close);
+  }
+
+  /// A selected text → Text to speech: sign in if needed, then the sheet —
+  /// the voices (samples free), Apply to all texts, Generate — and each voice
+  /// lands at its text's start, one undo step for the lot. Playback stops
+  /// first, so a sample is never heard over the video.
+  Future<void> _startTextToSpeech() async {
+    final textId = ref.read(videoEditorProvider).selectedTextId;
+    if (textId == null) return;
+    if (!await requireAccount(
+          context,
+          ref,
+          reason: 'Sign in to use Text to speech',
+        ) ||
+        !mounted) {
+      return;
+    }
+    final notifier = ref.read(videoEditorProvider.notifier);
+    notifier.setPlaying(false);
+    _audioPlayerManager.pauseAll();
+    unawaited(_nativePreviewService.pause());
+
+    // The list on a client of its own, so closing the sheet stops it; each
+    // run gets one too, so its Cancel aborts only it.
+    final listApi = SlimshotApi(
+      baseUrl: SlimshotApi.configuredBaseUrl,
+      session: ref.read(accountSessionProvider),
+    );
+    final runClients = <void Function()>[];
+    // Made once, outside the route builder, which runs again on every
+    // rebuild of the route; disposed whichever way the sheet closes.
+    final samples = JustAudioSamplePlayer();
+    await showEditorSheet<void>(
+      context,
+      builder: (_) => TextToSpeechSheet(
+        loadVoices: SpeechService(listApi).voices,
+        plan: (applyToAll) => planSpeech(
+          texts: ref.read(videoEditorProvider).textOverlays,
+          selectedId: textId,
+          applyToAll: applyToAll,
+        ),
+        newRun: (voiceId, plan) {
+          final client = _newSpeechPipeline();
+          runClients.add(client.close);
+          return SpeechRun(
+            pipeline: client.pipeline,
+            voiceId: voiceId,
+            plan: plan,
+          );
+        },
+        samples: samples,
+        memory: ref.read(speechSheetMemoryProvider),
+        earnCredits: (quote, onEarned) => EarnCreditsBlock(onEarned: onEarned),
+        onVoices: (voices) => notifier.placeVoices(voices, selectTextId: textId),
+      ),
+    );
+    unawaited(samples.dispose());
+    listApi.close();
+    for (final close in runClients) {
+      close();
+    }
+    // A run may have spent credits, or had them refunded: the balance on the
+    // home screen follows.
+    if (mounted) unawaited(ref.read(accountProvider.notifier).refresh());
+  }
+
+  /// A voice run's pipeline on a client of its own. Each voice is saved into
+  /// the draft's own audio folder (`DraftFiles.audioDir`), so it goes with
+  /// the draft and nowhere else.
+  ({SpeechPipeline pipeline, void Function() close}) _newSpeechPipeline() {
+    final api = SlimshotApi(
+      baseUrl: SlimshotApi.configuredBaseUrl,
+      session: ref.read(accountSessionProvider),
+    );
+    final speech = SpeechService(api);
+    // On the run's own client, so Cancel stops a quote in flight too.
+    final account = AccountService(api);
+    final draftId = ref.read(videoEditorProvider).draftId ?? 'unsaved';
+    final pipeline = SpeechPipeline(
+      quotePrice: account.quoteCharacters,
+      onCharged: (balance) =>
+          unawaited(ref.read(accountProvider.notifier).applyBalance(balance)),
+      startJob: (voiceId, items, key) => speech.start(
+        voiceId: voiceId,
+        items: items,
+        idempotencyKey: key,
+      ),
+      awaitJob: (job, isCancelled) =>
+          speech.result(job, isCancelled: isCancelled),
+      download: (jobId, itemId, textId) async {
+        final dir = await DraftFiles.audioDir(draftId);
+        final file = File('${dir.path}/${voiceFileName(textId, DateTime.now())}');
+        await speech.download(jobId, itemId, file);
+        return file.path;
+      },
+      onCancel: api.close,
     );
     return (pipeline: pipeline, close: api.close);
   }
@@ -3135,6 +3262,8 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
                     _showCaptionStyle();
                   } else if (tool.id == 'auto_captions') {
                     unawaited(_startAutoCaptions());
+                  } else if (tool.id == 'text_to_speech') {
+                    unawaited(_startTextToSpeech());
                   } else if (tool.id == 'overlay') {
                     _showOverlaySelectionMenu(buttonContext);
                   } else if (tool.id == 'background') {

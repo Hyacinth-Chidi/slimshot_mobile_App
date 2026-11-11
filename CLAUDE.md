@@ -2749,8 +2749,9 @@ the set.
 **The look is chosen on the captions, not in the sheet that makes them** (from the first device
 look). The Auto captions sheet asks only what generating needs — Source, Language, Length — and
 a set is styled afterwards, where it can be judged against the footage. A selected caption's
-menu reads **Edit · Caption style · Captions · Templates · Style · Font · Animation** (then
-Opacity, Copy, Delete); Caption style and Captions show only for a caption
+menu reads **Edit · Text to speech · Caption style · Captions · Templates · Style · Font ·
+Animation** (then Opacity, Copy, Delete; Text to speech since 2026-11-11, its section below);
+Caption style and Captions show only for a caption
 (`isToolbarToolVisible`), so plain text's menu is what it always was. `editor_menu_test.dart`
 pins the order and the handler.
 
@@ -2906,6 +2907,71 @@ timeline: someone who only wants a captioned clip need not learn the editor.
   charged twice); a style and a colour, and the file matching the canvas; Edit words, emptying the
   set too; Export, Save, then Back (no question); Back with nothing kept (asked); ✎, then leaving
   (the edit in Recent Edits); a home-widget tap on Done (the app only comes forward).
+
+### Text to speech — a voice from the texts on the timeline
+
+**Awaiting device verification.** Spec: `docs/superpowers/specs/2026-11-10-text-to-speech-design.md`,
+the app's plan beside it in `plans/` (`2026-11-10-text-to-speech-app.md`). Server contract:
+`slimshot_server/docs/app-api/text-to-speech.md`. For the videos that never talk to camera: a
+selected text's menu offers **Text to speech** second, after Edit — on a caption too — in a build
+with a server address (`isToolbarToolVisible`, captions' rule), wearing the microphone its
+voice's lane wears in the gutter. The door is `requireAccount`, then the sheet.
+
+- **The sheet** (`TextToSpeechSheet`, through `showEditorSheet`, capped at
+  `kEditorSheetPreviewFraction`, no title): the voices of `GET /voices` as tiles, three to a row —
+  a tap chooses a voice and plays its sample (free), a tap on the one playing stops it — **Apply
+  to all texts** and **Generate**. The list is asked for on every opening; the session's last list
+  shows meanwhile and the voice last chosen is chosen again (`speechSheetMemoryProvider`).
+  Offline: "No internet connection." with Retry; an empty list: "Text to speech is unavailable
+  right now." The run is drawn in place (`SpeechRun`, `CaptionRun`'s shape): a ring, its stage
+  and Cancel (back to the voices); a failure's line with Back and Try again; a shortfall, "Needs N
+  credits · You have M", with `EarnCreditsBlock`.
+- **The sample player** (`JustAudioSamplePlayer`) is the editor's kind (`handleInterruptions:
+  false`, `handleAudioSessionActivation: false`), made outside the route builder and disposed
+  after the sheet closes; the sheet stops it as it closes and when the app leaves the screen.
+- **What is sent** (`planSpeech`, `logic/speech/speech_request.dart`): the selected text, or with
+  Apply to all every plain text with words in it, in timeline order — **never a caption**: a
+  caption is already speech, and is voiced on its own from its own menu. Texts go trimmed; a
+  character is a code point of the trimmed text, the server's count (`"héllo 👍🏽"` is 8). The
+  server's limits are the app's (2,000 a text; 20,000 and 100 texts a request), so a request past
+  them is refused in the app, with a plain line, before anything is sent. **Item ids are
+  positional** (`t0`, `t1`, …): valid whatever a text's id looks like, and the same on a resend.
+- **Paying is Auto captions'** (`SpeechPipeline`): priced silently, only a shortfall asks; a key
+  held until the server is known to hold a failed job for it, or refuses it once
+  (`IDEMPOTENCY_KEY_REUSED`); a resend under a held key never priced again. **A key is good for
+  its own request only** — another voice or other texts drop it, because the server answers a
+  held key with the job it already has. A failed paid job says "Making the voice failed. Your
+  credits were returned.", "paid" kept per key so it is said even when the answer that carried
+  the charge was lost. Polling at `pollAfterMs`, three dropped polls ridden out, ten minutes at
+  most. **A download that fails after the job is done is fetched again under the same key** — the
+  server keeps a job's voices for an hour — so a charged voice is not lost to a dropped
+  connection; voices downloaded by a run that ends unplaced are deleted at once, and a completed
+  job missing a text's voice is refused whole, never half placed.
+- **The result** (`placeVoices`): each voice saved as `drafts/<id>/audio/tts_<textId>_<ms>.mp3`
+  (`voiceFileName`; `.part`, then renamed) and placed at the start its text had when Generate was
+  tapped, on the first free lane — **one undo step for the whole generation**. The voice of the
+  text the sheet was opened from becomes the selection, so its menu offers Volume at once; with
+  none (Apply to all from a caption) the selection stays. `AudioTrackModel.isVoice` and
+  `voiceForTextId` are written to the draft only when set; a voice draws in `AppColors.voiceTrack`
+  (Emerald 500) with the microphone in its lane's gutter (`LaneGutterKind.voice`).
+- **Voicing a text again replaces its earlier clip in the same step — not its file.** Undo brings
+  the clip back and it must still play, so the file stays until the editor closes, when
+  `DraftFiles.sweepVoices` deletes, after the last save, every voice no track uses: `tts_` files
+  only — **not `voice_`: Record names its takes `voice_<ms>.m4a`, in the same folder**. A copy of
+  a voice keeps its colour and lets go of its text (`duplicateAudioTrack`): the copy is the
+  user's, and a re-voice replaces only the original.
+- **Then it is audio like any other**: the preview's music player and the export's mixer play the
+  one MP3, and Auto captions with Source *Audio tracks* captions it — how a faceless video gets
+  word-highlighted captions in time with its voice. Every ending has one plain line
+  (`speechErrorMessage`); the words go to the log.
+- **Known:** Cancel after the server took the credits stops the run with no voice and no refund,
+  and Generate again is a new request — captions' Cancel behaves alike. The sheet holds the
+  editor while open, so no text moves during a run; positions are taken at Generate all the same.
+- **Device checks**: one text and Apply to all; each clip at its text's start, green, playing in
+  the preview and in the exported file; samples playing with no charge; a shortfall carried on by
+  an ad; a failure saying the credits were returned; offline; re-voicing replacing the old clip,
+  and Undo bringing it back playable; the draft reopened with its voices, and a replaced voice's
+  file gone after the editor closed; Auto captions (Source: Audio tracks) over a voice.
 
 ### Text Size — the letters, not the scale
 
@@ -3550,7 +3616,7 @@ motion instead (`settleSheet`).
 
 **Type, then choose: the text editor's Templates tab** (`text_editor_templates_test.dart`,
 **awaiting device verification**). Right after Keyboard, and reached from the selected text's
-menu (Edit, **Templates**, Style, Font, Animation). Every template is previewed **in the text's
+menu (Edit, Text to speech, **Templates**, Style, Font, Animation). Every template is previewed **in the text's
 own words** (`textPreviewWords` — the same eight-grapheme rule the animation tiles use, falling
 back to each template's sample while there are none); a tap puts it on through
 `TextTemplate.restyle`, one undo step, words and place kept; another tap swaps it, as often as
