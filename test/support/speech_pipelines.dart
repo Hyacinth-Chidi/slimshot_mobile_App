@@ -46,7 +46,9 @@ class SpeechFakes {
   int cancels = 0;
   int _keys = 0;
 
-  SpeechPipeline pipeline() => SpeechPipeline(
+  /// [key] is shared when given, as the editor shares one across its runs.
+  SpeechPipeline pipeline({SpeechKey? key}) => SpeechPipeline(
+        key: key,
         quotePrice: (characters) async {
           quoted.add(characters);
           return quote;

@@ -13,6 +13,31 @@ import 'speech_service.dart';
 /// Where a run is, for the sheet.
 enum SpeechStage { speaking, downloading }
 
+/// The idempotency key a voice request goes under, and what it was made for.
+///
+/// The editor shares one across every run it makes, so a Generate after
+/// Back, Cancel or closing the sheet — a new run — resends a request that may
+/// already have landed and been charged under the key it went with, and is
+/// never a second charge. A key is good for its own request only: another
+/// voice or other texts take a fresh one.
+class SpeechKey {
+  String? _value;
+
+  /// The request [_value] was made for.
+  String? _request;
+
+  /// Whether that request was priced or charged, so a failed job under it
+  /// says its credits came back even when the answer carrying the charge was
+  /// lost.
+  bool _paid = false;
+
+  void _forget() {
+    _value = null;
+    _request = null;
+    _paid = false;
+  }
+}
+
 /// A Generate's texts → the server → voice files on the phone, one step at
 /// a time and cancellable at every one of them.
 ///
@@ -29,9 +54,11 @@ class SpeechPipeline {
     required this.download,
     required this.onCancel,
     this.onCharged,
+    SpeechKey? key,
     Future<void> Function(String path)? deleteFile,
     String Function()? newKey,
-  })  : _deleteFile = deleteFile ?? _deleteQuietly,
+  })  : _held = key ?? SpeechKey(),
+        _deleteFile = deleteFile ?? _deleteQuietly,
         _newKey = newKey ?? const Uuid().v4;
 
   /// What the texts will cost — always asked, never worked out.
@@ -62,16 +89,16 @@ class SpeechPipeline {
   final Future<void> Function(String path) _deleteFile;
   final String Function() _newKey;
 
-  String? _key;
+  /// The key this run's request goes under — this pipeline's own, or the one
+  /// the editor shares across its runs.
+  final SpeechKey _held;
 
-  /// The request the held key was made for: a key is good for that request
-  /// alone, since the server answers a held key with the job it already has.
-  String? _keyRequest;
-
-  /// Whether the held key's request was priced or charged, so a failed job
-  /// under it says its credits came back even when the answer that carried
-  /// the charge was lost.
-  bool _keyPaid = false;
+  String? get _key => _held._value;
+  set _key(String? value) => _held._value = value;
+  String? get _keyRequest => _held._request;
+  set _keyRequest(String? value) => _held._request = value;
+  bool get _keyPaid => _held._paid;
+  set _keyPaid(bool value) => _held._paid = value;
 
   bool _cancelled = false;
 
@@ -209,11 +236,7 @@ class SpeechPipeline {
     onCancel();
   }
 
-  void _forgetKey() {
-    _key = null;
-    _keyRequest = null;
-    _keyPaid = false;
-  }
+  void _forgetKey() => _held._forget();
 
   void _throwIfCancelled() {
     if (_cancelled) throw const SpeechCancelled();

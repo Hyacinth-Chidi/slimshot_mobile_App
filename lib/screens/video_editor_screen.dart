@@ -513,6 +513,12 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
   /// area shorter and drop the timeline.
   static const double _kToolbarHeight = 60.0;
 
+  /// The key a Text to speech request goes under, shared by every run this
+  /// editor makes: Generate after Back, Cancel or closing the sheet resends a
+  /// request that may already have been charged under its key, never as a
+  /// second charge.
+  final SpeechKey _speechKey = SpeechKey();
+
   /// Whether Back asks "Save as draft?" — a project that was not in Recent
   /// Edits when the editor opened ([asksToSaveOnLeave]).
   late final Future<bool> _asksToSaveOnLeave;
@@ -1707,6 +1713,7 @@ class _VideoEditorScreenState extends ConsumerState<VideoEditorScreen>
     final account = AccountService(api);
     final draftId = ref.read(videoEditorProvider).draftId ?? 'unsaved';
     final pipeline = SpeechPipeline(
+      key: _speechKey,
       quotePrice: account.quoteCharacters,
       onCharged: (balance) =>
           unawaited(ref.read(accountProvider.notifier).applyBalance(balance)),

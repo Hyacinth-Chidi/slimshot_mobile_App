@@ -128,6 +128,23 @@ void main() {
     expect(clips, hasLength(2));
   });
 
+  test('a run made again for the same request picks up the held key', () async {
+    // Back or Cancel after a lost answer, then Generate: a new run, but the
+    // request may already have been charged, so it goes under the same key.
+    final held = SpeechKey();
+    fakes.startFailure = network;
+    await expectLater(
+      fakes.pipeline(key: held).run('v1', kTwoTexts, onProgress: (_) {}),
+      throwsA(network),
+    );
+
+    fakes.startFailure = null;
+    await fakes.pipeline(key: held).run('v1', kTwoTexts, onProgress: (_) {});
+
+    expect([for (final s in fakes.started) s.key], ['key-1', 'key-1']);
+    expect(fakes.quoted, [10]);
+  });
+
   test('a different request never reuses a held key', () async {
     final pipeline = fakes.pipeline();
     fakes.startFailure = network;

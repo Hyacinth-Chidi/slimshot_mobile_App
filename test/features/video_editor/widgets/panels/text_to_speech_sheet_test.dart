@@ -8,6 +8,7 @@ import 'package:slimshotai/core/theme/lucide_icons.dart';
 import 'package:slimshotai/core/utils/held_work.dart';
 import 'package:slimshotai/features/video_editor/logic/speech/speech_request.dart';
 import 'package:slimshotai/features/video_editor/logic/speech/voice_clip.dart';
+import 'package:slimshotai/features/video_editor/services/speech_pipeline.dart';
 import 'package:slimshotai/features/video_editor/services/speech_run.dart';
 import 'package:slimshotai/features/video_editor/services/speech_service.dart';
 import 'package:slimshotai/features/video_editor/services/voice_sample_player.dart';
@@ -55,8 +56,10 @@ void main() {
   late List<(String, SpeechReady)> runs;
   late List<List<VoiceClip>> handed;
   late List<bool> planned;
+  late SpeechKey heldKey;
 
   setUp(() {
+    heldKey = SpeechKey();
     samples = FakeSamples();
     fakes = SpeechFakes();
     held = HeldWork();
@@ -79,7 +82,8 @@ void main() {
         newRun: (voiceId, plan) {
           runs.add((voiceId, plan));
           return SpeechRun(
-            pipeline: fakes.pipeline(),
+            // The editor shares one key across its runs.
+            pipeline: fakes.pipeline(key: heldKey),
             voiceId: voiceId,
             plan: plan,
             heldWork: held,
@@ -235,6 +239,25 @@ void main() {
     await tapKey(tester, 'speech_retry');
     await tester.pump();
     expect(handed.single.single.textId, 'a');
+  });
+
+  testWidgets('Generate again after a lost answer is no second charge',
+      (tester) async {
+    fakes.startFailure = const SlimshotApiException(SlimshotApiException.network);
+    await open(tester, sheet());
+    await tapKey(tester, 'speech_generate');
+    await tester.pump();
+    expect(find.text('No internet connection.'), findsOneWidget);
+
+    // Back to the voices, then Generate: the request may have landed and been
+    // charged, so it goes again under the key it was sent with.
+    await tapKey(tester, 'speech_back');
+    fakes.startFailure = null;
+    await tapKey(tester, 'speech_generate');
+    await tester.pump();
+
+    expect([for (final s in fakes.started) s.key], ['key-1', 'key-1']);
+    expect(fakes.quoted, [5]);
   });
 
   testWidgets("a shortfall shows 'Needs N credits · You have M' with the earn "

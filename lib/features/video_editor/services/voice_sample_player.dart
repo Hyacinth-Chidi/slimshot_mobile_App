@@ -42,11 +42,17 @@ class JustAudioSamplePlayer implements VoiceSamplePlayer {
   /// does not start over it.
   int _turn = 0;
 
+  /// The editor lets the player go as soon as the sheet's route pops, and
+  /// the sheet's own teardown — which stops the sample — comes after it has
+  /// slid away: a stop or play after dispose does nothing.
+  bool _disposed = false;
+
   @override
   ValueListenable<String?> get playing => _playing;
 
   @override
   Future<void> play(String url) async {
+    if (_disposed) return;
     final turn = ++_turn;
     _playing.value = url;
     try {
@@ -63,6 +69,7 @@ class JustAudioSamplePlayer implements VoiceSamplePlayer {
 
   @override
   Future<void> stop() async {
+    if (_disposed) return;
     _turn++;
     _playing.value = null;
     try {
@@ -72,6 +79,8 @@ class JustAudioSamplePlayer implements VoiceSamplePlayer {
 
   @override
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
     _turn++;
     await _states.cancel();
     _playing.dispose();
